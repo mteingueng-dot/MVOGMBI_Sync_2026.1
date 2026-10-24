@@ -6,6 +6,8 @@ Objectif : créer automatiquement, dans Sage 50, la facture de vente du client �
 
 ## État d'avancement
 
+Le plan détaillé, étape par étape, est dans [TACHES.md](TACHES.md).
+
 - [x] Cumul des ventes par article : jour, semaine (lundi → dimanche) ou mois
 - [x] Lecture d'un export Excel Clover « Ventes d'articles »
 - [x] Lecture directe par l'API Clover (à valider avec un vrai jeton)
