@@ -63,6 +63,15 @@ def test_commande_non_payee_ignoree():
     assert lignes_commande({"paymentState": "OPEN", "lineItems": {"elements": [{"price": 100}]}}, {}) == []
 
 
+def test_commande_payee_malgre_paymentstate_open():
+    commande = {
+        "paymentState": "OPEN", "state": "locked",
+        "payments": {"elements": [{"result": "SUCCESS", "amount": 100}]},
+        "lineItems": {"elements": [{"name": "Milo 400g", "price": 799}]},
+    }
+    assert lignes_commande(commande, {})[0].ventes_brutes == D("7.99")
+
+
 def test_comparaison_detecte_les_ecarts():
     from mvogmbi_sync.comparaison import comparer
     from mvogmbi_sync.models import RapportVentes

@@ -75,7 +75,7 @@ class ClientClover:
         t0, t1 = en_millisecondes(debut, fin, self.config.fuseau_horaire)
         params = {
             "filter": [f"createdTime>={t0}", f"createdTime<{t1}"],
-            "expand": "lineItems,lineItems.discounts,lineItems.modifications,discounts",
+            "expand": "lineItems,lineItems.discounts,lineItems.modifications,discounts,payments",
         }
         yield from self._pages("orders", params)
 
@@ -104,9 +104,17 @@ def _rabais(remises: list[dict], base: Decimal) -> Decimal:
     return total
 
 
+def est_payee(commande: dict) -> bool:
+    """Commande encaissée : au moins un paiement réussi (Clover laisse souvent paymentState à OPEN)."""
+    paiements = (commande.get("payments") or {}).get("elements") or []
+    if any(p.get("result") == "SUCCESS" for p in paiements):
+        return True
+    return commande.get("paymentState") in ETATS_PAYES
+
+
 def lignes_commande(commande: dict, categories: dict[str, str]) -> list[LigneVente]:
     """Transforme une commande Clover en lignes de vente (une par article de la commande)."""
-    if commande.get("paymentState") not in ETATS_PAYES:
+    if not est_payee(commande):
         return []
 
     articles = (commande.get("lineItems") or {}).get("elements") or []
