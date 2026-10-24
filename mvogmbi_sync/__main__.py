@@ -4,6 +4,8 @@ Exemples :
     python -m mvogmbi_sync rapport --periode jour --date 2026-01-15
     python -m mvogmbi_sync rapport --periode semaine --date 2026-01-15 --par-jour
     python -m mvogmbi_sync rapport --periode mois --date 2026-01-01 --export "Ventes Janvier.xlsx"
+    python -m mvogmbi_sync verifier
+    python -m mvogmbi_sync comparer --date 2026-10-23 --export "Ventes 23 octobre.xlsx"
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 import tomllib
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from .models import RapportVentes
@@ -29,6 +31,8 @@ def charger_config(chemin: Path):
                  "Copiez config.example.toml en config.toml et complétez-le.")
     donnees = tomllib.loads(chemin.read_text(encoding="utf-8"))
     clover = donnees.get("clover", {})
+    if not clover.get("merchant_id") or not clover.get("api_token"):
+        sys.exit(f"Complétez merchant_id et api_token dans {chemin} avant de continuer.")
     return ConfigClover(
         merchant_id=clover.get("merchant_id", ""),
         api_token=clover.get("api_token", ""),
@@ -66,6 +70,44 @@ def commande_rapport(args: argparse.Namespace) -> None:
     print(f"\nRapport Excel : {ecrire_rapports(rapports, sortie)}")
 
 
+def commande_verifier(args: argparse.Namespace) -> None:
+    import requests
+
+    from .api_clover import ClientClover
+
+    client = ClientClover(charger_config(Path(args.config)))
+    try:
+        infos = client.marchand()
+    except requests.HTTPError as exc:
+        code = exc.response.status_code
+        raison = {401: "jeton refusé (invalide ou expiré)",
+                  403: "droits insuffisants sur le jeton",
+                  404: "identifiant marchand introuvable"}.get(code, "erreur inattendue")
+        sys.exit(f"Échec de la connexion à Clover : {code} — {raison}.")
+    print(f"Connexion à Clover réussie : {infos.get('name', '(nom inconnu)')}")
+    hier = date.today() - timedelta(days=1)
+    nombre = sum(1 for _ in client.commandes(hier, hier))
+    print(f"Commandes trouvées pour hier ({hier}) : {nombre}")
+
+
+def commande_comparer(args: argparse.Namespace) -> None:
+    from .api_clover import ClientClover
+    from .comparaison import comparer, ecrire_comparaison
+    from .export_clover import lire_export
+
+    jour = date.fromisoformat(args.date)
+    export = lire_export(Path(args.export), jour, jour)
+    api = ClientClover(charger_config(Path(args.config))).rapport(jour, jour)
+    afficher(export)
+    afficher(api)
+    ecarts = comparer(export, api)
+    sortie = ecrire_comparaison(ecarts, RACINE / "sortie" / f"comparaison_{jour}.xlsx")
+    if ecarts:
+        print(f"\n{len(ecarts)} article(s) en écart. Détail : {sortie}")
+    else:
+        print(f"\nAucun écart : l'API et l'export concordent au cent près. Détail : {sortie}")
+
+
 def main(argv: list[str] | None = None) -> None:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parseur = argparse.ArgumentParser(prog="mvogmbi_sync", description="Synchronisation Clover → Sage 50")
@@ -79,6 +121,16 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--export", help="Lire un export Excel Clover au lieu de l'API")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_rapport)
+
+    p = sous.add_parser("verifier", help="Vérifier la connexion à Clover (config.toml)")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_verifier)
+
+    p = sous.add_parser("comparer", help="Comparer l'API Clover avec un export journalier de la même date")
+    p.add_argument("--date", required=True, help="Jour de l'export (AAAA-MM-JJ)")
+    p.add_argument("--export", required=True, help="Export Excel Clover « Ventes d'articles » de ce jour")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_comparer)
 
     args = parseur.parse_args(argv)
     args.fonction(args)

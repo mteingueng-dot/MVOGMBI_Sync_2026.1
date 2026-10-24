@@ -56,6 +56,12 @@ class ClientClover:
                 return
             decalage += limite
 
+    def marchand(self) -> dict:
+        """Informations du marchand : sert à vérifier que l'identifiant et le jeton sont valides."""
+        reponse = self.session.get(f"{self.config.base_url}/v3/merchants/{self.config.merchant_id}", timeout=30)
+        reponse.raise_for_status()
+        return reponse.json()
+
     def categories_par_article(self) -> dict[str, str]:
         """id d'article Clover -> nom de sa première catégorie."""
         resultat: dict[str, str] = {}

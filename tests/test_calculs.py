@@ -61,3 +61,20 @@ def test_commande_clover_rabais_et_poids():
 
 def test_commande_non_payee_ignoree():
     assert lignes_commande({"paymentState": "OPEN", "lineItems": {"elements": [{"price": 100}]}}, {}) == []
+
+
+def test_comparaison_detecte_les_ecarts():
+    from mvogmbi_sync.comparaison import comparer
+    from mvogmbi_sync.models import RapportVentes
+
+    j = date(2026, 10, 23)
+    export = RapportVentes(j, j, "export", [
+        LigneVente("Riz", "Riz 5kg", D("2"), ventes_brutes=D("20")),
+        LigneVente("Divers", "Milo 400g", D("1"), ventes_brutes=D("7.99")),
+    ])
+    api = RapportVentes(j, j, "api", [
+        LigneVente("Non catégorisé(e)", "riz  5KG", D("2"), ventes_brutes=D("20")),
+        LigneVente("Divers", "Milo 400g", D("1"), ventes_brutes=D("7.99"), rabais=D("-0.80")),
+    ])
+    ecarts = comparer(export, api)
+    assert [e.nom for e in ecarts] == ["Milo 400g"]
