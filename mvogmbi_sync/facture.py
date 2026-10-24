@@ -13,7 +13,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from .models import RapportVentes
 
 ZERO = Decimal("0")
-DECIMALES_QUANTITE = Decimal("0.001")  # Clover mesure les poids au millième
+DECIMALES_QUANTITE = Decimal("0.01")  # Sage affiche les quantités à 2 décimales (facture « Vente Mars 2025 »)
 DECIMALES_PRIX = Decimal("0.0001")  # 4 décimales : maximum accepté par Sage pour un prix
 
 

@@ -21,6 +21,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 ## Points d'attention
 
 - **Règle de facturation (fixée par le propriétaire)** : montant de ligne = ventes nettes Clover de l'article ; prix unitaire = ventes nettes / quantité nette (4 décimales) ; total facture = ventes nettes Clover. Voir `mvogmbi_sync/facture.py`.
+- Facture Sage existante (« Vente Mars 2025 », 2025-03-31) : client « Vente Hebdomadaire », quantités à 2 décimales, prix à 4 décimales, colonne Taxe vide (TPS/TVQ à 0), compte de revenus par article (ex. 4016 Féculents, 4017 Fruits & Légumes, 4013 Divers), emplacement « Emplacement par défaut », facture marquée PAYÉ.
 
 - Le total affiché par Clover est calculé avant arrondi : la somme des lignes peut différer de quelques cents (janvier 2026 : 52 452,91 $ en lignes contre 52 453,00 $ au total Clover).
 - Règles validées contre les exports Clover (19 et 23 oct. 2026, au cent près) : une vente est datée de son premier paiement réussi (pas de la création de la commande) ; les rabais successifs s'appliquent sur le reste ; `paymentState` reste souvent OPEN.

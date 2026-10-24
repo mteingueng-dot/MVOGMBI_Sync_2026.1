@@ -159,8 +159,9 @@ def test_facture_montant_net_et_prix_unitaire():
     lignes = {l.nom: l for l in facture.lignes}
     assert lignes["Sada sardines"].montant == D("24.64")
     assert lignes["Sada sardines"].prix_unitaire == D("2.2400")
-    assert (lignes["MECHE X"].quantite, lignes["MECHE X"].prix_unitaire) == (D("8.000"), D("10.9900"))
-    assert lignes["Gombo en lb"].prix_unitaire == D("5.2516")
+    assert (lignes["MECHE X"].quantite, lignes["MECHE X"].prix_unitaire) == (D("8.00"), D("10.9900"))
+    assert lignes["Gombo en lb"].quantite == D("3.84")
+    assert lignes["Gombo en lb"].prix_unitaire == D("5.2448")
     assert lignes["Robb"].prix_unitaire == D("0")
     assert facture.total == rapport.total_net
     assert all(abs(l.ecart_arrondi) <= D("0.01") for l in facture.lignes)
