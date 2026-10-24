@@ -41,7 +41,8 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 ## Étape 3 — Correspondance des articles Clover ↔ Sage
 
 - [x] [Claude] Générer automatiquement la table de correspondance : 2 119 automatiques (84 %), 371 à confirmer, 36 sans proposition (`python -m mvogmbi_sync correspondance`)
-- [ ] [Vous] Vérifier et corriger les correspondances douteuses dans le fichier Excel produit
+- [x] [Vous] Vérifier les correspondances et créer dans Sage les articles manquants (règle : deux formats différents = deux articles)
+- [ ] [Vous] Régler les 16 derniers cas (10 à confirmer, 6 à créer) et les 2 anomalies Sage (doublon Djama Djama 1kg, Jus Zena Sirop Menthe avec numéro et description inversés)
 - [ ] [Claude] Signaler à chaque exécution les nouveaux articles Clover sans correspondance
 - [ ] [Ensemble] Décider du traitement des articles inconnus (bloquer, ou ligne sur un compte de revenus)
 
