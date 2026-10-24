@@ -82,7 +82,7 @@ class ClientClover:
         t0, t1 = en_millisecondes(debut, fin, self.config.fuseau_horaire)
         params = {
             "filter": f"modifiedTime>={t0}",
-            "expand": "lineItems,lineItems.discounts,lineItems.modifications,discounts,payments",
+            "expand": "lineItems,lineItems.discounts,lineItems.modifications,lineItems.taxRates,discounts,payments",
         }
         for commande in self._pages("orders", params):
             moment = moment_paiement(commande)
@@ -91,8 +91,11 @@ class ClientClover:
 
     def rapport(self, debut: date, fin: date) -> RapportVentes:
         categories = self.categories_par_article()
-        lignes = [l for c in self.commandes(debut, fin) for l in lignes_commande(c, categories)]
-        return RapportVentes(debut=debut, fin=fin, source="API Clover", lignes=cumuler(lignes))
+        commandes = list(self.commandes(debut, fin))
+        lignes = [l for c in commandes for l in lignes_commande(c, categories)]
+        hors = [l for c in commandes for l in lignes_hors_recettes(c, categories)]
+        return RapportVentes(debut=debut, fin=fin, source="API Clover",
+                             lignes=cumuler(lignes), hors_recettes=cumuler(hors))
 
 
 def _cents(valeur) -> Decimal:
@@ -138,6 +141,23 @@ def est_payee(commande: dict) -> bool:
     return commande.get("paymentState") in ETATS_PAYES
 
 
+def lignes_hors_recettes(commande: dict, categories: dict[str, str]) -> list[LigneVente]:
+    """Articles payés mais marqués « non-recette » dans Clover (absents du rapport « Ventes d'articles »)."""
+    if not est_payee(commande):
+        return []
+    resultat = []
+    for a in (commande.get("lineItems") or {}).get("elements") or []:
+        if a.get("isRevenue") is False and not a.get("refunded"):
+            quantite = Decimal(a["unitQty"]) / 1000 if a.get("unitQty") else Decimal("1")
+            resultat.append(LigneVente(
+                categorie=categories.get((a.get("item") or {}).get("id"), SANS_CATEGORIE),
+                nom=(a.get("name") or "").strip(),
+                quantite_vendue=quantite,
+                ventes_brutes=_arrondi(_cents(a.get("price")) * quantite),
+            ))
+    return resultat
+
+
 def lignes_commande(commande: dict, categories: dict[str, str]) -> list[LigneVente]:
     """Transforme une commande Clover en lignes de vente (une par article de la commande)."""
     if not est_payee(commande):
@@ -153,12 +173,14 @@ def lignes_commande(commande: dict, categories: dict[str, str]) -> list[LigneVen
         brut = _cents(a.get("price")) * quantite + sum((_cents(m.get("amount")) for m in modifs), Decimal("0"))
         rabais = _rabais((a.get("discounts") or {}).get("elements") or [], brut)
         item_id = (a.get("item") or {}).get("id")
+        taux = (a.get("taxRates") or {}).get("elements") or []
         ligne = LigneVente(
             categorie=categories.get(item_id, SANS_CATEGORIE),
             nom=(a.get("name") or "Article personnalisé").strip(),
             quantite_vendue=quantite,
             ventes_brutes=_arrondi(brut),
             rabais=_arrondi(rabais),
+            taxable=any(int(t.get("rate") or 0) > 0 for t in taux),
         )
         if a.get("refunded"):
             ligne.quantite_remboursee = quantite

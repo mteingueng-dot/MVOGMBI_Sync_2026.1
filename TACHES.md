@@ -33,9 +33,9 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 
 - [x] [Vous] Exporter la liste des articles d'inventaire de Sage (*Rapports > Inventaire et services > Liste des articles*) en Excel ou CSV
 - [x] [Vous] Envoyer une capture d'écran du formulaire « Facture de vente »
-- [ ] [Vous] Capture d'une facture « Vente hebdomadaire » remplie (client, quelques lignes, taxes)
-- [ ] [Vous] Indiquer les codes de taxe utilisés (TPS, TVQ, exonéré) et les articles taxables
-- [ ] [Vous] Indiquer le mode de paiement utilisé sur la facture (comptant, à crédit, autre) et la numérotation des factures
+- [x] [Vous] Capture d'une facture « Vente hebdomadaire » remplie (client, quelques lignes, taxes)
+- [x] [Vous] Codes de taxe : « GQ » pour les articles taxables (repérés par les taxes Clover), vide sinon
+- [x] [Vous] Mode « Payer plus tard » (dépôts bancaires appliqués ensuite) ; numéros « Vente 2026-10-23 », « Vente S43-2026 », « Vente Octobre 2026 »
 - [ ] [Vous] Indiquer le compte de revenus pour les « Articles personnalisés » et les articles absents de l'inventaire
 
 ## Étape 3 — Correspondance des articles Clover ↔ Sage
@@ -49,7 +49,8 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 
 - [ ] [Claude] Obtenir la spécification officielle du format `<SalInvoice>` (base de connaissances Sage / « Dev-Import.pdf » du SDK)
 - [x] [Ensemble] Règle de prix : montant de ligne = ventes nettes, prix unitaire = ventes nettes / quantité nette (vérifié : total facture = ventes nettes les 19 et 23 oct.)
-- [ ] [Claude] Générer la facture : client, date, numéro, une ligne par article, taxes TPS/TVQ
+- [x] [Claude] Préparer la facture : client, date, numéro, une ligne par article, code de taxe GQ (19 et 23 oct. vérifiés)
+- [ ] [Vous] Corriger dans Clover l'article « Colombina Bon Bon Bum Fresa 408g » marqué « non-recette »
 - [ ] [Vous] Faire une **copie de sauvegarde** du fichier d'entreprise Sage pour les essais
 - [ ] [Ensemble] Importer une journée dans la copie (*Fichier > Importer/Exporter > Importer des transactions*)
 - [ ] [Ensemble] Vérifier la facture importée : quantités, montants, taxes, total, inventaire

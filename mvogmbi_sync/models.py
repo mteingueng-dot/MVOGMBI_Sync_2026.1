@@ -20,6 +20,7 @@ class LigneVente:
     ventes_brutes: Decimal = ZERO
     rabais: Decimal = ZERO  # négatif, comme dans Clover
     remboursements: Decimal = ZERO  # négatif, comme dans Clover
+    taxable: bool | None = None  # TPS + TVQ ; None si inconnu (exports Clover sans information de taxe)
 
     @property
     def quantite_nette(self) -> Decimal:
@@ -51,6 +52,8 @@ class RapportVentes:
     fin: date  # inclusive
     source: str
     lignes: list[LigneVente] = field(default_factory=list)
+    # Articles payés mais marqués « non-recette » dans Clover : exclus des ventes, signalés pour vérification
+    hors_recettes: list[LigneVente] = field(default_factory=list)
 
     @property
     def total_brut(self) -> Decimal:
@@ -70,11 +73,11 @@ class RapportVentes:
 
 
 def cumuler(lignes: list[LigneVente]) -> list[LigneVente]:
-    """Regroupe les lignes par (catégorie, nom) et trie par ventes nettes décroissantes."""
-    cumul: dict[tuple[str, str], LigneVente] = {}
+    """Regroupe les lignes par (catégorie, nom, taxable) et trie par ventes nettes décroissantes."""
+    cumul: dict[tuple[str, str, bool | None], LigneVente] = {}
     for ligne in lignes:
-        cle = (ligne.categorie, ligne.nom)
+        cle = (ligne.categorie, ligne.nom, ligne.taxable)
         if cle not in cumul:
-            cumul[cle] = LigneVente(categorie=ligne.categorie, nom=ligne.nom)
+            cumul[cle] = LigneVente(categorie=ligne.categorie, nom=ligne.nom, taxable=ligne.taxable)
         cumul[cle].ajouter(ligne)
     return sorted(cumul.values(), key=lambda l: (l.categorie, -l.ventes_nettes, l.nom))

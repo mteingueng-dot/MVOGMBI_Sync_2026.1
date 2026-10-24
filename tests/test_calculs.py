@@ -155,13 +155,13 @@ def test_facture_montant_net_et_prix_unitaire():
         LigneVente("Fruits", "Gombo en lb", D("3.835"), ventes_brutes=D("20.14")),
         LigneVente("Non catégorisé(e)", "Robb", D("1"), ventes_brutes=D("2.99"), rabais=D("-2.99")),
     ])
-    facture = preparer_facture(rapport)
+    facture = preparer_facture(rapport, TypePeriode.JOUR)
     lignes = {l.nom: l for l in facture.lignes}
     assert lignes["Sada sardines"].montant == D("24.64")
     assert lignes["Sada sardines"].prix_unitaire == D("2.2400")
-    assert (lignes["MECHE X"].quantite, lignes["MECHE X"].prix_unitaire) == (D("8.00"), D("10.9900"))
-    assert lignes["Gombo en lb"].quantite == D("3.84")
-    assert lignes["Gombo en lb"].prix_unitaire == D("5.2448")
+    assert (lignes["MECHE X"].quantite, lignes["MECHE X"].prix_unitaire) == (D("8.000"), D("10.9900"))
+    assert lignes["Gombo en lb"].quantite == D("3.835")
+    assert lignes["Gombo en lb"].prix_unitaire == D("5.2516")
     assert lignes["Robb"].prix_unitaire == D("0")
     assert facture.total == rapport.total_net
     assert all(abs(l.ecart_arrondi) <= D("0.01") for l in facture.lignes)
@@ -173,5 +173,59 @@ def test_facture_signale_montant_sans_quantite():
 
     j = date(2026, 10, 19)
     rapport = RapportVentes(j, j, "api", [LigneVente("X", "Remb. ancien", D("1"), D("1"), ventes_brutes=D("5"))])
-    facture = preparer_facture(rapport)
+    facture = preparer_facture(rapport, TypePeriode.JOUR)
     assert facture.lignes == [] and len(facture.anomalies) == 1
+
+
+def test_numeros_de_facture():
+    from mvogmbi_sync.facture import numero_facture
+
+    assert numero_facture(TypePeriode.JOUR, date(2026, 10, 23)) == "Vente 2026-10-23"
+    assert numero_facture(TypePeriode.SEMAINE, date(2026, 10, 19)) == "Vente S43-2026"
+    assert numero_facture(TypePeriode.MOIS, date(2026, 10, 1)) == "Vente Octobre 2026"
+
+
+def test_facture_code_taxe_et_taxes():
+    from mvogmbi_sync.facture import preparer_facture
+    from mvogmbi_sync.models import RapportVentes
+
+    j = date(2026, 10, 23)
+    rapport = RapportVentes(j, j, "api", [
+        LigneVente("Mèches", "MECHE AFRO KINKY CURLY 1B", D("1"), ventes_brutes=D("899.00"), taxable=True),
+        LigneVente("Riz", "Riz 5kg", D("1"), ventes_brutes=D("20.00"), taxable=False),
+    ])
+    facture = preparer_facture(rapport, TypePeriode.JOUR)
+    codes = {l.nom: l.code_taxe for l in facture.lignes}
+    assert codes == {"MECHE AFRO KINKY CURLY 1B": "GQ", "Riz 5kg": ""}
+    # Mêmes montants que la facture Sage de démonstration : TPS 44,95 $, TVQ 89,68 $
+    assert (facture.tps, facture.tvq) == (D("44.95"), D("89.68"))
+    assert facture.sous_total == D("919.00") and facture.total == D("1053.63")
+    assert (facture.client, facture.mode_paiement) == ("Vente Hebdomadaire", "Payer plus tard")
+
+
+def test_cumul_separe_taxable_et_non_taxable():
+    lignes = cumuler([
+        LigneVente("Divers", "Savon", D("1"), ventes_brutes=D("5"), taxable=True),
+        LigneVente("Divers", "Savon", D("1"), ventes_brutes=D("5"), taxable=False),
+    ])
+    assert len(lignes) == 2
+
+
+def test_article_non_recette_signale():
+    from mvogmbi_sync.api_clover import lignes_hors_recettes
+    from mvogmbi_sync.facture import preparer_facture
+    from mvogmbi_sync.models import RapportVentes
+
+    commande = {
+        "payments": {"elements": [{"result": "SUCCESS"}]},
+        "lineItems": {"elements": [
+            {"name": "Colombina Bon Bon Bum Fresa 408g", "price": 399, "isRevenue": False},
+            {"name": "Plantain Jaune en lb", "price": 129},
+        ]},
+    }
+    assert [l.nom for l in lignes_commande(commande, {})] == ["Plantain Jaune en lb"]
+    hors = lignes_hors_recettes(commande, {})
+    assert [(l.nom, l.ventes_brutes) for l in hors] == [("Colombina Bon Bon Bum Fresa 408g", D("3.99"))]
+    j = date(2026, 10, 19)
+    facture = preparer_facture(RapportVentes(j, j, "api", hors_recettes=hors), TypePeriode.JOUR)
+    assert "non-recette" in facture.anomalies[0]
