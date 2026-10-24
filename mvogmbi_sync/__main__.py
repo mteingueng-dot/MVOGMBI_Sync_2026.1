@@ -109,7 +109,8 @@ def commande_comparer(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    for flux in (sys.stdout, sys.stderr):
+        flux.reconfigure(encoding="utf-8", errors="replace")
     parseur = argparse.ArgumentParser(prog="mvogmbi_sync", description="Synchronisation Clover → Sage 50")
     sous = parseur.add_subparsers(dest="commande", required=True)
 
