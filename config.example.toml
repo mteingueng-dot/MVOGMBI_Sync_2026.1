@@ -1,0 +1,12 @@
+# Copier ce fichier en « config.toml » (jamais publié sur GitHub) et le compléter.
+
+[clover]
+# Identifiant marchand (13 caractères) visible dans l'URL du tableau de bord Clover.
+merchant_id = ""
+# Jeton API généré dans Clover : Compte et configuration > Jetons API.
+api_token = ""
+# Amérique du Nord (Canada et États-Unis)
+base_url = "https://api.clover.com"
+
+[general]
+fuseau_horaire = "America/Toronto"
