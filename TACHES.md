@@ -24,14 +24,16 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [x] [Vous] Fournir l'export Clover journalier « Ventes d'articles » de cette même journée
 - [x] [Ensemble] Comparer API et export, article par article, jusqu'à concordance au cent près
 - [x] [Claude] Ajuster les règles : commandes payées, articles au poids, rabais de commande, remboursements (23 oct. 2026 : concordance parfaite, 155 articles, 3 139,39 $)
-- [ ] [Ensemble] Confirmer sur d'autres journées (échanges, « Article personnalisé », journée chargée)
+- [x] [Ensemble] Confirmer sur une 2e journée : 19 oct. 2026 concordant (111 articles, 1 390,42 $) après 2 corrections : vente datée au paiement, rabais successifs
+- [ ] [Vous] Fournir l'export d'un samedi chargé (ex. 17 oct. : le fichier « 10_17 » reçu contenait le 23 oct.)
 - [ ] [Vous] Supprimer l'ancien jeton Clover (toujours actif)
 - [ ] [Claude] Contourner la limite Clover de 90 jours pour les mois anciens (repli sur l'export Excel)
 
 ## Étape 2 — Informations de Sage 50
 
-- [ ] [Vous] Exporter la liste des articles d'inventaire de Sage (*Rapports > Inventaire et services > Liste des articles*) en Excel ou CSV
-- [ ] [Vous] Envoyer une capture d'écran d'une facture « Vente hebdomadaire » déjà saisie
+- [x] [Vous] Exporter la liste des articles d'inventaire de Sage (*Rapports > Inventaire et services > Liste des articles*) en Excel ou CSV
+- [x] [Vous] Envoyer une capture d'écran du formulaire « Facture de vente »
+- [ ] [Vous] Capture d'une facture « Vente hebdomadaire » remplie (client, quelques lignes, taxes)
 - [ ] [Vous] Indiquer les codes de taxe utilisés (TPS, TVQ, exonéré) et les articles taxables
 - [ ] [Vous] Indiquer le mode de paiement utilisé sur la facture (comptant, à crédit, autre) et la numérotation des factures
 - [ ] [Vous] Indiquer le compte de revenus pour les « Articles personnalisés » et les articles absents de l'inventaire

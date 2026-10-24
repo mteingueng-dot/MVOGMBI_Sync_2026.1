@@ -72,12 +72,22 @@ class ClientClover:
         return resultat
 
     def commandes(self, debut: date, fin: date) -> Iterator[dict]:
+        """Commandes payées pendant la période.
+
+        Comme le rapport Clover, une vente est datée de son paiement, pas de la création de la commande
+        (une commande ouverte le 17 et payée le 19 compte pour le 19). Un paiement modifie la commande :
+        on lit donc les commandes modifiées depuis le début de la période, puis on garde celles dont
+        le premier paiement réussi tombe dans la période.
+        """
         t0, t1 = en_millisecondes(debut, fin, self.config.fuseau_horaire)
         params = {
-            "filter": [f"createdTime>={t0}", f"createdTime<{t1}"],
+            "filter": f"modifiedTime>={t0}",
             "expand": "lineItems,lineItems.discounts,lineItems.modifications,discounts,payments",
         }
-        yield from self._pages("orders", params)
+        for commande in self._pages("orders", params):
+            moment = moment_paiement(commande)
+            if moment is not None and t0 <= moment < t1:
+                yield commande
 
     def rapport(self, debut: date, fin: date) -> RapportVentes:
         categories = self.categories_par_article()
@@ -94,14 +104,30 @@ def _arrondi(valeur: Decimal) -> Decimal:
 
 
 def _rabais(remises: list[dict], base: Decimal) -> Decimal:
-    """Total (négatif) d'une liste de rabais Clover, en montant ou en pourcentage de `base`."""
-    total = Decimal("0")
+    """Total (négatif) d'une liste de rabais Clover appliqués l'un après l'autre sur `base`.
+
+    Chaque pourcentage s'applique au montant restant (100 % puis 99 % = 100 %), et le rabais
+    ne peut pas dépasser le montant de départ.
+    """
+    reste = base
     for r in remises:
         if r.get("amount") is not None:
-            total += _cents(r["amount"])  # déjà négatif dans Clover
+            reste += _cents(r["amount"])  # déjà négatif dans Clover
         elif r.get("percentage") is not None:
-            total -= base * Decimal(str(r["percentage"])) / CENT
-    return total
+            reste -= reste * Decimal(str(r["percentage"])) / CENT
+        reste = max(reste, Decimal("0"))
+    return reste - base
+
+
+def moment_paiement(commande: dict) -> int | None:
+    """Heure (ms) du premier paiement réussi ; à défaut, création de la commande si elle est marquée payée."""
+    paiements = (commande.get("payments") or {}).get("elements") or []
+    moments = [p["createdTime"] for p in paiements if p.get("result") == "SUCCESS" and p.get("createdTime")]
+    if moments:
+        return min(moments)
+    if commande.get("paymentState") in ETATS_PAYES:
+        return commande.get("createdTime")
+    return None
 
 
 def est_payee(commande: dict) -> bool:

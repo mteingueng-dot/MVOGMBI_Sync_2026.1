@@ -20,6 +20,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 ## Points d'attention
 
 - Le total affiché par Clover est calculé avant arrondi : la somme des lignes peut différer de quelques cents (janvier 2026 : 52 452,91 $ en lignes contre 52 453,00 $ au total Clover).
-- Les règles de calcul de l'API doivent être validées en comparant avec un export Clover de la même journée.
+- Règles validées contre les exports Clover (19 et 23 oct. 2026, au cent près) : une vente est datée de son premier paiement réussi (pas de la création de la commande) ; les rabais successifs s'appliquent sur le reste ; `paymentState` reste souvent OPEN.
+- Liste des articles Sage : export texte cp1252 (`E:\Article.txt`, en-tête `33101,3,Inventory`), colonnes : numéro, description, type, unité, prix, prix, compte d'actif, compte de revenus, compte CPV, compte d'écart, description 2, unité de vente.
 - Sage 50 CA n'a pas d'API ouverte : l'import passera par un fichier `.IMP` (`<SalInvoice>`), à tester uniquement sur une copie du fichier d'entreprise.
 - Ne jamais committer `config.toml` (jeton Clover), ni les exports ou rapports de ventes (`*.xlsx`, `sortie/`).

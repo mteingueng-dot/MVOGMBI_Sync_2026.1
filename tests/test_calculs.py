@@ -121,3 +121,22 @@ def test_rabais_commande_arrondi_au_cent():
     }
     (igname,) = lignes_commande(commande, {})
     assert igname.rabais == igname.rabais.quantize(D("0.01"))
+
+
+def test_rabais_successifs_ne_depassent_pas_le_montant():
+    commande = {
+        "payments": {"elements": [{"result": "SUCCESS", "amount": 0}]},
+        "lineItems": {"elements": [{"name": "Robb", "price": 299}]},
+        "discounts": {"elements": [{"percentage": 100}, {"percentage": 99}]},
+    }
+    (robb,) = lignes_commande(commande, {})
+    assert robb.ventes_nettes == D("0")
+
+
+def test_vente_datee_au_paiement():
+    from mvogmbi_sync.api_clover import moment_paiement
+
+    commande = {"createdTime": 100, "payments": {"elements": [
+        {"result": "FAIL", "createdTime": 150}, {"result": "SUCCESS", "createdTime": 300}]}}
+    assert moment_paiement(commande) == 300
+    assert moment_paiement({"createdTime": 100, "paymentState": "OPEN"}) is None
