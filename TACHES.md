@@ -40,7 +40,7 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 
 ## Étape 3 — Correspondance des articles Clover ↔ Sage
 
-- [ ] [Claude] Générer automatiquement la table de correspondance (rapprochement des noms)
+- [x] [Claude] Générer automatiquement la table de correspondance : 2 119 automatiques (84 %), 371 à confirmer, 36 sans proposition (`python -m mvogmbi_sync correspondance`)
 - [ ] [Vous] Vérifier et corriger les correspondances douteuses dans le fichier Excel produit
 - [ ] [Claude] Signaler à chaque exécution les nouveaux articles Clover sans correspondance
 - [ ] [Ensemble] Décider du traitement des articles inconnus (bloquer, ou ligne sur un compte de revenus)

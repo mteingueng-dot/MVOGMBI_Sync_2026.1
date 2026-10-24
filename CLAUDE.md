@@ -7,6 +7,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 ## Commandes
 
 - `python -m pytest` : tests
+- `python -m mvogmbi_sync correspondance` : crée/met à jour `donnees/correspondance_articles.xlsx` (articles Clover -> numéros Sage)
 - `python -m mvogmbi_sync rapport --periode jour|semaine|mois --date AAAA-MM-JJ [--par-jour] [--export fichier.xlsx]`
 
 ## Structure
@@ -16,6 +17,8 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - `mvogmbi_sync/export_clover.py` : lecture de l'export Excel Clover (montants au format « 1 234,56 $ »).
 - `mvogmbi_sync/api_clover.py` : client API Clover et transformation des commandes en lignes (prix en cents, `unitQty` en millièmes, rabais de commande répartis au prorata).
 - `mvogmbi_sync/facture.py` : lignes de la facture Sage (quantité nette au millième, prix à 4 décimales, montant = net) et anomalies.
+- `mvogmbi_sync/articles_sage.py` : lecture de la liste d'articles Sage (cp1252, accents abîmés réparés).
+- `mvogmbi_sync/correspondance.py` : rapprochement Clover -> Sage (code-barres, nom identique normalisé, ressemblance rapidfuzz avec pénalité si les formats chiffrés diffèrent) ; fichier Excel où le propriétaire marque « Confirmé » ; lignes confirmées conservées à chaque régénération (clé : ID Clover).
 - `mvogmbi_sync/sortie_excel.py` : rapport Excel de vérification dans `sortie/`.
 
 ## Points d'attention
@@ -29,4 +32,5 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - Règles validées contre les exports Clover (17, 19 et 23 oct. 2026, au cent près) : une vente est datée de son premier paiement réussi (pas de la création de la commande) ; les pourcentages de rabais d'une commande s'additionnent (99 % + 10 % = 100 % max) ; `paymentState` reste souvent OPEN.
 - Liste des articles Sage : export texte cp1252 (`E:\Article.txt`, en-tête `33101,3,Inventory`), colonnes : numéro, description, type, unité, prix, prix, compte d'actif, compte de revenus, compte CPV, compte d'écart, description 2, unité de vente.
 - Sage 50 CA n'a pas d'API ouverte : l'import passera par un fichier `.IMP` (`<SalInvoice>`), à tester uniquement sur une copie du fichier d'entreprise.
+- `donnees/` (correspondance validée par le propriétaire) n'est pas publié : à sauvegarder localement.
 - Ne jamais committer `config.toml` (jeton Clover), ni les exports ou rapports de ventes (`*.xlsx`, `sortie/`).

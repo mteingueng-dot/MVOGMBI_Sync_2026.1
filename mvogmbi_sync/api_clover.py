@@ -71,6 +71,13 @@ class ClientClover:
                 resultat[article["id"]] = cats[0].get("name", SANS_CATEGORIE)
         return resultat
 
+    def articles(self) -> list[dict]:
+        """Catalogue Clover (articles actifs comptés comme recettes), avec leurs catégories."""
+        return [
+            a for a in self._pages("items", {"expand": "categories"})
+            if not a.get("deleted") and a.get("isRevenue") is not False
+        ]
+
     def commandes(self, debut: date, fin: date) -> Iterator[dict]:
         """Commandes payées pendant la période.
 

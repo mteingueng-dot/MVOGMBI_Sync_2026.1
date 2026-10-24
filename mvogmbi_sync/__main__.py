@@ -108,6 +108,51 @@ def commande_comparer(args: argparse.Namespace) -> None:
         print(f"\nAucun écart : l'API et l'export concordent au cent près. Détail : {sortie}")
 
 
+def commande_correspondance(args: argparse.Namespace) -> None:
+    from decimal import Decimal
+
+    from .api_clover import SANS_CATEGORIE, ClientClover
+    from .articles_sage import lire_articles_sage
+    from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, ArticleClover,
+                                 ecrire_correspondance, lire_confirmes, rapprocher)
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
+    chemin_sage = Path(args.sage or config_toml.get("sage", {}).get("articles", ""))
+    if not chemin_sage.is_file():
+        sys.exit("Liste des articles Sage introuvable : indiquez-la avec --sage ou dans config.toml ([sage] articles).")
+    sage = lire_articles_sage(chemin_sage)
+
+    client = ClientClover(charger_config(Path(args.config)))
+    print("Lecture du catalogue Clover…")
+    catalogue = client.articles()
+    print("Lecture des ventes des 30 derniers jours (pour trier par importance)…")
+    fin = date.today() - timedelta(days=1)
+    ventes: dict[str, Decimal] = {}
+    for ligne in client.rapport(fin - timedelta(days=29), fin).lignes:
+        ventes[ligne.nom] = ventes.get(ligne.nom, Decimal("0")) + ligne.ventes_nettes
+
+    clover = [
+        ArticleClover(
+            id=a["id"], nom=(a.get("name") or "").strip(),
+            categorie=(((a.get("categories") or {}).get("elements") or [{}])[0]).get("name", SANS_CATEGORIE),
+            code=(a.get("code") or "").strip(), ventes_30j=ventes.get((a.get("name") or "").strip(), Decimal("0")),
+        )
+        for a in catalogue
+    ]
+    chemin = Path(args.fichier)
+    confirmes = lire_confirmes(chemin)
+    resultat = rapprocher(clover, sage, confirmes)
+    ecrire_correspondance(resultat, chemin)
+
+    compte = {s: sum(1 for c in resultat if c.statut == s) for s in (CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN)}
+    vendus = [c for c in resultat if c.ventes_30j]
+    print(f"\nArticles Sage lus : {len(sage)} — articles Clover : {len(clover)}")
+    for statut, nombre in compte.items():
+        print(f"  {statut:<12}: {nombre:>5}   (dont vendus ces 30 jours : "
+              f"{sum(1 for c in vendus if c.statut == statut)})")
+    print(f"\nFichier à vérifier : {chemin}")
+
+
 def main(argv: list[str] | None = None) -> None:
     for flux in (sys.stdout, sys.stderr):
         flux.reconfigure(encoding="utf-8", errors="replace")
@@ -132,6 +177,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--export", required=True, help="Export Excel Clover « Ventes d'articles » de ce jour")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_comparer)
+
+    p = sous.add_parser("correspondance", help="Créer ou mettre à jour la correspondance articles Clover -> Sage")
+    p.add_argument("--sage", help="Liste des articles exportée de Sage (ex. E:\\Article.txt)")
+    p.add_argument("--fichier", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_correspondance)
 
     args = parseur.parse_args(argv)
     args.fonction(args)

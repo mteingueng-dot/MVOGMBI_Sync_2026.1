@@ -1,0 +1,212 @@
+"""Correspondance entre les articles Clover et les numéros d'articles Sage.
+
+Rapprochement automatique, dans l'ordre :
+1. code-barres Clover identique à un numéro d'article Sage ;
+2. nom Clover identique à une description Sage (accents, casse et ponctuation ignorés) ;
+3. nom le plus ressemblant (les formats « 1kg » / « 2kg » doivent concorder), à confirmer.
+
+Le résultat est un fichier Excel que le propriétaire vérifie : il corrige le numéro Sage si besoin
+et inscrit « Confirmé » dans la colonne Statut. Les lignes confirmées sont conservées telles quelles
+quand le fichier est régénéré (nouveaux articles Clover, nouvelle liste Sage).
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from collections import defaultdict
+from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
+
+import openpyxl
+from openpyxl.styles import Font, PatternFill
+from openpyxl.worksheet.datavalidation import DataValidation
+from rapidfuzz import fuzz, process
+
+from .articles_sage import ArticleSage
+
+CONFIRME = "Confirmé"
+AUTOMATIQUE = "Automatique"
+A_CONFIRMER = "À confirmer"
+AUCUN = "Aucun"
+STATUTS = [CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN]
+
+SEUIL_SUGGESTION = 60  # en dessous, aucune proposition
+
+ENTETES = [
+    "Statut", "Nom Clover", "Catégorie Clover", "Ventes 30 j ($)", "N° article Sage",
+    "Description Sage", "Compte revenus", "Méthode", "Confiance (%)", "Autres suggestions",
+    "Code Clover", "ID Clover",
+]
+COULEURS = {
+    CONFIRME: "C6EFCE", AUTOMATIQUE: "DDEBF7", A_CONFIRMER: "FFEB9C", AUCUN: "FFC7CE",
+}
+
+
+def normaliser(texte: str) -> str:
+    texte = unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode().lower()
+    texte = re.sub(r"(\d),(\d)", r"\1.\2", texte)  # 1,8kg -> 1.8kg
+    texte = re.sub(r"(\d)\s+(kg|g|lb|lbs|l|ml|oz|pcs|p)\b", r"\1\2", texte)  # 500 g -> 500g
+    return " ".join(re.sub(r"[^a-z0-9.]+", " ", texte).split())
+
+
+def _formats(texte_normalise: str) -> set[str]:
+    """Jetons contenant un chiffre (formats, tailles) : « 500g », « 1.8kg », « 24x330ml »."""
+    return {t for t in texte_normalise.split() if any(c.isdigit() for c in t)}
+
+
+def _score(a: str, b: str, **_) -> float:
+    """Ressemblance 0-100 ; pénalité si les formats (chiffres) diffèrent."""
+    score = fuzz.token_sort_ratio(a, b)
+    fa, fb = _formats(a), _formats(b)
+    if fa != fb:
+        score *= 0.8 if (fa and fb) else 0.9
+    return score
+
+
+@dataclass
+class ArticleClover:
+    id: str
+    nom: str
+    categorie: str = ""
+    code: str = ""
+    ventes_30j: Decimal = Decimal("0")
+
+
+@dataclass
+class Correspondance:
+    statut: str
+    nom_clover: str
+    categorie_clover: str
+    ventes_30j: Decimal
+    numero_sage: str
+    description_sage: str
+    compte_revenus: str
+    methode: str
+    confiance: int
+    suggestions: str
+    code_clover: str
+    id_clover: str
+
+
+def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
+               confirmes: dict[str, Correspondance] | None = None) -> list[Correspondance]:
+    confirmes = confirmes or {}
+    par_numero = {a.numero.lower(): a for a in sage}
+    par_nom: dict[str, list[ArticleSage]] = defaultdict(list)
+    for a in sage:
+        par_nom[normaliser(a.description)].append(a)
+    noms_sage = list(par_nom)
+
+    resultat = []
+    for article in clover:
+        def ligne(statut, sage_choisi, methode, confiance, suggestions=""):
+            return Correspondance(
+                statut, article.nom, article.categorie, article.ventes_30j,
+                sage_choisi.numero if sage_choisi else "", sage_choisi.description if sage_choisi else "",
+                sage_choisi.compte_revenus if sage_choisi else "", methode, confiance, suggestions,
+                article.code, article.id,
+            )
+
+        deja = confirmes.get(article.id)
+        if deja is not None:
+            choisi = par_numero.get(deja.numero_sage.lower())
+            if choisi:
+                resultat.append(ligne(CONFIRME, choisi, deja.methode or "Manuel", 100))
+            else:
+                resultat.append(ligne(A_CONFIRMER, None, "Numéro confirmé introuvable dans Sage", 0,
+                                      f"Ancien numéro : {deja.numero_sage}"))
+            continue
+
+        if article.code and article.code.lower() in par_numero:
+            resultat.append(ligne(AUTOMATIQUE, par_numero[article.code.lower()], "Code-barres", 100))
+            continue
+
+        nom = normaliser(article.nom)
+        identiques = par_nom.get(nom, [])
+        if len(identiques) == 1:
+            resultat.append(ligne(AUTOMATIQUE, identiques[0], "Nom identique", 100))
+            continue
+        if len(identiques) > 1:
+            autres = " | ".join(f"{a.numero} — {a.description}" for a in identiques[1:])
+            resultat.append(ligne(A_CONFIRMER, identiques[0], "Nom identique (plusieurs articles Sage)", 90, autres))
+            continue
+
+        candidats = process.extract(nom, noms_sage, scorer=_score, limit=3)
+        if not candidats or candidats[0][1] < SEUIL_SUGGESTION:
+            resultat.append(ligne(AUCUN, None, "Aucun article ressemblant", 0))
+            continue
+        meilleur = par_nom[candidats[0][0]][0]
+        autres = " | ".join(
+            f"{par_nom[n][0].numero} — {par_nom[n][0].description} ({s:.0f} %)"
+            for n, s, _ in candidats[1:] if s >= SEUIL_SUGGESTION
+        )
+        resultat.append(ligne(A_CONFIRMER, meilleur, "Nom ressemblant", round(candidats[0][1]), autres))
+
+    ordre = {CONFIRME: 3, AUTOMATIQUE: 2, A_CONFIRMER: 0, AUCUN: 1}
+    resultat.sort(key=lambda c: (ordre[c.statut], -c.ventes_30j, c.nom_clover.lower()))
+    return resultat
+
+
+def lire_confirmes(chemin: Path) -> dict[str, Correspondance]:
+    """Lignes marquées « Confirmé » dans un fichier de correspondance existant, par ID Clover."""
+    if not chemin.exists():
+        return {}
+    feuille = openpyxl.load_workbook(chemin, read_only=True, data_only=True)["Correspondance"]
+    lignes = feuille.iter_rows(values_only=True)
+    entete = list(next(lignes))
+    i = {nom: entete.index(nom) for nom in ENTETES}
+    confirmes = {}
+    for r in lignes:
+        if str(r[i["Statut"]] or "").strip().lower() == CONFIRME.lower() and r[i["ID Clover"]]:
+            confirmes[str(r[i["ID Clover"]])] = Correspondance(
+                CONFIRME, str(r[i["Nom Clover"]] or ""), "", Decimal("0"),
+                str(r[i["N° article Sage"]] or "").strip(), "", "", str(r[i["Méthode"]] or ""), 100, "",
+                "", str(r[i["ID Clover"]]),
+            )
+    return confirmes
+
+
+def ecrire_correspondance(correspondances: list[Correspondance], chemin: Path) -> Path:
+    classeur = openpyxl.Workbook()
+    feuille = classeur.active
+    feuille.title = "Correspondance"
+    feuille.append(ENTETES)
+    for cellule in feuille[1]:
+        cellule.font = Font(bold=True)
+    for c in correspondances:
+        feuille.append([
+            c.statut, c.nom_clover, c.categorie_clover, float(c.ventes_30j), c.numero_sage, c.description_sage,
+            c.compte_revenus, c.methode, c.confiance, c.suggestions, c.code_clover, c.id_clover,
+        ])
+        feuille.cell(feuille.max_row, 1).fill = PatternFill("solid", fgColor=COULEURS[c.statut])
+    validation = DataValidation(type="list", formula1='"' + ",".join(STATUTS) + '"', allow_blank=False)
+    feuille.add_data_validation(validation)
+    validation.add(f"A2:A{max(feuille.max_row, 2)}")
+    for colonne, largeur in zip("ABCDEFGHIJKL", (13, 45, 20, 13, 18, 45, 14, 26, 12, 70, 16, 16)):
+        feuille.column_dimensions[colonne].width = largeur
+    for cellule in feuille["D"][1:]:
+        cellule.number_format = '#,##0.00 "$"'
+    feuille.freeze_panes = "C2"
+    feuille.auto_filter.ref = feuille.dimensions
+
+    aide = classeur.create_sheet("Mode d'emploi")
+    for texte in [
+        "Correspondance des articles Clover -> numéros d'articles Sage",
+        "",
+        "Statut « Automatique » (bleu) : code-barres ou nom identique. À vérifier rapidement si vous le souhaitez.",
+        "Statut « À confirmer » (jaune) : proposition par ressemblance des noms. Vérifiez le numéro Sage.",
+        "Statut « Aucun » (rouge) : aucun article Sage ressemblant. Inscrivez le numéro Sage à la main.",
+        "",
+        "Pour valider une ligne : corrigez si besoin « N° article Sage », puis choisissez « Confirmé » dans Statut.",
+        "Les lignes « Confirmé » sont conservées quand le fichier est régénéré.",
+        "Commencez par les articles les plus vendus (colonne « Ventes 30 j »).",
+        "« Autres suggestions » liste d'autres articles Sage possibles (numéro — description).",
+    ]:
+        aide.append([texte])
+    aide.column_dimensions["A"].width = 110
+
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    classeur.save(chemin)
+    return chemin
