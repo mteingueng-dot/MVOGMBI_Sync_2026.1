@@ -48,6 +48,7 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 ## Étape 4 — Fichier d'import Sage 50 (.IMP)
 
 - [ ] [Claude] Obtenir la spécification officielle du format `<SalInvoice>` (base de connaissances Sage / « Dev-Import.pdf » du SDK)
+- [x] [Ensemble] Règle de prix : montant de ligne = ventes nettes, prix unitaire = ventes nettes / quantité nette (vérifié : total facture = ventes nettes les 19 et 23 oct.)
 - [ ] [Claude] Générer la facture : client, date, numéro, une ligne par article, taxes TPS/TVQ
 - [ ] [Vous] Faire une **copie de sauvegarde** du fichier d'entreprise Sage pour les essais
 - [ ] [Ensemble] Importer une journée dans la copie (*Fichier > Importer/Exporter > Importer des transactions*)

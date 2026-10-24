@@ -14,6 +14,7 @@ ENTETES = [
     "Ventes brutes", "Rabais", "Remboursements", "Ventes nettes", "Prix unitaire net",
 ]
 FORMAT_ARGENT = '#,##0.00 "$"'
+FORMAT_PRIX = '#,##0.0000 "$"'  # prix unitaire facturé dans Sage = ventes nettes / quantité nette
 
 
 def ecrire_rapports(rapports: list[RapportVentes], chemin: Path) -> Path:
@@ -36,9 +37,11 @@ def ecrire_rapports(rapports: list[RapportVentes], chemin: Path) -> Path:
                         rapport.total_remboursements, rapport.total_net])
         for cellule in feuille[feuille.max_row]:
             cellule.font = Font(bold=True)
-        for colonne in "FGHIJ":
+        for colonne in "FGHI":
             for cellule in feuille[colonne][2:]:
                 cellule.number_format = FORMAT_ARGENT
+        for cellule in feuille["J"][2:]:
+            cellule.number_format = FORMAT_PRIX
         feuille.column_dimensions["A"].width = 24
         feuille.column_dimensions["B"].width = 48
         for colonne in "CDEFGHIJ":

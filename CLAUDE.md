@@ -15,9 +15,12 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - `mvogmbi_sync/periodes.py` : bornes des périodes et conversion en millisecondes (fuseau America/Toronto).
 - `mvogmbi_sync/export_clover.py` : lecture de l'export Excel Clover (montants au format « 1 234,56 $ »).
 - `mvogmbi_sync/api_clover.py` : client API Clover et transformation des commandes en lignes (prix en cents, `unitQty` en millièmes, rabais de commande répartis au prorata).
+- `mvogmbi_sync/facture.py` : lignes de la facture Sage (quantité nette au millième, prix à 4 décimales, montant = net) et anomalies.
 - `mvogmbi_sync/sortie_excel.py` : rapport Excel de vérification dans `sortie/`.
 
 ## Points d'attention
+
+- **Règle de facturation (fixée par le propriétaire)** : montant de ligne = ventes nettes Clover de l'article ; prix unitaire = ventes nettes / quantité nette (4 décimales) ; total facture = ventes nettes Clover. Voir `mvogmbi_sync/facture.py`.
 
 - Le total affiché par Clover est calculé avant arrondi : la somme des lignes peut différer de quelques cents (janvier 2026 : 52 452,91 $ en lignes contre 52 453,00 $ au total Clover).
 - Règles validées contre les exports Clover (19 et 23 oct. 2026, au cent près) : une vente est datée de son premier paiement réussi (pas de la création de la commande) ; les rabais successifs s'appliquent sur le reste ; `paymentState` reste souvent OPEN.

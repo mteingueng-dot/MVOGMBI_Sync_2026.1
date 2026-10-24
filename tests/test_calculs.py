@@ -140,3 +140,37 @@ def test_vente_datee_au_paiement():
         {"result": "FAIL", "createdTime": 150}, {"result": "SUCCESS", "createdTime": 300}]}}
     assert moment_paiement(commande) == 300
     assert moment_paiement({"createdTime": 100, "paymentState": "OPEN"}) is None
+
+
+def test_facture_montant_net_et_prix_unitaire():
+    from mvogmbi_sync.facture import preparer_facture
+    from mvogmbi_sync.models import RapportVentes
+
+    j = date(2026, 10, 19)
+    rapport = RapportVentes(j, j, "api", [
+        # Sardines : 11 x 4.49 = 49.39 $ brut, rabais -24.75 $ -> net 24.64 $
+        LigneVente("Divers", "Sada sardines", D("11"), ventes_brutes=D("49.39"), rabais=D("-24.75")),
+        # Mèche : 9 vendues, 1 remboursée
+        LigneVente("Mèches", "MECHE X", D("9"), D("1"), ventes_brutes=D("98.91"), remboursements=D("-10.99")),
+        LigneVente("Fruits", "Gombo en lb", D("3.835"), ventes_brutes=D("20.14")),
+        LigneVente("Non catégorisé(e)", "Robb", D("1"), ventes_brutes=D("2.99"), rabais=D("-2.99")),
+    ])
+    facture = preparer_facture(rapport)
+    lignes = {l.nom: l for l in facture.lignes}
+    assert lignes["Sada sardines"].montant == D("24.64")
+    assert lignes["Sada sardines"].prix_unitaire == D("2.2400")
+    assert (lignes["MECHE X"].quantite, lignes["MECHE X"].prix_unitaire) == (D("8.000"), D("10.9900"))
+    assert lignes["Gombo en lb"].prix_unitaire == D("5.2516")
+    assert lignes["Robb"].prix_unitaire == D("0")
+    assert facture.total == rapport.total_net
+    assert all(abs(l.ecart_arrondi) <= D("0.01") for l in facture.lignes)
+
+
+def test_facture_signale_montant_sans_quantite():
+    from mvogmbi_sync.facture import preparer_facture
+    from mvogmbi_sync.models import RapportVentes
+
+    j = date(2026, 10, 19)
+    rapport = RapportVentes(j, j, "api", [LigneVente("X", "Remb. ancien", D("1"), D("1"), ventes_brutes=D("5"))])
+    facture = preparer_facture(rapport)
+    assert facture.lignes == [] and len(facture.anomalies) == 1
