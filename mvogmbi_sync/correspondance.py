@@ -48,6 +48,7 @@ COULEURS = {
 def normaliser(texte: str) -> str:
     texte = unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode().lower()
     texte = re.sub(r"(\d),(\d)", r"\1.\2", texte)  # 1,8kg -> 1.8kg
+    texte = re.sub(r"([a-z])(\d)", r"\1 \2", texte)  # meme1kg -> meme 1kg
     texte = re.sub(r"(\d)\s+(kg|g|lb|lbs|l|ml|oz|pcs|p)\b", r"\1\2", texte)  # 500 g -> 500g
     return " ".join(re.sub(r"[^a-z0-9.]+", " ", texte).split())
 
@@ -91,6 +92,12 @@ class Correspondance:
     id_clover: str
 
 
+def conflit_format(nom_clover: str, description_sage: str) -> bool:
+    """Deux formats différents = deux articles différents (« 1kg » et « 500g », « 6-36 » et « 7-36 »)."""
+    fa, fb = _formats(normaliser(nom_clover)), _formats(normaliser(description_sage))
+    return bool(fa and fb and fa != fb)
+
+
 def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
                confirmes: dict[str, Correspondance] | None = None) -> list[Correspondance]:
     confirmes = confirmes or {}
@@ -100,12 +107,27 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
         par_nom[normaliser(a.description)].append(a)
     noms_sage = list(par_nom)
 
+    def rechercher(nom_clover: str) -> tuple[str, ArticleSage | None, str, int, str]:
+        """Article Sage ressemblant, au même format ; sinon article à créer dans Sage."""
+        nom = normaliser(nom_clover)
+        candidats = process.extract(nom, noms_sage, scorer=_score, limit=15)
+        compatibles = [c for c in candidats if not conflit_format(nom_clover, par_nom[c[0]][0].description)]
+        decrire = lambda c: f"{par_nom[c[0]][0].numero} — {par_nom[c[0]][0].description} ({c[1]:.0f} %)"
+        if compatibles and compatibles[0][1] >= SEUIL_SUGGESTION:
+            autres = " | ".join(decrire(c) for c in compatibles[1:3] if c[1] >= SEUIL_SUGGESTION)
+            return A_CONFIRMER, par_nom[compatibles[0][0]][0], "Nom ressemblant", round(compatibles[0][1]), autres
+        proches = [c for c in candidats if c[1] >= SEUIL_SUGGESTION][:3]
+        if proches:
+            return (AUCUN, None, "À créer dans Sage (aucun article à ce format)", 0,
+                    "Autres formats existants : " + " | ".join(decrire(c) for c in proches))
+        return AUCUN, None, "À créer dans Sage (aucun article ressemblant)", 0, ""
+
     resultat = []
     for article in clover:
-        def ligne(statut, sage_choisi, methode, confiance, suggestions=""):
+        def ligne(statut, sage_choisi, methode, confiance, suggestions="", numero=""):
             return Correspondance(
                 statut, article.nom, article.categorie, article.ventes_30j,
-                sage_choisi.numero if sage_choisi else "", sage_choisi.description if sage_choisi else "",
+                sage_choisi.numero if sage_choisi else numero, sage_choisi.description if sage_choisi else "",
                 sage_choisi.compte_revenus if sage_choisi else "", methode, confiance, suggestions,
                 article.code, article.id,
             )
@@ -113,19 +135,25 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
         deja = confirmes.get(article.id)
         if deja is not None:
             choisi = par_numero.get(deja.numero_sage.lower())
-            if choisi:
-                resultat.append(ligne(CONFIRME, choisi, deja.methode or "Manuel", 100))
+            if choisi is None:
+                resultat.append(ligne(A_CONFIRMER, None, "Numéro absent de la liste Sage (réexporter la liste)", 0,
+                                      numero=deja.numero_sage))
+            elif conflit_format(article.nom, choisi.description):
+                statut, sage_choisi, methode, confiance, autres = rechercher(article.nom)
+                resultat.append(ligne(statut, sage_choisi, methode, confiance,
+                                      f"Confirmation annulée ({choisi.numero} — {choisi.description} : autre format). "
+                                      + autres))
             else:
-                resultat.append(ligne(A_CONFIRMER, None, "Numéro confirmé introuvable dans Sage", 0,
-                                      f"Ancien numéro : {deja.numero_sage}"))
+                resultat.append(ligne(CONFIRME, choisi, deja.methode or "Manuel", 100))
             continue
 
         if article.code and article.code.lower() in par_numero:
-            resultat.append(ligne(AUTOMATIQUE, par_numero[article.code.lower()], "Code-barres", 100))
-            continue
+            choisi = par_numero[article.code.lower()]
+            if not conflit_format(article.nom, choisi.description):
+                resultat.append(ligne(AUTOMATIQUE, choisi, "Code-barres", 100))
+                continue
 
-        nom = normaliser(article.nom)
-        identiques = par_nom.get(nom, [])
+        identiques = par_nom.get(normaliser(article.nom), [])
         if len(identiques) == 1:
             resultat.append(ligne(AUTOMATIQUE, identiques[0], "Nom identique", 100))
             continue
@@ -134,20 +162,28 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
             resultat.append(ligne(A_CONFIRMER, identiques[0], "Nom identique (plusieurs articles Sage)", 90, autres))
             continue
 
-        candidats = process.extract(nom, noms_sage, scorer=_score, limit=3)
-        if not candidats or candidats[0][1] < SEUIL_SUGGESTION:
-            resultat.append(ligne(AUCUN, None, "Aucun article ressemblant", 0))
-            continue
-        meilleur = par_nom[candidats[0][0]][0]
-        autres = " | ".join(
-            f"{par_nom[n][0].numero} — {par_nom[n][0].description} ({s:.0f} %)"
-            for n, s, _ in candidats[1:] if s >= SEUIL_SUGGESTION
-        )
-        resultat.append(ligne(A_CONFIRMER, meilleur, "Nom ressemblant", round(candidats[0][1]), autres))
+        resultat.append(ligne(*rechercher(article.nom)))
 
+    _signaler_formats_regroupes(resultat)
     ordre = {CONFIRME: 3, AUTOMATIQUE: 2, A_CONFIRMER: 0, AUCUN: 1}
     resultat.sort(key=lambda c: (ordre[c.statut], -c.ventes_30j, c.nom_clover.lower()))
     return resultat
+
+
+def _signaler_formats_regroupes(resultat: list[Correspondance]) -> None:
+    """Plusieurs formats Clover (« Matembele 500g », « Matembele 1kg ») sur un même article Sage sans format :
+    ce sont des articles différents, à séparer dans Sage."""
+    par_numero: dict[str, list[Correspondance]] = defaultdict(list)
+    for c in resultat:
+        if c.numero_sage and c.description_sage:
+            par_numero[c.numero_sage.lower()].append(c)
+    for groupe in par_numero.values():
+        formats = {frozenset(_formats(normaliser(c.nom_clover))) for c in groupe}
+        if len({f for f in formats if f}) > 1:
+            for c in groupe:
+                if c.statut in (CONFIRME, AUTOMATIQUE):
+                    c.statut = A_CONFIRMER
+                c.methode = "Plusieurs formats Clover sur un seul article Sage : créer un article par format"
 
 
 def lire_confirmes(chemin: Path) -> dict[str, Correspondance]:

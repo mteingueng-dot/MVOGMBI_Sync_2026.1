@@ -23,6 +23,8 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 
 ## Points d'attention
 
+- **Règle du propriétaire : deux formats différents = deux articles différents** (« 1kg » / « 500g », « 6-36 » / « 7-36 »). La correspondance ne relie jamais deux formats différents ; une confirmation qui le fait est annulée ; sans article Sage au bon format -> « À créer dans Sage ». Plusieurs formats Clover sur un article Sage sans format -> à séparer.
+
 - **Règle de facturation (fixée par le propriétaire)** : montant de ligne = ventes nettes Clover de l'article ; prix unitaire = ventes nettes / quantité nette (4 décimales) ; total facture = ventes nettes Clover. Voir `mvogmbi_sync/facture.py`.
 - Facture générée : client « Vente Hebdomadaire », mode « Payer plus tard » (dépôts appliqués ensuite), code de taxe « GQ » (TPS 5 % + TVQ 9,975 %) pour les lignes taxées dans Clover (`lineItems.taxRates`), datée du dernier jour de la période, numéro « Vente 2026-10-23 » / « Vente S43-2026 » / « Vente Octobre 2026 », quantités au millième (Sage accepte 4 décimales).
 - Les taxes Sage (calculées sur le net) diffèrent légèrement des taxes encaissées par Clover : arrondis au cent par commande, taxes d'articles remboursés, articles « non-recette » (signalés en anomalie).

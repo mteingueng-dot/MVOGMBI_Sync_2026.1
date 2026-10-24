@@ -16,6 +16,7 @@ SAGE = [
 
 def test_normaliser():
     assert normaliser("Arachide Depulpé  CMR, 1,8 Kg") == "arachide depulpe cmr 1.8kg"
+    assert normaliser("Attieke Meme1kg") == normaliser("Attieke Meme 1kg")
 
 
 def test_reparer_texte():
@@ -54,7 +55,36 @@ def test_formats_differents_penalises():
     (res,) = rapprocher([ArticleClover("c", "Palm Milk 400 g")], SAGE)
     assert res.numero_sage == "P1"  # 400g et non 900g
     (res,) = rapprocher([ArticleClover("c", "Milk Sere Ne 1kg 7-36")], SAGE)
-    assert res.statut == A_CONFIRMER  # tailles différentes : jamais automatique
+    # Formats différents = articles différents : seul 6-36 existe dans Sage -> article à créer
+    assert (res.statut, res.numero_sage) == (AUCUN, "")
+    assert "créer" in res.methode and "C0001522" in res.suggestions
+
+
+def test_confirmation_avec_autre_format_annulee(tmp_path):
+    chemin = tmp_path / "correspondance.xlsx"
+    clover = [ArticleClover("c", "Milk Sere Ne 1kg 7-36")]
+    ligne = rapprocher(clover, SAGE)[0]
+    ligne.statut, ligne.numero_sage = CONFIRME, "C0001522"  # confirmé par erreur sur 6-36
+    ecrire_correspondance([ligne], chemin)
+    (res,) = rapprocher(clover, SAGE, lire_confirmes(chemin))
+    assert res.statut == AUCUN and "Confirmation annulée" in res.suggestions
+
+
+def test_plusieurs_formats_sur_un_article_sans_format():
+    sage = [ArticleSage("B0000134", "matembele", "Inventory", "4022")]
+    clover = [ArticleClover("a", "Matembele 500g"), ArticleClover("b", "Matembele 1kg")]
+    resultat = rapprocher(clover, sage)
+    assert all(c.statut == A_CONFIRMER and "un article par format" in c.methode for c in resultat)
+
+
+def test_numero_confirme_absent_de_la_liste_sage(tmp_path):
+    chemin = tmp_path / "correspondance.xlsx"
+    clover = [ArticleClover("c", "Perruque Curly Wave")]
+    ligne = rapprocher(clover, SAGE)[0]
+    ligne.statut, ligne.numero_sage = CONFIRME, "C0001644"  # article créé après l'export de la liste
+    ecrire_correspondance([ligne], chemin)
+    (res,) = rapprocher(clover, SAGE, lire_confirmes(chemin))
+    assert (res.statut, res.numero_sage) == (A_CONFIRMER, "C0001644")
 
 
 def test_lignes_confirmees_conservees(tmp_path):

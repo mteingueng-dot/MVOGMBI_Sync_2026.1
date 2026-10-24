@@ -141,8 +141,18 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     ]
     chemin = Path(args.fichier)
     confirmes = lire_confirmes(chemin)
+    if chemin.exists():  # copie de sécurité du fichier validé avant de le régénérer
+        import shutil
+        from datetime import datetime
+        copie = chemin.parent / "sauvegardes" / f"{chemin.stem}_{datetime.now():%Y%m%d-%H%M%S}{chemin.suffix}"
+        copie.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(chemin, copie)
+        print(f"Copie de sécurité : {copie}")
     resultat = rapprocher(clover, sage, confirmes)
-    ecrire_correspondance(resultat, chemin)
+    try:
+        ecrire_correspondance(resultat, chemin)
+    except PermissionError:
+        sys.exit(f"Impossible d'enregistrer {chemin.name} : fermez-le dans Excel, puis relancez la commande.")
 
     compte = {s: sum(1 for c in resultat if c.statut == s) for s in (CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN)}
     vendus = [c for c in resultat if c.ventes_30j]
