@@ -95,3 +95,14 @@ def test_lignes_confirmees_conservees(tmp_path):
     ecrire_correspondance(premiere, chemin)
     (res,) = rapprocher(clover, SAGE, lire_confirmes(chemin))
     assert (res.statut, res.numero_sage, res.description_sage) == (CONFIRME, "C0001522", "Milk Sere Ne 1kg 6-36")
+
+
+def test_confirmation_annulee_puis_article_cree_au_bon_format(tmp_path):
+    chemin = tmp_path / "correspondance.xlsx"
+    clover = [ArticleClover("c", "Milk Sere Ne 1kg 7-36")]
+    ligne = rapprocher(clover, SAGE)[0]
+    ligne.statut, ligne.numero_sage = CONFIRME, "C0001522"  # 6-36 : autre format
+    ecrire_correspondance([ligne], chemin)
+    sage = SAGE + [ArticleSage("C0001679", "Milk Sere Ne 1kg 7-36", "Inventory", "4013")]  # créé dans Sage
+    (res,) = rapprocher(clover, sage, lire_confirmes(chemin))
+    assert (res.statut, res.numero_sage) == (AUTOMATIQUE, "C0001679")

@@ -110,6 +110,9 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
     def rechercher(nom_clover: str) -> tuple[str, ArticleSage | None, str, int, str]:
         """Article Sage ressemblant, au même format ; sinon article à créer dans Sage."""
         nom = normaliser(nom_clover)
+        identiques = par_nom.get(nom, [])
+        if len(identiques) == 1:
+            return AUTOMATIQUE, identiques[0], "Nom identique", 100, ""
         candidats = process.extract(nom, noms_sage, scorer=_score, limit=15)
         compatibles = [c for c in candidats if not conflit_format(nom_clover, par_nom[c[0]][0].description)]
         decrire = lambda c: f"{par_nom[c[0]][0].numero} — {par_nom[c[0]][0].description} ({c[1]:.0f} %)"
@@ -154,9 +157,6 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
                 continue
 
         identiques = par_nom.get(normaliser(article.nom), [])
-        if len(identiques) == 1:
-            resultat.append(ligne(AUTOMATIQUE, identiques[0], "Nom identique", 100))
-            continue
         if len(identiques) > 1:
             autres = " | ".join(f"{a.numero} — {a.description}" for a in identiques[1:])
             resultat.append(ligne(A_CONFIRMER, identiques[0], "Nom identique (plusieurs articles Sage)", 90, autres))
