@@ -141,7 +141,7 @@ def lignes_commande(commande: dict, categories: dict[str, str]) -> list[LigneVen
 
     # Rabais de commande répartis au prorata du montant de chaque ligne.
     base_commande = sum((m for _, m in lignes), Decimal("0"))
-    rabais_commande = _rabais((commande.get("discounts") or {}).get("elements") or [], base_commande)
+    rabais_commande = _arrondi(_rabais((commande.get("discounts") or {}).get("elements") or [], base_commande))
     if rabais_commande and base_commande:
         reparti = Decimal("0")
         for i, (ligne, m) in enumerate(lignes):

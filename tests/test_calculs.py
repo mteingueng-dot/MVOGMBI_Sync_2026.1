@@ -87,3 +87,37 @@ def test_comparaison_detecte_les_ecarts():
     ])
     ecarts = comparer(export, api)
     assert [e.nom for e in ecarts] == ["Milo 400g"]
+
+
+def test_lecture_export_csv(tmp_path):
+    from mvogmbi_sync.export_clover import lire_export
+
+    contenu = (
+        "\ufeffVentes d'articles\r\n"
+        '"ven. 23 oct. 2026, 00 h 00  - ven. 23 oct. 2026, 23 h 59 "\r\n'
+        "\r\n"
+        "Catégorie,Catégorie / Article,Ventes brutes,Ventes nettes,Nom du modificateur,"
+        "Qté de modificateurs vendus,Ventes brutes de modificateurs,Vendu(e),Rabais,Remboursements\r\n"
+        'Total,,"60,92 $","49,93 $",,0,"0,00 $",12,"0,00 $","-10,99 $"\r\n'
+        'Mèches & Accessoires,,"54,95 $","43,96 $",,0,"0,00 $",5,"0,00 $","-10,99 $"\r\n'
+        ',MECHE X-PRESSION,"54,95 $","43,96 $",,0,"0,00 $",5,"0,00 $","-10,99 $"\r\n'
+        'Fruits & Légumes,,"5,97 $","5,97 $",,0,"0,00 $",7,"0,00 $","0,00 $"\r\n'
+        ',Tomates en lb,"5,97 $","5,97 $",,0,"0,00 $",3.00,"0,00 $","0,00 $"\r\n'
+    ).replace("$", "\xa0$")
+    fichier = tmp_path / "ventes.csv"
+    fichier.write_text(contenu, encoding="utf-8", newline="")
+    rapport = lire_export(fichier)
+    assert (rapport.debut, rapport.fin) == (date(2026, 10, 23), date(2026, 10, 23))
+    assert {l.nom: l.categorie for l in rapport.lignes} == {
+        "MECHE X-PRESSION": "Mèches & Accessoires", "Tomates en lb": "Fruits & Légumes"}
+    assert rapport.total_net == D("49.93")
+
+
+def test_rabais_commande_arrondi_au_cent():
+    commande = {
+        "payments": {"elements": [{"result": "SUCCESS"}]},
+        "lineItems": {"elements": [{"name": "Igname en lb", "price": 399, "unitQty": 11005}]},
+        "discounts": {"elements": [{"percentage": 11.45}]},
+    }
+    (igname,) = lignes_commande(commande, {})
+    assert igname.rabais == igname.rabais.quantize(D("0.01"))

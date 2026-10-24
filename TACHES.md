@@ -20,10 +20,12 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [x] [Vous] Créer un jeton API dans Clover (*Compte et configuration > Jetons API*), droits en lecture : Commandes, Inventaire, Paiements
 - [x] [Vous] Copier `config.example.toml` en `config.toml` et y inscrire l'identifiant marchand et le jeton (ne jamais les envoyer dans le chat)
 - [x] [Claude] Tester la récupération des commandes d'une journée par l'API
-- [ ] [Vous] Remplacer le jeton Clover (l'actuel a été communiqué dans le chat)
-- [ ] [Vous] Fournir l'export Clover journalier « Ventes d'articles » de cette même journée
-- [ ] [Ensemble] Comparer API et export, article par article, jusqu'à concordance au cent près
-- [ ] [Claude] Ajuster les règles : remboursements, échanges, « Article personnalisé », articles au poids, rabais de commande
+- [x] [Vous] Remplacer le jeton Clover (l'actuel a été communiqué dans le chat)
+- [x] [Vous] Fournir l'export Clover journalier « Ventes d'articles » de cette même journée
+- [x] [Ensemble] Comparer API et export, article par article, jusqu'à concordance au cent près
+- [x] [Claude] Ajuster les règles : commandes payées, articles au poids, rabais de commande, remboursements (23 oct. 2026 : concordance parfaite, 155 articles, 3 139,39 $)
+- [ ] [Ensemble] Confirmer sur d'autres journées (échanges, « Article personnalisé », journée chargée)
+- [ ] [Vous] Supprimer l'ancien jeton Clover (toujours actif)
 - [ ] [Claude] Contourner la limite Clover de 90 jours pour les mois anciens (repli sur l'export Excel)
 
 ## Étape 2 — Informations de Sage 50

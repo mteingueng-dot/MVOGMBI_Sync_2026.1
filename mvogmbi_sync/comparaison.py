@@ -1,9 +1,14 @@
-"""Comparaison article par article de deux rapports (export Clover vs API Clover)."""
+"""Comparaison article par article de deux rapports (export Clover vs API Clover).
+
+Conventions de l'export Clover dont on tient compte :
+- « Vendu(e) » compte les articles remboursés : on compare donc la quantité vendue (avant remboursement) ;
+- les poids sont arrondis à 2 décimales : on compare les quantités au centième.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import openpyxl
@@ -23,7 +28,8 @@ class Ecart:
     def valeurs(self, ligne: LigneVente | None) -> tuple[Decimal, Decimal, Decimal, Decimal]:
         if ligne is None:
             return ZERO, ZERO, ZERO, ZERO
-        return ligne.quantite_nette, ligne.ventes_brutes, ligne.rabais + ligne.remboursements, ligne.ventes_nettes
+        quantite = ligne.quantite_vendue.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return quantite, ligne.ventes_brutes, ligne.rabais + ligne.remboursements, ligne.ventes_nettes
 
 
 def _par_nom(rapport: RapportVentes) -> dict[str, LigneVente]:
@@ -42,7 +48,8 @@ def comparer(export: RapportVentes, api: RapportVentes) -> list[Ecart]:
     ecarts = []
     for cle in sorted(a.keys() | b.keys()):
         ecart = Ecart(nom=(a.get(cle) or b[cle]).nom, export=a.get(cle), api=b.get(cle))
-        if ecart.valeurs(ecart.export) != ecart.valeurs(ecart.api):
+        (qe, *montants_e), (qa, *montants_a) = ecart.valeurs(ecart.export), ecart.valeurs(ecart.api)
+        if abs(qe - qa) > Decimal("0.01") or montants_e != montants_a:
             ecarts.append(ecart)
     return ecarts
 
