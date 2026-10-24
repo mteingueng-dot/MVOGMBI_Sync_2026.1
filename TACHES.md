@@ -17,9 +17,10 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 
 ## Étape 1 — Connexion à Clover
 
-- [ ] [Vous] Créer un jeton API dans Clover (*Compte et configuration > Jetons API*), droits en lecture : Commandes, Inventaire, Paiements
-- [ ] [Vous] Copier `config.example.toml` en `config.toml` et y inscrire l'identifiant marchand et le jeton (ne jamais les envoyer dans le chat)
-- [ ] [Claude] Tester la récupération des commandes d'une journée par l'API
+- [x] [Vous] Créer un jeton API dans Clover (*Compte et configuration > Jetons API*), droits en lecture : Commandes, Inventaire, Paiements
+- [x] [Vous] Copier `config.example.toml` en `config.toml` et y inscrire l'identifiant marchand et le jeton (ne jamais les envoyer dans le chat)
+- [x] [Claude] Tester la récupération des commandes d'une journée par l'API
+- [ ] [Vous] Remplacer le jeton Clover (l'actuel a été communiqué dans le chat)
 - [ ] [Vous] Fournir l'export Clover journalier « Ventes d'articles » de cette même journée
 - [ ] [Ensemble] Comparer API et export, article par article, jusqu'à concordance au cent près
 - [ ] [Claude] Ajuster les règles : remboursements, échanges, « Article personnalisé », articles au poids, rabais de commande
