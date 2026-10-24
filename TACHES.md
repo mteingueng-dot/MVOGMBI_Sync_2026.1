@@ -25,7 +25,7 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [x] [Ensemble] Comparer API et export, article par article, jusqu'à concordance au cent près
 - [x] [Claude] Ajuster les règles : commandes payées, articles au poids, rabais de commande, remboursements (23 oct. 2026 : concordance parfaite, 155 articles, 3 139,39 $)
 - [x] [Ensemble] Confirmer sur une 2e journée : 19 oct. 2026 concordant (111 articles, 1 390,42 $) après 2 corrections : vente datée au paiement, rabais successifs
-- [ ] [Vous] Fournir l'export d'un samedi chargé (ex. 17 oct. : le fichier « 10_17 » reçu contenait le 23 oct.)
+- [x] [Vous] Fournir l'export d'un samedi chargé : 17 oct. 2026 concordant (220 articles, 4 127,62 $) après correction : pourcentages de rabais additionnés comme Clover
 - [ ] [Vous] Supprimer l'ancien jeton Clover (toujours actif)
 - [ ] [Claude] Contourner la limite Clover de 90 jours pour les mois anciens (repli sur l'export Excel)
 

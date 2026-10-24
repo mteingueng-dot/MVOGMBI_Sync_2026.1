@@ -107,19 +107,15 @@ def _arrondi(valeur: Decimal) -> Decimal:
 
 
 def _rabais(remises: list[dict], base: Decimal) -> Decimal:
-    """Total (négatif) d'une liste de rabais Clover appliqués l'un après l'autre sur `base`.
+    """Total (négatif) d'une liste de rabais Clover sur `base`.
 
-    Chaque pourcentage s'applique au montant restant (100 % puis 99 % = 100 %), et le rabais
-    ne peut pas dépasser le montant de départ.
+    Comme Clover : les pourcentages s'additionnent (99 % + 10 % = 109 %, plafonné à 100 %),
+    les rabais en montant s'ajoutent, et le rabais ne peut pas dépasser le montant de départ.
     """
-    reste = base
-    for r in remises:
-        if r.get("amount") is not None:
-            reste += _cents(r["amount"])  # déjà négatif dans Clover
-        elif r.get("percentage") is not None:
-            reste -= reste * Decimal(str(r["percentage"])) / CENT
-        reste = max(reste, Decimal("0"))
-    return reste - base
+    pourcentage = sum((Decimal(str(r["percentage"])) for r in remises if r.get("percentage") is not None), Decimal("0"))
+    montants = sum((_cents(r["amount"]) for r in remises if r.get("amount") is not None), Decimal("0"))  # négatifs
+    rabais = -base * min(pourcentage, CENT) / CENT + montants
+    return max(rabais, -base)
 
 
 def moment_paiement(commande: dict) -> int | None:

@@ -123,6 +123,20 @@ def test_rabais_commande_arrondi_au_cent():
     assert igname.rabais == igname.rabais.quantize(D("0.01"))
 
 
+def test_rabais_pourcentages_additionnes_comme_clover():
+    # Commande du 17 oct. 2026 : « Direction » 99 % + 10 % -> total 0 $ dans Clover
+    commande = {
+        "payments": {"elements": [{"result": "SUCCESS", "amount": 0}]},
+        "lineItems": {"elements": [
+            {"name": "Creme Lissante ORS", "price": 1499},
+            {"name": "Gombo en lb", "price": 525, "unitQty": 1935},
+        ]},
+        "discounts": {"elements": [{"percentage": 99}, {"percentage": 10}]},
+    }
+    creme, gombo = lignes_commande(commande, {})
+    assert (creme.ventes_nettes, gombo.ventes_nettes) == (D("0"), D("0"))
+
+
 def test_rabais_successifs_ne_depassent_pas_le_montant():
     commande = {
         "payments": {"elements": [{"result": "SUCCESS", "amount": 0}]},
