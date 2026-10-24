@@ -31,6 +31,7 @@ AUTOMATIQUE = "Automatique"
 A_CONFIRMER = "À confirmer"
 AUCUN = "Aucun"
 STATUTS = [CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN]
+VALIDATIONS = {CONFIRME.lower(), "confirme", "ok", "oui"}  # saisies acceptées comme « Confirmé »
 
 SEUIL_SUGGESTION = 60  # en dessous, aucune proposition
 
@@ -159,7 +160,7 @@ def lire_confirmes(chemin: Path) -> dict[str, Correspondance]:
     i = {nom: entete.index(nom) for nom in ENTETES}
     confirmes = {}
     for r in lignes:
-        if str(r[i["Statut"]] or "").strip().lower() == CONFIRME.lower() and r[i["ID Clover"]]:
+        if str(r[i["Statut"]] or "").strip().lower() in VALIDATIONS and r[i["ID Clover"]]:
             confirmes[str(r[i["ID Clover"]])] = Correspondance(
                 CONFIRME, str(r[i["Nom Clover"]] or ""), "", Decimal("0"),
                 str(r[i["N° article Sage"]] or "").strip(), "", "", str(r[i["Méthode"]] or ""), 100, "",
