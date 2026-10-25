@@ -407,7 +407,11 @@ def commande_importer(args: argparse.Namespace) -> None:
                  "Relancez avec --forcer pour importer quand même.")
 
     print(f"\nImport dans {fichier_sai.name} avec {exe.name}…")
-    resultat = subprocess.run([str(exe), str(chemin_imp), str(fichier_sai)], timeout=args.delai)
+    try:
+        code_retour = subprocess.run([str(exe), str(chemin_imp), str(fichier_sai)], timeout=args.delai).returncode
+    except subprocess.TimeoutExpired:  # Sage attend une réponse dans une fenêtre : le processus est arrêté
+        code_retour = "délai dépassé"
+        print(f"  Import interrompu après {args.delai} s (Sage attendait probablement une réponse dans une fenêtre).")
     present = existe()
     statut = "importée" if present else ("non vérifiable" if present is None else "ÉCHEC")
     journal = RACINE / "donnees" / "journal_imports.csv"
@@ -418,14 +422,14 @@ def commande_importer(args: argparse.Namespace) -> None:
             w.writerow(["Date et heure", "Facture", "Fichier d'entreprise", "Lignes", "Sous-total", "Total",
                         "Code de retour", "Résultat"])
         w.writerow([f"{datetime.now():%Y-%m-%d %H:%M:%S}", numero, fichier_sai.name, len(imp.lignes),
-                    f"{imp.sous_total:.2f}", f"{imp.total:.2f}", resultat.returncode, statut])
+                    f"{imp.sous_total:.2f}", f"{imp.total:.2f}", code_retour, statut])
     if present:
         print(f"Facture « {numero} » importée et retrouvée dans Sage. Journal : {journal}")
     elif present is None:
-        print(f"Import lancé (code {resultat.returncode}), mais vérification impossible. Contrôlez dans Sage.")
+        print(f"Import lancé (code {code_retour}), mais vérification impossible. Contrôlez dans Sage.")
     else:
         sys.exit(f"ÉCHEC : la facture « {numero} » est introuvable dans Sage après l'import "
-                 f"(code {resultat.returncode}). Journal : {journal}")
+                 f"(code {code_retour}). Journal : {journal}")
 
 
 def main(argv: list[str] | None = None) -> None:
