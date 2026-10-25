@@ -108,6 +108,34 @@ def commande_comparer(args: argparse.Namespace) -> None:
         print(f"\nAucun écart : l'API et l'export concordent au cent près. Détail : {sortie}")
 
 
+def ouvrir_base_sage(config_toml: dict):
+    from .base_sage import BaseSage, ConfigSageBase
+
+    b = config_toml.get("sage_base", {})
+    return BaseSage(ConfigSageBase(
+        utilisateur=b.get("utilisateur", ""), mot_de_passe=b.get("mot_de_passe", ""),
+        hote=b.get("hote", "127.0.0.1"), port=int(b.get("port", 13540)), base=b.get("base", "simply"),
+    ))
+
+
+def commande_verifier_sage(args: argparse.Namespace) -> None:
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
+    if not config_toml.get("sage_base", {}).get("utilisateur"):
+        sys.exit("Renseignez la section [sage_base] (utilisateur, mot_de_passe) dans config.toml.")
+    try:
+        with ouvrir_base_sage(config_toml) as base:
+            table, cols = base.table_articles()
+            articles = base.articles()
+            print(f"Connexion à Sage réussie. Table des articles : {table} ({len(articles)} articles)")
+            print("Colonnes :", ", ".join(cols.values()))
+            for a in articles[:5]:
+                print(f"   {a.numero:<16} {a.description}  (compte {a.compte_revenus})")
+    except Exception as exc:
+        sys.exit(f"Connexion à Sage impossible : {exc}\n"
+                 "Vérifiez que Sage 50 est ouvert sur le fichier de l'entreprise et que l'utilisateur "
+                 "a le droit « Accès par des tiers ».")
+
+
 def commande_correspondance(args: argparse.Namespace) -> None:
     from decimal import Decimal
 
@@ -117,12 +145,21 @@ def commande_correspondance(args: argparse.Namespace) -> None:
                                  ecrire_correspondance, lire_confirmes, rapprocher)
 
     config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
-    chemin_sage = Path(args.sage or config_toml.get("sage", {}).get("articles", "donnees/Article.txt"))
-    if not chemin_sage.is_absolute():
-        chemin_sage = RACINE / chemin_sage
-    if not chemin_sage.is_file():
-        sys.exit("Liste des articles Sage introuvable : indiquez-la avec --sage ou dans config.toml ([sage] articles).")
-    sage = lire_articles_sage(chemin_sage)
+    sage = None
+    if not args.sage and config_toml.get("sage_base", {}).get("utilisateur"):
+        try:
+            with ouvrir_base_sage(config_toml) as base:
+                sage = base.articles()
+            print(f"Articles lus directement dans Sage : {len(sage)}")
+        except Exception as exc:  # Sage fermé, mot de passe refusé… : on se rabat sur le fichier exporté
+            print(f"Lecture directe de Sage impossible ({exc}) : utilisation du fichier exporté.")
+    if sage is None:
+        chemin_sage = Path(args.sage or config_toml.get("sage", {}).get("articles", "donnees/Article.txt"))
+        if not chemin_sage.is_absolute():
+            chemin_sage = RACINE / chemin_sage
+        if not chemin_sage.is_file():
+            sys.exit("Liste des articles Sage introuvable : indiquez-la avec --sage ou dans config.toml ([sage] articles).")
+        sage = lire_articles_sage(chemin_sage)
     # Un export abîmé remplace les lettres accentuées par des espaces (« Coupé » -> « Coup ») :
     # on vérifie la présence de vraies lettres accentuées dans le fichier brut.
     accents = sum(chemin_sage.read_text(encoding="cp1252").count(c) for c in "éèàçêô")
@@ -195,6 +232,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--export", required=True, help="Export Excel Clover « Ventes d'articles » de ce jour")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_comparer)
+
+    p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_verifier_sage)
 
     p = sous.add_parser("correspondance", help="Créer ou mettre à jour la correspondance articles Clover -> Sage")
     p.add_argument("--sage", help="Liste des articles exportée de Sage (ex. E:\\Article.txt)")

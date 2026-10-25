@@ -14,3 +14,10 @@ fuseau_horaire = "America/Toronto"
 [sage]
 # Liste des articles exportée de Sage 50 (Fichier > Importer/Exporter > Exporter)
 articles = 'donnees\Article.txt'
+
+[sage_base]
+# Lecture directe de Sage 50 (Sage doit être ouvert sur le fichier de l'entreprise).
+# Utilisateur Sage avec le droit « Accès par des tiers : lecture seule ».
+utilisateur = ""
+mot_de_passe = ""
+port = 13540

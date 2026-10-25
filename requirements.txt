@@ -3,3 +3,4 @@ requests>=2.32
 tzdata>=2025.1
 pytest>=8.0
 rapidfuzz>=3.9
+pymysql>=1.1
