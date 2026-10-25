@@ -9,3 +9,13 @@ sortie/
 *.IMP
 *.imp
 donnees/
+
+# Données comptables Sage : ne jamais publier (dépôt public)
+*.CAB
+*.cab
+*.SAI
+*.sai
+*.SAJ/
+*.saj/
+Marche Mvog-Mbi Sherbrooke/
+essais_sage/
