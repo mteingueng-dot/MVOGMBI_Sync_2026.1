@@ -3,14 +3,20 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.2.0"
+#define Version "1.2.1"
+#define Editeur "Concept Informatique inc."
 
 [Setup]
 AppId={{6E4B0C2A-2E54-4F0F-9C8B-5D1C2B8F4A11}
 AppName={#Nom}
 AppVersion={#Version}
 AppVerName={#Nom} {#Version}
-AppPublisher=Marché MVOG-MBI Sherbrooke
+AppPublisher={#Editeur}
+AppCopyright=© 2026 {#Editeur}. Tous droits réservés. / All rights reserved.
+VersionInfoVersion={#Version}
+VersionInfoCompany={#Editeur}
+VersionInfoCopyright=© 2026 {#Editeur}
+VersionInfoDescription=Installation de MVOGMBI_Sync (Clover -> Sage 50) pour le Marché MVOG-MBI Sherbrooke
 DefaultDirName={localappdata}\Programs\{#Nom}
 DefaultGroupName={#Nom}
 PrivilegesRequired=lowest

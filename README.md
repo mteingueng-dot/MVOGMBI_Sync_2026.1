@@ -76,3 +76,7 @@ python -m mvogmbi_sync auto --simulation # tout préparer et vérifier, sans imp
 python -m mvogmbi_sync planifier --heure 01:00
 python -m mvogmbi_sync interface
 ```
+
+---
+
+© 2026 Concept Informatique inc. Tous droits réservés.

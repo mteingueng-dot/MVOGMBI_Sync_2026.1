@@ -42,6 +42,7 @@ EN: dict[str, str] = {
     "Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour.":
         "Every night, Clover sales are imported into Sage 50: one invoice per day.",
     "Langue": "Language",
+    "Tous droits réservés.": "All rights reserved.",
     "Enregistrer la configuration": "Save configuration",
     "Configuration enregistrée.": "Configuration saved.",
     "Parcourir…": "Browse…",

@@ -5,7 +5,9 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
+EDITEUR = "Concept Informatique inc."
+COPYRIGHT = f"© 2026 {EDITEUR}"
 
 ACCUEIL = {
     "fr": [
@@ -37,6 +39,8 @@ ACCUEIL = {
         ("sous_titre", "À propos"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, épicerie africaine & caribéenne."),
         ("para", "Logiciels reliés : Clover (point de vente) et Sage 50 Comptabilité, Édition canadienne."),
+        ("para", f"Conçu et développé par {EDITEUR}."),
+        ("para", f"{COPYRIGHT}. Tous droits réservés."),
     ],
     "en": [
         ("titre", "Welcome to MVOGMBI_Sync"),
@@ -66,6 +70,8 @@ ACCUEIL = {
         ("sous_titre", "About"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, African & Caribbean grocery."),
         ("para", "Connected software: Clover (point of sale) and Sage 50 Accounting, Canadian Edition."),
+        ("para", f"Designed and developed by {EDITEUR}."),
+        ("para", f"{COPYRIGHT}. All rights reserved."),
     ],
 }
 

@@ -195,8 +195,12 @@ class Application(tk.Tk):
                                  state="readonly", width=18)
         selecteur.pack(anchor="w", pady=(4, 10), fill="x")
         selecteur.bind("<<ComboboxSelected>>", lambda _e: self.changer_langue())
-        from .aide import VERSION
+        from .aide import COPYRIGHT, VERSION
         tk.Label(bas, text=f"MVOGMBI_Sync {VERSION}", font=("Segoe UI", 8), foreground="#8a978e",
+                 background=MENU_FOND).pack(anchor="w")
+        tk.Label(bas, text=COPYRIGHT, font=("Segoe UI", 8), foreground="#8a978e",
+                 background=MENU_FOND).pack(anchor="w")
+        tk.Label(bas, text=t("Tous droits réservés."), font=("Segoe UI", 8), foreground="#8a978e",
                  background=MENU_FOND).pack(anchor="w")
 
     def aller(self, index: int) -> None:

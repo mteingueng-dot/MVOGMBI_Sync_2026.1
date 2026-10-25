@@ -20,9 +20,9 @@ a_gui = analyse(SPECPATH + "\\lanceur_interface.py")
 a_cli = analyse(SPECPATH + "\\lanceur_console.py")
 
 exe_gui = EXE(PYZ(a_gui.pure), a_gui.scripts, [], exclude_binaries=True, name="MVOGMBI_Sync",
-              console=False, icon=SPECPATH + "\\MVOGMBI_Sync.ico")
+              console=False, icon=SPECPATH + "\\MVOGMBI_Sync.ico", version=SPECPATH + "\\version_info.txt")
 exe_cli = EXE(PYZ(a_cli.pure), a_cli.scripts, [], exclude_binaries=True, name="MVOGMBI_Sync_console",
-              console=True, icon=SPECPATH + "\\MVOGMBI_Sync.ico")
+              console=True, icon=SPECPATH + "\\MVOGMBI_Sync.ico", version=SPECPATH + "\\version_info.txt")
 
 COLLECT(exe_gui, a_gui.binaries, a_gui.datas, exe_cli, a_cli.binaries, a_cli.datas,
         name="MVOGMBI_Sync")

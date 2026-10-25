@@ -13,6 +13,7 @@ from decimal import Decimal
 from email.message import EmailMessage
 
 from . import coffre, langues
+from .aide import COPYRIGHT
 from .langues import t
 COULEURS = {
     "Facture importée": "#1b7f3b", "Facture prête (simulation)": "#1b5e9f", "Aucune vente": "#666666",
@@ -108,6 +109,7 @@ def texte_compte_rendu(cr) -> str:
     if cr.erreur:
         parties += [t("Erreur :"), cr.erreur, ""]
     parties += [t("Déroulement :")] + cr.lignes
+    parties += ["", "—", f"MVOGMBI_Sync — {COPYRIGHT}. " + t("Tous droits réservés.")]
     return "\n".join(parties)
 
 
@@ -148,7 +150,9 @@ def html_compte_rendu(cr) -> str:
         f"{t('Période traitée : ')}{periode}</p>"
         f"{tableau}{total}{problemes}{erreur}"
         f"<details><summary>{t('Déroulement détaillé')}</summary><pre style='font-size:12px'>"
-        + e("\n".join(cr.lignes)) + "</pre></details></div>")
+        + e("\n".join(cr.lignes)) + "</pre></details>"
+        f"<p style='margin-top:18px;color:#8a978e;font-size:12px'>MVOGMBI_Sync — {e(COPYRIGHT)}. "
+        f"{e(t('Tous droits réservés.'))}</p></div>")
 
 
 def envoyer_compte_rendu(config_toml: dict, cr) -> None:
