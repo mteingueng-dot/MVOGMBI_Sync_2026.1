@@ -67,6 +67,7 @@ class ImportSage:
     facture: Facture
     lignes: list[LigneImport]
     non_reliees: list[str]  # articles Clover sans numéro Sage : non importés
+    ids_non_relies: list[tuple[str, str]] = field(default_factory=list)  # (ID Clover, nom) à ajouter à la correspondance
 
     @property
     def sous_total(self) -> Decimal:
@@ -116,10 +117,12 @@ def lire_correspondance(chemin: Path) -> TableCorrespondance:
 def preparer_import(facture: Facture, correspondance: TableCorrespondance) -> ImportSage:
     regroupees: dict[tuple[str, bool], LigneImport] = {}
     non_reliees = []
+    ids_non_relies = []
     for ligne in facture.lignes:
         numero = correspondance.numero(ligne.id_article, ligne.nom)
         if not numero:
             non_reliees.append(f"{ligne.nom} ({ligne.quantite} x, {ligne.montant} $)")
+            ids_non_relies.append((ligne.id_article, ligne.nom))
             continue
         cle = (numero, bool(ligne.code_taxe))
         if cle not in regroupees:
@@ -129,7 +132,7 @@ def preparer_import(facture: Facture, correspondance: TableCorrespondance) -> Im
         regroupees[cle].noms_clover.append(ligne.nom)
     lignes = [l for l in regroupees.values() if l.quantite != 0]
     lignes.sort(key=lambda l: -l.montant)
-    return ImportSage(facture, lignes, non_reliees)
+    return ImportSage(facture, lignes, non_reliees, ids_non_relies)
 
 
 def _texte(valeur: str) -> str:

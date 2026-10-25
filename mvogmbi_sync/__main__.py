@@ -228,6 +228,10 @@ def commande_correspondance(args: argparse.Namespace) -> None:
             noms_vendus.setdefault(ligne.id_article, ligne.nom)
     # Articles vendus récemment mais supprimés du catalogue Clover depuis : il faut aussi les relier.
     ids_catalogue = {a["id"] for a in catalogue}
+    if A_RELIER.exists():  # articles non reliés trouvés en préparant des factures (ventes plus anciennes)
+        import csv
+        for id_article, nom_article in csv.reader(A_RELIER.open(encoding="utf-8"), delimiter=";"):
+            noms_vendus.setdefault(id_article, nom_article)
     for id_article in sorted(set(noms_vendus) - ids_catalogue):
         a = client.article(id_article) or {"id": id_article}
         a["name"] = a.get("name") or noms_vendus[id_article]
@@ -265,6 +269,21 @@ def commande_correspondance(args: argparse.Namespace) -> None:
         print(f"  {statut:<12}: {nombre:>5}   (dont vendus ces 30 jours : "
               f"{sum(1 for c in vendus if c.statut == statut)})")
     print(f"\nFichier à vérifier : {chemin}")
+
+
+A_RELIER = RACINE / "donnees" / "articles_a_relier.csv"
+
+
+def memoriser_a_relier(articles: list[tuple[str, str]]) -> None:
+    """Articles vendus sans numéro Sage : la prochaine « correspondance » les ajoutera (même supprimés de Clover)."""
+    import csv
+
+    deja = {r[0] for r in csv.reader(A_RELIER.open(encoding="utf-8"), delimiter=";")} if A_RELIER.exists() else set()
+    nouveaux = [(i, n) for i, n in dict(articles).items() if i and i not in deja]
+    if nouveaux:
+        A_RELIER.parent.mkdir(parents=True, exist_ok=True)
+        with A_RELIER.open("a", encoding="utf-8", newline="") as f:
+            csv.writer(f, delimiter=";").writerows(nouveaux)
 
 
 def config_import(config_toml: dict):
@@ -318,11 +337,14 @@ def produire_factures(args: argparse.Namespace):
         if imp.sous_total != rapport.total_net:
             problemes.insert(0, f"Écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
         resultats.append((imp, problemes, rapport))
+        memoriser_a_relier(imp.ids_non_relies)
         print(f"{facture.numero:<22} {len(imp.lignes):>4} lignes  ventes nettes {rapport.total_net:>10,.2f} $  "
               f"sous-total {imp.sous_total:>10,.2f} $  taxes {imp.total_taxes:>7,.2f} $  total {imp.total:>10,.2f} $"
               + (f"  ! {len(problemes)} point(s) à vérifier" if problemes else ""))
         for texte in problemes:
             print(f"    ! {texte}")
+        for texte in facture.avertissements:
+            print(f"    (info) {texte}")
     if not resultats:
         sys.exit("Aucune vente sur la période : aucune facture à préparer.")
 

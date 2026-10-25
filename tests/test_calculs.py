@@ -242,4 +242,5 @@ def test_article_non_recette_signale():
     assert [(l.nom, l.ventes_brutes) for l in hors] == [("Colombina Bon Bon Bum Fresa 408g", D("3.99"))]
     j = date(2026, 10, 19)
     facture = preparer_facture(RapportVentes(j, j, "api", hors_recettes=hors), TypePeriode.JOUR)
-    assert "non-recette" in facture.anomalies[0]
+    # Avertissement seulement : Clover exclut lui-même cet article de ses ventes, la facture reste exacte.
+    assert facture.anomalies == [] and "non-recette" in facture.avertissements[0]

@@ -65,7 +65,8 @@ class Facture:
     client: str = CLIENT
     mode_paiement: str = MODE_PAIEMENT
     lignes: list[LigneFacture] = field(default_factory=list)
-    anomalies: list[str] = field(default_factory=list)
+    anomalies: list[str] = field(default_factory=list)  # bloquantes pour l'import
+    avertissements: list[str] = field(default_factory=list)  # informatives : la facture reste exacte
 
     @property
     def sous_total(self) -> Decimal:
@@ -110,7 +111,7 @@ def preparer_facture(rapport: RapportVentes, type_periode: TypePeriode) -> Factu
             CODE_TAXE_TAXABLE if ligne.taxable else "", ligne.id_article,
         ))
     for l in rapport.hors_recettes:
-        facture.anomalies.append(
+        facture.avertissements.append(
             f"« {l.nom} » ({l.quantite_vendue} x, {l.ventes_brutes} $) a été payé mais est marqué « non-recette » "
             "dans Clover : il n'est pas facturé. Vérifiez la configuration de cet article dans Clover."
         )
