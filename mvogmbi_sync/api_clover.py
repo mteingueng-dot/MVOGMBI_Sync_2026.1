@@ -71,6 +71,11 @@ class ClientClover:
                 resultat[article["id"]] = cats[0].get("name", SANS_CATEGORIE)
         return resultat
 
+    def article(self, id_article: str) -> dict | None:
+        """Un article Clover par son identifiant, même s'il a été supprimé du catalogue depuis."""
+        reponse = self.session.get(self._url(f"items/{id_article}"), params={"expand": "categories"}, timeout=30)
+        return reponse.json() if reponse.ok else None
+
     def articles(self) -> list[dict]:
         """Catalogue Clover (articles actifs comptés comme recettes), avec leurs catégories."""
         return [
@@ -184,6 +189,7 @@ def lignes_commande(commande: dict, categories: dict[str, str]) -> list[LigneVen
             ventes_brutes=_arrondi(brut),
             rabais=_arrondi(rabais),
             taxable=any(int(t.get("rate") or 0) > 0 for t in taux),
+            id_article=item_id or "",
         )
         if a.get("refunded"):
             ligne.quantite_remboursee = quantite

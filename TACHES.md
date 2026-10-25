@@ -49,11 +49,12 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 
 ## Étape 4 — Fichier d'import Sage 50 (.IMP)
 
-- [ ] [Claude] Obtenir la spécification officielle du format `<SalInvoice>` (base de connaissances Sage / « Dev-Import.pdf » du SDK)
+- [x] [Claude] Reconstituer le format `<SalInvoice>` (tableaux Sage publiés en images : d'après des exemples validés) et générer le fichier : `python -m mvogmbi_sync facture` (17 oct. : 217 lignes, sous-total = ventes nettes)
 - [x] [Ensemble] Règle de prix : montant de ligne = ventes nettes, prix unitaire = ventes nettes / quantité nette (vérifié : total facture = ventes nettes les 19 et 23 oct.)
 - [x] [Claude] Préparer la facture : client, date, numéro, une ligne par article, code de taxe GQ (19 et 23 oct. vérifiés)
 - [ ] [Vous] Corriger dans Clover l'article « Colombina Bon Bon Bum Fresa 408g » marqué « non-recette »
-- [ ] [Vous] Faire une **copie de sauvegarde** du fichier d'entreprise Sage pour les essais
+- [x] [Vous] Faire une **copie de sauvegarde** du fichier d'entreprise Sage pour les essais
+- [ ] [Vous] Restaurer la sauvegarde sous un autre nom (fichier d'essai) et l'ouvrir dans Sage
 - [ ] [Ensemble] Importer une journée dans la copie (*Fichier > Importer/Exporter > Importer des transactions*)
 - [ ] [Ensemble] Vérifier la facture importée : quantités, montants, taxes, total, inventaire
 - [ ] [Claude] Corriger jusqu'à un import sans erreur ni avertissement

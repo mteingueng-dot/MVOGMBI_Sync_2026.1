@@ -173,14 +173,27 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     print("Lecture des ventes des 30 derniers jours (pour trier par importance)…")
     fin = date.today() - timedelta(days=1)
     ventes: dict[str, Decimal] = {}
+    ventes_par_id: dict[str, Decimal] = {}
+    noms_vendus: dict[str, str] = {}
     for ligne in client.rapport(fin - timedelta(days=29), fin).lignes:
         ventes[ligne.nom] = ventes.get(ligne.nom, Decimal("0")) + ligne.ventes_nettes
+        if ligne.id_article:
+            ventes_par_id[ligne.id_article] = ventes_par_id.get(ligne.id_article, Decimal("0")) + ligne.ventes_nettes
+            noms_vendus.setdefault(ligne.id_article, ligne.nom)
+    # Articles vendus récemment mais supprimés du catalogue Clover depuis : il faut aussi les relier.
+    ids_catalogue = {a["id"] for a in catalogue}
+    for id_article in sorted(set(noms_vendus) - ids_catalogue):
+        a = client.article(id_article) or {"id": id_article}
+        a["name"] = a.get("name") or noms_vendus[id_article]
+        catalogue.append(a)
+        print(f"  Article vendu mais absent du catalogue : {a['name']}")
 
     clover = [
         ArticleClover(
             id=a["id"], nom=(a.get("name") or "").strip(),
             categorie=(((a.get("categories") or {}).get("elements") or [{}])[0]).get("name", SANS_CATEGORIE),
-            code=(a.get("code") or "").strip(), ventes_30j=ventes.get((a.get("name") or "").strip(), Decimal("0")),
+            code=(a.get("code") or "").strip(),
+            ventes_30j=ventes_par_id.get(a["id"], ventes.get((a.get("name") or "").strip(), Decimal("0"))),
         )
         for a in catalogue
     ]
@@ -208,6 +221,69 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     print(f"\nFichier à vérifier : {chemin}")
 
 
+def commande_facture(args: argparse.Namespace) -> None:
+    import openpyxl
+    from openpyxl.styles import Font
+
+    from .facture import preparer_facture
+    from .import_sage import ConfigImport, ecrire_imp, lire_correspondance, nom_fichier, preparer_import
+
+    type_periode = TypePeriode(args.periode)
+    debut, fin = bornes(type_periode, date.fromisoformat(args.date))
+    if args.export:
+        from .export_clover import lire_export
+        rapport = lire_export(Path(args.export), debut, fin)
+    else:
+        from .api_clover import ClientClover
+        rapport = ClientClover(charger_config(Path(args.config))).rapport(debut, fin)
+    facture = preparer_facture(rapport, type_periode)
+    chemin_corresp = Path(args.correspondance)
+    if not chemin_corresp.exists():
+        sys.exit(f"Fichier de correspondance introuvable : {chemin_corresp} (lancez « correspondance »).")
+    imp = preparer_import(facture, lire_correspondance(chemin_corresp))
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
+    c = config_toml.get("sage_import", {})
+    config = ConfigImport(version=str(c.get("version", "33101")), pays=str(c.get("pays", "1")),
+                          position_numero=int(c.get("position_numero", 2)))
+    dossier = RACINE / "sortie" / "factures"
+    chemin_imp = ecrire_imp(imp, dossier / nom_fichier(facture.numero), config)
+
+    classeur = openpyxl.Workbook()
+    feuille = classeur.active
+    feuille.title = "Facture"
+    feuille.append(["N° article Sage", "Articles Clover", "Quantité", "Prix", "Montant", "Taxe", "TPS/TVH", "TVQ"])
+    for cellule in feuille[1]:
+        cellule.font = Font(bold=True)
+    for l in imp.lignes:
+        t = {nom: m for nom, _, m in l.taxes()}
+        feuille.append([l.numero_sage, " | ".join(l.noms_clover), float(l.quantite), float(l.prix), float(l.montant),
+                        "GQ" if l.taxable else "", float(t.get("TPS/TVH", 0)), float(t.get("TVQ", 0))])
+    feuille.append([])
+    feuille.append(["Sous-total", "", "", "", float(imp.sous_total)])
+    feuille.append(["Taxes", "", "", "", float(imp.total_taxes)])
+    feuille.append(["Total", "", "", "", float(imp.total)])
+    if imp.non_reliees or facture.anomalies:
+        a = classeur.create_sheet("À vérifier")
+        for texte in [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies:
+            a.append([texte])
+    feuille.column_dimensions["B"].width = 60
+    chemin_xlsx = chemin_imp.with_suffix(".xlsx")
+    classeur.save(chemin_xlsx)
+
+    print(f"Facture {facture.numero} du {facture.date_facture} — client {facture.client}, {facture.mode_paiement}")
+    print(f"  Ventes nettes Clover : {rapport.total_net:>10,.2f} $")
+    print(f"  Lignes Sage          : {len(imp.lignes)} (dont taxées GQ : {sum(1 for l in imp.lignes if l.taxable)})")
+    print(f"  Sous-total           : {imp.sous_total:>10,.2f} $")
+    print(f"  Taxes                : {imp.total_taxes:>10,.2f} $")
+    print(f"  Total                : {imp.total:>10,.2f} $")
+    if imp.sous_total != rapport.total_net:
+        print(f"  ATTENTION : écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
+    for texte in [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies:
+        print(f"  ! {texte}")
+    print(f"\nFichier d'import : {chemin_imp}\nDétail (Excel)   : {chemin_xlsx}")
+
+
 def main(argv: list[str] | None = None) -> None:
     for flux in (sys.stdout, sys.stderr):
         flux.reconfigure(encoding="utf-8", errors="replace")
@@ -232,6 +308,15 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--export", required=True, help="Export Excel Clover « Ventes d'articles » de ce jour")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_comparer)
+
+    p = sous.add_parser("facture", help="Préparer le fichier d'import Sage (.IMP) de la facture de vente")
+    p.add_argument("--periode", choices=[t.value for t in TypePeriode], default="jour")
+    p.add_argument("--date", default=(date.today() - timedelta(days=1)).isoformat(),
+                   help="Un jour compris dans la période (AAAA-MM-JJ). Par défaut : hier.")
+    p.add_argument("--export", help="Lire un export Clover au lieu de l'API (sans information de taxe)")
+    p.add_argument("--correspondance", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_facture)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

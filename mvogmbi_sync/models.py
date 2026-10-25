@@ -21,6 +21,7 @@ class LigneVente:
     rabais: Decimal = ZERO  # négatif, comme dans Clover
     remboursements: Decimal = ZERO  # négatif, comme dans Clover
     taxable: bool | None = None  # TPS + TVQ ; None si inconnu (exports Clover sans information de taxe)
+    id_article: str = ""  # identifiant Clover de l'article (stable, contrairement au nom)
 
     @property
     def quantite_nette(self) -> Decimal:
@@ -78,6 +79,7 @@ def cumuler(lignes: list[LigneVente]) -> list[LigneVente]:
     for ligne in lignes:
         cle = (ligne.categorie, ligne.nom, ligne.taxable)
         if cle not in cumul:
-            cumul[cle] = LigneVente(categorie=ligne.categorie, nom=ligne.nom, taxable=ligne.taxable)
+            cumul[cle] = LigneVente(categorie=ligne.categorie, nom=ligne.nom, taxable=ligne.taxable,
+                                    id_article=ligne.id_article)
         cumul[cle].ajouter(ligne)
     return sorted(cumul.values(), key=lambda l: (l.categorie, -l.ventes_nettes, l.nom))

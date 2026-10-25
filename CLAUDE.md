@@ -7,6 +7,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 ## Commandes
 
 - `python -m pytest` : tests
+- `python -m mvogmbi_sync facture --periode jour|semaine|mois --date AAAA-MM-JJ` : fichier d'import Sage `sortie/factures/Vente_….IMP` + détail Excel
 - `python -m mvogmbi_sync verifier-sage` : teste la lecture directe de Sage
 - `python -m mvogmbi_sync correspondance` : lit les articles directement dans Sage (sinon `donnees/Article.txt`) et crée/met à jour `donnees/correspondance_articles.xlsx` (articles Clover -> numéros Sage)
 - `python -m mvogmbi_sync rapport --periode jour|semaine|mois --date AAAA-MM-JJ [--par-jour] [--export fichier.xlsx]`
@@ -21,6 +22,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - `mvogmbi_sync/base_sage.py` : lecture directe de Sage 50 : MySQL local port 13540, base `simply`, utilisateur Sage `mvogmbi_sync` (« Consultation seule » pour les tiers + accès Vue aux modules Stocks & Services et Clients & Ventes ; sans module coché, aucun SELECT n'est accordé). Table des articles `tinvent` (sPartCode, sName, lAcNRev = compte sur 8 chiffres 40230000 -> 4023). Sage doit être ouvert sur le fichier de l'entreprise.
 - `mvogmbi_sync/articles_sage.py` : lecture de la liste d'articles Sage (cp1252, accents abîmés réparés).
 - `mvogmbi_sync/correspondance.py` : rapprochement Clover -> Sage (code-barres, nom identique normalisé, ressemblance rapidfuzz avec pénalité si les formats chiffrés diffèrent) ; fichier Excel où le propriétaire marque « Confirmé » ; lignes confirmées conservées à chaque régénération (clé : ID Clover).
+- `mvogmbi_sync/import_sage.py` : fichier .IMP `<SalInvoice>` (version 33101, pays 1, réglables dans config.toml [sage_import]) ; lignes regroupées par article Sage ; correspondance par ID Clover d'abord (le nom vendu peut avoir changé), puis par nom ; taxes « TPS/TVH » 5 % et « TVQ » 9,975 % (noms lus dans `ttaxauth`) ; mode « 0 » = payer plus tard ; date mm-jj-aaaa ; format à valider par un import dans une copie du fichier d'entreprise.
 - `mvogmbi_sync/sortie_excel.py` : rapport Excel de vérification dans `sortie/`.
 
 ## Points d'attention

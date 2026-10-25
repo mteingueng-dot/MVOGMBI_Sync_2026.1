@@ -50,6 +50,7 @@ class LigneFacture:
     prix_unitaire: Decimal
     montant: Decimal
     code_taxe: str = ""
+    id_article: str = ""
 
     @property
     def ecart_arrondi(self) -> Decimal:
@@ -106,7 +107,7 @@ def preparer_facture(rapport: RapportVentes, type_periode: TypePeriode) -> Factu
         prix = (montant / quantite).quantize(DECIMALES_PRIX, rounding=ROUND_HALF_UP)
         facture.lignes.append(LigneFacture(
             ligne.categorie, ligne.nom, quantite, prix, montant,
-            CODE_TAXE_TAXABLE if ligne.taxable else "",
+            CODE_TAXE_TAXABLE if ligne.taxable else "", ligne.id_article,
         ))
     for l in rapport.hors_recettes:
         facture.anomalies.append(
