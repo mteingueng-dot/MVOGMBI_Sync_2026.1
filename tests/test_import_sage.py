@@ -52,13 +52,13 @@ def test_fichier_imp(tmp_path):
     assert b"\r\r\n" not in brut
     lignes = brut.decode("cp1252").split("\r\n")
     assert lignes[:6] == ["<Version>", '"12001","1"', "</Version>", "", "<SalInvoice>", '"Vente Hebdomadaire"']
-    assert lignes[6] == f'"3","Vente 2026-10-17","","10-17-2026","0","","{imp.total}","0.00"'
+    assert lignes[6] == f'"3","","Vente 2026-10-17","10-17-2026","0","","{imp.total}","0.00"'
     assert '"1001003021","4.0000","10.9900","43.96","TPS/TVH","0","1","5.00","2.20","TVQ","0","1","9.975","4.39"' in lignes
     assert lignes[-2:] == ["</SalInvoice>", ""]
     assert len(lignes) == 7 + 3 + 2  # en-tête, 3 lignes de détail, fin
 
 
-def test_numero_en_troisieme_position(tmp_path):
+def test_numero_en_deuxieme_position(tmp_path):
     imp = preparer_import(facture_test(), table())
-    chemin = ecrire_imp(imp, tmp_path / "f.IMP", ConfigImport(position_numero=3))
-    assert '"3","","Vente 2026-10-17","10-17-2026"' in chemin.read_text(encoding="cp1252")
+    chemin = ecrire_imp(imp, tmp_path / "f.IMP", ConfigImport(position_numero=2))
+    assert '"3","Vente 2026-10-17","","10-17-2026"' in chemin.read_text(encoding="cp1252")

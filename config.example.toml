@@ -30,4 +30,4 @@ fichier_entreprise = ''
 # Format du fichier .IMP (à ajuster si Sage refuse l'import)
 version = "12001"  # 33101 refusé par Sage 2026.2
 pays = "1"
-position_numero = 2
+position_numero = 3  # n° de facture en 3e champ (en 2e, Sage l ignore et numérote lui-même)

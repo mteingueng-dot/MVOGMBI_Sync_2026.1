@@ -1,14 +1,14 @@
 """Fichier d'import Sage 50 (.IMP) pour la facture de vente.
 
-Format reconstitué d'après la base de connaissances Sage et des exemples qui fonctionnent
-(Sage publie les tableaux de champs sous forme d'images) — à valider sur une copie du fichier d'entreprise :
+Format validé par un import réussi dans Sage 50 2026.2 (copie d'essai, facture du 17 oct. 2026) :
 
     <Version>
-    "33101","1"                      version de Sage (2025 = 32101) et pays (1 = Canada)
+    "12001","1"                      version du format (33101 refusée) et pays (1 = Canada)
     </Version>
     <SalInvoice>
     "Vente Hebdomadaire"             ligne client (adresse ignorée si le client existe)
-    nb_lignes,"n° facture","n° commande","mm-jj-aaaa","0","",total,frais_de_port
+    nb_lignes,"","n° facture","mm-jj-aaaa","0","",total,frais_de_port
+                                     n° de facture en 3e champ (en 2e, Sage numérote lui-même)
                                      « 0 » = payer plus tard ; total taxes comprises
     "n° article",quantité,prix,montant[,"TPS/TVH","0","1","5.00",taxe,"TVQ","0","1","9.975",taxe]
                                      taxe : nom, incluse (0/1), remboursable (0/1), taux, montant
@@ -39,7 +39,7 @@ TAXES_GQ = (("TPS/TVH", Decimal("5.00"), TAUX_TPS), ("TVQ", Decimal("9.975"), TA
 class ConfigImport:
     version: str = "12001"  # « 33101 » est refusé par Sage 2026.2 (« Line 2 does not contain a valid version »)
     pays: str = "1"
-    position_numero: int = 2  # 2 : n° de facture en 2e champ ; 3 : en 3e champ (selon la version de Sage)
+    position_numero: int = 3  # n° de facture en 3e champ ; en 2e, Sage l'ignore et numérote lui-même
     encodage: str = "cp1252"
 
 

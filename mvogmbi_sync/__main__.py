@@ -291,7 +291,7 @@ def produire_facture(args: argparse.Namespace):
     config_toml = lire_toml(args.config)
     c = config_toml.get("sage_import", {})
     config = ConfigImport(version=str(c.get("version", "33101")), pays=str(c.get("pays", "1")),
-                          position_numero=int(c.get("position_numero", 2)))
+                          position_numero=int(c.get("position_numero", 3)))
     chemin_imp = ecrire_imp(imp, RACINE / "sortie" / "factures" / nom_fichier(facture.numero), config)
 
     classeur = openpyxl.Workbook()
