@@ -28,6 +28,6 @@ fichier_entreprise = ''
 # Fichier d'entreprise dans lequel importer (.SAI). Pour les essais : la COPIE, jamais l'original.
 fichier_entreprise = ''
 # Format du fichier .IMP (à ajuster si Sage refuse l'import)
-version = "33101"
+version = "12001"  # 33101 refusé par Sage 2026.2
 pays = "1"
 position_numero = 2

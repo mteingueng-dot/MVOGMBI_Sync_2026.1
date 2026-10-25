@@ -37,7 +37,7 @@ TAXES_GQ = (("TPS/TVH", Decimal("5.00"), TAUX_TPS), ("TVQ", Decimal("9.975"), TA
 
 @dataclass
 class ConfigImport:
-    version: str = "33101"
+    version: str = "12001"  # « 33101 » est refusé par Sage 2026.2 (« Line 2 does not contain a valid version »)
     pays: str = "1"
     position_numero: int = 2  # 2 : n° de facture en 2e champ ; 3 : en 3e champ (selon la version de Sage)
     encodage: str = "cp1252"

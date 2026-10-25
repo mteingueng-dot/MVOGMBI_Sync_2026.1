@@ -334,6 +334,18 @@ def commande_importer(args: argparse.Namespace) -> None:
             print(f"  (vérification dans Sage impossible : {exc})")
             return None
 
+    try:
+        with ouvrir_base_sage(config_toml, fichier_sai) as base:
+            mes_articles = base.client_utilise_mes_articles(client)
+    except Exception:
+        mes_articles = True  # vérification impossible : le contrôle des doublons ci-dessous le signalera
+    if mes_articles is None:
+        sys.exit(f"\nImport annulé : le client « {client} » n'existe pas dans {fichier_sai.name}.")
+    if not mes_articles:
+        sys.exit(f"\nImport annulé : dans {fichier_sai.name}, la fiche du client « {client} » (onglet "
+                 "Importer/Exporter) doit indiquer que le client utilise vos numéros d'articles. "
+                 "Sinon Sage ne reconnaît aucun article de la facture.")
+
     deja = existe()
     if deja:
         sys.exit(f"\nImport annulé : la facture « {numero} » existe déjà dans Sage.")

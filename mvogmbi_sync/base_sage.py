@@ -94,6 +94,12 @@ class BaseSage:
     def colonnes(self, table: str) -> list[str]:
         return [r["Field"] for r in self.requete(f"SHOW COLUMNS FROM `{table}`")]
 
+    def client_utilise_mes_articles(self, client: str) -> bool | None:
+        """Option de la fiche client (onglet Importer/Exporter) : sans elle, Sage ne reconnaît pas les numéros
+        d'articles d'une facture importée. None si le client n'existe pas."""
+        lignes = self.requete("SELECT bUseMyItem FROM tcustomr WHERE sName = %s", (client,))
+        return bool(lignes[0]["bUseMyItem"]) if lignes else None
+
     def facture_existe(self, numero: str, client: str) -> bool:
         """Une facture de ce numéro existe-t-elle déjà pour ce client (table des transactions clients) ?"""
         lignes = self.requete(

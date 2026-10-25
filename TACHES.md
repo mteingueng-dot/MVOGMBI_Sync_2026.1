@@ -57,6 +57,8 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [ ] [Vous] Restaurer la sauvegarde sous un autre nom (fichier d'essai) et l'ouvrir dans Sage
 - [x] [Claude] Import automatique : commande `importer` (Sage_SA_import.exe, contrôle des doublons et de la présence de la facture, journal)
 - [ ] [Ensemble] Importer une journée dans la copie, d'abord à la main (*Fichier > Importer/Exporter > Importer des transactions*), puis avec la commande `importer`
+- [x] [Ensemble] Version du fichier .IMP : « 12001 » acceptée (« 33101 » refusée)
+- [ ] [Vous] Fiche client « Vente Hebdomadaire », onglet Importer/Exporter : le client utilise mes numéros d'articles (copie d'essai, puis vraie comptabilité à la mise en service)
 - [ ] [Ensemble] Vérifier la facture importée : quantités, montants, taxes, total, inventaire
 - [ ] [Claude] Corriger jusqu'à un import sans erreur ni avertissement
 - [ ] [Ensemble] Répéter l'essai sur une semaine et sur un mois

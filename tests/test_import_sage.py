@@ -51,7 +51,7 @@ def test_fichier_imp(tmp_path):
     brut = chemin.read_bytes()
     assert b"\r\r\n" not in brut
     lignes = brut.decode("cp1252").split("\r\n")
-    assert lignes[:6] == ["<Version>", '"33101","1"', "</Version>", "", "<SalInvoice>", '"Vente Hebdomadaire"']
+    assert lignes[:6] == ["<Version>", '"12001","1"', "</Version>", "", "<SalInvoice>", '"Vente Hebdomadaire"']
     assert lignes[6] == f'"3","Vente 2026-10-17","","10-17-2026","0","","{imp.total}","0.00"'
     assert '"1001003021","4.0000","10.9900","43.96","TPS/TVH","0","1","5.00","2.20","TVQ","0","1","9.975","4.39"' in lignes
     assert lignes[-2:] == ["</SalInvoice>", ""]
