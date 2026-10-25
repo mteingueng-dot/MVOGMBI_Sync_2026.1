@@ -76,6 +76,17 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [ ] [Claude] Messages d'erreur clairs (jeton expiré, Clover inaccessible, article inconnu…)
 - [ ] [Claude] Archivage de chaque fichier `.IMP` et rapport produits
 
+## Automatisation complète (demande du 25 oct. 2026)
+
+- [x] [Claude] Traitement de nuit `auto` : dernière facture dans Sage -> jours suivants jusqu'à hier, une facture par jour
+- [x] [Claude] Pilotage des fenêtres Sage (mot de passe, résumé, erreurs) ; lecture de Sage fermé
+- [x] [Claude] Secrets dans le coffre-fort Windows ; alertes courriel ; tâche planifiée
+- [x] [Claude] Interface graphique de configuration et de suivi
+- [x] [Claude] Programme d'installation (dist\Installer_MVOGMBI_Sync_1.0.0.exe)
+- [ ] [Vous] Installer, reprendre la configuration, saisir les mots de passe et le courriel, tester
+- [ ] [Vous] Relier « Colombianas » à un numéro Sage
+- [ ] [Ensemble] Essai de nuit sur la copie d'essai, puis mise en service sur la vraie comptabilité
+
 ## Étape 6 — Interface simple
 
 - [ ] [Claude] Petite fenêtre : choisir jour / semaine / mois et la date, voir l'aperçu, générer le fichier

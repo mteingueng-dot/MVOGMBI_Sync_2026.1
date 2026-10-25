@@ -229,6 +229,11 @@ class Application(tk.Tk):
         ttk.Button(boutons, text="Retirer la tâche", command=self.retirer_tache).pack(side="left", padx=6)
         ttk.Button(boutons, text="État de la tâche", command=self.etat_tache).pack(side="left")
         ttk.Button(boutons, text="Créer un raccourci sur le Bureau", command=self.raccourci).pack(side="left", padx=6)
+        ttk.Button(f, text="Reprendre une configuration existante…", command=self.reprendre).grid(
+            row=5, column=1, sticky="w", pady=(8, 0))
+        ttk.Label(f, text="Copie config.toml, la correspondance des articles et les articles à relier depuis un "
+                          "autre dossier (ex. le dossier du projet). Les mots de passe restent dans le coffre-fort.",
+                  foreground="#777", wraplength=560).grid(row=6, column=1, sticky="w")
         self.sortie_auto = self._sortie(f, 10)
         self.sortie_auto.grid(row=4, column=0, columnspan=3, sticky="nsew")
         f.rowconfigure(4, weight=1)
@@ -379,13 +384,44 @@ class Application(tk.Tk):
 
     def raccourci(self) -> None:
         bureau = Path(os.environ.get("USERPROFILE", "~")).expanduser() / "Desktop"
-        cible = sys.executable if getattr(sys, "frozen", False) else str(Path(sys.executable).with_name("pythonw.exe"))
+        cible = (str(Path(sys.executable).resolve()) if getattr(sys, "frozen", False)
+                 else str(Path(sys.executable).with_name("pythonw.exe")))
         arguments = "" if getattr(sys, "frozen", False) else "-m mvogmbi_sync interface"
         script = (f'$s=(New-Object -ComObject WScript.Shell).CreateShortcut("{bureau / "MVOGMBI_Sync.lnk"}");'
                   f'$s.TargetPath="{cible}";$s.Arguments="{arguments}";$s.WorkingDirectory="{self.racine}";$s.Save()')
         self._tache("Raccourci sur le Bureau",
                     lambda: subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True) and "créé",
                     self.sortie_auto)
+
+    def reprendre(self) -> None:
+        import shutil
+
+        dossier = filedialog.askdirectory(title="Dossier contenant config.toml (et le sous-dossier donnees)")
+        if not dossier:
+            return
+        source = Path(dossier)
+        copies = []
+        if (source / "config.toml").exists():
+            ancienne = lire_config(source / "config.toml")
+            # Secrets encore en clair dans l'ancienne configuration : transférés dans le coffre-fort
+            jeton = ancienne.get("clover", {}).pop("api_token", "")
+            mdp = ancienne.get("sage_base", {}).pop("mot_de_passe", "")
+            if jeton and not coffre.present(coffre.CLOVER_JETON):
+                coffre.ecrire(coffre.CLOVER_JETON, jeton)
+            if mdp and not coffre.present(coffre.SAGE_LECTURE):
+                coffre.ecrire(coffre.SAGE_LECTURE, mdp)
+            ecrire_config(self.chemin_config, ancienne)
+            copies.append("config.toml")
+        for nom in ("correspondance_articles.xlsx", "articles_a_relier.csv", "journal_imports.csv"):
+            if (source / "donnees" / nom).exists():
+                (self.racine / "donnees").mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source / "donnees" / nom, self.racine / "donnees" / nom)
+                copies.append(nom)
+        if not copies:
+            messagebox.showwarning(TITRE, "Aucun fichier de configuration trouvé dans ce dossier.")
+            return
+        messagebox.showinfo(TITRE, "Repris : " + ", ".join(copies) + ".\nL'application va se fermer : rouvrez-la.")
+        self.destroy()
 
     def lancer(self, simulation: bool) -> None:
         if not self.enregistrer():
@@ -397,8 +433,9 @@ class Application(tk.Tk):
         zone.delete("1.0", "end")
 
         def traitement():
-            commande = ([sys.executable, "auto"] if getattr(sys, "frozen", False)
-                        else [sys.executable, "-m", "mvogmbi_sync", "auto"])
+            from .__main__ import commande_moteur
+
+            commande = commande_moteur() + ["auto"]
             if simulation:
                 commande.append("--simulation")
             processus = subprocess.Popen(commande, cwd=self.racine, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

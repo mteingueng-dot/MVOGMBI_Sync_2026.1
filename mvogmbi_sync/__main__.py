@@ -32,6 +32,16 @@ else:
     RACINE = Path(__file__).resolve().parent.parent
 
 
+NOM_EXE_CONSOLE = "MVOGMBI_Sync_console.exe"
+
+
+def commande_moteur() -> list[str]:
+    """Commande qui lance le moteur en ligne de commande (programme installé ou Python)."""
+    if getattr(sys, "frozen", False):
+        return [str(Path(sys.executable).resolve().with_name(NOM_EXE_CONSOLE))]
+    return [sys.executable, "-m", "mvogmbi_sync"]
+
+
 def charger_config(chemin: Path):
     from .api_clover import ConfigClover
 
@@ -569,7 +579,8 @@ def main(argv: list[str] | None = None) -> None:
     if argv is None and len(sys.argv) == 1:
         argv = ["interface"]  # double-clic sur le programme : ouvrir l'interface
     for flux in (sys.stdout, sys.stderr):
-        flux.reconfigure(encoding="utf-8", errors="replace")
+        if flux is not None and hasattr(flux, "reconfigure"):
+            flux.reconfigure(encoding="utf-8", errors="replace")
     parseur = argparse.ArgumentParser(prog="mvogmbi_sync", description="Synchronisation Clover → Sage 50")
     sous = parseur.add_subparsers(dest="commande", required=True)
 

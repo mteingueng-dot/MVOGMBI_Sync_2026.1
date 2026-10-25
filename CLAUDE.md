@@ -14,6 +14,13 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - `python -m mvogmbi_sync correspondance` : lit les articles directement dans Sage (sinon `donnees/Article.txt`) et crée/met à jour `donnees/correspondance_articles.xlsx` (articles Clover -> numéros Sage)
 - `python -m mvogmbi_sync rapport --periode jour|semaine|mois --date AAAA-MM-JJ [--par-jour] [--export fichier.xlsx]`
 
+## Automatisation et installation
+
+- `automatique.py` : traitement de nuit (dernière facture « Vente AAAA-MM-JJ » du client dans Sage -> jours suivants jusqu'à hier ; arrêt au premier jour bloqué ; import en une fois ; vérification ; journal `donnees/journal_automatique.log` ; verrou `donnees/traitement.verrou`).
+- `sage_auto.py` : pilote Sage_SA_import.exe par messages Windows (mot de passe dans « Sage 50 - Password », résumé « Sage 50 - Import Summary » lu puis OK, autres fenêtres notées puis annulées). Sage fermé : l'outil ouvre la base dès son lancement ; on la lit pendant la fenêtre de mot de passe puis on annule (`lire_pendant_connexion`).
+- `coffre.py` (keyring, coffre-fort Windows : clover_jeton, sage_lecture, sage_import, courriel), `courriel.py` (SMTP), `planification.py` (schtasks, `lancer_traitement.cmd`), `interface.py` (tkinter).
+- `installation/` : lanceurs, icône, recette PyInstaller (2 exe dans un dossier), script Inno Setup, `fabriquer.cmd`. Programme installé : RACINE = dossier de l'exe ; `MVOGMBI_RACINE` force un autre dossier.
+
 ## Structure
 
 - `mvogmbi_sync/models.py` : `LigneVente`, `RapportVentes`, `cumuler()` ; montants en `Decimal`, rabais et remboursements négatifs comme dans Clover. Ventes nettes = brutes + rabais + remboursements.

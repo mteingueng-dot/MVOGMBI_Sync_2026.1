@@ -15,7 +15,7 @@ NOM_TACHE = "MVOGMBI_Sync - import des ventes Clover dans Sage"
 
 def commande_lancement(racine: Path) -> list[str]:
     if getattr(sys, "frozen", False):
-        return [sys.executable, "auto"]
+        return [str(Path(sys.executable).resolve().with_name("MVOGMBI_Sync_console.exe")), "auto"]
     executable = Path(sys.executable)
     sans_console = executable.with_name("pythonw.exe")
     return [str(sans_console if sans_console.exists() else executable), "-m", "mvogmbi_sync", "auto"]
