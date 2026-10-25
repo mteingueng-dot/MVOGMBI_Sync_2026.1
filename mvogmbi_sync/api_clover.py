@@ -47,9 +47,7 @@ class ClientClover:
     def _pages(self, chemin: str, params: dict) -> Iterator[dict]:
         limite, decalage = 1000, 0
         while True:
-            reponse = self.session.get(
-                self._url(chemin), params={**params, "limit": limite, "offset": decalage}, timeout=60
-            )
+            reponse = self._get(chemin, {**params, "limit": limite, "offset": decalage})
             reponse.raise_for_status()
             elements = reponse.json().get("elements", [])
             yield from elements
@@ -91,11 +89,11 @@ class ClientClover:
 
     def _get(self, chemin: str, params: dict | None = None) -> requests.Response:
         """GET avec quelques nouvelles tentatives si Clover limite le débit (429) ou a une erreur passagère."""
-        for tentative in range(5):
+        for tentative in range(8):
             reponse = self.session.get(self._url(chemin), params=params, timeout=60)
             if reponse.status_code not in (429, 500, 502, 503, 504):
                 return reponse
-            time.sleep(1 + 2 * tentative)
+            time.sleep(min(2 ** tentative, 60))
         return reponse
 
     def commandes(self, debut: date, fin: date) -> Iterator[dict]:
