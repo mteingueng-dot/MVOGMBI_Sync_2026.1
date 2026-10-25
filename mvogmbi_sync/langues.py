@@ -1,0 +1,252 @@
+"""Langues de l'application (français par défaut, anglais).
+
+Le texte français sert de clé : t("Enregistrer") renvoie « Save » en anglais. Un texte sans traduction
+reste en français. La langue est enregistrée dans config.toml : [general] langue = "fr" | "en".
+"""
+
+from __future__ import annotations
+
+LANGUES = {"fr": "Français", "en": "English"}
+_courante = "fr"
+
+
+def definir(code: str | None) -> None:
+    global _courante
+    _courante = code if code in LANGUES else "fr"
+
+
+def courante() -> str:
+    return _courante
+
+
+def depuis_config(config_toml: dict) -> str:
+    definir(config_toml.get("general", {}).get("langue", "fr"))
+    return _courante
+
+
+def t(texte: str, **valeurs) -> str:
+    traduit = EN.get(texte, texte) if _courante == "en" else texte
+    return traduit.format(**valeurs) if valeurs else traduit
+
+
+def jours_semaine() -> list[str]:
+    if _courante == "en":
+        return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    return ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
+EN: dict[str, str] = {
+    # ------------------------------------------------------------------ en-tête, général
+    "Marché MVOG-MBI Sherbrooke": "Marché MVOG-MBI Sherbrooke",
+    "Synchronisation des ventes Clover → Sage 50": "Clover → Sage 50 sales synchronization",
+    "Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour.":
+        "Every night, Clover sales are imported into Sage 50: one invoice per day.",
+    "Langue": "Language",
+    "Enregistrer la configuration": "Save configuration",
+    "Configuration enregistrée.": "Configuration saved.",
+    "Parcourir…": "Browse…",
+    "terminé": "done",
+    # ------------------------------------------------------------------ onglets
+    "Accueil": "Home",
+    "1. Clover": "1. Clover",
+    "2. Sage 50": "2. Sage 50",
+    "3. Courriel": "3. Email",
+    "4. Automatisation": "4. Automation",
+    "5. Correspondance des articles": "5. Item mapping",
+    "6. Tableau de bord": "6. Dashboard",
+    "Aide / FAQ": "Help / FAQ",
+    # ------------------------------------------------------------------ Clover
+    "Accès à votre compte Clover (lecture des ventes)": "Access to your Clover account (sales reading)",
+    "Identifiant marchand": "Merchant ID",
+    "13 caractères, visibles dans l'adresse du tableau de bord Clover après « /m/ ».":
+        "13 characters, shown in the Clover dashboard address after “/m/”.",
+    "Jeton API": "API token",
+    "Clover > Compte et configuration > Jetons API (droits en lecture). Laissez « •••• » pour conserver le jeton enregistré.":
+        "Clover > Account & Setup > API Tokens (read permissions). Leave “••••” to keep the saved token.",
+    "Tester la connexion à Clover": "Test the Clover connection",
+    "Test Clover": "Clover test",
+    "connecté à « {nom} »": "connected to “{nom}”",
+    # ------------------------------------------------------------------ Sage
+    "Fichier d'entreprise et comptes Sage": "Sage company file and accounts",
+    "Fichier d'entreprise Sage": "Sage company file",
+    "Tous les fichiers": "All files",
+    "Fichier d'entreprise (.SAI)": "Company file (.SAI)",
+    "Le fichier dans lequel les factures sont importées. Pour les essais : une COPIE.":
+        "The file the invoices are imported into. For testing: a COPY.",
+    "Utilisateur Sage (lecture)": "Sage user (read)",
+    "Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » et accès Vue aux modules Stocks & Services et Clients & Ventes.":
+        "User with “Third-party product access rights: Read only” and View access to the Inventory & Services "
+        "and Customers & Sales modules.",
+    "Mot de passe (lecture)": "Password (read)",
+    "Mot de passe Sage pour l'import": "Sage password for importing",
+    "Mot de passe demandé par la fenêtre « Sage 50 - Password » de l'import (utilisateur sysadmin).":
+        "Password requested by the “Sage 50 - Password” import window (sysadmin user).",
+    "Premier jour à importer": "First day to import",
+    "AAAA-MM-JJ. Utilisé seulement si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ ».":
+        "YYYY-MM-DD. Used only if Sage does not yet contain any “Vente YYYY-MM-DD” invoice.",
+    "Tester l'accès à Sage": "Test Sage access",
+    "Test Sage": "Sage test",
+    "fichier introuvable : {fichier}": "file not found: {fichier}",
+    "Sage ouvert": "Sage open",
+    "Sage fermé : base ouverte puis refermée automatiquement": "Sage closed: database opened then closed automatically",
+    "À RÉGLER : cocher « Ce client utilise mes n° articles » dans la fiche du client":
+        "TO FIX: check “This customer uses my item numbers” in the customer record",
+    "{mode}. {n} articles. Dernière facture journalière : {derniere}. Client « {client} » : {etat}. Articles sans compte de produits : {sans}.":
+        "{mode}. {n} items. Last daily invoice: {derniere}. Customer “{client}”: {etat}. Items without a revenue account: {sans}.",
+    "aucune": "none",
+    # ------------------------------------------------------------------ Courriel
+    "Alertes par courriel": "Email reports",
+    "Serveur d'envoi (SMTP)": "Outgoing server (SMTP)",
+    "Ex. smtp.office365.com (Outlook) ou smtp.gmail.com (Gmail : mot de passe d'application).":
+        "E.g. smtp.office365.com (Outlook) or smtp.gmail.com (Gmail: app password).",
+    "Port": "Port",
+    "Sécurité": "Security",
+    "Utilisateur": "User",
+    "Mot de passe": "Password",
+    "Expéditeur": "Sender",
+    "Destinataire(s)": "Recipient(s)",
+    "Une ou plusieurs adresses séparées par des virgules.": "One or more addresses separated by commas.",
+    "Envoyer le compte rendu après chaque traitement, y compris en cas de succès (dates traitées et leur état)":
+        "Send the report after every run, including on success (processed dates and their status)",
+    "Envoyer un courriel de test": "Send a test email",
+    "Courriel de test": "Test email",
+    "MVOGMBI_Sync : courriel de test": "MVOGMBI_Sync: test email",
+    "Ce courriel confirme que les alertes de MVOGMBI_Sync sont bien configurées.":
+        "This email confirms that MVOGMBI_Sync reports are correctly configured.",
+    "courriel envoyé": "email sent",
+    # ------------------------------------------------------------------ Automatisation
+    "Traitement automatique quotidien": "Daily automatic run",
+    "Heure du traitement": "Run time",
+    "HH:MM. L'ordinateur doit être allumé et la session Windows ouverte ; Sage peut être fermé.":
+        "HH:MM. The computer must be on and the Windows session open; Sage may be closed.",
+    "Installer la tâche planifiée": "Install the scheduled task",
+    "Retirer la tâche": "Remove the task",
+    "État de la tâche": "Task status",
+    "Créer un raccourci sur le Bureau": "Create a desktop shortcut",
+    "Reprendre une configuration existante…": "Import an existing configuration…",
+    "Copie config.toml, la correspondance des articles et les articles à relier depuis un autre dossier (ex. le dossier du projet). Les mots de passe restent dans le coffre-fort.":
+        "Copies config.toml, the item mapping and the items to link from another folder (e.g. the project "
+        "folder). Passwords stay in the Windows vault.",
+    "Installation de la tâche": "Installing the task",
+    "Retrait de la tâche": "Removing the task",
+    "Retirer la tâche planifiée ? Les ventes ne seront plus importées automatiquement.":
+        "Remove the scheduled task? Sales will no longer be imported automatically.",
+    "Raccourci sur le Bureau": "Desktop shortcut",
+    "créé": "created",
+    "Dossier contenant config.toml (et le sous-dossier donnees)": "Folder containing config.toml (and the donnees subfolder)",
+    "Aucun fichier de configuration trouvé dans ce dossier.": "No configuration file found in this folder.",
+    "Repris : {fichiers}.\nL'application va se fermer : rouvrez-la.": "Imported: {fichiers}.\nThe application will close: reopen it.",
+    # ------------------------------------------------------------------ Tableau de bord
+    "Lancer maintenant": "Run now",
+    "Simulation (sans import)": "Simulation (no import)",
+    "Ouvrir la correspondance des articles": "Open the item mapping",
+    "Dossier des données": "Data folder",
+    "Actualiser": "Refresh",
+    "Lancer le traitement maintenant ? Les factures manquantes seront importées dans Sage.":
+        "Run now? Missing invoices will be imported into Sage.",
+    "Simulation": "Simulation",
+    "Traitement": "Run",
+    "réussi": "successful",
+    "terminé avec des points à corriger (voir ci-dessus)": "finished with items to fix (see above)",
+    "Introuvable pour l'instant : {chemin}": "Not found yet: {chemin}",
+    "Dernière facture importée : {derniere}     •     Tâche planifiée : {tache}":
+        "Last imported invoice: {derniere}     •     Scheduled task: {tache}",
+    "installée": "installed",
+    "NON installée": "NOT installed",
+    "Vérifiez la date (AAAA-MM-JJ), l'heure (HH:MM) et le port du courriel.":
+        "Check the date (YYYY-MM-DD), the time (HH:MM) and the email port.",
+    # ------------------------------------------------------------------ Correspondance
+    "Afficher :": "Show:",
+    "Rechercher :": "Search:",
+    "À traiter (À confirmer + Aucun)": "To handle (To confirm + None)",
+    "Tous": "All",
+    "Confirmé": "Confirmed",
+    "Automatique": "Automatic",
+    "À confirmer": "To confirm",
+    "Aucun": "None",
+    "Mettre à jour depuis Clover et Sage": "Update from Clover and Sage",
+    "Recharger": "Reload",
+    "Statut": "Status",
+    "Article Clover": "Clover item",
+    "Catégorie": "Category",
+    "Ventes 30 j": "30-day sales",
+    "N° article Sage": "Sage item no.",
+    "Description Sage": "Sage description",
+    "Article sélectionné": "Selected item",
+    "Sélectionnez un article dans le tableau.": "Select an item in the table.",
+    "Chercher un article Sage :": "Find a Sage item:",
+    "Confirmer l'article choisi": "Confirm the chosen item",
+    "Accepter la proposition": "Accept the suggestion",
+    "Retirer la confirmation": "Remove the confirmation",
+    "Enregistrer les modifications": "Save changes",
+    "Abandonner les modifications non enregistrées ?": "Discard unsaved changes?",
+    "{n} articles Clover — Confirmé : {c}   Automatique : {a}   À confirmer : {q}   Aucun : {z}   •   affichés : {v}":
+        "{n} Clover items — Confirmed: {c}   Automatic: {a}   To confirm: {q}   None: {z}   •   shown: {v}",
+    "   •   MODIFICATIONS NON ENREGISTRÉES": "   •   UNSAVED CHANGES",
+    "   •   liste Sage absente : cliquez sur « Mettre à jour »": "   •   Sage list missing: click “Update”",
+    "Clover : {nom}   (catégorie {cat}, ID {id})\nSage : {num} {desc}   •   statut {statut}, méthode {methode}":
+        "Clover: {nom}   (category {cat}, ID {id})\nSage: {num} {desc}   •   status {statut}, method {methode}",
+    "\nAutres suggestions : {s}": "\nOther suggestions: {s}",
+    "  (autre format)": "  (different size)",
+    "sans compte": "no account",
+    "Sélectionnez un article dans le tableau, puis un article Sage dans la liste.":
+        "Select an item in the table, then a Sage item in the list.",
+    "« {a} » et « {b} » n'ont pas le même format.\nDeux formats différents sont deux articles différents. Confirmer quand même ?":
+        "“{a}” and “{b}” are not the same size.\nTwo different sizes are two different items. Confirm anyway?",
+    "L'article Sage {num} n'a pas de compte de produits : l'import sera bloqué tant qu'il n'est pas complété dans Sage.":
+        "Sage item {num} has no revenue account: imports will be blocked until it is completed in Sage.",
+    "Aucune proposition pour cet article : choisissez un article Sage dans la liste.":
+        "No suggestion for this item: choose a Sage item in the list.",
+    "Aucune modification à enregistrer.": "No changes to save.",
+    "Le fichier de correspondance est ouvert dans Excel : fermez-le puis réessayez.":
+        "The mapping file is open in Excel: close it and try again.",
+    "Correspondance enregistrée (copie de sécurité de l'ancienne version faite).":
+        "Mapping saved (backup of the previous version made).",
+    "Enregistrez d'abord vos modifications.": "Save your changes first.",
+    "Mise à jour en cours (lecture de Clover et de Sage, quelques minutes)…":
+        "Updating (reading Clover and Sage, a few minutes)…",
+    "Correspondance mise à jour.\n\n{resume}": "Mapping updated.\n\n{resume}",
+    "Mise à jour impossible.\n\n{resume}": "Update failed.\n\n{resume}",
+    "Manuel (application)": "Manual (application)",
+    # ------------------------------------------------------------------ états des dates (courriel)
+    "Facture importée": "Invoice imported",
+    "Facture prête (simulation)": "Invoice ready (simulation)",
+    "Aucune vente": "No sales",
+    "Facture déjà présente dans Sage": "Invoice already in Sage",
+    "Bloquée": "Blocked",
+    "Reportée à la prochaine exécution": "Postponed to the next run",
+    "Échec de l'import": "Import failed",
+    # ------------------------------------------------------------------ courriel de compte rendu
+    "SIMULATION — ": "SIMULATION — ",
+    "MVOGMBI_Sync : ERREUR du traitement automatique": "MVOGMBI_Sync: automatic run ERROR",
+    "MVOGMBI_Sync : {n} point(s) à corriger — {i} facture(s) importée(s)":
+        "MVOGMBI_Sync: {n} item(s) to fix — {i} invoice(s) imported",
+    "MVOGMBI_Sync : Sage est à jour (dernière facture : {d})": "MVOGMBI_Sync: Sage is up to date (last invoice: {d})",
+    "MVOGMBI_Sync : {n} facture(s) prête(s) {periode}": "MVOGMBI_Sync: {n} invoice(s) ready {periode}",
+    "MVOGMBI_Sync : succès — {n} facture(s) importée(s) {periode}": "MVOGMBI_Sync: success — {n} invoice(s) imported {periode}",
+    "du {d} au {f}": "from {d} to {f}",
+    "du {d}": "for {d}",
+    "Traitement du {d}": "Run of {d}",
+    " (SIMULATION : aucun import)": " (SIMULATION: no import)",
+    "Fichier Sage : {f}": "Sage file: {f}",
+    "Dernière facture journalière avant le traitement : {d}": "Last daily invoice before the run: {d}",
+    "Période traitée : du {d} au {f}": "Processed period: from {d} to {f}",
+    "Période traitée : aucune (Sage était déjà à jour)": "Processed period: none (Sage was already up to date)",
+    "Dates traitées :": "Processed dates:",
+    " — {l} lignes, sous-total {s}, taxes {t}, total {total}": " — {l} lines, subtotal {s}, taxes {t}, total {total}",
+    "Total importé : {n} facture(s), {total} taxes comprises": "Total imported: {n} invoice(s), {total} including taxes",
+    "À corriger (le traitement reprendra automatiquement la nuit suivante) :":
+        "To fix (the run will resume automatically the following night):",
+    "Erreur :": "Error:",
+    "Déroulement :": "Run log:",
+    "Date": "Date", "Jour": "Day", "État": "Status", "Lignes": "Lines", "Sous-total": "Subtotal",
+    "Taxes": "Taxes", "Total": "Total", "Détail": "Details",
+    "À corriger": "To fix",
+    "Le traitement reprendra automatiquement la nuit suivante.": "The run will resume automatically the following night.",
+    "Erreur": "Error",
+    "Déroulement détaillé": "Detailed log",
+    "Période traitée : ": "Processed period: ",
+    "du <b>{d}</b> au <b>{f}</b>": "from <b>{d}</b> to <b>{f}</b>",
+    "aucune (Sage était déjà à jour)": "none (Sage was already up to date)",
+    " — <b>SIMULATION</b> : aucun import": " — <b>SIMULATION</b>: no import",
+}
