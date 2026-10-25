@@ -39,6 +39,10 @@ class ConfigSageBase:
     base: str = "simply"
 
 
+class AccesRefuse(PermissionError):
+    """La base Sage est ouverte, mais refuse l'utilisateur ou le mot de passe de lecture."""
+
+
 PORTS_SAGE = range(13540, 13560)  # une base MySQL par fichier ouvert dans Sage, à partir de 13540
 
 
@@ -49,12 +53,21 @@ def port_du_fichier(fichier_sai: Path, config: "ConfigSageBase") -> int:
     de données de chaque base avec celui du fichier visé.
     """
     cible = str(Path(fichier_sai).with_suffix(".SAJ")).rstrip("\\/").lower()
+    refus, absents = [], 0
     for port in PORTS_SAGE:
         try:
             connexion = pymysql.connect(host=config.hote, port=port, user=config.utilisateur,
                                         password=config.mot_de_passe, database=config.base, connect_timeout=1)
-        except pymysql.err.MySQLError:
+        except pymysql.err.MySQLError as exc:
+            if exc.args and exc.args[0] == 1045:  # base ouverte, mais identifiants refusés
+                refus.append(port)
+                absents = 0
+                continue
+            absents += 1
+            if absents >= 2:  # les ports sont attribués à la suite : inutile d'aller plus loin
+                break
             continue
+        absents = 0
         try:
             with connexion.cursor() as curseur:
                 curseur.execute("SHOW VARIABLES LIKE 'datadir'")
@@ -63,6 +76,9 @@ def port_du_fichier(fichier_sai: Path, config: "ConfigSageBase") -> int:
             connexion.close()
         if dossier == cible:
             return port
+    if refus:
+        raise AccesRefuse(f"Sage refuse l'utilisateur « {config.utilisateur} » (mot de passe incorrect, ou "
+                          f"utilisateur absent de ce fichier d'entreprise) : vérifiez-le dans Configuration.")
     raise LookupError(f"Le fichier {Path(fichier_sai).name} n'est pas ouvert dans Sage "
                       "(aucune base Sage ne le sert) : ouvrez-le dans Sage 50.")
 

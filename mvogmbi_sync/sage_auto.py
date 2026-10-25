@@ -11,6 +11,9 @@ Si Sage est déjà ouvert sur le fichier, la fenêtre de mot de passe n'apparaî
 
 Ce module répond à ces fenêtres par messages Windows (aucune frappe clavier simulée) :
 mot de passe saisi dans le champ, résumé lu puis fermé, toute autre fenêtre lue, notée en erreur et annulée.
+
+Fonctionnement transparent : l'outil est lancé caché et un fil de surveillance masque aussitôt (quelques
+millisecondes) toute fenêtre qu'il affiche ; les fenêtres masquées continuent de recevoir les réponses.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import ctypes
 import ctypes.wintypes as wt
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -26,8 +30,9 @@ from pathlib import Path
 
 user32 = ctypes.windll.user32 if hasattr(ctypes, "windll") else None
 
-WM_GETTEXT, WM_GETTEXTLENGTH, WM_SETTEXT, WM_COMMAND, BM_CLICK = 0x000D, 0x000E, 0x000C, 0x0111, 0x00F5
+WM_GETTEXT, WM_GETTEXTLENGTH, WM_SETTEXT, WM_COMMAND = 0x000D, 0x000E, 0x000C, 0x0111
 IDOK, IDCANCEL = 1, 2
+SW_HIDE = 0
 
 TITRE_MOT_DE_PASSE = "Sage 50 - Password"
 TITRE_RESUME = "Sage 50 - Import Summary"
@@ -46,19 +51,37 @@ def _classe(hwnd) -> str:
     return tampon.value
 
 
-def fenetres_du_processus(pid: int) -> list[int]:
+def fenetres_du_processus(pid: int, visibles_seulement: bool = False) -> list[int]:
+    """Fenêtres principales (avec un titre) du processus, y compris celles déjà masquées."""
     trouvees = []
 
     @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
     def rappel(hwnd, _):
         proprietaire = wt.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proprietaire))
-        if proprietaire.value == pid and user32.IsWindowVisible(hwnd):
-            trouvees.append(hwnd)
+        if proprietaire.value == pid and user32.GetWindowTextLengthW(hwnd) > 0:
+            if not visibles_seulement or user32.IsWindowVisible(hwnd):
+                trouvees.append(hwnd)
         return True
 
     user32.EnumWindows(rappel, 0)
     return trouvees
+
+
+def surveiller_et_masquer(processus: subprocess.Popen, arret: threading.Event) -> None:
+    """Masque en continu toute fenêtre visible de l'outil de Sage : rien n'apparaît à l'écran."""
+    while not arret.is_set() and processus.poll() is None:
+        for hwnd in fenetres_du_processus(processus.pid, visibles_seulement=True):
+            user32.ShowWindow(hwnd, SW_HIDE)
+        time.sleep(0.01)
+
+
+def lancer_cache(commande: list[str]) -> subprocess.Popen:
+    """Lance un programme sans afficher sa fenêtre principale."""
+    infos = subprocess.STARTUPINFO()
+    infos.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    infos.wShowWindow = SW_HIDE
+    return subprocess.Popen(commande, startupinfo=infos)
 
 
 def enfants(hwnd) -> list[tuple[int, str, str]]:
@@ -75,12 +98,61 @@ def enfants(hwnd) -> list[tuple[int, str, str]]:
 
 
 def cliquer(hwnd_dialogue, libelles: tuple[str, ...], identifiant_defaut: int) -> None:
-    """Clique sur le bouton dont le libellé correspond (« OK », « &Select »…), sinon envoie la commande par défaut."""
-    for h, classe, texte in enfants(hwnd_dialogue):
-        if classe == "Button" and texte.replace("&", "").strip().lower() in libelles:
-            user32.SendMessageW(h, BM_CLICK, 0, 0)
-            return
+    """Actionne le bouton dont le libellé correspond (« OK », « &Select »…), sinon la commande par défaut.
+
+    La commande est envoyée directement à la fenêtre (WM_COMMAND) : BM_CLICK reste sans effet
+    sur une fenêtre masquée ou inactive.
+    """
+    for libelle in libelles:
+        for h, classe, texte in enfants(hwnd_dialogue):
+            if classe == "Button" and texte.replace("&", "").strip().lower() == libelle:
+                user32.PostMessageW(hwnd_dialogue, WM_COMMAND, user32.GetDlgCtrlID(h) & 0xFFFF, h)
+                return
     user32.PostMessageW(hwnd_dialogue, WM_COMMAND, identifiant_defaut, 0)
+
+
+def processus_import() -> list[int]:
+    """PID des outils d'import de Sage en cours."""
+    sortie = subprocess.run(["tasklist", "/fo", "csv", "/nh", "/fi", "IMAGENAME eq Sage_SA_import.exe"],
+                            capture_output=True, text=True, encoding="cp850",
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    pids = []
+    for ligne in sortie.splitlines():
+        champs = [c.strip('"') for c in ligne.split('","')]
+        if len(champs) > 1 and champs[1].isdigit():
+            pids.append(int(champs[1]))
+    return pids
+
+
+def fermer_restes(attente: float = 10) -> list[str]:
+    """Ferme les outils d'import restés ouverts (fenêtre de mot de passe ou résumé en attente).
+
+    Deux outils sur le même fichier se gêneraient. Seules ces deux fenêtres, sans import en cours,
+    sont fermées ; un outil occupé à importer est laissé tranquille.
+    """
+    notes = []
+    for pid in processus_import():
+        for hwnd in fenetres_du_processus(pid):
+            titre = _texte(hwnd)
+            if titre == TITRE_MOT_DE_PASSE:
+                user32.ShowWindow(hwnd, SW_HIDE)
+                cliquer(hwnd, ("cancel", "annuler"), IDCANCEL)
+                notes.append(f"Outil d'import resté ouvert (PID {pid}, connexion) : annulé.")
+            elif titre == TITRE_RESUME:
+                user32.ShowWindow(hwnd, SW_HIDE)
+                cliquer(hwnd, ("ok",), IDOK)
+                notes.append(f"Outil d'import resté ouvert (PID {pid}, résumé) : fermé.")
+    if notes:
+        fin = time.time() + attente
+        while time.time() < fin and processus_import():
+            # après « Cancel », l'outil peut encore afficher un résumé
+            for pid in processus_import():
+                for hwnd in fenetres_du_processus(pid):
+                    if _texte(hwnd) in (TITRE_RESUME, TITRE_MOT_DE_PASSE):
+                        user32.ShowWindow(hwnd, SW_HIDE)
+                        cliquer(hwnd, ("ok", "cancel"), IDOK)
+            time.sleep(0.5)
+    return notes
 
 
 @dataclass
@@ -95,7 +167,7 @@ class ResultatSage:
 def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str | None,
              pendant_connexion: Callable[[], bool] | None = None,
              pendant_resume: Callable[[str], None] | None = None,
-             delai: int = 1800) -> ResultatSage:
+             delai: int = 1800, discret: bool = True) -> ResultatSage:
     """Lance l'outil d'import et répond à ses fenêtres jusqu'à sa fermeture.
 
     pendant_connexion : appelée quand la fenêtre de mot de passe s'affiche (la base est alors lisible) ;
@@ -103,7 +175,12 @@ def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str 
     pendant_resume : appelée avec le texte du résumé, avant de le fermer (la base est encore lisible).
     """
     resultat = ResultatSage()
-    processus = subprocess.Popen([str(exe), str(fichier_imp), str(fichier_sai)])
+    fermer_restes()
+    commande = [str(exe), str(fichier_imp), str(fichier_sai)]
+    processus = lancer_cache(commande) if discret else subprocess.Popen(commande)
+    arret = threading.Event()
+    if discret:
+        threading.Thread(target=surveiller_et_masquer, args=(processus, arret), daemon=True).start()
     deja_vues: set[int] = set()
     debut = time.time()
     try:
@@ -145,11 +222,12 @@ def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str 
                     if "password" in message.lower() or "mot de passe" in message.lower():
                         resultat.erreurs.append("Mot de passe Sage refusé : vérifiez-le dans la configuration.")
                     cliquer(hwnd, ("cancel", "annuler", "ok"), IDCANCEL)
-            time.sleep(0.5)
+            time.sleep(0.1)
         resultat.erreurs.append(f"L'outil d'import ne s'est pas terminé après {delai} s : arrêté.")
         processus.kill()
         return resultat
     finally:
+        arret.set()
         if processus.poll() is None:
             processus.kill()
 
@@ -167,6 +245,9 @@ def lire_pendant_connexion(exe: Path, fichier_sai: Path, lecture: Callable[[], o
             try:
                 retour["valeur"] = lecture()
                 return False
+            except PermissionError as exc:  # identifiants refusés : inutile d'insister
+                derniere_erreur = exc
+                break
             except Exception as exc:  # base pas encore prête
                 derniere_erreur = exc
                 time.sleep(1)
@@ -178,6 +259,8 @@ def lire_pendant_connexion(exe: Path, fichier_sai: Path, lecture: Callable[[], o
         vide.write_text('<Version>\r\n"12001","1"\r\n</Version>\r\n', encoding="cp1252", newline="")
         resultat = executer(exe, vide, fichier_sai, mot_de_passe=None, pendant_connexion=lire, delai=delai)
     if "erreur" in retour:
+        if isinstance(retour["erreur"], PermissionError):
+            raise retour["erreur"]
         raise RuntimeError(f"Lecture de la base Sage impossible : {retour['erreur']}")
     if "valeur" not in retour:
         raise RuntimeError("Sage n'a pas ouvert la base du fichier (fenêtre de connexion absente). "
