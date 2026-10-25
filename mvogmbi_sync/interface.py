@@ -59,7 +59,7 @@ class Application(tk.Tk):
         self.config_toml = lire_config(self.chemin_config)
         self.file_messages: queue.Queue = queue.Queue()
         self.title(TITRE)
-        self.geometry("860x640")
+        self.geometry("1040x720")
         self.minsize(760, 560)
         style = ttk.Style(self)
         if "vista" in style.theme_names():
@@ -79,6 +79,7 @@ class Application(tk.Tk):
         self._onglet_sage()
         self._onglet_courriel()
         self._onglet_automatisation()
+        self._onglet_correspondance()
         self._onglet_tableau()
 
         bas = ttk.Frame(self, padding=(12, 0, 12, 10))
@@ -239,8 +240,14 @@ class Application(tk.Tk):
         self.sortie_auto.grid(row=4, column=0, columnspan=3, sticky="nsew")
         f.rowconfigure(4, weight=1)
 
+    def _onglet_correspondance(self) -> None:
+        from .page_correspondance import PageCorrespondance
+
+        self.page_correspondance = PageCorrespondance(self.onglets, self.racine, TITRE)
+        self.onglets.add(self.page_correspondance, text="5. Correspondance des articles")
+
     def _onglet_tableau(self) -> None:
-        f = self._cadre("5. Tableau de bord")
+        f = self._cadre("6. Tableau de bord")
         haut = ttk.Frame(f)
         haut.pack(fill="x")
         ttk.Button(haut, text="Lancer maintenant", command=lambda: self.lancer(False)).pack(side="left")

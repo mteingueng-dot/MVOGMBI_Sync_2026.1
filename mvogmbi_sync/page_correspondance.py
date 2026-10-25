@@ -1,0 +1,237 @@
+"""Page « Correspondance des articles » de l'application : consulter, filtrer et corriger Clover -> Sage."""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+import threading
+import tkinter as tk
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+from tkinter import messagebox, ttk
+
+from rapidfuzz import fuzz, process
+
+from .articles_sage import lire_copie
+from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, conflit_format, ecrire_correspondance,
+                             lire_correspondances, normaliser)
+
+FILTRES = ["À traiter (À confirmer + Aucun)", "Tous", CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN]
+COLONNES = [("statut", "Statut", 95), ("nom", "Article Clover", 290), ("categorie", "Catégorie", 130),
+            ("ventes", "Ventes 30 j", 80), ("numero", "N° article Sage", 120), ("description", "Description Sage", 290)]
+COULEURS = {CONFIRME: "#e3f4e8", AUTOMATIQUE: "#e6eef9", A_CONFIRMER: "#fff4cc", AUCUN: "#fbe0de"}
+
+
+class PageCorrespondance(ttk.Frame):
+    def __init__(self, parent, racine: Path, titre: str):
+        super().__init__(parent, padding=10)
+        self.racine, self.titre = racine, titre
+        self.chemin = racine / "donnees" / "correspondance_articles.xlsx"
+        self.lignes = []
+        self.par_id = {}
+        self.modifie = False
+        self.articles_sage = []
+        self.choix_sage = []
+
+        barre = ttk.Frame(self)
+        barre.pack(fill="x")
+        ttk.Label(barre, text="Afficher :").pack(side="left")
+        self.filtre = tk.StringVar(value=FILTRES[0])
+        liste = ttk.Combobox(barre, textvariable=self.filtre, values=FILTRES, state="readonly", width=30)
+        liste.pack(side="left", padx=(4, 10))
+        liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher())
+        ttk.Label(barre, text="Rechercher :").pack(side="left")
+        self.recherche = tk.StringVar()
+        champ = ttk.Entry(barre, textvariable=self.recherche, width=28)
+        champ.pack(side="left", padx=4)
+        champ.bind("<KeyRelease>", lambda _e: self.afficher())
+        ttk.Button(barre, text="Mettre à jour depuis Clover et Sage", command=self.mettre_a_jour).pack(side="right")
+        ttk.Button(barre, text="Recharger", command=self.charger).pack(side="right", padx=6)
+        self.compteurs = ttk.Label(self, text="", foreground="#444", padding=(0, 6))
+        self.compteurs.pack(fill="x")
+
+        cadre = ttk.Frame(self)
+        cadre.pack(fill="both", expand=True)
+        self.tableau = ttk.Treeview(cadre, columns=[c[0] for c in COLONNES], show="headings", height=12,
+                                    selectmode="browse")
+        for cle, titre_col, largeur in COLONNES:
+            self.tableau.heading(cle, text=titre_col)
+            self.tableau.column(cle, width=largeur, anchor="e" if cle == "ventes" else "w", stretch=cle in ("nom", "description"))
+        for statut, couleur in COULEURS.items():
+            self.tableau.tag_configure(statut, background=couleur)
+        defilement = ttk.Scrollbar(cadre, orient="vertical", command=self.tableau.yview)
+        self.tableau.configure(yscrollcommand=defilement.set)
+        self.tableau.pack(side="left", fill="both", expand=True)
+        defilement.pack(side="right", fill="y")
+        self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.selectionner())
+
+        edition = ttk.LabelFrame(self, text="Article sélectionné", padding=8)
+        edition.pack(fill="x", pady=(8, 0))
+        self.info = ttk.Label(edition, text="Sélectionnez un article dans le tableau.", wraplength=780, justify="left")
+        self.info.grid(row=0, column=0, columnspan=4, sticky="w")
+        ttk.Label(edition, text="Chercher un article Sage :").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.recherche_sage = tk.StringVar()
+        champ_sage = ttk.Entry(edition, textvariable=self.recherche_sage, width=40)
+        champ_sage.grid(row=1, column=1, sticky="we", pady=(6, 0), padx=4)
+        champ_sage.bind("<KeyRelease>", lambda _e: self.chercher_sage())
+        self.resultats = tk.Listbox(edition, height=5, font=("Consolas", 9))
+        self.resultats.grid(row=2, column=0, columnspan=2, sticky="we", pady=4)
+        self.resultats.bind("<Double-Button-1>", lambda _e: self.confirmer())
+        boutons = ttk.Frame(edition)
+        boutons.grid(row=2, column=2, sticky="n", padx=8)
+        ttk.Button(boutons, text="Confirmer l'article choisi", command=self.confirmer).pack(fill="x")
+        ttk.Button(boutons, text="Accepter la proposition", command=self.accepter).pack(fill="x", pady=3)
+        ttk.Button(boutons, text="Retirer la confirmation", command=self.retirer).pack(fill="x")
+        ttk.Button(edition, text="Enregistrer les modifications", command=self.enregistrer).grid(
+            row=2, column=3, sticky="s")
+        edition.columnconfigure(1, weight=1)
+        self.charger()
+
+    # ---------------------------------------------------------------- données
+    def charger(self) -> None:
+        if self.modifie and not messagebox.askyesno(self.titre, "Abandonner les modifications non enregistrées ?"):
+            return
+        self.lignes = lire_correspondances(self.chemin)
+        self.par_id = {c.id_clover: c for c in self.lignes}
+        self.articles_sage = lire_copie(self.racine / "donnees" / "articles_sage.csv")
+        self.normalises = [normaliser(f"{a.description} {a.numero}") for a in self.articles_sage]
+        self.modifie = False
+        self.afficher()
+
+    def afficher(self) -> None:
+        filtre, texte = self.filtre.get(), normaliser(self.recherche.get())
+        self.tableau.delete(*self.tableau.get_children())
+        visibles = 0
+        for c in self.lignes:
+            if filtre.startswith("À traiter") and c.statut not in (A_CONFIRMER, AUCUN):
+                continue
+            if filtre in (CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN) and c.statut != filtre:
+                continue
+            if texte and texte not in normaliser(f"{c.nom_clover} {c.numero_sage} {c.description_sage}"):
+                continue
+            self.tableau.insert("", "end", iid=c.id_clover, tags=(c.statut,), values=(
+                c.statut, c.nom_clover, c.categorie_clover, f"{c.ventes_30j:,.2f}" if c.ventes_30j else "",
+                c.numero_sage, c.description_sage))
+            visibles += 1
+        compte = Counter(c.statut for c in self.lignes)
+        self.compteurs.config(text=(
+            f"{len(self.lignes)} articles Clover — Confirmé : {compte[CONFIRME]}   Automatique : {compte[AUTOMATIQUE]}   "
+            f"À confirmer : {compte[A_CONFIRMER]}   Aucun : {compte[AUCUN]}   •   affichés : {visibles}"
+            + ("   •   MODIFICATIONS NON ENREGISTRÉES" if self.modifie else "")
+            + ("" if self.articles_sage else "   •   liste Sage absente : cliquez sur « Mettre à jour »")))
+
+    def courant(self):
+        selection = self.tableau.selection()
+        return self.par_id.get(selection[0]) if selection else None
+
+    def selectionner(self) -> None:
+        c = self.courant()
+        if not c:
+            return
+        self.info.config(text=(
+            f"Clover : {c.nom_clover}   (catégorie {c.categorie_clover or '—'}, ID {c.id_clover})\n"
+            f"Sage : {c.numero_sage or '—'} {c.description_sage}   •   statut {c.statut}, méthode {c.methode or '—'}"
+            + (f"\nAutres suggestions : {c.suggestions}" if c.suggestions else "")))
+        self.recherche_sage.set(c.nom_clover)
+        self.chercher_sage()
+
+    def chercher_sage(self) -> None:
+        self.resultats.delete(0, "end")
+        self.choix_sage = []
+        texte = normaliser(self.recherche_sage.get())
+        if not texte or not self.articles_sage:
+            return
+        c = self.courant()
+        for _, score, i in process.extract(texte, self.normalises, scorer=fuzz.token_set_ratio, limit=15):
+            a = self.articles_sage[i]
+            alerte = "  (autre format)" if c and conflit_format(c.nom_clover, a.description) else ""
+            self.choix_sage.append(a)
+            self.resultats.insert("end", f"{a.numero:<16} {a.description}  [{a.compte_revenus or 'sans compte'}]{alerte}")
+
+    # ---------------------------------------------------------------- modifications
+    def _appliquer(self, c, statut: str, numero: str = "", description: str = "", compte: str = "") -> None:
+        c.statut = statut
+        if numero:
+            c.numero_sage, c.description_sage, c.compte_revenus = numero, description, compte
+        c.methode = "Manuel (application)"
+        self.modifie = True
+        position = self.tableau.index(c.id_clover) if self.tableau.exists(c.id_clover) else None
+        self.afficher()
+        if self.tableau.exists(c.id_clover):
+            self.tableau.selection_set(c.id_clover)
+            self.tableau.see(c.id_clover)
+        elif position is not None and self.tableau.get_children():
+            enfants = self.tableau.get_children()
+            suivant = enfants[min(position, len(enfants) - 1)]
+            self.tableau.selection_set(suivant)
+            self.tableau.see(suivant)
+
+    def confirmer(self) -> None:
+        c = self.courant()
+        choix = self.resultats.curselection()
+        if not c or not choix:
+            messagebox.showinfo(self.titre, "Sélectionnez un article dans le tableau, puis un article Sage dans la liste.")
+            return
+        a = self.choix_sage[choix[0]]
+        if conflit_format(c.nom_clover, a.description) and not messagebox.askyesno(
+                self.titre, f"« {c.nom_clover} » et « {a.description} » n'ont pas le même format.\n"
+                            "Deux formats différents sont deux articles différents. Confirmer quand même ?"):
+            return
+        if not a.compte_revenus:
+            messagebox.showwarning(self.titre, f"L'article Sage {a.numero} n'a pas de compte de produits : "
+                                               "l'import sera bloqué tant qu'il n'est pas complété dans Sage.")
+        self._appliquer(c, CONFIRME, a.numero, a.description, a.compte_revenus)
+
+    def accepter(self) -> None:
+        c = self.courant()
+        if not c or not c.numero_sage:
+            messagebox.showinfo(self.titre, "Aucune proposition pour cet article : choisissez un article Sage dans la liste.")
+            return
+        self._appliquer(c, CONFIRME)
+
+    def retirer(self) -> None:
+        c = self.courant()
+        if c:
+            self._appliquer(c, A_CONFIRMER)
+
+    def enregistrer(self) -> None:
+        if not self.modifie:
+            messagebox.showinfo(self.titre, "Aucune modification à enregistrer.")
+            return
+        try:
+            if self.chemin.exists():
+                copie = self.chemin.parent / "sauvegardes" / f"{self.chemin.stem}_{datetime.now():%Y%m%d-%H%M%S}.xlsx"
+                copie.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(self.chemin, copie)
+            ecrire_correspondance(self.lignes, self.chemin)
+        except PermissionError:
+            messagebox.showerror(self.titre, "Le fichier de correspondance est ouvert dans Excel : fermez-le puis réessayez.")
+            return
+        self.modifie = False
+        self.afficher()
+        messagebox.showinfo(self.titre, "Correspondance enregistrée (copie de sécurité de l'ancienne version faite).")
+
+    def mettre_a_jour(self) -> None:
+        if self.modifie:
+            messagebox.showinfo(self.titre, "Enregistrez d'abord vos modifications.")
+            return
+        from .__main__ import commande_moteur
+
+        self.compteurs.config(text="Mise à jour en cours (lecture de Clover et de Sage, quelques minutes)…")
+
+        def travail():
+            r = subprocess.run(commande_moteur() + ["correspondance"], cwd=self.racine, capture_output=True,
+                               text=True, encoding="utf-8", errors="replace",
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            self.after(0, lambda: self._fin_mise_a_jour(r.returncode, (r.stdout + r.stderr).strip()))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _fin_mise_a_jour(self, code: int, sortie: str) -> None:
+        self.charger()
+        resume = "\n".join(sortie.splitlines()[-8:])
+        if code == 0:
+            messagebox.showinfo(self.titre, f"Correspondance mise à jour.\n\n{resume}")
+        else:
+            messagebox.showerror(self.titre, f"Mise à jour impossible.\n\n{resume}")

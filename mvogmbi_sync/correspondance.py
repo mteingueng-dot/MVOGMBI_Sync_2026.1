@@ -209,6 +209,31 @@ def lire_a_relier(chemin: Path) -> list[tuple[str, str, str]]:
     return resultat
 
 
+def lire_correspondances(chemin: Path) -> list[Correspondance]:
+    """Toutes les lignes du fichier de correspondance (pour l'affichage et la modification dans l'application)."""
+    if not chemin.exists():
+        return []
+    feuille = openpyxl.load_workbook(chemin, read_only=True, data_only=True)["Correspondance"]
+    lignes = feuille.iter_rows(values_only=True)
+    entete = list(next(lignes))
+    i = {nom: entete.index(nom) for nom in ENTETES}
+    texte = lambda r, nom: str(r[i[nom]] or "").strip()
+    resultat = []
+    for r in lignes:
+        if not any(r):
+            continue
+        statut = texte(r, "Statut")
+        if statut.lower() in VALIDATIONS:
+            statut = CONFIRME
+        resultat.append(Correspondance(
+            statut or AUCUN, texte(r, "Nom Clover"), texte(r, "Catégorie Clover"),
+            Decimal(str(r[i["Ventes 30 j ($)"]] or 0)), texte(r, "N° article Sage"), texte(r, "Description Sage"),
+            texte(r, "Compte revenus"), texte(r, "Méthode"), int(r[i["Confiance (%)"]] or 0),
+            texte(r, "Autres suggestions"), texte(r, "Code Clover"), texte(r, "ID Clover"),
+        ))
+    return resultat
+
+
 def lire_confirmes(chemin: Path) -> dict[str, Correspondance]:
     """Lignes marquées « Confirmé » dans un fichier de correspondance existant, par ID Clover."""
     if not chemin.exists():

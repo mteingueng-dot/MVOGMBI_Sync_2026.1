@@ -130,6 +130,9 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
     except Exception:
         etat = lire_pendant_connexion(exe, fichier_sai, lecture)
         sage_ouvert = False
+    from .articles_sage import ecrire_copie
+
+    ecrire_copie(etat.articles, donnees / "articles_sage.csv")
     debut = max(date_depart, (etat.derniere_date + timedelta(days=1)) if etat.derniere_date else date_depart)
     cr.fichier, cr.derniere_avant = fichier_sai.name, etat.derniere_date
     if debut <= fin:

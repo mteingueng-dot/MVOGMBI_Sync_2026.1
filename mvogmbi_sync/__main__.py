@@ -147,6 +147,30 @@ def ouvrir_base_sage(config_toml: dict, fichier_sai: str | Path | None = None):
     return BaseSage(config)
 
 
+COPIE_ARTICLES_SAGE = "articles_sage.csv"
+
+
+def lire_sage(config_toml: dict, fonction, fichier_sai=None):
+    """Exécute fonction(base) sur la base Sage du fichier ; si Sage est fermé, la base est ouverte par l'outil
+    d'import le temps de la lecture, puis refermée (aucun import)."""
+    from .sage_auto import lire_pendant_connexion
+
+    fichier = fichier_sai or config_toml.get("sage_base", {}).get("fichier_entreprise") \
+        or config_toml.get("sage_import", {}).get("fichier_entreprise")
+
+    def lecture():
+        with ouvrir_base_sage(config_toml, fichier) as base:
+            return fonction(base)
+
+    try:
+        return lecture()
+    except Exception:
+        exe = executable_import()
+        if not fichier or not exe:
+            raise
+        return lire_pendant_connexion(exe, Path(fichier), lecture)
+
+
 def commande_verifier_sage(args: argparse.Namespace) -> None:
     config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
     if not config_toml.get("sage_base", {}).get("utilisateur"):
@@ -220,8 +244,10 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     sage = None
     if not args.sage and config_toml.get("sage_base", {}).get("utilisateur"):
         try:
-            with ouvrir_base_sage(config_toml) as base:
-                sage = base.articles()
+            from .articles_sage import ecrire_copie
+
+            sage = lire_sage(config_toml, lambda base: base.articles())
+            ecrire_copie(sage, RACINE / "donnees" / COPIE_ARTICLES_SAGE)
             print(f"Articles lus directement dans Sage : {len(sage)}")
             verifier_comptes_sage(config_toml, fichier_sortie=rapport_comptes(config_toml.get("sage_base", {}).get("fichier_entreprise")))
         except Exception as exc:  # Sage fermé, mot de passe refusé… : on se rabat sur le fichier exporté

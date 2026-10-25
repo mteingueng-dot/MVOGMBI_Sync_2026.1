@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.0.1"
+#define Version "1.0.2"
 
 [Setup]
 AppId={{6E4B0C2A-2E54-4F0F-9C8B-5D1C2B8F4A11}

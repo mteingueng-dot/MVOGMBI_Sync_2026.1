@@ -52,6 +52,27 @@ def _enregistrements(texte: str):
             tampon = []
 
 
+def ecrire_copie(articles: list[ArticleSage], chemin: Path) -> None:
+    """Copie locale de la liste des articles Sage (pour choisir un article quand Sage est fermé)."""
+    import csv
+
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    with chemin.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow(["numero", "description", "type", "compte_revenus"])
+        w.writerows((a.numero, a.description, a.type, a.compte_revenus) for a in articles)
+
+
+def lire_copie(chemin: Path) -> list[ArticleSage]:
+    import csv
+
+    if not chemin.exists():
+        return []
+    with chemin.open(encoding="utf-8", newline="") as f:
+        lignes = list(csv.reader(f, delimiter=";"))
+    return [ArticleSage(*r[:4]) for r in lignes[1:] if len(r) >= 4]
+
+
 def lire_articles_sage(chemin: Path) -> list[ArticleSage]:
     texte = chemin.read_text(encoding="cp1252")
     articles = []
