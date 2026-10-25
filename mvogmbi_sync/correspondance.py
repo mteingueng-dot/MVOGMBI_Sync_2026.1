@@ -186,6 +186,29 @@ def _signaler_formats_regroupes(resultat: list[Correspondance]) -> None:
                 c.methode = "Plusieurs formats Clover sur un seul article Sage : créer un article par format"
 
 
+def lire_a_relier(chemin: Path) -> list[tuple[str, str, str]]:
+    """Articles vendus à relier : « ID Clover;nom[;n° article Sage] » (séparateur ; ou ,).
+
+    Le propriétaire peut inscrire le numéro Sage en 3e colonne (par exemple dans Excel) : la correspondance
+    est alors considérée comme confirmée.
+    """
+    import csv
+
+    if not chemin.exists():
+        return []
+    brut = chemin.read_bytes()
+    try:
+        texte = brut.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        texte = brut.decode("cp1252")
+    separateur = ";" if texte.count(";") >= texte.count(",") else ","
+    resultat = []
+    for r in csv.reader(texte.splitlines(), delimiter=separateur):
+        if r and r[0].strip():
+            resultat.append((r[0].strip(), (r[1] if len(r) > 1 else "").strip(), (r[2] if len(r) > 2 else "").strip()))
+    return resultat
+
+
 def lire_confirmes(chemin: Path) -> dict[str, Correspondance]:
     """Lignes marquées « Confirmé » dans un fichier de correspondance existant, par ID Clover."""
     if not chemin.exists():

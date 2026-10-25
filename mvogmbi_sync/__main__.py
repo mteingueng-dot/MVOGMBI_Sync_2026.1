@@ -20,7 +20,16 @@ from .models import RapportVentes
 from .periodes import TypePeriode, bornes, jours
 from .sortie_excel import ecrire_rapports
 
-RACINE = Path(__file__).resolve().parent.parent
+import os
+
+# Dossier de l'application : celui du programme installé (.exe), sinon celui du projet ;
+# MVOGMBI_RACINE permet de le choisir explicitement.
+if os.environ.get("MVOGMBI_RACINE"):
+    RACINE = Path(os.environ["MVOGMBI_RACINE"])
+elif getattr(sys, "frozen", False):
+    RACINE = Path(sys.executable).resolve().parent
+else:
+    RACINE = Path(__file__).resolve().parent.parent
 
 
 def charger_config(chemin: Path):
@@ -29,13 +38,17 @@ def charger_config(chemin: Path):
     if not chemin.exists():
         sys.exit(f"Fichier de configuration introuvable : {chemin}\n"
                  "Copiez config.example.toml en config.toml et complétez-le.")
+    from . import coffre
+
     donnees = tomllib.loads(chemin.read_text(encoding="utf-8"))
     clover = donnees.get("clover", {})
-    if not clover.get("merchant_id") or not clover.get("api_token"):
-        sys.exit(f"Complétez merchant_id et api_token dans {chemin} avant de continuer.")
+    jeton = coffre.lire(coffre.CLOVER_JETON, clover.get("api_token"))
+    if not clover.get("merchant_id") or not jeton:
+        sys.exit("Identifiant marchand ou jeton Clover manquant : complétez la configuration "
+                 "(application MVOGMBI_Sync, onglet Clover).")
     return ConfigClover(
         merchant_id=clover.get("merchant_id", ""),
-        api_token=clover.get("api_token", ""),
+        api_token=jeton,
         base_url=clover.get("base_url", "https://api.clover.com"),
         fuseau_horaire=donnees.get("general", {}).get("fuseau_horaire", "America/Toronto"),
     )
@@ -110,11 +123,12 @@ def commande_comparer(args: argparse.Namespace) -> None:
 
 def ouvrir_base_sage(config_toml: dict, fichier_sai: str | Path | None = None):
     """Base Sage du fichier d'entreprise indiqué (sinon celui de [sage_base], sinon le port configuré)."""
+    from . import coffre
     from .base_sage import BaseSage, ConfigSageBase, port_du_fichier
 
     b = config_toml.get("sage_base", {})
     config = ConfigSageBase(
-        utilisateur=b.get("utilisateur", ""), mot_de_passe=b.get("mot_de_passe", ""),
+        utilisateur=b.get("utilisateur", ""), mot_de_passe=coffre.lire(coffre.SAGE_LECTURE, b.get("mot_de_passe")),
         hote=b.get("hote", "127.0.0.1"), port=int(b.get("port", 13540)), base=b.get("base", "simply"),
     )
     fichier = fichier_sai or b.get("fichier_entreprise")
@@ -232,10 +246,12 @@ def commande_correspondance(args: argparse.Namespace) -> None:
             noms_vendus.setdefault(ligne.id_article, ligne.nom)
     # Articles vendus récemment mais supprimés du catalogue Clover depuis : il faut aussi les relier.
     ids_catalogue = {a["id"] for a in catalogue}
-    if A_RELIER.exists():  # articles non reliés trouvés en préparant des factures (ventes plus anciennes)
-        import csv
-        for id_article, nom_article in csv.reader(A_RELIER.open(encoding="utf-8"), delimiter=";"):
-            noms_vendus.setdefault(id_article, nom_article)
+    from .correspondance import lire_a_relier
+    a_confirmer = {}
+    for id_article, nom_article, numero_sage in lire_a_relier(A_RELIER):  # articles trouvés en préparant des factures
+        noms_vendus.setdefault(id_article, nom_article)
+        if numero_sage:
+            a_confirmer[id_article] = (nom_article, numero_sage)
     for id_article in sorted(set(noms_vendus) - ids_catalogue):
         a = client.article(id_article) or {"id": id_article}
         a["name"] = a.get("name") or noms_vendus[id_article]
@@ -260,6 +276,10 @@ def commande_correspondance(args: argparse.Namespace) -> None:
         copie.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(chemin, copie)
         print(f"Copie de sécurité : {copie}")
+    from .correspondance import Correspondance as _C
+    for id_article, (nom_article, numero_sage) in a_confirmer.items():
+        confirmes[id_article] = _C(CONFIRME, nom_article, "", Decimal("0"), numero_sage, "", "",
+                                   "Manuel (articles_a_relier)", 100, "", "", id_article)
     resultat = rapprocher(clover, sage, confirmes)
     try:
         ecrire_correspondance(resultat, chemin)
@@ -282,7 +302,9 @@ def memoriser_a_relier(articles: list[tuple[str, str]]) -> None:
     """Articles vendus sans numéro Sage : la prochaine « correspondance » les ajoutera (même supprimés de Clover)."""
     import csv
 
-    deja = {r[0] for r in csv.reader(A_RELIER.open(encoding="utf-8"), delimiter=";")} if A_RELIER.exists() else set()
+    from .correspondance import lire_a_relier
+
+    deja = {r[0] for r in lire_a_relier(A_RELIER)}
     nouveaux = [(i, n) for i, n in dict(articles).items() if i and i not in deja]
     if nouveaux:
         A_RELIER.parent.mkdir(parents=True, exist_ok=True)
@@ -510,7 +532,42 @@ def commande_importer(args: argparse.Namespace) -> None:
         sys.exit(f"ÉCHEC : {echecs} facture(s) introuvable(s) dans Sage après l'import (code {code_retour}).")
 
 
+def commande_auto(args: argparse.Namespace) -> None:
+    from .automatique import lancer
+
+    cr = lancer(RACINE, lire_toml(args.config), date.fromisoformat(args.jusqua) if args.jusqua else None,
+                simulation=args.simulation)
+    for p in cr.problemes:
+        print(f"PROBLÈME : {p}")
+    if cr.erreur:
+        print(f"ERREUR : {cr.erreur}")
+    if not cr.succes:
+        sys.exit(1)
+
+
+def commande_planifier(args: argparse.Namespace) -> None:
+    from . import planification
+
+    try:
+        if args.retirer:
+            print(planification.retirer())
+        elif args.etat:
+            print(planification.etat())
+        else:
+            print(planification.installer(RACINE, args.heure))
+    except RuntimeError as exc:
+        sys.exit(f"Planification impossible : {exc}")
+
+
+def commande_interface(args: argparse.Namespace) -> None:
+    from .interface import lancer_interface
+
+    lancer_interface(RACINE)
+
+
 def main(argv: list[str] | None = None) -> None:
+    if argv is None and len(sys.argv) == 1:
+        argv = ["interface"]  # double-clic sur le programme : ouvrir l'interface
     for flux in (sys.stdout, sys.stderr):
         flux.reconfigure(encoding="utf-8", errors="replace")
     parseur = argparse.ArgumentParser(prog="mvogmbi_sync", description="Synchronisation Clover → Sage 50")
@@ -557,6 +614,21 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--par-jour", action="store_true",
                    help="Une facture par jour de la période (ex. tout un mois : --periode mois --par-jour)")
     p.set_defaults(fonction=commande_importer)
+
+    p = sous.add_parser("interface", help="Ouvrir l'application de configuration et de suivi")
+    p.set_defaults(fonction=commande_interface)
+
+    p = sous.add_parser("auto", help="Traitement automatique : de la dernière facture dans Sage jusqu'à hier")
+    p.add_argument("--jusqua", help="Dernier jour à traiter (AAAA-MM-JJ) ; par défaut hier")
+    p.add_argument("--simulation", action="store_true", help="Tout préparer et vérifier, sans importer")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_auto)
+
+    p = sous.add_parser("planifier", help="Installer, consulter ou retirer la tâche planifiée Windows")
+    p.add_argument("--heure", default="01:00")
+    p.add_argument("--retirer", action="store_true")
+    p.add_argument("--etat", action="store_true")
+    p.set_defaults(fonction=commande_planifier)
 
     p = sous.add_parser("verifier-comptes", help="Vérifier les comptes des articles Sage (15xx -> 40xx / 50xx)")
     p.add_argument("--fichier", help="Fichier d'entreprise Sage (.SAI) ; par défaut celui de [sage_base]")

@@ -31,3 +31,19 @@ fichier_entreprise = ''
 version = "12001"  # 33101 refusé par Sage 2026.2
 pays = "1"
 position_numero = 3  # n° de facture en 3e champ (en 2e, Sage l ignore et numérote lui-même)
+
+[automatique]
+# Premier jour à importer si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ »
+date_depart = "2026-05-01"
+heure = "01:00"
+delai_import = 3600
+
+[courriel]
+# Alertes : serveur d'envoi (ex. smtp.office365.com port 587 starttls, smtp.gmail.com port 587 starttls)
+serveur = ""
+port = 587
+securite = "starttls"
+utilisateur = ""
+expediteur = ""
+destinataires = ""
+envoyer_si_succes = false
