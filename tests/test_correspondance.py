@@ -127,3 +127,11 @@ def test_lire_articles_sage_guillemets_et_retours_a_la_ligne(tmp_path):
         ("C0001647", 'Meche X-Pression 3x Kids 28" 04', "4023"),
         ("0103020131B", "French Curl Braid Afro 22'' 3X 1B#", "4023"),
     ]
+
+
+def test_numero_compte_sage():
+    from mvogmbi_sync.base_sage import numero_compte
+
+    assert numero_compte(40230000) == "4023"
+    assert numero_compte("40140000") == "4014"
+    assert numero_compte(0) == "" and numero_compte(None) == ""

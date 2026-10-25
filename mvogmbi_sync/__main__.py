@@ -160,12 +160,12 @@ def commande_correspondance(args: argparse.Namespace) -> None:
         if not chemin_sage.is_file():
             sys.exit("Liste des articles Sage introuvable : indiquez-la avec --sage ou dans config.toml ([sage] articles).")
         sage = lire_articles_sage(chemin_sage)
-    # Un export abîmé remplace les lettres accentuées par des espaces (« Coupé » -> « Coup ») :
-    # on vérifie la présence de vraies lettres accentuées dans le fichier brut.
-    accents = sum(chemin_sage.read_text(encoding="cp1252").count(c) for c in "éèàçêô")
-    if len(sage) > 100 and accents == 0:
-        sys.exit(f"La liste Sage {chemin_sage} ne contient aucun accent : l'export semble abîmé "
-                 "(« Coupé » devient « Coup »). Réexportez la liste depuis Sage, puis relancez la commande.")
+        # Un export abîmé remplace les lettres accentuées par des espaces (« Coupé » -> « Coup ») :
+        # on vérifie la présence de vraies lettres accentuées dans le fichier brut.
+        accents = sum(chemin_sage.read_text(encoding="cp1252").count(c) for c in "éèàçêô")
+        if len(sage) > 100 and accents == 0:
+            sys.exit(f"La liste Sage {chemin_sage} ne contient aucun accent : l'export semble abîmé "
+                     "(« Coupé » devient « Coup »). Réexportez la liste depuis Sage, puis relancez la commande.")
 
     client = ClientClover(charger_config(Path(args.config)))
     print("Lecture du catalogue Clover…")

@@ -18,6 +18,17 @@ import pymysql
 from .articles_sage import ArticleSage, reparer_texte
 
 
+LONGUEUR_COMPTES = 4  # comptes affichés sur 4 chiffres dans Sage (4023), stockés sur 8 (40230000)
+
+
+def numero_compte(valeur) -> str:
+    """40230000 -> « 4023 » (numéro tel qu'affiché dans Sage)."""
+    texte = str(valeur or "").strip()
+    if not texte or texte == "0":
+        return ""
+    return texte[:LONGUEUR_COMPTES] if len(texte) == 8 else texte
+
+
 @dataclass
 class ConfigSageBase:
     utilisateur: str
@@ -56,8 +67,13 @@ class BaseSage:
 
     def table_articles(self) -> tuple[str, dict[str, str]]:
         """Table des articles d'inventaire et correspondance de ses colonnes utiles."""
-        for table in self.tables():
-            cols = {c.lower(): c for c in self.colonnes(table)}
+        tables = self.tables()
+        # Les tables d'inventaire d'abord ; certaines tables internes sont interdites aux tiers.
+        for table in sorted(tables, key=lambda t: ("invent" not in t.lower(), t)):
+            try:
+                cols = {c.lower(): c for c in self.colonnes(table)}
+            except pymysql.err.MySQLError:
+                continue
             if "spartcode" in cols and "sname" in cols:
                 return table, cols
         raise LookupError("Table des articles introuvable dans la base Sage (colonne sPartCode).")
@@ -78,7 +94,6 @@ class BaseSage:
                 numero=numero,
                 description=reparer_texte(" ".join(str(r["description"] or "").split())),
                 type="Inventory",
-                # Dans Sage 50 CA, l'identifiant d'un compte est son numéro (ex. 4013).
-                compte_revenus=str(r.get("compte") or ""),
+                compte_revenus=numero_compte(r.get("compte")),
             ))
         return resultat
