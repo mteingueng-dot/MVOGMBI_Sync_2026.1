@@ -41,8 +41,6 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 [CustomMessages]
 fr.TacheBureau=Créer un raccourci sur le Bureau
 en.TacheBureau=Create a desktop shortcut
-fr.GroupeRaccourcis=Raccourcis :
-en.GroupeRaccourcis=Shortcuts:
 fr.OuvrirApplication=Ouvrir MVOGMBI_Sync pour la configuration
 en.OuvrirApplication=Open MVOGMBI_Sync to configure it
 fr.JournalTraitement=Journal du traitement
@@ -58,9 +56,6 @@ en.DescriptionLangue=Which language should MVOGMBI_Sync use?
 fr.ChoixLangue=Choisissez la langue de l'application (modifiable ensuite dans l'application) :
 en.ChoixLangue=Choose the application language (can be changed later in the application):
 
-[Tasks]
-Name: "bureau"; Description: "{cm:TacheBureau}"; GroupDescription: "{cm:GroupeRaccourcis}"
-
 [Files]
 Source: "..\dist\MVOGMBI_Sync\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 ; La configuration et les données existantes ne sont jamais écrasées lors d'une mise à jour.
@@ -72,12 +67,16 @@ Name: "{app}\donnees"
 Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"
 Name: "{group}\{cm:JournalTraitement}"; Filename: "{app}\donnees\journal_automatique.log"
 Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"; Tasks: bureau
 
 [Run]
 ; Langue de l'installation enregistrée dans config.toml ([general] langue = fr | en)
 Filename: "{app}\MVOGMBI_Sync_console.exe"; Parameters: "langue {code:LangueApplication}"; WorkingDir: "{app}"; StatusMsg: "{cm:ReglageLangue}"; Flags: runhidden waituntilterminated
+; Dernière page : case « Créer un raccourci sur le Bureau » (le raccourci est créé par CreerRaccourciBureau)
+Filename: "{cmd}"; Parameters: "/c exit 0"; Description: "{cm:TacheBureau}"; Flags: runhidden postinstall skipifsilent; AfterInstall: CreerRaccourciBureau
 Filename: "{app}\MVOGMBI_Sync.exe"; Description: "{cm:OuvrirApplication}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: files; Name: "{userdesktop}\MVOGMBI_Sync.lnk"
 
 [UninstallRun]
 ; Retire la tâche planifiée de 1 h (les données et la configuration restent dans le dossier).
@@ -117,4 +116,10 @@ begin
     Result := 'en'
   else
     Result := 'fr';
+end;
+
+procedure CreerRaccourciBureau;
+begin
+  CreateShellLink(ExpandConstant('{userdesktop}\MVOGMBI_Sync.lnk'), 'MVOGMBI_Sync',
+    ExpandConstant('{app}\MVOGMBI_Sync.exe'), '', ExpandConstant('{app}'), '', 0, SW_SHOWNORMAL);
 end;
