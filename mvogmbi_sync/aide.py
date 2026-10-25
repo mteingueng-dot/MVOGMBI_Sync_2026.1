@@ -39,8 +39,8 @@ ACCUEIL = {
         ("sous_titre", "À propos"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, épicerie africaine & caribéenne."),
         ("para", "Logiciels reliés : Clover (point de vente) et Sage 50 Comptabilité, Édition canadienne."),
-        ("para", f"Conçu et développé par {EDITEUR}."),
-        ("para", f"{COPYRIGHT}. Tous droits réservés."),
+        ("para", f"Conçu et développé par {EDITEUR}"),
+        ("para", f"{COPYRIGHT} — Tous droits réservés."),
     ],
     "en": [
         ("titre", "Welcome to MVOGMBI_Sync"),
@@ -70,8 +70,8 @@ ACCUEIL = {
         ("sous_titre", "About"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, African & Caribbean grocery."),
         ("para", "Connected software: Clover (point of sale) and Sage 50 Accounting, Canadian Edition."),
-        ("para", f"Designed and developed by {EDITEUR}."),
-        ("para", f"{COPYRIGHT}. All rights reserved."),
+        ("para", f"Designed and developed by {EDITEUR}"),
+        ("para", f"{COPYRIGHT} — All rights reserved."),
     ],
 }
 
