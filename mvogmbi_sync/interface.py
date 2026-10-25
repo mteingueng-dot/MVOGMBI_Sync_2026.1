@@ -59,17 +59,24 @@ class Application(tk.Tk):
         self.config_toml = lire_config(self.chemin_config)
         self.file_messages: queue.Queue = queue.Queue()
         self.title(TITRE)
-        self.geometry("1040x720")
+        self.geometry("1040x760")
         self.minsize(760, 560)
         style = ttk.Style(self)
         if "vista" in style.theme_names():
             style.theme_use("vista")
 
-        entete = ttk.Frame(self, padding=(12, 10))
+        entete = ttk.Frame(self, padding=(12, 8))
         entete.pack(fill="x")
-        ttk.Label(entete, text="Marché MVOG-MBI Sherbrooke — synchronisation des ventes",
-                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        ttk.Label(entete, text="Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour.",
+        self._images = self._charger_logo()
+        if self._images:
+            self.iconphoto(True, self._images["icone"])
+            ttk.Label(entete, image=self._images["entete"]).pack(side="left", padx=(0, 14))
+        textes = ttk.Frame(entete)
+        textes.pack(side="left", fill="x", expand=True)
+        ttk.Label(textes, text="Marché MVOG-MBI Sherbrooke", font=("Segoe UI", 15, "bold"),
+                  foreground="#1a9b3c").pack(anchor="w")
+        ttk.Label(textes, text="Synchronisation des ventes Clover → Sage 50", font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        ttk.Label(textes, text="Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour.",
                   foreground="#555").pack(anchor="w")
 
         self.onglets = ttk.Notebook(self)
@@ -89,6 +96,22 @@ class Application(tk.Tk):
         self.etat.pack(side="left")
         self.after(200, self._relayer_messages)
         self.actualiser_tableau()
+
+    @staticmethod
+    def _charger_logo() -> dict:
+        """Logo du marché (en-tête) et icône de la fenêtre ; rien si l'image est introuvable."""
+        try:
+            from PIL import Image, ImageTk
+
+            logo = Image.open(Path(__file__).resolve().parent / "ressources" / "logo.png").convert("RGBA")
+            entete = logo.copy()
+            entete.thumbnail((90, 90), Image.LANCZOS)
+            largeur, hauteur = logo.size
+            icone = logo.crop((0, 0, largeur, int(hauteur * 0.76)))
+            icone.thumbnail((64, 64), Image.LANCZOS)
+            return {"entete": ImageTk.PhotoImage(entete), "icone": ImageTk.PhotoImage(icone)}
+        except Exception:
+            return {}
 
     # ---------------------------------------------------------------- outils d'interface
     def _var(self, cle: str, valeur, type_=tk.StringVar) -> tk.Variable:

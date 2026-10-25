@@ -5,9 +5,10 @@
 from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 racine = SPECPATH + "\\.."
-cachees = ["keyring.backends.Windows", "keyring.backends.fail", "pymysql", "tzdata"]
+cachees = ["keyring.backends.Windows", "keyring.backends.fail", "pymysql", "tzdata", "PIL.ImageTk"]
 donnees = (copy_metadata("keyring") + collect_data_files("tzdata")
-           + [(racine + "\\config.example.toml", ".")])
+           + [(racine + "\\config.example.toml", "."),
+              (racine + "\\mvogmbi_sync\\ressources", "mvogmbi_sync\\ressources")])
 
 
 def analyse(script):
