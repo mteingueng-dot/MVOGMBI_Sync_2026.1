@@ -253,6 +253,21 @@ class Application(tk.Tk):
             valeur = MASQUE if coffre.present(secret) else ""
         champ = ttk.Entry(parent, textvariable=self._var(cle, valeur), width=52, show="•" if secret else "")
         champ.grid(row=ligne, column=1, sticky="we", pady=4)
+        if secret:
+            # Le masque « •••••••• » n'est pas le mot de passe : il s'efface dès qu'on entre dans le champ,
+            # sinon ce qu'on tape s'ajoute à lui ; il revient si le champ est laissé vide.
+            variable = self.vars[cle]
+
+            def entree(_evt, variable=variable):
+                if variable.get() == MASQUE:
+                    variable.set("")
+
+            def sortie(_evt, variable=variable, secret=secret):
+                if not variable.get() and coffre.present(secret):
+                    variable.set(MASQUE)
+
+            champ.bind("<FocusIn>", entree, add="+")
+            champ.bind("<FocusOut>", sortie, add="+")
         if parcourir:
             ttk.Button(parent, text=t("Parcourir…"), command=lambda: self._parcourir(cle, *parcourir)).grid(
                 row=ligne, column=2, padx=(6, 0))
@@ -496,7 +511,9 @@ class Application(tk.Tk):
         for cle_var, cle_coffre in (("secret.clover", coffre.CLOVER_JETON), ("secret.sage_lecture", coffre.SAGE_LECTURE),
                                     ("secret.sage_import", coffre.SAGE_IMPORT), ("secret.courriel", coffre.COURRIEL)):
             valeur = str(v[cle_var])
-            if valeur and valeur != MASQUE:
+            if valeur.startswith(MASQUE):  # tapé à la suite du masque : seul l'ajout est le mot de passe
+                valeur = valeur[len(MASQUE):]
+            if valeur:
                 coffre.ecrire(cle_coffre, valeur)
                 self.vars[cle_var].set(MASQUE)
         ecrire_config(self.chemin_config, c)
