@@ -12,6 +12,7 @@ la table des articles est celle qui contient le numéro d'article (« sPartCode 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import pymysql
 
@@ -36,6 +37,34 @@ class ConfigSageBase:
     hote: str = "127.0.0.1"
     port: int = 13540
     base: str = "simply"
+
+
+PORTS_SAGE = range(13540, 13560)  # une base MySQL par fichier ouvert dans Sage, à partir de 13540
+
+
+def port_du_fichier(fichier_sai: Path, config: "ConfigSageBase") -> int:
+    """Port de la base servant ce fichier d'entreprise (son dossier .SAJ), parmi les bases Sage ouvertes.
+
+    Les ports dépendent de l'ordre d'ouverture des fichiers : on les parcourt et on compare le dossier
+    de données de chaque base avec celui du fichier visé.
+    """
+    cible = str(Path(fichier_sai).with_suffix(".SAJ")).rstrip("\\/").lower()
+    for port in PORTS_SAGE:
+        try:
+            connexion = pymysql.connect(host=config.hote, port=port, user=config.utilisateur,
+                                        password=config.mot_de_passe, database=config.base, connect_timeout=1)
+        except pymysql.err.MySQLError:
+            continue
+        try:
+            with connexion.cursor() as curseur:
+                curseur.execute("SHOW VARIABLES LIKE 'datadir'")
+                dossier = str(curseur.fetchone()[1]).rstrip("\\/").lower()
+        finally:
+            connexion.close()
+        if dossier == cible:
+            return port
+    raise LookupError(f"Le fichier {Path(fichier_sai).name} n'est pas ouvert dans Sage "
+                      "(aucune base Sage ne le sert) : ouvrez-le dans Sage 50.")
 
 
 class BaseSage:

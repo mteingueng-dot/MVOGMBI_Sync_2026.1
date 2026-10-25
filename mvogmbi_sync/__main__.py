@@ -108,14 +108,19 @@ def commande_comparer(args: argparse.Namespace) -> None:
         print(f"\nAucun écart : l'API et l'export concordent au cent près. Détail : {sortie}")
 
 
-def ouvrir_base_sage(config_toml: dict):
-    from .base_sage import BaseSage, ConfigSageBase
+def ouvrir_base_sage(config_toml: dict, fichier_sai: str | Path | None = None):
+    """Base Sage du fichier d'entreprise indiqué (sinon celui de [sage_base], sinon le port configuré)."""
+    from .base_sage import BaseSage, ConfigSageBase, port_du_fichier
 
     b = config_toml.get("sage_base", {})
-    return BaseSage(ConfigSageBase(
+    config = ConfigSageBase(
         utilisateur=b.get("utilisateur", ""), mot_de_passe=b.get("mot_de_passe", ""),
         hote=b.get("hote", "127.0.0.1"), port=int(b.get("port", 13540)), base=b.get("base", "simply"),
-    ))
+    )
+    fichier = fichier_sai or b.get("fichier_entreprise")
+    if fichier:
+        config.port = port_du_fichier(Path(fichier), config)
+    return BaseSage(config)
 
 
 def commande_verifier_sage(args: argparse.Namespace) -> None:
@@ -323,7 +328,7 @@ def commande_importer(args: argparse.Namespace) -> None:
 
     def existe() -> bool | None:
         try:
-            with ouvrir_base_sage(config_toml) as base:
+            with ouvrir_base_sage(config_toml, fichier_sai) as base:
                 return base.facture_existe(numero, client)
         except Exception as exc:
             print(f"  (vérification dans Sage impossible : {exc})")

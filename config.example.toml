@@ -21,6 +21,8 @@ articles = 'donnees\Article.txt'
 utilisateur = ""
 mot_de_passe = ""
 port = 13540
+# Fichier d'entreprise à lire (la bonne base est retrouvée même si plusieurs fichiers sont ouverts)
+fichier_entreprise = ''
 
 [sage_import]
 # Fichier d'entreprise dans lequel importer (.SAI). Pour les essais : la COPIE, jamais l'original.
