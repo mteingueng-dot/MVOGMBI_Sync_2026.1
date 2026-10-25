@@ -106,3 +106,24 @@ def test_confirmation_annulee_puis_article_cree_au_bon_format(tmp_path):
     sage = SAGE + [ArticleSage("C0001679", "Milk Sere Ne 1kg 7-36", "Inventory", "4013")]  # créé dans Sage
     (res,) = rapprocher(clover, sage, lire_confirmes(chemin))
     assert (res.statut, res.numero_sage) == (AUTOMATIQUE, "C0001679")
+
+
+def test_lire_articles_sage_guillemets_et_retours_a_la_ligne(tmp_path):
+    # Export Sage réel : guillemets non doublés et description coupée par un retour à la ligne
+    fichier = tmp_path / "Article.txt"
+    fichier.write_bytes(
+        b'33101,3,Inventory\r\n'
+        b'"C0001646","Meche X-Pression 3x Kids 28" 02","Inventory","Chaque",12.99,12.99,1523,4023,5023,5023,'
+        b'"Meche X-Pression 3x Kids 28" 02","Chaque",\r\n'
+        b'"C0001647","Meche X-Pression 3x Kids 28" 04\r\n'
+        b'","Inventory","Chaque",12.99,12.99,1523,4023,5023,5023,"Meche X-Pression 3x Kids 28" 04\r\n'
+        b'","Chaque",\r\n'
+        b'"0103020131B\r\r\n","French Curl Braid Afro 22\'\' 3X 1B#","Inventory","Chaque",14.99,14.99,1523,4023,5023,5023,'
+        b'"French","Chaque",\r\n'
+    )
+    articles = lire_articles_sage(fichier)
+    assert [(a.numero, a.description, a.compte_revenus) for a in articles] == [
+        ("C0001646", 'Meche X-Pression 3x Kids 28" 02', "4023"),
+        ("C0001647", 'Meche X-Pression 3x Kids 28" 04', "4023"),
+        ("0103020131B", "French Curl Braid Afro 22'' 3X 1B#", "4023"),
+    ]

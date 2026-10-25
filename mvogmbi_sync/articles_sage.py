@@ -1,15 +1,25 @@
 """Lecture de la liste des articles exportée de Sage 50 (fichier texte, Windows-1252).
 
-Format observé (« E:\\Article.txt ») : une ligne d'en-tête « 33101,3,Inventory », puis une ligne par article :
+Format observé (« donnees/Article.txt ») : une ligne d'en-tête « 33101,3,Inventory », puis une ligne par article :
 numéro, description, type (Inventory / Service), unité, prix, prix, compte d'actif,
 compte de revenus, compte CPV, compte d'écart, description 2, unité de vente.
+
+L'export de Sage n'est pas un CSV valide : les guillemets dans les descriptions ne sont pas doublés
+(« Kids 28" 04 ») et une description peut contenir un retour à la ligne. On reconnaît donc chaque
+article par sa structure (« ","Inventory","Chaque", » puis les nombres) plutôt qu'avec un lecteur CSV.
 """
 
 from __future__ import annotations
 
-import csv
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+ARTICLE = re.compile(
+    r'^"(?P<numero_description>.*)","(?P<type>Inventory|Service)","(?P<unite>[^"]*)",'
+    r'(?P<nombres>[-\d.,]*),"(?P<description2>.*)","(?P<unite_vente>[^"]*)",\s*$'
+)
+FIN_ARTICLE = re.compile(r'","[^"]*",\s*$')
 
 
 @dataclass(frozen=True)
@@ -30,17 +40,34 @@ def reparer_texte(texte: str) -> str:
         return texte
 
 
+def _enregistrements(texte: str):
+    """Regroupe les lignes physiques en articles (une description peut s'étendre sur plusieurs lignes)."""
+    tampon: list[str] = []
+    for ligne in texte.splitlines():
+        if not tampon and not ligne.startswith('"'):
+            continue  # en-tête « 33101,3,Inventory » ou ligne vide
+        tampon.append(ligne)
+        if FIN_ARTICLE.search(ligne) and re.search(r'","(Inventory|Service)","', " ".join(tampon)):
+            yield " ".join(l.strip() for l in tampon)
+            tampon = []
+
+
 def lire_articles_sage(chemin: Path) -> list[ArticleSage]:
-    with chemin.open(encoding="cp1252", newline="") as fichier:
-        rangees = list(csv.reader(fichier))
+    texte = chemin.read_text(encoding="cp1252")
     articles = []
-    for rangee in rangees[1:]:
-        if len(rangee) < 12 or not rangee[0].strip() or rangee[0].strip() == ".":
+    for enregistrement in _enregistrements(texte):
+        m = ARTICLE.match(enregistrement)
+        if not m:
+            continue
+        numero, _, description = m["numero_description"].partition('","')
+        numero = " ".join(numero.split())
+        nombres = m["nombres"].split(",")
+        if not numero or numero == ".":
             continue
         articles.append(ArticleSage(
-            numero=rangee[0].strip(),
-            description=reparer_texte(rangee[1].strip()),
-            type=rangee[2].strip(),
-            compte_revenus=rangee[7].strip(),
+            numero=numero,
+            description=reparer_texte(" ".join(description.split())),
+            type=m["type"],
+            compte_revenus=nombres[3] if len(nombres) > 3 else "",
         ))
     return articles
