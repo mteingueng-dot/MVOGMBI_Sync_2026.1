@@ -141,6 +141,45 @@ def commande_verifier_sage(args: argparse.Namespace) -> None:
                  "a le droit « Accès par des tiers ».")
 
 
+def verifier_comptes_sage(config_toml: dict, fichier_sai=None, numeros: set[str] | None = None,
+                          fichier_sortie: Path | None = None) -> list:
+    """Vérifie la règle 15xx -> 40xx / 50xx ; affiche un résumé et écrit le détail dans un fichier Excel."""
+    from .verification_comptes import ecrire_anomalies, verifier
+
+    with ouvrir_base_sage(config_toml, fichier_sai) as base:
+        articles = base.comptes_articles()
+        noms = base.noms_comptes()
+    if numeros is not None:
+        articles = [a for a in articles if a.numero in numeros]
+    anomalies = verifier(articles, noms)
+    bloquantes = sum(1 for x in anomalies if x.bloquante)
+    print(f"Comptes des articles Sage : {len(articles)} vérifiés, {bloquantes} sans compte de produits (bloquant), "
+          f"{len(anomalies) - bloquantes} incohérent(s) avec la règle 15xx -> 40xx / 50xx")
+    if anomalies and fichier_sortie:
+        print(f"  Détail : {ecrire_anomalies(anomalies, fichier_sortie)}")
+    return anomalies
+
+
+def rapport_comptes(fichier_sai) -> Path:
+    """Rapport des comptes à corriger, un par fichier d'entreprise (vraie comptabilité, copie d'essai…)."""
+    suffixe = f"_{Path(fichier_sai).stem}" if fichier_sai else ""
+    return RACINE / "donnees" / f"comptes_a_corriger{suffixe}.xlsx"
+
+
+def commande_verifier_comptes(args: argparse.Namespace) -> None:
+    config_toml = lire_toml(args.config)
+    fichier = args.fichier or config_toml.get("sage_base", {}).get("fichier_entreprise")
+    try:
+        anomalies = verifier_comptes_sage(config_toml, fichier, fichier_sortie=rapport_comptes(fichier))
+    except Exception as exc:
+        sys.exit(f"Lecture de Sage impossible : {exc}")
+    for x in anomalies[:40]:
+        print(f"  {'BLOQUANT ' if x.bloquante else ''}{x.article.numero:<14} {x.article.description[:38]:38} "
+              f"{x.probleme} -> {x.proposition}")
+    if len(anomalies) > 40:
+        print(f"  … et {len(anomalies) - 40} autre(s) : voir le fichier Excel.")
+
+
 def commande_correspondance(args: argparse.Namespace) -> None:
     from decimal import Decimal
 
@@ -156,6 +195,7 @@ def commande_correspondance(args: argparse.Namespace) -> None:
             with ouvrir_base_sage(config_toml) as base:
                 sage = base.articles()
             print(f"Articles lus directement dans Sage : {len(sage)}")
+            verifier_comptes_sage(config_toml, fichier_sortie=rapport_comptes(config_toml.get("sage_base", {}).get("fichier_entreprise")))
         except Exception as exc:  # Sage fermé, mot de passe refusé… : on se rabat sur le fichier exporté
             print(f"Lecture directe de Sage impossible ({exc}) : utilisation du fichier exporté.")
     if sage is None:
@@ -341,6 +381,13 @@ def commande_importer(args: argparse.Namespace) -> None:
             sans_compte = base.articles_sans_compte_revenus([l.numero_sage for l in imp.lignes])
     except Exception:
         mes_articles = True  # vérification impossible : le contrôle des doublons ci-dessous le signalera
+    try:  # comptes incohérents : avertissement seulement (Sage importe quand même)
+        incoherents = [x for x in verifier_comptes_sage(config_toml, fichier_sai, {l.numero_sage for l in imp.lignes})
+                       if not x.bloquante]
+        for x in incoherents:
+            print(f"  ! {x.article.numero} {x.article.description} : {x.probleme}")
+    except Exception:
+        pass
     if sans_compte:
         details = "\n".join(f"   {numero}  {nom}" for numero, nom in sans_compte)
         sys.exit(f"\nImport annulé : ces articles n'ont pas de compte de revenus dans {fichier_sai.name} "
@@ -424,6 +471,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--delai", type=int, default=900, help="Durée maximale de l'import, en secondes")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_importer)
+
+    p = sous.add_parser("verifier-comptes", help="Vérifier les comptes des articles Sage (15xx -> 40xx / 50xx)")
+    p.add_argument("--fichier", help="Fichier d'entreprise Sage (.SAI) ; par défaut celui de [sage_base]")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_verifier_comptes)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

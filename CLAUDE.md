@@ -9,6 +9,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - `python -m pytest` : tests
 - `python -m mvogmbi_sync facture --periode jour|semaine|mois --date AAAA-MM-JJ` : fichier d'import Sage `sortie/factures/Vente_….IMP` + détail Excel
 - `python -m mvogmbi_sync importer --periode … --date …` : prépare la facture puis l'importe avec `Sage_SA_import.exe <fichier.IMP> <entreprise.SAI>` (version la plus récente sous C:/Program Files (x86)/Sage 50*) ; refuse si points à vérifier, si la facture existe déjà (`tcustr.sSource` pour le client) ou si le doublon ne peut être vérifié (sauf --forcer) ; vérifie la présence de la facture après import ; journal `donnees/journal_imports.csv`. Fichier cible : config.toml [sage_import] fichier_entreprise (copie d'essai tant que le format n'est pas validé).
+- `python -m mvogmbi_sync verifier-comptes [--fichier X.SAI]` : règle du propriétaire 15xx (actif) -> 40xx (produits) / 50xx (CMV) ; rapport `donnees/comptes_a_corriger_<fichier>.xlsx`. Aussi lancé par `correspondance` ; `importer` bloque si un article de la facture n'a pas de compte de produits et avertit pour les incohérences.
 - `python -m mvogmbi_sync verifier-sage` : teste la lecture directe de Sage
 - `python -m mvogmbi_sync correspondance` : lit les articles directement dans Sage (sinon `donnees/Article.txt`) et crée/met à jour `donnees/correspondance_articles.xlsx` (articles Clover -> numéros Sage)
 - `python -m mvogmbi_sync rapport --periode jour|semaine|mois --date AAAA-MM-JJ [--par-jour] [--export fichier.xlsx]`

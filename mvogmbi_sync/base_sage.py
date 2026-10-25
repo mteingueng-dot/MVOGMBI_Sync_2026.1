@@ -94,6 +94,20 @@ class BaseSage:
     def colonnes(self, table: str) -> list[str]:
         return [r["Field"] for r in self.requete(f"SHOW COLUMNS FROM `{table}`")]
 
+    def comptes_articles(self):
+        """Comptes d'actif, de produits et de CMV des articles de stock (hors services)."""
+        from .verification_comptes import ComptesArticle
+
+        return [
+            ComptesArticle(" ".join(str(r["sPartCode"] or "").split()), reparer_texte(str(r["sName"] or "")),
+                           numero_compte(r["lAcNAsset"]), numero_compte(r["lAcNRev"]), numero_compte(r["lAcNExp"]))
+            for r in self.requete("SELECT sPartCode, sName, lAcNAsset, lAcNRev, lAcNExp FROM tinvent WHERE bService = 0")
+            if str(r["sPartCode"] or "").strip() not in ("", ".")
+        ]
+
+    def noms_comptes(self) -> dict[str, str]:
+        return {numero_compte(r["lId"]): r["sName"] for r in self.requete("SELECT lId, sName FROM taccount")}
+
     def client_utilise_mes_articles(self, client: str) -> bool | None:
         """Option de la fiche client (onglet Importer/Exporter) : sans elle, Sage ne reconnaît pas les numéros
         d'articles d'une facture importée. None si le client n'existe pas."""

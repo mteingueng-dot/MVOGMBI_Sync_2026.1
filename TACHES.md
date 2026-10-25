@@ -59,6 +59,8 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [ ] [Ensemble] Importer une journée dans la copie, d'abord à la main (*Fichier > Importer/Exporter > Importer des transactions*), puis avec la commande `importer`
 - [x] [Ensemble] Version du fichier .IMP : « 12001 » acceptée (« 33101 » refusée)
 - [ ] [Vous] Fiche client « Vente Hebdomadaire », onglet Importer/Exporter : le client utilise mes numéros d'articles (copie d'essai, puis vraie comptabilité à la mise en service)
+- [x] [Claude] Vérification automatique des comptes des articles Sage (15xx -> 40xx / 50xx) : commande `verifier-comptes`, contrôle dans `correspondance` et `importer`
+- [ ] [Vous] Corriger dans Sage les 15 articles sans compte de produits et les 21 comptes incohérents (vraie comptabilité et copie d'essai)
 - [ ] [Ensemble] Vérifier la facture importée : quantités, montants, taxes, total, inventaire
 - [ ] [Claude] Corriger jusqu'à un import sans erreur ni avertissement
 - [ ] [Ensemble] Répéter l'essai sur une semaine et sur un mois
