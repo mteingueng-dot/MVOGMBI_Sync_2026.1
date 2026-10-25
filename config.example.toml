@@ -21,3 +21,11 @@ articles = 'donnees\Article.txt'
 utilisateur = ""
 mot_de_passe = ""
 port = 13540
+
+[sage_import]
+# Fichier d'entreprise dans lequel importer (.SAI). Pour les essais : la COPIE, jamais l'original.
+fichier_entreprise = ''
+# Format du fichier .IMP (à ajuster si Sage refuse l'import)
+version = "33101"
+pays = "1"
+position_numero = 2

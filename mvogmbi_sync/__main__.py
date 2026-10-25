@@ -221,7 +221,8 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     print(f"\nFichier à vérifier : {chemin}")
 
 
-def commande_facture(args: argparse.Namespace) -> None:
+def produire_facture(args: argparse.Namespace):
+    """Prépare la facture de la période et écrit le fichier .IMP et son détail Excel."""
     import openpyxl
     from openpyxl.styles import Font
 
@@ -230,7 +231,7 @@ def commande_facture(args: argparse.Namespace) -> None:
 
     type_periode = TypePeriode(args.periode)
     debut, fin = bornes(type_periode, date.fromisoformat(args.date))
-    if args.export:
+    if getattr(args, "export", None):
         from .export_clover import lire_export
         rapport = lire_export(Path(args.export), debut, fin)
     else:
@@ -242,12 +243,11 @@ def commande_facture(args: argparse.Namespace) -> None:
         sys.exit(f"Fichier de correspondance introuvable : {chemin_corresp} (lancez « correspondance »).")
     imp = preparer_import(facture, lire_correspondance(chemin_corresp))
 
-    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
+    config_toml = lire_toml(args.config)
     c = config_toml.get("sage_import", {})
     config = ConfigImport(version=str(c.get("version", "33101")), pays=str(c.get("pays", "1")),
                           position_numero=int(c.get("position_numero", 2)))
-    dossier = RACINE / "sortie" / "factures"
-    chemin_imp = ecrire_imp(imp, dossier / nom_fichier(facture.numero), config)
+    chemin_imp = ecrire_imp(imp, RACINE / "sortie" / "factures" / nom_fichier(facture.numero), config)
 
     classeur = openpyxl.Workbook()
     feuille = classeur.active
@@ -263,9 +263,12 @@ def commande_facture(args: argparse.Namespace) -> None:
     feuille.append(["Sous-total", "", "", "", float(imp.sous_total)])
     feuille.append(["Taxes", "", "", "", float(imp.total_taxes)])
     feuille.append(["Total", "", "", "", float(imp.total)])
-    if imp.non_reliees or facture.anomalies:
+    problemes = [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies
+    if imp.sous_total != rapport.total_net:
+        problemes.insert(0, f"Écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
+    if problemes:
         a = classeur.create_sheet("À vérifier")
-        for texte in [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies:
+        for texte in problemes:
             a.append([texte])
     feuille.column_dimensions["B"].width = 60
     chemin_xlsx = chemin_imp.with_suffix(".xlsx")
@@ -277,11 +280,82 @@ def commande_facture(args: argparse.Namespace) -> None:
     print(f"  Sous-total           : {imp.sous_total:>10,.2f} $")
     print(f"  Taxes                : {imp.total_taxes:>10,.2f} $")
     print(f"  Total                : {imp.total:>10,.2f} $")
-    if imp.sous_total != rapport.total_net:
-        print(f"  ATTENTION : écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
-    for texte in [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies:
+    for texte in problemes:
         print(f"  ! {texte}")
     print(f"\nFichier d'import : {chemin_imp}\nDétail (Excel)   : {chemin_xlsx}")
+    return imp, chemin_imp, problemes
+
+
+def lire_toml(chemin) -> dict:
+    chemin = Path(chemin)
+    return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
+
+
+def commande_facture(args: argparse.Namespace) -> None:
+    produire_facture(args)
+
+
+def executable_import() -> Path | None:
+    """Sage_SA_import.exe de la version de Sage 50 la plus récente installée."""
+    candidats = sorted(Path("C:/Program Files (x86)").glob("Sage 50*/Sage_SA_import.exe"), reverse=True)
+    return candidats[0] if candidats else None
+
+
+def commande_importer(args: argparse.Namespace) -> None:
+    import csv
+    import subprocess
+    from datetime import datetime
+
+    config_toml = lire_toml(args.config)
+    c = config_toml.get("sage_import", {})
+    fichier_sai = Path(c.get("fichier_entreprise", ""))
+    if not c.get("fichier_entreprise") or fichier_sai.suffix.upper() != ".SAI" or not fichier_sai.is_file():
+        sys.exit("Indiquez le fichier d'entreprise Sage (.SAI) dans config.toml : [sage_import] fichier_entreprise.")
+    exe = Path(c["executable"]) if c.get("executable") else executable_import()
+    if not exe or not exe.is_file():
+        sys.exit("Sage_SA_import.exe introuvable : indiquez-le dans config.toml ([sage_import] executable).")
+
+    imp, chemin_imp, problemes = produire_facture(args)
+    if problemes and not args.forcer:
+        sys.exit("\nImport annulé : la facture comporte des points à vérifier (voir ci-dessus). "
+                 "Corrigez-les ou relancez avec --forcer.")
+    numero, client = imp.facture.numero, imp.facture.client
+
+    def existe() -> bool | None:
+        try:
+            with ouvrir_base_sage(config_toml) as base:
+                return base.facture_existe(numero, client)
+        except Exception as exc:
+            print(f"  (vérification dans Sage impossible : {exc})")
+            return None
+
+    deja = existe()
+    if deja:
+        sys.exit(f"\nImport annulé : la facture « {numero} » existe déjà dans Sage.")
+    if deja is None and not args.forcer:
+        sys.exit("\nImport annulé : impossible de vérifier l'absence de doublon dans Sage (Sage ouvert ?). "
+                 "Relancez avec --forcer pour importer quand même.")
+
+    print(f"\nImport dans {fichier_sai.name} avec {exe.name}…")
+    resultat = subprocess.run([str(exe), str(chemin_imp), str(fichier_sai)], timeout=args.delai)
+    present = existe()
+    statut = "importée" if present else ("non vérifiable" if present is None else "ÉCHEC")
+    journal = RACINE / "donnees" / "journal_imports.csv"
+    nouveau_journal = not journal.exists()
+    with journal.open("a", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f, delimiter=";")
+        if nouveau_journal:
+            w.writerow(["Date et heure", "Facture", "Fichier d'entreprise", "Lignes", "Sous-total", "Total",
+                        "Code de retour", "Résultat"])
+        w.writerow([f"{datetime.now():%Y-%m-%d %H:%M:%S}", numero, fichier_sai.name, len(imp.lignes),
+                    f"{imp.sous_total:.2f}", f"{imp.total:.2f}", resultat.returncode, statut])
+    if present:
+        print(f"Facture « {numero} » importée et retrouvée dans Sage. Journal : {journal}")
+    elif present is None:
+        print(f"Import lancé (code {resultat.returncode}), mais vérification impossible. Contrôlez dans Sage.")
+    else:
+        sys.exit(f"ÉCHEC : la facture « {numero} » est introuvable dans Sage après l'import "
+                 f"(code {resultat.returncode}). Journal : {journal}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -317,6 +391,16 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--correspondance", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_facture)
+
+    p = sous.add_parser("importer", help="Préparer la facture et l'importer automatiquement dans Sage")
+    p.add_argument("--periode", choices=[t.value for t in TypePeriode], default="jour")
+    p.add_argument("--date", default=(date.today() - timedelta(days=1)).isoformat(),
+                   help="Un jour compris dans la période (AAAA-MM-JJ). Par défaut : hier.")
+    p.add_argument("--correspondance", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
+    p.add_argument("--forcer", action="store_true", help="Importer malgré les points à vérifier")
+    p.add_argument("--delai", type=int, default=900, help="Durée maximale de l'import, en secondes")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_importer)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

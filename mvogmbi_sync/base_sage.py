@@ -65,6 +65,13 @@ class BaseSage:
     def colonnes(self, table: str) -> list[str]:
         return [r["Field"] for r in self.requete(f"SHOW COLUMNS FROM `{table}`")]
 
+    def facture_existe(self, numero: str, client: str) -> bool:
+        """Une facture de ce numéro existe-t-elle déjà pour ce client (table des transactions clients) ?"""
+        lignes = self.requete(
+            "SELECT 1 FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
+            "WHERE TRIM(t.sSource) = %s AND c.sName = %s LIMIT 1", (numero.strip(), client))
+        return bool(lignes)
+
     def table_articles(self) -> tuple[str, dict[str, str]]:
         """Table des articles d'inventaire et correspondance de ses colonnes utiles."""
         tables = self.tables()

@@ -55,7 +55,8 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [ ] [Vous] Corriger dans Clover l'article « Colombina Bon Bon Bum Fresa 408g » marqué « non-recette »
 - [x] [Vous] Faire une **copie de sauvegarde** du fichier d'entreprise Sage pour les essais
 - [ ] [Vous] Restaurer la sauvegarde sous un autre nom (fichier d'essai) et l'ouvrir dans Sage
-- [ ] [Ensemble] Importer une journée dans la copie (*Fichier > Importer/Exporter > Importer des transactions*)
+- [x] [Claude] Import automatique : commande `importer` (Sage_SA_import.exe, contrôle des doublons et de la présence de la facture, journal)
+- [ ] [Ensemble] Importer une journée dans la copie, d'abord à la main (*Fichier > Importer/Exporter > Importer des transactions*), puis avec la commande `importer`
 - [ ] [Ensemble] Vérifier la facture importée : quantités, montants, taxes, total, inventaire
 - [ ] [Claude] Corriger jusqu'à un import sans erreur ni avertissement
 - [ ] [Ensemble] Répéter l'essai sur une semaine et sur un mois
