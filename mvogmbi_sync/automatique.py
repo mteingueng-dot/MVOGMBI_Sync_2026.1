@@ -310,8 +310,14 @@ def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr:
                     f"{len(changes)} statut(s) modifié(s).")
         except PermissionError:
             cr.note("Correspondance non enregistrée (fichier ouvert dans Excel) : table utilisée en mémoire.")
-    for c in nouveaux:
-        if c.statut not in (CONFIRME, AUTOMATIQUE):
+    a_confirmer = [c for c in nouveaux if c.statut not in (CONFIRME, AUTOMATIQUE)]
+    if not anciens_statuts and a_confirmer:
+        # Premier fichier de correspondance : un résumé plutôt qu'une ligne par article
+        cr.note(f"Fichier de correspondance créé : {len(a_confirmer)} article(s) Clover à confirmer "
+                "(page Correspondance). Si vous aviez déjà une correspondance validée, reprenez-la "
+                "(page Automatisation > « Reprendre une configuration existante »).")
+    else:
+        for c in a_confirmer:
             cr.note(f"Nouvel article Clover à confirmer : {c.nom_clover} ({c.statut})")
     table = TableCorrespondance({}, {})
     for c in resultat:
