@@ -595,6 +595,21 @@ def commande_planifier(args: argparse.Namespace) -> None:
         sys.exit(f"Planification impossible : {exc}")
 
 
+def commande_langue(args: argparse.Namespace) -> None:
+    """Enregistre la langue de l'application (appelée par l'installateur avec la langue choisie)."""
+    from .interface import ecrire_config, lire_config
+    from .langues import LANGUES
+
+    code = args.code.strip().lower()[:2]
+    if code not in LANGUES:
+        sys.exit(f"Langue inconnue : {args.code} (choix : {', '.join(LANGUES)})")
+    chemin = Path(args.config)
+    config = lire_config(chemin)
+    config.setdefault("general", {})["langue"] = code
+    ecrire_config(chemin, config)
+    print(f"Langue de l'application : {LANGUES[code]}")
+
+
 def commande_interface(args: argparse.Namespace) -> None:
     from .interface import lancer_interface
 
@@ -651,6 +666,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--par-jour", action="store_true",
                    help="Une facture par jour de la période (ex. tout un mois : --periode mois --par-jour)")
     p.set_defaults(fonction=commande_importer)
+
+    p = sous.add_parser("langue", help="Choisir la langue de l'application : fr ou en")
+    p.add_argument("code", help="fr (français) ou en (English)")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_langue)
 
     p = sous.add_parser("interface", help="Ouvrir l'application de configuration et de suivi")
     p.set_defaults(fonction=commande_interface)

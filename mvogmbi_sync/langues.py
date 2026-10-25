@@ -53,6 +53,7 @@ EN: dict[str, str] = {
     "3. Courriel": "3. Email",
     "4. Automatisation": "4. Automation",
     "5. Correspondance des articles": "5. Item mapping",
+    "5. Correspondance": "5. Item mapping",
     "6. Tableau de bord": "6. Dashboard",
     "Aide / FAQ": "Help / FAQ",
     # ------------------------------------------------------------------ Clover
@@ -152,6 +153,9 @@ EN: dict[str, str] = {
     "Dernière facture importée : {derniere}     •     Tâche planifiée : {tache}":
         "Last imported invoice: {derniere}     •     Scheduled task: {tache}",
     "installée": "installed",
+    "Dernière facture importée": "Last imported invoice",
+    "Tâche planifiée": "Scheduled task",
+    "Points à corriger (dernier traitement)": "Items to fix (last run)",
     "NON installée": "NOT installed",
     "Vérifiez la date (AAAA-MM-JJ), l'heure (HH:MM) et le port du courriel.":
         "Check the date (YYYY-MM-DD), the time (HH:MM) and the email port.",

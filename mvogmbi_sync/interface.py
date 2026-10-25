@@ -23,7 +23,16 @@ from .langues import t
 
 TITRE = "MVOGMBI_Sync — Clover → Sage 50"
 MASQUE = "••••••••"  # affiché quand un secret est déjà enregistré dans le coffre
+# Couleurs : vert du logo MVOG-MBI
 VERT = "#1a9b3c"
+VERT_FONCE = "#13772d"
+ROUGE = "#d7263d"
+JAUNE = "#f6b81a"
+TEXTE = "#1f2d24"
+FOND = "#fafbfa"
+MENU_FOND = "#eef4f0"
+MENU_SURVOL = "#e2ede6"
+MENU_ACTIF = "#d3eadb"
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -64,38 +73,59 @@ class Application(tk.Tk):
         langues.depuis_config(self.config_toml)
         self.file_messages: queue.Queue = queue.Queue()
         self.title(TITRE)
-        self.geometry("1060x780")
-        self.minsize(780, 580)
-        style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-
-        entete = ttk.Frame(self, padding=(12, 8))
-        entete.pack(fill="x")
+        largeur = min(1180, self.winfo_screenwidth() - 60)
+        hauteur = min(820, self.winfo_screenheight() - 110)  # la fenêtre reste au-dessus de la barre des tâches
+        self.geometry(f"{largeur}x{hauteur}+{max(0, (self.winfo_screenwidth() - largeur) // 2)}+20")
+        self.minsize(900, 600)
+        self.configure(background=FOND)
+        try:  # thème moderne « Sun Valley » (style Windows 11)
+            import sv_ttk
+            sv_ttk.set_theme("light")
+        except Exception:
+            pass
+        self._styles()
         self._images = self._charger_logo()
         if self._images:
             self.iconphoto(True, self._images["icone"])
-            ttk.Label(entete, image=self._images["entete"]).pack(side="left", padx=(0, 14))
-        textes = ttk.Frame(entete)
-        textes.pack(side="left", fill="x", expand=True)
-        ttk.Label(textes, text=t("Marché MVOG-MBI Sherbrooke"), font=("Segoe UI", 15, "bold"),
-                  foreground=VERT).pack(anchor="w")
-        ttk.Label(textes, text=t("Synchronisation des ventes Clover → Sage 50"),
-                  font=("Segoe UI", 11, "bold")).pack(anchor="w")
-        ttk.Label(textes, text=t("Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour."),
-                  foreground="#555").pack(anchor="w")
-        choix = ttk.Frame(entete)
-        choix.pack(side="right", anchor="n")
-        ttk.Label(choix, text="Langue / Language").pack(anchor="e")
-        self.langue = tk.StringVar(value=langues.LANGUES[langues.courante()])
-        selecteur = ttk.Combobox(choix, textvariable=self.langue, values=list(langues.LANGUES.values()),
-                                 state="readonly", width=12)
-        selecteur.pack(anchor="e")
-        selecteur.bind("<<ComboboxSelected>>", lambda _e: self.changer_langue())
 
-        self.onglets = ttk.Notebook(self)
-        self.onglets.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        # Bandeau aux couleurs du marché
+        bandeau = tk.Frame(self, background=VERT)
+        bandeau.pack(fill="x")
+        if self._images:
+            carte = tk.Frame(bandeau, background="white", padx=6, pady=4)
+            carte.pack(side="left", padx=(18, 16), pady=12)
+            tk.Label(carte, image=self._images["entete"], background="white", borderwidth=0).pack()
+        textes = tk.Frame(bandeau, background=VERT)
+        textes.pack(side="left", fill="x", expand=True, pady=12)
+        tk.Label(textes, text=t("Marché MVOG-MBI Sherbrooke"), font=("Segoe UI Semibold", 20), foreground="white",
+                 background=VERT).pack(anchor="w")
+        tk.Label(textes, text=t("Synchronisation des ventes Clover → Sage 50"), font=("Segoe UI", 12, "bold"),
+                 foreground="#eaf7ee", background=VERT).pack(anchor="w")
+        tk.Label(textes, text=t("Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour."),
+                 font=("Segoe UI", 10), foreground="#cdebd6", background=VERT).pack(anchor="w")
+
+        lisere = tk.Frame(self, height=5, background=FOND)
+        lisere.pack(fill="x")
+        for couleur in (VERT_FONCE, ROUGE, JAUNE):
+            tk.Frame(lisere, height=5, background=couleur).pack(side="left", fill="x", expand=True)
+
+        corps = tk.Frame(self, background=FOND)
+        corps.pack(fill="both", expand=True)
+        self.menu = tk.Frame(corps, background=MENU_FOND, width=236)
+        self.menu.pack(side="left", fill="y")
+        self.menu.pack_propagate(False)
+        contenu = ttk.Frame(corps, padding=(18, 14, 18, 10))
+        contenu.pack(side="left", fill="both", expand=True)
+
+        bas = ttk.Frame(contenu, padding=(0, 10, 0, 0))
+        bas.pack(side="bottom", fill="x")
+        self._bouton_principal(bas, "💾  " + t("Enregistrer la configuration"), self.enregistrer).pack(side="right")
+        self.etat = ttk.Label(bas, text="", foreground="#5a6b60")
+        self.etat.pack(side="left")
+        self.onglets = ttk.Notebook(contenu, style="Pages.TNotebook")
+        self.onglets.pack(fill="both", expand=True)
         self.vars: dict[str, tk.Variable] = {}
+        self._pages: list[tuple[str, str]] = []
         self._onglet_texte(t("Accueil"), "accueil")
         self._onglet_clover()
         self._onglet_sage()
@@ -104,14 +134,80 @@ class Application(tk.Tk):
         self._onglet_correspondance()
         self._onglet_tableau()
         self._onglet_texte(t("Aide / FAQ"), "faq")
+        self._construire_menu()
 
-        bas = ttk.Frame(self, padding=(12, 0, 12, 10))
-        bas.pack(fill="x")
-        ttk.Button(bas, text=t("Enregistrer la configuration"), command=self.enregistrer).pack(side="right")
-        self.etat = ttk.Label(bas, text="", foreground="#555")
-        self.etat.pack(side="left")
         self._attente = self.after(200, self._relayer_messages)
         self.actualiser_tableau()
+        self.aller(0)
+
+    def _styles(self) -> None:
+        style = ttk.Style(self)
+        style.layout("Pages.TNotebook.Tab", [])  # onglets masqués : navigation par le menu latéral
+        style.configure("Pages.TNotebook", borderwidth=0, padding=0)
+        style.configure("Titre.TLabel", font=("Segoe UI Semibold", 15), foreground=VERT)
+        style.configure("Aide.TLabel", foreground="#6b7a70")
+        style.configure("Accent.TButton", font=("Segoe UI Semibold", 10))
+        try:
+            style.configure("Accent.TButton", background=VERT)
+            style.map("Accent.TButton", background=[("active", VERT_FONCE), ("pressed", VERT_FONCE)])
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _bouton_principal(parent, texte: str, commande, couleur: str = VERT, survol: str = VERT_FONCE) -> tk.Button:
+        bouton = tk.Button(parent, text=texte, command=commande, font=("Segoe UI Semibold", 10), foreground="white",
+                           background=couleur, activebackground=survol, activeforeground="white", relief="flat",
+                           borderwidth=0, padx=18, pady=7, cursor="hand2")
+        bouton.bind("<Enter>", lambda _e: bouton.configure(background=survol))
+        bouton.bind("<Leave>", lambda _e: bouton.configure(background=couleur))
+        return bouton
+
+    def _fond(self) -> str:
+        return ttk.Style(self).lookup("TFrame", "background") or FOND
+
+    def _construire_menu(self) -> None:
+        tk.Label(self.menu, text="MENU", font=("Segoe UI", 8, "bold"), foreground="#7d8b81",
+                 background=MENU_FOND).pack(anchor="w", padx=22, pady=(16, 6))
+        self.boutons_menu = []
+        self.barres_menu = []
+        for index, (icone, titre) in enumerate(self._pages):
+            ligne = tk.Frame(self.menu, background=MENU_FOND)
+            ligne.pack(fill="x", padx=(8, 10), pady=1)
+            barre = tk.Frame(ligne, width=4, background=MENU_FOND)
+            barre.pack(side="left", fill="y")
+            bouton = tk.Label(ligne, text=f"{icone}   {titre}", anchor="w", font=("Segoe UI", 10),
+                              background=MENU_FOND, foreground=TEXTE, padx=16, pady=9, cursor="hand2")
+            bouton.pack(side="left", fill="x", expand=True)
+            bouton.bind("<Button-1>", lambda _e, i=index: self.aller(i))
+            bouton.bind("<Enter>", lambda _e, b=bouton: b.configure(background=MENU_SURVOL)
+                        if b is not self._actif else None)
+            bouton.bind("<Leave>", lambda _e, b=bouton: b.configure(background=MENU_FOND)
+                        if b is not self._actif else None)
+            self.boutons_menu.append(bouton)
+            self.barres_menu.append(barre)
+        self._actif = None
+        bas = tk.Frame(self.menu, background=MENU_FOND)
+        bas.pack(side="bottom", fill="x", padx=16, pady=14)
+        tk.Label(bas, text="🌐  Langue / Language", font=("Segoe UI", 9), foreground="#5a6b60",
+                 background=MENU_FOND).pack(anchor="w")
+        self.langue = tk.StringVar(value=langues.LANGUES[langues.courante()])
+        selecteur = ttk.Combobox(bas, textvariable=self.langue, values=list(langues.LANGUES.values()),
+                                 state="readonly", width=18)
+        selecteur.pack(anchor="w", pady=(4, 10), fill="x")
+        selecteur.bind("<<ComboboxSelected>>", lambda _e: self.changer_langue())
+        from .aide import VERSION
+        tk.Label(bas, text=f"MVOGMBI_Sync {VERSION}", font=("Segoe UI", 8), foreground="#8a978e",
+                 background=MENU_FOND).pack(anchor="w")
+
+    def aller(self, index: int) -> None:
+        self.onglets.select(index)
+        for i, bouton in enumerate(self.boutons_menu):
+            actif = i == index
+            bouton.configure(background=MENU_ACTIF if actif else MENU_FOND,
+                             foreground=VERT_FONCE if actif else TEXTE,
+                             font=("Segoe UI Semibold", 10) if actif else ("Segoe UI", 10))
+            self.barres_menu[i].configure(background=JAUNE if actif else MENU_FOND)
+        self._actif = self.boutons_menu[index]
 
     @staticmethod
     def _charger_logo() -> dict:
@@ -157,7 +253,7 @@ class Application(tk.Tk):
             ttk.Button(parent, text=t("Parcourir…"), command=lambda: self._parcourir(cle, *parcourir)).grid(
                 row=ligne, column=2, padx=(6, 0))
         if aide:
-            ttk.Label(parent, text=aide, foreground="#777", wraplength=560).grid(
+            ttk.Label(parent, text=aide, style="Aide.TLabel", wraplength=560).grid(
                 row=ligne + 1, column=1, sticky="w", pady=(0, 4))
         parent.columnconfigure(1, weight=1)
         return champ
@@ -167,18 +263,27 @@ class Application(tk.Tk):
         if chemin:
             self.vars[cle].set(str(Path(chemin)))
 
-    def _cadre(self, titre: str) -> ttk.Frame:
-        cadre = ttk.Frame(self.onglets, padding=14)
+    def _cadre(self, titre: str, icone: str = "•") -> ttk.Frame:
+        cadre = ttk.Frame(self.onglets, padding=(4, 4))
         self.onglets.add(cadre, text=titre)
+        self._pages.append((icone, titre))
         return cadre
 
-    def _titre(self, parent, texte: str) -> ttk.Label:
-        etiquette = ttk.Label(parent, text=texte, font=("Segoe UI", 10, "bold"))
-        etiquette.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
-        return etiquette
+    def _titre(self, parent, texte: str) -> tk.Frame:
+        fond = self._fond()
+        bloc = tk.Frame(parent, background=fond)
+        tk.Label(bloc, text=texte, font=("Segoe UI Semibold", 16), foreground=VERT_FONCE, background=fond).pack(anchor="w")
+        souligne = tk.Frame(bloc, background=fond)
+        souligne.pack(anchor="w", pady=(4, 0))
+        for couleur, largeur in ((JAUNE, 46), (ROUGE, 14)):
+            tk.Frame(souligne, width=largeur, height=4, background=couleur).pack(side="left", padx=(0, 4))
+        bloc.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 16))
+        return bloc
 
     def _sortie(self, parent, hauteur=12) -> tk.Text:
-        return tk.Text(parent, height=hauteur, wrap="word", font=("Consolas", 9), relief="solid", borderwidth=1)
+        return tk.Text(parent, height=hauteur, wrap="word", font=("Cascadia Mono", 9), relief="flat",
+                       background="#f6f8f7", foreground="#24332a", borderwidth=0, padx=10, pady=8,
+                       highlightthickness=1, highlightbackground="#dfe6e1", highlightcolor=VERT)
 
     def _tache(self, titre: str, fonction, zone: tk.Text | None = None) -> None:
         """Exécute une action longue en arrière-plan ; ses messages s'affichent dans `zone`."""
@@ -220,22 +325,23 @@ class Application(tk.Tk):
         from .aide import ACCUEIL, FAQ
 
         blocs = (ACCUEIL if page == "accueil" else FAQ)[langues.courante()]
-        cadre = ttk.Frame(self.onglets, padding=(14, 10))
+        cadre = ttk.Frame(self.onglets, padding=(4, 4))
         self.onglets.add(cadre, text=titre_onglet)
+        self._pages.append(("🏠" if page == "accueil" else "❓", titre_onglet))
         if page == "accueil" and self._images:
             ttk.Label(cadre, image=self._images["grand"]).pack(side="left", anchor="n", padx=(0, 18))
-        zone = tk.Text(cadre, wrap="word", relief="flat", background="white",
-                       padx=18, pady=12, font=("Segoe UI", 10), cursor="arrow", spacing1=2, spacing3=2)
+        zone = tk.Text(cadre, wrap="word", relief="flat", background="white", borderwidth=0,
+                       highlightthickness=1, highlightbackground="#dfe6e1", padx=26, pady=18, font=("Segoe UI", 10), cursor="arrow", spacing1=2, spacing3=2)
         defilement = ttk.Scrollbar(cadre, orient="vertical", command=zone.yview)
         zone.configure(yscrollcommand=defilement.set)
         defilement.pack(side="right", fill="y")
         zone.pack(side="left", fill="both", expand=True)
-        zone.tag_configure("titre", font=("Segoe UI", 16, "bold"), foreground=VERT, spacing3=10)
-        zone.tag_configure("sous_titre", font=("Segoe UI", 12, "bold"), spacing1=14, spacing3=4)
+        zone.tag_configure("titre", font=("Segoe UI Semibold", 20), foreground=VERT, spacing3=12)
+        zone.tag_configure("sous_titre", font=("Segoe UI Semibold", 13), foreground="#24332a", spacing1=16, spacing3=6)
         zone.tag_configure("para", spacing3=6)
         zone.tag_configure("etape", lmargin1=12, lmargin2=30, spacing3=4)
         zone.tag_configure("puce", lmargin1=12, lmargin2=28, spacing3=3)
-        zone.tag_configure("question", font=("Segoe UI", 10, "bold"), foreground="#1b5e9f", spacing1=12)
+        zone.tag_configure("question", font=("Segoe UI Semibold", 11), foreground=VERT_FONCE, spacing1=14)
         zone.tag_configure("reponse", lmargin1=12, lmargin2=12, spacing3=4)
         for type_bloc, texte in blocs:
             prefixe = "•  " if type_bloc == "puce" else ("Q.  " if type_bloc == "question" else "")
@@ -245,7 +351,7 @@ class Application(tk.Tk):
     # ---------------------------------------------------------------- onglets de configuration
     def _onglet_clover(self) -> None:
         c = self.config_toml.get("clover", {})
-        f = self._cadre(t("1. Clover"))
+        f = self._cadre(t("1. Clover"), "🛒")
         self._titre(f, t("Accès à votre compte Clover (lecture des ventes)"))
         self._champ(f, 1, t("Identifiant marchand"), "clover.merchant_id", c.get("merchant_id", ""),
                     aide=t("13 caractères, visibles dans l'adresse du tableau de bord Clover après « /m/ »."))
@@ -260,7 +366,7 @@ class Application(tk.Tk):
 
     def _onglet_sage(self) -> None:
         b, i, a = (self.config_toml.get(s, {}) for s in ("sage_base", "sage_import", "automatique"))
-        f = self._cadre(t("2. Sage 50"))
+        f = self._cadre(t("2. Sage 50"), "📒")
         self._titre(f, t("Fichier d'entreprise et comptes Sage"))
         types = [(t("Fichier d'entreprise Sage"), "*.SAI"), (t("Tous les fichiers"), "*.*")]
         self._champ(f, 1, t("Fichier d'entreprise (.SAI)"), "sage.fichier", i.get("fichier_entreprise", ""),
@@ -281,7 +387,7 @@ class Application(tk.Tk):
 
     def _onglet_courriel(self) -> None:
         c = self.config_toml.get("courriel", {})
-        f = self._cadre(t("3. Courriel"))
+        f = self._cadre(t("3. Courriel"), "📧")
         self._titre(f, t("Alertes par courriel"))
         self._champ(f, 1, t("Serveur d'envoi (SMTP)"), "courriel.serveur", c.get("serveur", ""),
                     aide=t("Ex. smtp.office365.com (Outlook) ou smtp.gmail.com (Gmail : mot de passe d'application)."))
@@ -306,14 +412,14 @@ class Application(tk.Tk):
 
     def _onglet_automatisation(self) -> None:
         a = self.config_toml.get("automatique", {})
-        f = self._cadre(t("4. Automatisation"))
+        f = self._cadre(t("4. Automatisation"), "⏰")
         self._titre(f, t("Traitement automatique quotidien"))
         self._champ(f, 1, t("Heure du traitement"), "auto.heure", a.get("heure", "01:00"),
                     aide=t("HH:MM. L'ordinateur doit être allumé et la session Windows ouverte ; Sage peut être fermé."))
         boutons = ttk.Frame(f)
         boutons.grid(row=3, column=1, sticky="w", pady=8)
-        ttk.Button(boutons, text=t("Installer la tâche planifiée"), command=self.installer_tache).pack(side="left")
-        ttk.Button(boutons, text=t("Retirer la tâche"), command=self.retirer_tache).pack(side="left", padx=6)
+        self._bouton_principal(boutons, "⏰  " + t("Installer la tâche planifiée"), self.installer_tache).pack(side="left")
+        self._bouton_principal(boutons, t("Retirer la tâche"), self.retirer_tache, ROUGE, "#a81d2f").pack(side="left", padx=6)
         ttk.Button(boutons, text=t("État de la tâche"), command=self.etat_tache).pack(side="left")
         ttk.Button(boutons, text=t("Créer un raccourci sur le Bureau"), command=self.raccourci).pack(side="left", padx=6)
         ttk.Button(f, text=t("Reprendre une configuration existante…"), command=self.reprendre).grid(
@@ -330,22 +436,26 @@ class Application(tk.Tk):
 
         self.page_correspondance = PageCorrespondance(self.onglets, self.racine, TITRE)
         self.onglets.add(self.page_correspondance, text=t("5. Correspondance des articles"))
+        self._pages.append(("🔗", t("5. Correspondance")))
 
     def _onglet_tableau(self) -> None:
-        f = self._cadre(t("6. Tableau de bord"))
+        f = self._cadre(t("6. Tableau de bord"), "📊")
+        entete = ttk.Frame(f)
+        entete.pack(fill="x")
+        self._titre(entete, t("6. Tableau de bord")[3:])
+        self.cartes = tk.Frame(f, background=self._fond())
+        self.cartes.pack(fill="x", pady=(0, 12))
         haut = ttk.Frame(f)
         haut.pack(fill="x")
-        ttk.Button(haut, text=t("Lancer maintenant"), command=lambda: self.lancer(False)).pack(side="left")
+        self._bouton_principal(haut, "▶  " + t("Lancer maintenant"), lambda: self.lancer(False)).pack(side="left")
         ttk.Button(haut, text=t("Simulation (sans import)"), command=lambda: self.lancer(True)).pack(side="left", padx=6)
         ttk.Button(haut, text=t("Ouvrir la correspondance des articles"),
                    command=lambda: self.ouvrir(self.racine / "donnees" / "correspondance_articles.xlsx")).pack(side="left")
         ttk.Button(haut, text=t("Dossier des données"),
                    command=lambda: self.ouvrir(self.racine / "donnees")).pack(side="left", padx=6)
         ttk.Button(haut, text=t("Actualiser"), command=self.actualiser_tableau).pack(side="right")
-        self.resume_tableau = ttk.Label(f, text="", font=("Segoe UI", 10), padding=(0, 10))
-        self.resume_tableau.pack(fill="x")
-        self.sortie_tableau = self._sortie(f, 18)
-        self.sortie_tableau.pack(fill="both", expand=True)
+        self.sortie_tableau = self._sortie(f, 16)
+        self.sortie_tableau.pack(fill="both", expand=True, pady=(12, 0))
 
     # ---------------------------------------------------------------- actions
     def enregistrer(self) -> bool:
@@ -557,8 +667,24 @@ class Application(tk.Tk):
             tache = t("installée") if "non installée" not in planification.etat() else t("NON installée")
         except Exception:
             tache = "?"
-        self.resume_tableau.config(text=t("Dernière facture importée : {derniere}     •     Tâche planifiée : {tache}",
-                                          derniere=derniere, tache=tache))
+        problemes = 0
+        journal_auto = self.racine / "donnees" / "journal_automatique.log"
+        if journal_auto.exists():
+            execution = journal_auto.read_text(encoding="utf-8").split("===== ")[-1]
+            problemes = execution.count("PROBLÈME") + execution.count("ERREUR")
+        for enfant in self.cartes.winfo_children():
+            enfant.destroy()
+        for titre, valeur, couleur in (
+                (t("Dernière facture importée"), derniere, VERT),
+                (t("Tâche planifiée"), tache, VERT if tache == t("installée") else JAUNE),
+                (t("Points à corriger (dernier traitement)"), str(problemes), ROUGE if problemes else VERT)):
+            carte = tk.Frame(self.cartes, background="white", highlightthickness=1, highlightbackground="#e2e8e4")
+            carte.pack(side="left", fill="x", expand=True, padx=(0, 10))
+            tk.Frame(carte, height=4, background=couleur).pack(fill="x")
+            tk.Label(carte, text=titre, font=("Segoe UI", 9), foreground="#6b7a70", background="white",
+                     anchor="w").pack(fill="x", padx=14, pady=(10, 0))
+            tk.Label(carte, text=valeur, font=("Segoe UI Semibold", 14), foreground=TEXTE, background="white",
+                     anchor="w").pack(fill="x", padx=14, pady=(0, 12))
         log = self.racine / "donnees" / "journal_automatique.log"
         if log.exists() and not self.sortie_tableau.get("1.0", "end").strip():
             self.sortie_tableau.insert("end", "\n".join(log.read_text(encoding="utf-8").splitlines()[-60:]))

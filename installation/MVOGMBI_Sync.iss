@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.1.0"
+#define Version "1.2.0"
 
 [Setup]
 AppId={{6E4B0C2A-2E54-4F0F-9C8B-5D1C2B8F4A11}
@@ -24,12 +24,36 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
+; Choix de la langue au lancement de l'installateur ; elle devient aussi la langue de l'application.
+ShowLanguageDialog=yes
+UsePreviousLanguage=no
 
 [Languages]
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
+Name: "en"; MessagesFile: "compiler:Default.isl"
+
+[CustomMessages]
+fr.TacheBureau=Créer un raccourci sur le Bureau
+en.TacheBureau=Create a desktop shortcut
+fr.GroupeRaccourcis=Raccourcis :
+en.GroupeRaccourcis=Shortcuts:
+fr.OuvrirApplication=Ouvrir MVOGMBI_Sync pour la configuration
+en.OuvrirApplication=Open MVOGMBI_Sync to configure it
+fr.JournalTraitement=Journal du traitement
+en.JournalTraitement=Run log
+fr.Desinstaller=Désinstaller MVOGMBI_Sync
+en.Desinstaller=Uninstall MVOGMBI_Sync
+fr.ReglageLangue=Réglage de la langue de l'application…
+en.ReglageLangue=Setting the application language…
+fr.TitreLangue=Langue de l'application
+en.TitreLangue=Application language
+fr.DescriptionLangue=Dans quelle langue MVOGMBI_Sync doit-il s'afficher ?
+en.DescriptionLangue=Which language should MVOGMBI_Sync use?
+fr.ChoixLangue=Choisissez la langue de l'application (modifiable ensuite dans l'application) :
+en.ChoixLangue=Choose the application language (can be changed later in the application):
 
 [Tasks]
-Name: "bureau"; Description: "Créer un raccourci sur le Bureau"; GroupDescription: "Raccourcis :"
+Name: "bureau"; Description: "{cm:TacheBureau}"; GroupDescription: "{cm:GroupeRaccourcis}"
 
 [Files]
 Source: "..\dist\MVOGMBI_Sync\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -40,13 +64,51 @@ Name: "{app}\donnees"
 
 [Icons]
 Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"
-Name: "{group}\Journal du traitement"; Filename: "{app}\donnees\journal_automatique.log"
-Name: "{group}\Désinstaller MVOGMBI_Sync"; Filename: "{uninstallexe}"
+Name: "{group}\{cm:JournalTraitement}"; Filename: "{app}\donnees\journal_automatique.log"
+Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"; Tasks: bureau
 
 [Run]
-Filename: "{app}\MVOGMBI_Sync.exe"; Description: "Ouvrir MVOGMBI_Sync pour la configuration"; Flags: nowait postinstall skipifsilent
+; Langue de l'installation enregistrée dans config.toml ([general] langue = fr | en)
+Filename: "{app}\MVOGMBI_Sync_console.exe"; Parameters: "langue {code:LangueApplication}"; WorkingDir: "{app}"; StatusMsg: "{cm:ReglageLangue}"; Flags: runhidden waituntilterminated
+Filename: "{app}\MVOGMBI_Sync.exe"; Description: "{cm:OuvrirApplication}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; Retire la tâche planifiée de 1 h (les données et la configuration restent dans le dossier).
 Filename: "{app}\MVOGMBI_Sync_console.exe"; Parameters: "planifier --retirer"; Flags: runhidden; RunOnceId: "RetirerTache"
+
+[Code]
+{ Page « Langue de l'application » : liste déroulante des langues acceptées par l'application. }
+var
+  PageLangue: TWizardPage;
+  ListeLangues: TNewComboBox;
+
+procedure InitializeWizard;
+var
+  Etiquette: TNewStaticText;
+begin
+  PageLangue := CreateCustomPage(wpSelectTasks, CustomMessage('TitreLangue'), CustomMessage('DescriptionLangue'));
+  Etiquette := TNewStaticText.Create(PageLangue);
+  Etiquette.Parent := PageLangue.Surface;
+  Etiquette.Caption := CustomMessage('ChoixLangue');
+  Etiquette.AutoSize := True;
+  ListeLangues := TNewComboBox.Create(PageLangue);
+  ListeLangues.Parent := PageLangue.Surface;
+  ListeLangues.Style := csDropDownList;
+  ListeLangues.Top := Etiquette.Top + Etiquette.Height + ScaleY(10);
+  ListeLangues.Width := ScaleX(260);
+  ListeLangues.Items.Add('Français');
+  ListeLangues.Items.Add('English');
+  if ActiveLanguage = 'en' then
+    ListeLangues.ItemIndex := 1
+  else
+    ListeLangues.ItemIndex := 0;
+end;
+
+function LangueApplication(Param: String): String;
+begin
+  if ListeLangues.ItemIndex = 1 then
+    Result := 'en'
+  else
+    Result := 'fr';
+end;
