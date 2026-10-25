@@ -149,6 +149,10 @@ def verifier_comptes_sage(config_toml: dict, fichier_sai=None, numeros: set[str]
     with ouvrir_base_sage(config_toml, fichier_sai) as base:
         articles = base.comptes_articles()
         noms = base.noms_comptes()
+        invisibles = base.numeros_avec_caracteres_invisibles()
+    for numero, description in invisibles.items():
+        if numeros is None or numero in numeros:
+            print(f"  ! Numéro d'article avec caractères invisibles (à retaper dans Sage) : {numero} {description}")
     if numeros is not None:
         articles = [a for a in articles if a.numero in numeros]
     anomalies = verifier(articles, noms)
@@ -437,18 +441,24 @@ def commande_importer(args: argparse.Namespace) -> None:
             mes_articles = base.client_utilise_mes_articles(client)
             numeros = sorted({l.numero_sage for imp, _ in factures for l in imp.lignes})
             sans_compte = base.articles_sans_compte_revenus(numeros)
+            invisibles = {n: d for n, d in base.numeros_avec_caracteres_invisibles().items() if n in set(numeros)}
             existantes = {imp.facture.numero for imp, _ in factures if base.facture_existe(imp.facture.numero, client)}
     except Exception as exc:
         if not args.forcer:
             sys.exit(f"\nImport annulé : vérifications impossibles dans Sage ({exc}). "
                      "Ouvrez le fichier d'entreprise dans Sage ou relancez avec --forcer.")
-        mes_articles, sans_compte, existantes = True, [], set()
+        mes_articles, sans_compte, existantes, invisibles = True, [], set(), {}
     if mes_articles is None:
         sys.exit(f"\nImport annulé : le client « {client} » n'existe pas dans {fichier_sai.name}.")
     if not mes_articles:
         sys.exit(f"\nImport annulé : dans {fichier_sai.name}, la fiche du client « {client} » (onglet "
                  "Importer/Exporter) doit indiquer que le client utilise vos numéros d'articles. "
                  "Sinon Sage ne reconnaît aucun article de la facture.")
+    if invisibles:
+        details = "\n".join(f"   {numero}  {nom}" for numero, nom in invisibles.items())
+        sys.exit(f"\nImport annulé : dans {fichier_sai.name}, le numéro de ces articles contient des caractères "
+                 f"invisibles (retour à la ligne ou espace) ; Sage ne les reconnaîtrait pas. Dans la fiche de "
+                 f"l'article, effacez le numéro et retapez-le :\n{details}")
     if sans_compte:
         details = "\n".join(f"   {numero}  {nom}" for numero, nom in sans_compte)
         sys.exit(f"\nImport annulé : ces articles n'ont pas de compte de revenus dans {fichier_sai.name} "

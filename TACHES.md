@@ -62,9 +62,12 @@ On coche une case (`[x]`) quand la tâche est terminée et vérifiée.
 - [x] [Claude] Vérification automatique des comptes des articles Sage (15xx -> 40xx / 50xx) : commande `verifier-comptes`, contrôle dans `correspondance` et `importer`
 - [ ] [Vous] Corriger dans Sage les 15 articles sans compte de produits et les 21 comptes incohérents (vraie comptabilité et copie d'essai)
 - [x] [Ensemble] Import automatique réussi dans la copie d'essai : « Vente 2026-10-17 », 4 187,98 $, TPS 20,16 $ / TVQ 40,20 $ ; doublon refusé
+- [x] [Ensemble] Mai 2026 importé dans la copie d'essai : 31 factures journalières (« Vente 2026-05-01 » à « Vente 2026-05-31 »), 82 012,74 $, taxes 1 352,99 $, un seul import
+- [x] [Claude] Contrôle des numéros d'articles Sage avec caractères invisibles (bloquant avant import)
 - [ ] [Ensemble] Vérifier la facture importée : quantités, montants, taxes, total, inventaire
 - [ ] [Claude] Corriger jusqu'à un import sans erreur ni avertissement
-- [ ] [Ensemble] Répéter l'essai sur une semaine et sur un mois
+- [x] [Ensemble] Répéter l'essai sur un mois (une facture par jour : `importer --periode mois --date … --par-jour`)
+- [ ] [Ensemble] Écart de ~2 $ sur les rabais de janvier (export mensuel Clover) : comparer quelques exports journaliers de janvier
 
 ## Étape 5 — Contrôles et sécurité
 

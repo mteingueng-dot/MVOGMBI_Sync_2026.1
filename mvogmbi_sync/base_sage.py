@@ -123,6 +123,20 @@ class BaseSage:
             + ",".join(["%s"] * len(numeros)) + ")", tuple(numeros))
         return [(r["sPartCode"], r["sName"]) for r in lignes]
 
+    def numeros_avec_caracteres_invisibles(self) -> dict[str, str]:
+        """Numéros d'articles contenant des espaces superflus ou des retours à la ligne (erreur de saisie dans Sage).
+
+        Sage ne les reconnaît pas dans un fichier d'import et ouvre une fenêtre « Select Item or Account ».
+        Retourne {numéro nettoyé : description}.
+        """
+        resultat = {}
+        for r in self.requete("SELECT sPartCode, sName FROM tinvent"):
+            brut = str(r["sPartCode"] or "")
+            propre = " ".join(brut.split())
+            if brut != propre and propre:
+                resultat[propre] = reparer_texte(str(r["sName"] or ""))
+        return resultat
+
     def facture_existe(self, numero: str, client: str) -> bool:
         """Une facture de ce numéro existe-t-elle déjà pour ce client (table des transactions clients) ?"""
         lignes = self.requete(
