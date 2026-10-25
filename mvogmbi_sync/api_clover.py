@@ -9,6 +9,7 @@ Ces règles sont à valider en comparant avec un export Clover de la même journ
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
@@ -63,12 +64,15 @@ class ClientClover:
         return reponse.json()
 
     def categories_par_article(self) -> dict[str, str]:
-        """id d'article Clover -> nom de sa première catégorie."""
+        """id d'article Clover -> nom de sa première catégorie (lu une fois par exécution)."""
+        if getattr(self, "_categories", None) is not None:
+            return self._categories
         resultat: dict[str, str] = {}
         for article in self._pages("items", {"expand": "categories"}):
             cats = (article.get("categories") or {}).get("elements") or []
             if cats:
                 resultat[article["id"]] = cats[0].get("name", SANS_CATEGORIE)
+        self._categories = resultat
         return resultat
 
     def article(self, id_article: str) -> dict | None:
@@ -83,20 +87,36 @@ class ClientClover:
             if not a.get("deleted") and a.get("isRevenue") is not False
         ]
 
+    EXPANSION_COMMANDE = "lineItems,lineItems.discounts,lineItems.modifications,lineItems.taxRates,discounts,payments"
+
+    def _get(self, chemin: str, params: dict | None = None) -> requests.Response:
+        """GET avec quelques nouvelles tentatives si Clover limite le débit (429) ou a une erreur passagère."""
+        for tentative in range(5):
+            reponse = self.session.get(self._url(chemin), params=params, timeout=60)
+            if reponse.status_code not in (429, 500, 502, 503, 504):
+                return reponse
+            time.sleep(1 + 2 * tentative)
+        return reponse
+
     def commandes(self, debut: date, fin: date) -> Iterator[dict]:
         """Commandes payées pendant la période.
 
         Comme le rapport Clover, une vente est datée de son paiement, pas de la création de la commande
-        (une commande ouverte le 17 et payée le 19 compte pour le 19). Un paiement modifie la commande :
-        on lit donc les commandes modifiées depuis le début de la période, puis on garde celles dont
-        le premier paiement réussi tombe dans la période.
+        (une commande ouverte le 17 et payée le 19 compte pour le 19). On part donc des paiements de la
+        période — le filtre par date des paiements fonctionne aussi au-delà de 90 jours, contrairement à
+        celui des commandes — puis on charge chaque commande et on garde celles dont le premier paiement
+        réussi tombe dans la période.
         """
         t0, t1 = en_millisecondes(debut, fin, self.config.fuseau_horaire)
-        params = {
-            "filter": f"modifiedTime>={t0}",
-            "expand": "lineItems,lineItems.discounts,lineItems.modifications,lineItems.taxRates,discounts,payments",
-        }
-        for commande in self._pages("orders", params):
+        ids = []
+        for paiement in self._pages("payments", {"filter": [f"createdTime>={t0}", f"createdTime<{t1}"]}):
+            id_commande = (paiement.get("order") or {}).get("id")
+            if id_commande and id_commande not in ids:
+                ids.append(id_commande)
+        for id_commande in ids:
+            reponse = self._get(f"orders/{id_commande}", {"expand": self.EXPANSION_COMMANDE})
+            reponse.raise_for_status()
+            commande = reponse.json()
             moment = moment_paiement(commande)
             if moment is not None and t0 <= moment < t1:
                 yield commande

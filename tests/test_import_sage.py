@@ -62,3 +62,18 @@ def test_numero_en_deuxieme_position(tmp_path):
     imp = preparer_import(facture_test(), table())
     chemin = ecrire_imp(imp, tmp_path / "f.IMP", ConfigImport(position_numero=2))
     assert '"3","Vente 2026-10-17","","10-17-2026"' in chemin.read_text(encoding="cp1252")
+
+
+def test_plusieurs_factures_dans_un_fichier(tmp_path):
+    from mvogmbi_sync.facture import preparer_facture
+    from datetime import date as d
+
+    def jour(n):
+        j = d(2026, 5, n)
+        rapport = RapportVentes(j, j, "api", [LigneVente("Riz", "Riz", D("1"), ventes_brutes=D("10"), id_article="A1")])
+        return preparer_import(preparer_facture(rapport, TypePeriode.JOUR), table())
+
+    chemin = ecrire_imp([jour(1), jour(2)], tmp_path / "mai.IMP")
+    texte = chemin.read_text(encoding="cp1252")
+    assert texte.count("<Version>") == 1 and texte.count("<SalInvoice>") == 2 and texte.count("</SalInvoice>") == 2
+    assert '"","Vente 2026-05-01","05-01-2026"' in texte and '"","Vente 2026-05-02","05-02-2026"' in texte

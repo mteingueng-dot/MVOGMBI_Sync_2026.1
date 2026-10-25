@@ -140,21 +140,15 @@ def _nombre(valeur: Decimal, decimales: int) -> str:
     return f'"{valeur.quantize(Decimal(1).scaleb(-decimales), rounding=ROUND_HALF_UP)}"'
 
 
-def ecrire_imp(imp: ImportSage, chemin: Path, config: ConfigImport | None = None) -> Path:
-    config = config or ConfigImport()
+def _bloc_facture(imp: ImportSage, config: ConfigImport) -> list[str]:
     f = imp.facture
-    date_sage = f.date_facture.strftime("%m-%d-%Y")
     numero_facture, numero_commande = (f.numero, "") if config.position_numero == 2 else ("", f.numero)
     lignes = [
-        "<Version>",
-        f'{_texte(config.version)},{_texte(config.pays)}',
-        "</Version>",
-        "",
         "<SalInvoice>",
         _texte(f.client),
         ",".join([
-            f'"{len(imp.lignes)}"', _texte(numero_facture), _texte(numero_commande), _texte(date_sage),
-            '"0"', '""', _nombre(imp.total, 2), '"0.00"',
+            f'"{len(imp.lignes)}"', _texte(numero_facture), _texte(numero_commande),
+            _texte(f.date_facture.strftime("%m-%d-%Y")), '"0"', '""', _nombre(imp.total, 2), '"0.00"',
         ]),
     ]
     for l in imp.lignes:
@@ -162,7 +156,17 @@ def ecrire_imp(imp: ImportSage, chemin: Path, config: ConfigImport | None = None
         for nom, taux, montant in l.taxes():
             champs += [_texte(nom), '"0"', '"1"', f'"{taux}"', _nombre(montant, 2)]
         lignes.append(",".join(champs))
-    lignes += ["</SalInvoice>", ""]
+    return lignes + ["</SalInvoice>"]
+
+
+def ecrire_imp(imps: ImportSage | list[ImportSage], chemin: Path, config: ConfigImport | None = None) -> Path:
+    """Écrit une ou plusieurs factures dans un même fichier .IMP (un seul import dans Sage)."""
+    config = config or ConfigImport()
+    imps = [imps] if isinstance(imps, ImportSage) else imps
+    lignes = ["<Version>", f'{_texte(config.version)},{_texte(config.pays)}', "</Version>", ""]
+    for imp in imps:
+        lignes += _bloc_facture(imp, config)
+    lignes.append("")
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text("\r\n".join(lignes), encoding=config.encodage, errors="replace", newline="")
     return chemin

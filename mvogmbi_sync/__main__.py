@@ -215,12 +215,13 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     client = ClientClover(charger_config(Path(args.config)))
     print("Lecture du catalogue Clover…")
     catalogue = client.articles()
-    print("Lecture des ventes des 30 derniers jours (pour trier par importance)…")
     fin = date.today() - timedelta(days=1)
+    depuis = date.fromisoformat(args.depuis) if args.depuis else fin - timedelta(days=29)
+    print(f"Lecture des ventes depuis le {depuis} (articles vendus, même supprimés depuis du catalogue)…")
     ventes: dict[str, Decimal] = {}
     ventes_par_id: dict[str, Decimal] = {}
     noms_vendus: dict[str, str] = {}
-    for ligne in client.rapport(fin - timedelta(days=29), fin).lignes:
+    for ligne in client.rapport(depuis, fin).lignes:
         ventes[ligne.nom] = ventes.get(ligne.nom, Decimal("0")) + ligne.ventes_nettes
         if ligne.id_article:
             ventes_par_id[ligne.id_article] = ventes_par_id.get(ligne.id_article, Decimal("0")) + ligne.ventes_nettes
@@ -266,69 +267,101 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     print(f"\nFichier à vérifier : {chemin}")
 
 
-def produire_facture(args: argparse.Namespace):
-    """Prépare la facture de la période et écrit le fichier .IMP et son détail Excel."""
+def config_import(config_toml: dict):
+    from .import_sage import ConfigImport
+
+    c = config_toml.get("sage_import", {})
+    return ConfigImport(version=str(c.get("version", "12001")), pays=str(c.get("pays", "1")),
+                        position_numero=int(c.get("position_numero", 3)))
+
+
+def produire_factures(args: argparse.Namespace):
+    """Prépare la ou les factures de la période (une par jour avec --par-jour) et écrit le fichier .IMP
+    (toutes les factures dans un seul fichier : un seul import, une seule confirmation dans Sage) et le détail Excel.
+
+    Retourne [(import, problèmes)], le chemin du .IMP et celui du détail Excel.
+    """
     import openpyxl
     from openpyxl.styles import Font
 
     from .facture import preparer_facture
-    from .import_sage import ConfigImport, ecrire_imp, lire_correspondance, nom_fichier, preparer_import
+    from .import_sage import ecrire_imp, lire_correspondance, nom_fichier, preparer_import
 
     type_periode = TypePeriode(args.periode)
     debut, fin = bornes(type_periode, date.fromisoformat(args.date))
-    if getattr(args, "export", None):
-        from .export_clover import lire_export
-        rapport = lire_export(Path(args.export), debut, fin)
-    else:
-        from .api_clover import ClientClover
-        rapport = ClientClover(charger_config(Path(args.config))).rapport(debut, fin)
-    facture = preparer_facture(rapport, type_periode)
+    par_jour = getattr(args, "par_jour", False) and debut != fin
+    periodes = [(j, j) for j in jours(debut, fin)] if par_jour else [(debut, fin)]
+    type_facture = TypePeriode.JOUR if par_jour else type_periode
+
     chemin_corresp = Path(args.correspondance)
     if not chemin_corresp.exists():
         sys.exit(f"Fichier de correspondance introuvable : {chemin_corresp} (lancez « correspondance »).")
-    imp = preparer_import(facture, lire_correspondance(chemin_corresp))
+    table = lire_correspondance(chemin_corresp)
+    client = None
+    if not getattr(args, "export", None):
+        from .api_clover import ClientClover
+        client = ClientClover(charger_config(Path(args.config)))
 
-    config_toml = lire_toml(args.config)
-    c = config_toml.get("sage_import", {})
-    config = ConfigImport(version=str(c.get("version", "33101")), pays=str(c.get("pays", "1")),
-                          position_numero=int(c.get("position_numero", 3)))
-    chemin_imp = ecrire_imp(imp, RACINE / "sortie" / "factures" / nom_fichier(facture.numero), config)
+    resultats = []
+    for d, f in periodes:
+        if client is None:
+            from .export_clover import lire_export
+            rapport = lire_export(Path(args.export), d, f)
+        else:
+            rapport = client.rapport(d, f)
+        if not rapport.lignes:
+            print(f"{d} : aucune vente, pas de facture.")
+            continue
+        facture = preparer_facture(rapport, type_facture)
+        imp = preparer_import(facture, table)
+        problemes = [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies
+        if imp.sous_total != rapport.total_net:
+            problemes.insert(0, f"Écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
+        resultats.append((imp, problemes, rapport))
+        print(f"{facture.numero:<22} {len(imp.lignes):>4} lignes  ventes nettes {rapport.total_net:>10,.2f} $  "
+              f"sous-total {imp.sous_total:>10,.2f} $  taxes {imp.total_taxes:>7,.2f} $  total {imp.total:>10,.2f} $"
+              + (f"  ! {len(problemes)} point(s) à vérifier" if problemes else ""))
+        for texte in problemes:
+            print(f"    ! {texte}")
+    if not resultats:
+        sys.exit("Aucune vente sur la période : aucune facture à préparer.")
+
+    nom = nom_fichier(resultats[0][0].facture.numero) if len(resultats) == 1 else f"Ventes_{debut}_au_{fin}.IMP"
+    chemin_imp = ecrire_imp([r[0] for r in resultats], RACINE / "sortie" / "factures" / nom,
+                            config_import(lire_toml(args.config)))
 
     classeur = openpyxl.Workbook()
-    feuille = classeur.active
-    feuille.title = "Facture"
-    feuille.append(["N° article Sage", "Articles Clover", "Quantité", "Prix", "Montant", "Taxe", "TPS/TVH", "TVQ"])
-    for cellule in feuille[1]:
-        cellule.font = Font(bold=True)
-    for l in imp.lignes:
-        t = {nom: m for nom, _, m in l.taxes()}
-        feuille.append([l.numero_sage, " | ".join(l.noms_clover), float(l.quantite), float(l.prix), float(l.montant),
-                        "GQ" if l.taxable else "", float(t.get("TPS/TVH", 0)), float(t.get("TVQ", 0))])
-    feuille.append([])
-    feuille.append(["Sous-total", "", "", "", float(imp.sous_total)])
-    feuille.append(["Taxes", "", "", "", float(imp.total_taxes)])
-    feuille.append(["Total", "", "", "", float(imp.total)])
-    problemes = [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies
-    if imp.sous_total != rapport.total_net:
-        problemes.insert(0, f"Écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
-    if problemes:
-        a = classeur.create_sheet("À vérifier")
-        for texte in problemes:
-            a.append([texte])
-    feuille.column_dimensions["B"].width = 60
+    resume = classeur.active
+    resume.title = "Résumé"
+    resume.append(["Facture", "Date", "Lignes", "Ventes nettes Clover", "Sous-total", "Taxes", "Total",
+                   "Points à vérifier"])
+    for imp, problemes, rapport in resultats:
+        resume.append([imp.facture.numero, imp.facture.date_facture, len(imp.lignes), float(rapport.total_net),
+                       float(imp.sous_total), float(imp.total_taxes), float(imp.total), " | ".join(problemes)])
+    resume.append([])
+    resume.append(["Total", "", sum(len(r[0].lignes) for r in resultats),
+                   float(sum(r[2].total_net for r in resultats)), float(sum(r[0].sous_total for r in resultats)),
+                   float(sum(r[0].total_taxes for r in resultats)), float(sum(r[0].total for r in resultats))])
+    for ligne in (resume[1], resume[resume.max_row]):
+        for cellule in ligne:
+            cellule.font = Font(bold=True)
+    for colonne, largeur in zip("ABCDEFGH", (22, 12, 8, 18, 14, 10, 14, 80)):
+        resume.column_dimensions[colonne].width = largeur
+    for imp, _, _ in resultats:
+        feuille = classeur.create_sheet(imp.facture.date_facture.isoformat() if par_jour else "Facture")
+        feuille.append(["N° article Sage", "Articles Clover", "Quantité", "Prix", "Montant", "Taxe", "TPS/TVH", "TVQ"])
+        for cellule in feuille[1]:
+            cellule.font = Font(bold=True)
+        for l in imp.lignes:
+            t = {n: m for n, _, m in l.taxes()}
+            feuille.append([l.numero_sage, " | ".join(l.noms_clover), float(l.quantite), float(l.prix),
+                            float(l.montant), "GQ" if l.taxable else "", float(t.get("TPS/TVH", 0)),
+                            float(t.get("TVQ", 0))])
+        feuille.column_dimensions["B"].width = 60
     chemin_xlsx = chemin_imp.with_suffix(".xlsx")
     classeur.save(chemin_xlsx)
-
-    print(f"Facture {facture.numero} du {facture.date_facture} — client {facture.client}, {facture.mode_paiement}")
-    print(f"  Ventes nettes Clover : {rapport.total_net:>10,.2f} $")
-    print(f"  Lignes Sage          : {len(imp.lignes)} (dont taxées GQ : {sum(1 for l in imp.lignes if l.taxable)})")
-    print(f"  Sous-total           : {imp.sous_total:>10,.2f} $")
-    print(f"  Taxes                : {imp.total_taxes:>10,.2f} $")
-    print(f"  Total                : {imp.total:>10,.2f} $")
-    for texte in problemes:
-        print(f"  ! {texte}")
     print(f"\nFichier d'import : {chemin_imp}\nDétail (Excel)   : {chemin_xlsx}")
-    return imp, chemin_imp, problemes
+    return [(r[0], r[1]) for r in resultats], chemin_imp, chemin_xlsx
 
 
 def lire_toml(chemin) -> dict:
@@ -337,7 +370,7 @@ def lire_toml(chemin) -> dict:
 
 
 def commande_facture(args: argparse.Namespace) -> None:
-    produire_facture(args)
+    produire_factures(args)
 
 
 def executable_import() -> Path | None:
@@ -351,6 +384,8 @@ def commande_importer(args: argparse.Namespace) -> None:
     import subprocess
     from datetime import datetime
 
+    from .import_sage import ecrire_imp
+
     config_toml = lire_toml(args.config)
     c = config_toml.get("sage_import", {})
     fichier_sai = Path(c.get("fichier_entreprise", ""))
@@ -360,76 +395,87 @@ def commande_importer(args: argparse.Namespace) -> None:
     if not exe or not exe.is_file():
         sys.exit("Sage_SA_import.exe introuvable : indiquez-le dans config.toml ([sage_import] executable).")
 
-    imp, chemin_imp, problemes = produire_facture(args)
-    if problemes and not args.forcer:
-        sys.exit("\nImport annulé : la facture comporte des points à vérifier (voir ci-dessus). "
-                 "Corrigez-les ou relancez avec --forcer.")
-    numero, client = imp.facture.numero, imp.facture.client
+    factures, chemin_imp, _ = produire_factures(args)
+    client = factures[0][0].facture.client
+    journal = RACINE / "donnees" / "journal_imports.csv"
 
-    def existe() -> bool | None:
-        try:
-            with ouvrir_base_sage(config_toml, fichier_sai) as base:
-                return base.facture_existe(numero, client)
-        except Exception as exc:
-            print(f"  (vérification dans Sage impossible : {exc})")
-            return None
+    def noter(imp, code_retour, statut):
+        nouveau = not journal.exists()
+        with journal.open("a", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f, delimiter=";")
+            if nouveau:
+                w.writerow(["Date et heure", "Facture", "Fichier d'entreprise", "Lignes", "Sous-total", "Total",
+                            "Code de retour", "Résultat"])
+            w.writerow([f"{datetime.now():%Y-%m-%d %H:%M:%S}", imp.facture.numero, fichier_sai.name,
+                        len(imp.lignes), f"{imp.sous_total:.2f}", f"{imp.total:.2f}", code_retour, statut])
 
-    sans_compte: list[tuple[str, str]] = []
+    # Contrôles dans le fichier d'entreprise visé
     try:
         with ouvrir_base_sage(config_toml, fichier_sai) as base:
             mes_articles = base.client_utilise_mes_articles(client)
-            sans_compte = base.articles_sans_compte_revenus([l.numero_sage for l in imp.lignes])
-    except Exception:
-        mes_articles = True  # vérification impossible : le contrôle des doublons ci-dessous le signalera
-    try:  # comptes incohérents : avertissement seulement (Sage importe quand même)
-        incoherents = [x for x in verifier_comptes_sage(config_toml, fichier_sai, {l.numero_sage for l in imp.lignes})
-                       if not x.bloquante]
-        for x in incoherents:
-            print(f"  ! {x.article.numero} {x.article.description} : {x.probleme}")
-    except Exception:
-        pass
-    if sans_compte:
-        details = "\n".join(f"   {numero}  {nom}" for numero, nom in sans_compte)
-        sys.exit(f"\nImport annulé : ces articles n'ont pas de compte de revenus dans {fichier_sai.name} "
-                 f"(fiche de l'article dans Sage) :\n{details}")
+            numeros = sorted({l.numero_sage for imp, _ in factures for l in imp.lignes})
+            sans_compte = base.articles_sans_compte_revenus(numeros)
+            existantes = {imp.facture.numero for imp, _ in factures if base.facture_existe(imp.facture.numero, client)}
+    except Exception as exc:
+        if not args.forcer:
+            sys.exit(f"\nImport annulé : vérifications impossibles dans Sage ({exc}). "
+                     "Ouvrez le fichier d'entreprise dans Sage ou relancez avec --forcer.")
+        mes_articles, sans_compte, existantes = True, [], set()
     if mes_articles is None:
         sys.exit(f"\nImport annulé : le client « {client} » n'existe pas dans {fichier_sai.name}.")
     if not mes_articles:
         sys.exit(f"\nImport annulé : dans {fichier_sai.name}, la fiche du client « {client} » (onglet "
                  "Importer/Exporter) doit indiquer que le client utilise vos numéros d'articles. "
                  "Sinon Sage ne reconnaît aucun article de la facture.")
+    if sans_compte:
+        details = "\n".join(f"   {numero}  {nom}" for numero, nom in sans_compte)
+        sys.exit(f"\nImport annulé : ces articles n'ont pas de compte de revenus dans {fichier_sai.name} "
+                 f"(fiche de l'article dans Sage) :\n{details}")
+    try:  # comptes incohérents : avertissement seulement (Sage importe quand même)
+        for x in verifier_comptes_sage(config_toml, fichier_sai, set(numeros)):
+            if not x.bloquante:
+                print(f"  ! {x.article.numero} {x.article.description} : {x.probleme}")
+    except Exception:
+        pass
 
-    deja = existe()
-    if deja:
-        sys.exit(f"\nImport annulé : la facture « {numero} » existe déjà dans Sage.")
-    if deja is None and not args.forcer:
-        sys.exit("\nImport annulé : impossible de vérifier l'absence de doublon dans Sage (Sage ouvert ?). "
-                 "Relancez avec --forcer pour importer quand même.")
+    a_importer = []
+    for imp, problemes in factures:
+        if imp.facture.numero in existantes:
+            print(f"  {imp.facture.numero} : existe déjà dans Sage, ignorée.")
+            noter(imp, "", "déjà présente")
+        elif problemes and not args.forcer:
+            print(f"  {imp.facture.numero} : points à vérifier, non importée (relancer avec --forcer pour l'importer).")
+            noter(imp, "", "non importée : points à vérifier")
+        else:
+            a_importer.append(imp)
+    if not a_importer:
+        sys.exit("\nAucune facture à importer.")
+    if len(a_importer) != len(factures):
+        chemin_imp = ecrire_imp(a_importer, chemin_imp, config_import(config_toml))
 
-    print(f"\nImport dans {fichier_sai.name} avec {exe.name}…")
+    print(f"\nImport de {len(a_importer)} facture(s) dans {fichier_sai.name} avec {exe.name}…")
     try:
         code_retour = subprocess.run([str(exe), str(chemin_imp), str(fichier_sai)], timeout=args.delai).returncode
     except subprocess.TimeoutExpired:  # Sage attend une réponse dans une fenêtre : le processus est arrêté
         code_retour = "délai dépassé"
         print(f"  Import interrompu après {args.delai} s (Sage attendait probablement une réponse dans une fenêtre).")
-    present = existe()
-    statut = "importée" if present else ("non vérifiable" if present is None else "ÉCHEC")
-    journal = RACINE / "donnees" / "journal_imports.csv"
-    nouveau_journal = not journal.exists()
-    with journal.open("a", encoding="utf-8-sig", newline="") as f:
-        w = csv.writer(f, delimiter=";")
-        if nouveau_journal:
-            w.writerow(["Date et heure", "Facture", "Fichier d'entreprise", "Lignes", "Sous-total", "Total",
-                        "Code de retour", "Résultat"])
-        w.writerow([f"{datetime.now():%Y-%m-%d %H:%M:%S}", numero, fichier_sai.name, len(imp.lignes),
-                    f"{imp.sous_total:.2f}", f"{imp.total:.2f}", code_retour, statut])
-    if present:
-        print(f"Facture « {numero} » importée et retrouvée dans Sage. Journal : {journal}")
-    elif present is None:
-        print(f"Import lancé (code {code_retour}), mais vérification impossible. Contrôlez dans Sage.")
-    else:
-        sys.exit(f"ÉCHEC : la facture « {numero} » est introuvable dans Sage après l'import "
-                 f"(code {code_retour}). Journal : {journal}")
+
+    echecs = 0
+    try:
+        with ouvrir_base_sage(config_toml, fichier_sai) as base:
+            presentes = {imp.facture.numero: base.facture_existe(imp.facture.numero, client) for imp in a_importer}
+    except Exception as exc:
+        print(f"  (vérification dans Sage impossible : {exc})")
+        presentes = {imp.facture.numero: None for imp in a_importer}
+    for imp in a_importer:
+        present = presentes[imp.facture.numero]
+        statut = "importée" if present else ("non vérifiable" if present is None else "ÉCHEC")
+        echecs += present is False
+        noter(imp, code_retour, statut)
+        print(f"  {imp.facture.numero:<22} {imp.total:>10,.2f} $  {statut}")
+    print(f"Journal : {journal}")
+    if echecs:
+        sys.exit(f"ÉCHEC : {echecs} facture(s) introuvable(s) dans Sage après l'import (code {code_retour}).")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -464,6 +510,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--export", help="Lire un export Clover au lieu de l'API (sans information de taxe)")
     p.add_argument("--correspondance", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
     p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.add_argument("--par-jour", action="store_true",
+                   help="Une facture par jour de la période (ex. tout un mois : --periode mois --par-jour)")
     p.set_defaults(fonction=commande_facture)
 
     p = sous.add_parser("importer", help="Préparer la facture et l'importer automatiquement dans Sage")
@@ -474,6 +522,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--forcer", action="store_true", help="Importer malgré les points à vérifier")
     p.add_argument("--delai", type=int, default=900, help="Durée maximale de l'import, en secondes")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.add_argument("--par-jour", action="store_true",
+                   help="Une facture par jour de la période (ex. tout un mois : --periode mois --par-jour)")
     p.set_defaults(fonction=commande_importer)
 
     p = sous.add_parser("verifier-comptes", help="Vérifier les comptes des articles Sage (15xx -> 40xx / 50xx)")
@@ -489,6 +539,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--sage", help="Liste des articles exportée de Sage (ex. E:\\Article.txt)")
     p.add_argument("--fichier", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
     p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.add_argument("--depuis", help="Prendre en compte les articles vendus depuis cette date (AAAA-MM-JJ) ; "
+                   "par défaut les 30 derniers jours")
     p.set_defaults(fonction=commande_correspondance)
 
     args = parseur.parse_args(argv)
