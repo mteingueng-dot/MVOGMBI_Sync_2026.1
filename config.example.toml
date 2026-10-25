@@ -13,4 +13,4 @@ fuseau_horaire = "America/Toronto"
 
 [sage]
 # Liste des articles exportée de Sage 50 (Fichier > Importer/Exporter > Exporter)
-articles = 'E:\Article.txt'
+articles = 'donnees\Article.txt'

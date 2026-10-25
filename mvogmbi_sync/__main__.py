@@ -117,7 +117,9 @@ def commande_correspondance(args: argparse.Namespace) -> None:
                                  ecrire_correspondance, lire_confirmes, rapprocher)
 
     config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
-    chemin_sage = Path(args.sage or config_toml.get("sage", {}).get("articles", ""))
+    chemin_sage = Path(args.sage or config_toml.get("sage", {}).get("articles", "donnees/Article.txt"))
+    if not chemin_sage.is_absolute():
+        chemin_sage = RACINE / chemin_sage
     if not chemin_sage.is_file():
         sys.exit("Liste des articles Sage introuvable : indiquez-la avec --sage ou dans config.toml ([sage] articles).")
     sage = lire_articles_sage(chemin_sage)
