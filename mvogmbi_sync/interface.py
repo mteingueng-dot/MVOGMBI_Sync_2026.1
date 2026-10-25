@@ -207,8 +207,9 @@ class Application(tk.Tk):
         self._champ(f, 7, "Expéditeur", "courriel.expediteur", c.get("expediteur", ""))
         self._champ(f, 8, "Destinataire(s)", "courriel.destinataires", c.get("destinataires", ""),
                     aide="Une ou plusieurs adresses séparées par des virgules.")
-        ttk.Checkbutton(f, text="Recevoir aussi un compte rendu quand tout s'est bien passé",
-                        variable=self._var("courriel.envoyer_si_succes", bool(c.get("envoyer_si_succes", False)),
+        ttk.Checkbutton(f, text="Envoyer le compte rendu après chaque traitement, y compris en cas de succès "
+                                "(dates traitées et leur état)",
+                        variable=self._var("courriel.envoyer_si_succes", bool(c.get("envoyer_si_succes", True)),
                                            tk.BooleanVar)).grid(row=10, column=1, sticky="w", pady=6)
         self.sortie_courriel = self._sortie(f, 4)
         ttk.Button(f, text="Envoyer un courriel de test", command=self.tester_courriel).grid(

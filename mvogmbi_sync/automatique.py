@@ -40,6 +40,27 @@ class EtatSage:
         return max(self.dates_factures) if self.dates_factures else None
 
 
+# États d'une date traitée (repris dans le courriel de compte rendu)
+IMPORTEE = "Facture importée"
+PRETE = "Facture prête (simulation)"
+AUCUNE_VENTE = "Aucune vente"
+DEJA_PRESENTE = "Facture déjà présente dans Sage"
+BLOQUEE = "Bloquée"
+REPORTEE = "Reportée à la prochaine exécution"
+ECHEC = "Échec de l'import"
+
+
+@dataclass
+class EtatJour:
+    jour: date
+    etat: str
+    detail: str = ""
+    lignes: int = 0
+    sous_total: Decimal = Decimal("0")
+    taxes: Decimal = Decimal("0")
+    total: Decimal = Decimal("0")
+
+
 @dataclass
 class CompteRendu:
     debut: datetime = field(default_factory=datetime.now)
@@ -47,6 +68,11 @@ class CompteRendu:
     importees: list[str] = field(default_factory=list)
     problemes: list[str] = field(default_factory=list)
     erreur: str = ""
+    fichier: str = ""
+    derniere_avant: date | None = None   # dernière facture journalière trouvée dans Sage au départ
+    periode: tuple[date, date] | None = None
+    jours: list[EtatJour] = field(default_factory=list)
+    simulation: bool = False
 
     def note(self, texte: str) -> None:
         horodate = f"{datetime.now():%H:%M:%S} {texte}"
@@ -76,7 +102,7 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
     from .periodes import TypePeriode
     from .sage_auto import executer, lire_pendant_connexion
 
-    cr = CompteRendu()
+    cr = CompteRendu(simulation=simulation)
     donnees = racine / "donnees"
     c_import = config_toml.get("sage_import", {})
     c_auto = config_toml.get("automatique", {})
@@ -105,6 +131,9 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
         etat = lire_pendant_connexion(exe, fichier_sai, lecture)
         sage_ouvert = False
     debut = max(date_depart, (etat.derniere_date + timedelta(days=1)) if etat.derniere_date else date_depart)
+    cr.fichier, cr.derniere_avant = fichier_sai.name, etat.derniere_date
+    if debut <= fin:
+        cr.periode = (debut, fin)
     cr.note(f"Dernière facture journalière dans Sage : {etat.derniere_date or 'aucune'} ; "
             f"à traiter : du {debut} au {fin}" if debut <= fin else "Sage est à jour : rien à importer.")
     if debut > fin:
@@ -125,11 +154,13 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
     while jour <= fin:
         if jour in etat.dates_factures:
             cr.note(f"{jour} : facture déjà présente dans Sage, ignorée.")
+            cr.jours.append(EtatJour(jour, DEJA_PRESENTE))
             jour += timedelta(days=1)
             continue
         rapport = client.rapport(jour, jour)
         if not rapport.lignes:
             cr.note(f"{jour} : aucune vente.")
+            cr.jours.append(EtatJour(jour, AUCUNE_VENTE))
             jour += timedelta(days=1)
             continue
         facture = preparer_facture(rapport, TypePeriode.JOUR)
@@ -147,8 +178,15 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
             cr.problemes += [f"{jour} : {b}" for b in blocages]
             cr.note(f"{jour} : facture NON préparée ({len(blocages)} problème(s)) ; arrêt à ce jour, "
                     "elle sera reprise à la prochaine exécution.")
+            cr.jours.append(EtatJour(jour, BLOQUEE, " ; ".join(blocages), len(imp.lignes), imp.sous_total,
+                                     imp.total_taxes, imp.total))
+            suivant = jour + timedelta(days=1)
+            while suivant <= fin:
+                cr.jours.append(EtatJour(suivant, REPORTEE, f"en attente de la correction du {jour}"))
+                suivant += timedelta(days=1)
             break
         pretes.append(imp)
+        cr.jours.append(EtatJour(jour, PRETE, "", len(imp.lignes), imp.sous_total, imp.total_taxes, imp.total))
         cr.note(f"{facture.numero} : {len(imp.lignes)} lignes, sous-total {imp.sous_total:,.2f} $, "
                 f"total {imp.total:,.2f} $")
         jour += timedelta(days=1)
@@ -190,9 +228,14 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
         if nouveau:
             w.writerow(["Date et heure", "Facture", "Fichier d'entreprise", "Lignes", "Sous-total", "Total",
                         "Code de retour", "Résultat"])
+        etats = {e.jour: e for e in cr.jours}
         for imp in pretes:
             ok = presentes.get(imp.facture.numero)
             statut = "importée" if ok else ("non vérifiable" if ok is None else "ÉCHEC")
+            e = etats[imp.facture.date_facture]
+            e.etat = IMPORTEE if ok else ECHEC
+            if not ok:
+                e.detail = f"{statut} après l'import ; " + " ; ".join(resultat.erreurs)
             w.writerow([f"{datetime.now():%Y-%m-%d %H:%M:%S}", imp.facture.numero, fichier_sai.name, len(imp.lignes),
                         f"{imp.sous_total:.2f}", f"{imp.total:.2f}", resultat.code_retour, statut])
             if ok:
@@ -300,7 +343,7 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
         ecrire_journal(racine, cr)
         return cr
     verrou.write_text(f"{datetime.now():%Y-%m-%d %H:%M:%S}", encoding="utf-8")
-    cr = CompteRendu()
+    cr = CompteRendu(simulation=simulation)
     try:
         cr = executer_automatique(racine, config_toml, jusqua, simulation)
     except Exception as exc:
@@ -309,7 +352,7 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
     finally:
         verrou.unlink(missing_ok=True)
     ecrire_journal(racine, cr)
-    if not simulation:
+    if not simulation or config_toml.get("courriel", {}).get("envoyer_si_simulation", False):
         try:
             envoyer_compte_rendu(config_toml, cr)
         except Exception as exc:  # l'échec d'envoi est noté, sans masquer le traitement

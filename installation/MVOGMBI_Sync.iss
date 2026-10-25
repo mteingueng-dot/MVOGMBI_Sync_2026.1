@@ -1,9 +1,9 @@
-; Installateur Windows de MVOGMBI_Sync (Inno Setup 6).
+﻿; Installateur Windows de MVOGMBI_Sync (Inno Setup 6).
 ; Installation pour l'utilisateur courant, sans droits d'administrateur, dans un dossier où l'application
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.0.0"
+#define Version "1.0.1"
 
 [Setup]
 AppId={{6E4B0C2A-2E54-4F0F-9C8B-5D1C2B8F4A11}

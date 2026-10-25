@@ -46,4 +46,4 @@ securite = "starttls"
 utilisateur = ""
 expediteur = ""
 destinataires = ""
-envoyer_si_succes = false
+envoyer_si_succes = true
