@@ -334,11 +334,17 @@ def commande_importer(args: argparse.Namespace) -> None:
             print(f"  (vérification dans Sage impossible : {exc})")
             return None
 
+    sans_compte: list[tuple[str, str]] = []
     try:
         with ouvrir_base_sage(config_toml, fichier_sai) as base:
             mes_articles = base.client_utilise_mes_articles(client)
+            sans_compte = base.articles_sans_compte_revenus([l.numero_sage for l in imp.lignes])
     except Exception:
         mes_articles = True  # vérification impossible : le contrôle des doublons ci-dessous le signalera
+    if sans_compte:
+        details = "\n".join(f"   {numero}  {nom}" for numero, nom in sans_compte)
+        sys.exit(f"\nImport annulé : ces articles n'ont pas de compte de revenus dans {fichier_sai.name} "
+                 f"(fiche de l'article dans Sage) :\n{details}")
     if mes_articles is None:
         sys.exit(f"\nImport annulé : le client « {client} » n'existe pas dans {fichier_sai.name}.")
     if not mes_articles:

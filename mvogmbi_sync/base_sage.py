@@ -100,6 +100,15 @@ class BaseSage:
         lignes = self.requete("SELECT bUseMyItem FROM tcustomr WHERE sName = %s", (client,))
         return bool(lignes[0]["bUseMyItem"]) if lignes else None
 
+    def articles_sans_compte_revenus(self, numeros: list[str]) -> list[tuple[str, str]]:
+        """Articles (parmi `numeros`) sans compte de revenus : Sage arrête l'import sur chacun d'eux."""
+        if not numeros:
+            return []
+        lignes = self.requete(
+            "SELECT sPartCode, sName FROM tinvent WHERE (lAcNRev IS NULL OR lAcNRev = 0) AND sPartCode IN ("
+            + ",".join(["%s"] * len(numeros)) + ")", tuple(numeros))
+        return [(r["sPartCode"], r["sName"]) for r in lignes]
+
     def facture_existe(self, numero: str, client: str) -> bool:
         """Une facture de ce numéro existe-t-elle déjà pour ce client (table des transactions clients) ?"""
         lignes = self.requete(
