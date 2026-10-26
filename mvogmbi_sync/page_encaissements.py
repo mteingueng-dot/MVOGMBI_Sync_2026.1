@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .design import CARTE, TEXTE_DOUX, Bouton
+from .design import CARTE, TEXTE_DOUX, Bouton, ChampDate
 from .encaissements import A_SAISIR, A_VENIR, APPLIQUE, ECART, SANS_FACTURE
 from .langues import courante, jours_semaine, t
 
@@ -34,10 +34,10 @@ class PageEncaissements(ttk.Frame):
         hier = date.today() - timedelta(days=1)
         ttk.Label(barre, text=t("Ventes du")).pack(side="left")
         self.debut = tk.StringVar(value=(hier - timedelta(days=30)).isoformat())
-        ttk.Entry(barre, textvariable=self.debut, width=12).pack(side="left", padx=4)
+        ChampDate(barre, self.debut).pack(side="left", padx=4)
         ttk.Label(barre, text=t("au")).pack(side="left")
         self.fin = tk.StringVar(value=hier.isoformat())
-        ttk.Entry(barre, textvariable=self.fin, width=12).pack(side="left", padx=4)
+        ChampDate(barre, self.fin).pack(side="left", padx=4)
         Bouton(barre, "⟳  " + t("Calculer les dépôts"), self.calculer).pack(side="left", padx=8)
         Bouton(barre, "📗  Excel", self.exporter, "secondaire").pack(side="right")
         Bouton(barre, "🤖  " + t("Encaisser dans Sage"), self.encaisser, "accent").pack(side="right", padx=8)

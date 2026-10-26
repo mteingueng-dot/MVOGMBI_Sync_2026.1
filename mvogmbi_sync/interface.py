@@ -21,7 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import coffre, langues
 from .design import (BORDURE, CARTE, FOND, ICONE, ID_APPLICATION, JAUNE, LOGO, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE,
-                     TEXTE_DOUX, VERT, VERT_FONCE, Bouton, fond_de, image_filigrane)
+                     TEXTE_DOUX, VERT, VERT_FONCE, Bouton, ChampDate, fond_de, image_filigrane)
 from .langues import t
 
 TITRE = "MVOGMBI_Sync — Clover → Sage 50"
@@ -239,14 +239,18 @@ class Application(tk.Tk):
         return self.vars[cle]
 
     def _champ(self, parent, ligne: int, libelle: str, cle: str, valeur="", secret: str | None = None,
-               aide: str = "", parcourir: tuple | None = None):
+               aide: str = "", parcourir: tuple | None = None, calendrier: bool = False):
         sur_carte = fond_de(parent) == CARTE
         ttk.Label(parent, text=libelle, style="Carte.TLabel" if sur_carte else "TLabel").grid(
             row=ligne, column=0, sticky="w", pady=4, padx=(0, 14))
         if secret:
             valeur = MASQUE if coffre.present(secret) else ""
-        champ = ttk.Entry(parent, textvariable=self._var(cle, valeur), width=52, show="•" if secret else "")
-        champ.grid(row=ligne, column=1, sticky="we", pady=4)
+        if calendrier:  # date AAAA-MM-JJ avec calendrier cliquable
+            champ = ChampDate(parent, self._var(cle, valeur))
+            champ.grid(row=ligne, column=1, sticky="w", pady=4)
+        else:
+            champ = ttk.Entry(parent, textvariable=self._var(cle, valeur), width=52, show="•" if secret else "")
+            champ.grid(row=ligne, column=1, sticky="we", pady=4)
         if secret:
             # Le masque « •••••••• » n'est pas le mot de passe : il s'efface dès qu'on entre dans le champ,
             # sinon ce qu'on tape s'ajoute à lui ; il revient si le champ est laissé vide.
@@ -560,14 +564,14 @@ class Application(tk.Tk):
                     aide=t("Le fichier dans lequel les factures sont importées. Pour les essais : une COPIE."),
                     parcourir=(t("Fichier d'entreprise Sage"), types))
         self._champ(fichier, 2, t("Premier jour à importer"), "auto.date_depart",
-                    a.get("date_depart", date.today().isoformat()),
+                    a.get("date_depart", date.today().isoformat()), calendrier=True,
                     aide=t("AAAA-MM-JJ. Utilisé seulement si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ »."))
         self._champ(fichier, 4, t("Compte de dépôt des encaissements"), "enc.compte",
                     str(self.config_toml.get("encaissements", {}).get("compte_depot", "1055")),
                     aide=t("Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins)."))
         self._champ(fichier, 6, t("Encaisser à partir des ventes du"), "enc.depart",
                     str(self.config_toml.get("encaissements", {}).get("date_depart", date.today().isoformat())),
-                    aide=t("AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés par le robot."))
+                    calendrier=True, aide=t("AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés par le robot."))
         comptes = self._carte(f, 2, t("Utilisateurs Sage"), "2")
         self._champ(comptes, 0, t("Utilisateur Sage (lecture)"), "sage.utilisateur", b.get("utilisateur", "mvogmbi_sync"),
                     aide=t("Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » "

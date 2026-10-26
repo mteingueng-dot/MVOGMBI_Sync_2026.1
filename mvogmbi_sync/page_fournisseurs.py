@@ -13,7 +13,7 @@ from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
 from .correspondance import conflit_format, normaliser
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, fond_de
+from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, fond_de
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
                            completer, etat_apres_controle, lire_copie_fournisseurs, lire_facture)
 from .langues import t
@@ -92,13 +92,13 @@ class PageFournisseurs(ttk.Frame):
         entete = ttk.Frame(parent, padding=(0, 6, 0, 2))
         entete.pack(fill="x")
         ttk.Label(entete, text=t("Fournisseur Sage")).pack(side="left")
-        self.liste_fournisseurs = ttk.Combobox(entete, textvariable=self.v["fournisseur"], width=34,
-                                               values=self.fournisseurs_sage)
+        # recherche rapide : taper quelques lettres (« basm », « champs ») affiche les fournisseurs Sage correspondants
+        self.liste_fournisseurs = ChampRecherche(entete, self.v["fournisseur"], self.fournisseurs_sage, largeur=34)
         self.liste_fournisseurs.pack(side="left", padx=(4, 12))
-        self.liste_fournisseurs.bind("<KeyRelease>", self.filtrer_fournisseurs)
-        for cle, libelle, largeur in (("numero", "N° de facture", 12), ("date", "Date", 11)):
-            ttk.Label(entete, text=t(libelle)).pack(side="left")
-            ttk.Entry(entete, textvariable=self.v[cle], width=largeur).pack(side="left", padx=(4, 12))
+        ttk.Label(entete, text=t("N° de facture")).pack(side="left")
+        ttk.Entry(entete, textvariable=self.v["numero"], width=12).pack(side="left", padx=(4, 12))
+        ttk.Label(entete, text=t("Date")).pack(side="left")
+        ChampDate(entete, self.v["date"]).pack(side="left", padx=(4, 12))
         Bouton(entete, "👁  " + t("Voir la facture"), self.voir_facture, "secondaire", petit=True).pack(side="right")
         self.lu = ttk.Label(parent, text="", foreground=TEXTE_DOUX)
         self.lu.pack(fill="x")
@@ -284,7 +284,7 @@ class PageFournisseurs(ttk.Frame):
     def _fin_sage(self, noms, articles) -> None:
         self.fournisseurs_sage, self.articles_sage = noms, articles
         self.normalises = [normaliser(f"{a.description} {a.numero}") for a in articles]
-        self.liste_fournisseurs.configure(values=noms)
+        self.liste_fournisseurs.configurer_valeurs(noms)
         self.afficher_liste()
 
     # ---------------------------------------------------------------- facture choisie
@@ -340,14 +340,6 @@ class PageFournisseurs(ttk.Frame):
             self.controle.configure(text="✔ " + t("Facture cohérente et entièrement reliée : prête à importer."),
                                     foreground=VERT_FONCE)
         return problemes
-
-    def filtrer_fournisseurs(self, evenement) -> None:
-        """Taper quelques lettres réduit la liste aux fournisseurs Sage qui les contiennent."""
-        if evenement.keysym in ("Up", "Down", "Return", "Escape", "Tab"):
-            return
-        texte = normaliser(self.v["fournisseur"].get())
-        valeurs = [n for n in self.fournisseurs_sage if texte in normaliser(n)] if texte else self.fournisseurs_sage
-        self.liste_fournisseurs.configure(values=valeurs or self.fournisseurs_sage)
 
     def voir_facture(self) -> None:
         if self.facture:
