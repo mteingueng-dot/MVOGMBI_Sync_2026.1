@@ -2,7 +2,8 @@
 
 Lecture locale d'abord (texte des PDF numériques, un modèle par fournisseur connu, puis un modèle générique) ;
 la lecture est jugée fiable seulement si la somme des lignes, les taxes et le total concordent (au cent près).
-Sinon — et pour les photos, souvent manuscrites — la facture passe à l'IA (module `lecture_ia`).
+Les PDF numérisés et les photos imprimées passent par l'OCR de Windows (module `ocr_windows`) ; les factures
+manuscrites se saisissent dans la page.
 
 Les montants sont lus aussi bien au format anglais (1,573.85) que français (1 200,00).
 """
@@ -359,11 +360,11 @@ def lire_fichier(chemin: Path) -> FactureLue:
     chemin = Path(chemin)
     if chemin.suffix.lower() != ".pdf":
         facture = FactureLue(chemin.name, modele="photo")
-        facture.remarques.append("photo : lecture par l'IA nécessaire")
+        facture.remarques.append("photo : lue par l'OCR de Windows si elle est imprimée, sinon à saisir")
         return facture
     texte = texte_pdf(chemin)
     if len(texte.strip()) < 40:
         facture = FactureLue(chemin.name, modele="PDF numérisé")
-        facture.remarques.append("PDF sans texte (numérisé) : lecture par l'IA nécessaire")
+        facture.remarques.append("PDF numérisé : lu par l'OCR de Windows")
         return facture
     return lire_texte(texte, chemin.name)

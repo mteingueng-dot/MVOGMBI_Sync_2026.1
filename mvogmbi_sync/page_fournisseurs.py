@@ -48,10 +48,9 @@ class PageFournisseurs(ttk.Frame):
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         Bouton(barre, "➕  " + t("Ajouter des factures…"), self.ajouter_factures).pack(side="left")
-        Bouton(barre, "📥  " + t("Lire les nouvelles factures"), self.lire_nouvelles, "secondaire").pack(side="left",
-                                                                                                    padx=(8, 0))
+        Bouton(barre, "⟳  " + t("Actualiser"), self.actualiser, "secondaire").pack(side="left", padx=(8, 0))
         Bouton(barre, "📂  " + t("Dossier des factures"), self.ouvrir_dossier, "secondaire").pack(side="left", padx=8)
-        Bouton(barre, "⟳  " + t("Fournisseurs et articles Sage"), self.mettre_a_jour_sage, "secondaire").pack(side="left")
+        Bouton(barre, "📒  " + t("Fournisseurs et articles Sage"), self.mettre_a_jour_sage, "secondaire").pack(side="left")
         ttk.Label(barre, text=t("Afficher :")).pack(side="left", padx=(16, 4))
         self.filtre = tk.StringVar(value=t("Toutes"))
         liste = ttk.Combobox(barre, textvariable=self.filtre, state="readonly", width=20,
@@ -78,6 +77,8 @@ class PageFournisseurs(ttk.Frame):
         self.liste.pack(side="left", fill="both", expand=True)
         defil.pack(side="right", fill="y")
         self.liste.bind("<<TreeviewSelect>>", lambda _e: self.choisir_facture())
+        self.liste.bind("<Delete>", lambda _e: self.ecarter())
+        self.bind("<Map>", lambda _e: self.actualiser(silencieux=True))  # retour sur la page : liste à jour
 
         bas = ttk.Frame(volets)
         volets.add(bas, weight=3)
@@ -99,6 +100,7 @@ class PageFournisseurs(ttk.Frame):
         ttk.Entry(entete, textvariable=self.v["numero"], width=12).pack(side="left", padx=(4, 12))
         ttk.Label(entete, text=t("Date")).pack(side="left")
         ChampDate(entete, self.v["date"]).pack(side="left", padx=(4, 12))
+        Bouton(entete, "🗑  " + t("Écarter"), self.ecarter, "danger", petit=True).pack(side="right", padx=(6, 0))
         Bouton(entete, "👁  " + t("Voir la facture"), self.voir_facture, "secondaire", petit=True).pack(side="right")
         self.lu = ttk.Label(parent, text="", foreground=TEXTE_DOUX)
         self.lu.pack(fill="x")
@@ -245,11 +247,46 @@ class PageFournisseurs(ttk.Frame):
             messagebox.showwarning(self.titre, t("Fichiers ignorés (format non accepté) : {f}", f=", ".join(ignores)))
         self.lire_nouvelles()
 
+    def actualiser(self, silencieux: bool = False) -> None:
+        """Relit la liste enregistrée et lit les nouvelles factures déposées dans le dossier."""
+        if getattr(self, "_lecture_en_cours", False):
+            return
+        selection = self.liste.selection()
+        self.registre.charger()
+        self.facture = None
+        self.afficher_liste()
+        if selection and self.liste.exists(selection[0]):
+            self.liste.selection_set(selection[0])
+        if self.registre.nouveaux_fichiers():
+            self.lire_nouvelles()
+        elif not silencieux:
+            self.resume.configure(text=self.resume.cget("text") + "   •   " + t("aucune nouvelle facture"))
+
+    def ecarter(self) -> None:
+        """Retire de la liste une facture à ne pas traiter maintenant (fichier rangé dans « ecartees »)."""
+        if not self.facture:
+            messagebox.showinfo(self.titre, t("Choisissez d'abord la facture à écarter dans la liste."))
+            return
+        if not messagebox.askyesno(self.titre, t("Écarter la facture « {f} » ?\n\nElle ne sera plus dans la liste à "
+                                                 "traiter. Son fichier est rangé dans le sous-dossier « ecartees » : "
+                                                 "remettez-le dans le dossier des factures pour la traiter plus tard.",
+                                                 f=self.facture.fichier)):
+            return
+        self.registre.ecarter(self.facture)
+        self.facture = None
+        for cle in self.v:
+            self.v[cle].set("")
+        self.lignes.delete(*self.lignes.get_children())
+        self.controle.configure(text="")
+        self.lu.configure(text="")
+        self.afficher_liste()
+
     def lire_nouvelles(self) -> None:
         nouveaux = self.registre.nouveaux_fichiers()
         if not nouveaux:
             messagebox.showinfo(self.titre, t("Aucune nouvelle facture dans le dossier :\n{d}", d=self.registre.dossier))
             return
+        self._lecture_en_cours = True
         self.resume.configure(text=t("Lecture de {n} facture(s) (l'OCR prend quelques secondes par page)…",
                                      n=len(nouveaux)))
 
@@ -269,6 +306,7 @@ class PageFournisseurs(ttk.Frame):
         threading.Thread(target=travail, daemon=True).start()
 
     def _fin_lecture(self, lues) -> None:
+        self._lecture_en_cours = False
         self.registre.factures.extend(lues)
         self.registre.enregistrer()
         self.afficher_liste()

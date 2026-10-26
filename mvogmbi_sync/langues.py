@@ -61,6 +61,13 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    "Écarter": "Set aside",
+    "aucune nouvelle facture": "no new invoice",
+    "Choisissez d'abord la facture à écarter dans la liste.": "First choose the invoice to set aside in the list.",
+    "Écarter la facture « {f} » ?\n\nElle ne sera plus dans la liste à traiter. Son fichier est rangé dans le "
+    "sous-dossier « ecartees » : remettez-le dans le dossier des factures pour la traiter plus tard.":
+        "Set aside the invoice “{f}”?\n\nIt will no longer be in the list to process. Its file is moved to the "
+        "“ecartees” subfolder: put it back in the invoice folder to process it later.",
     "Prix fournisseur": "Supplier price",
     "Prix Sage": "Sage price",
     "Le facteur doit être supérieur à 0.": "The factor must be greater than 0.",

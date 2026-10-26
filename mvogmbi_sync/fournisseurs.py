@@ -196,6 +196,26 @@ class Registre:
     def chemin_fichier(self, facture: Facture) -> Path:
         return self.dossier / facture.fichier
 
+    def ecarter(self, facture: Facture) -> Path | None:
+        """Retire la facture de la liste à traiter ; son fichier est rangé dans « ecartees » (rien n'est détruit).
+
+        Pour la traiter plus tard : remettre le fichier dans le dossier des factures, puis « Actualiser ».
+        """
+        cible = None
+        source = self.chemin_fichier(facture)
+        if source.exists():
+            dossier = self.dossier / "ecartees"
+            dossier.mkdir(parents=True, exist_ok=True)
+            cible = dossier / source.name
+            numero = 2
+            while cible.exists():
+                cible = dossier / f"{source.stem} ({numero}){source.suffix}"
+                numero += 1
+            source.replace(cible)
+        self.factures.remove(facture)
+        self.enregistrer()
+        return cible
+
 
 # --------------------------------------------------------------------------------------------- correspondance
 class MemoireCorrespondance:

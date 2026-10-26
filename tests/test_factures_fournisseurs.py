@@ -55,3 +55,21 @@ def test_conditionnement():
     assert facteur_propose("Okra") is None
     quantite, prix = convertir(LigneFournisseur("Coco 12/276 g", D("1"), D("27.80"), D("27.80")), D("12"))
     assert (quantite, prix) == (D("12.000"), D("2.3167"))
+
+
+def test_ecarter_une_facture(tmp_path):
+    from mvogmbi_sync.fournisseurs import Facture, Registre, empreinte
+
+    dossier = tmp_path / "donnees" / "factures_fournisseurs"
+    dossier.mkdir(parents=True)
+    photo = dossier / "photo.jpeg"
+    photo.write_bytes(b"photo de facture")
+    registre = Registre(tmp_path)
+    assert registre.nouveaux_fichiers() == [photo]
+    facture = Facture(photo.name, empreinte(photo))
+    registre.factures.append(facture)
+    rangee = registre.ecarter(facture)
+    assert rangee == dossier / "ecartees" / "photo.jpeg" and rangee.read_bytes() == b"photo de facture"
+    assert not photo.exists() and Registre(tmp_path).factures == []
+    assert registre.nouveaux_fichiers() == []  # une facture écartée n'est pas relue
+
