@@ -16,12 +16,14 @@ CLOVER_JETON = "clover_jeton"
 SAGE_LECTURE = "sage_lecture"   # utilisateur Sage « accès par des tiers » (lecture de la base)
 SAGE_IMPORT = "sage_import"     # mot de passe demandé par l'outil d'import de Sage (ex. sysadmin)
 COURRIEL = "courriel"           # mot de passe du compte d'envoi des alertes
+BOITE_PAIEMENTS = "boite_paiements"  # mot de passe de la boîte où arrivent les avis de paiement (IMAP)
 
 LIBELLES = {
     CLOVER_JETON: "Jeton API Clover",
     SAGE_LECTURE: "Mot de passe Sage (lecture)",
     SAGE_IMPORT: "Mot de passe Sage (import)",
     COURRIEL: "Mot de passe du courriel d'envoi",
+    BOITE_PAIEMENTS: "Mot de passe de la boîte des avis de paiement",
 }
 
 

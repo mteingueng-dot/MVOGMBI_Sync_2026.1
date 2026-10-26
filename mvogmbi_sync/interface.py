@@ -612,6 +612,15 @@ class Application(tk.Tk):
             row=7, column=1, sticky="w", pady=(6, 8))
         self.sortie_courriel = self._sortie(envoi, 3)
         self.sortie_courriel.grid(row=8, column=0, columnspan=3, sticky="we")
+        b = self.config_toml.get("boite_paiements", {})
+        boite = self._carte(f, 3, t("Avis de paiement (lecture de la boîte)"), "3",
+                            t("Boîte où arrivent les avis Interac de Desjardins : l'application les lit (sans les marquer "
+                              "comme lus) pour enregistrer les paiements aux fournisseurs."))
+        self._champ(boite, 0, t("Serveur (IMAP)"), "boite.serveur", b.get("serveur", "mail.marchemvogmbi.com"))
+        self._champ(boite, 1, t("Adresse"), "boite.utilisateur", b.get("utilisateur", "contact@marchemvogmbi.com"))
+        self._champ(boite, 2, t("Mot de passe"), "secret.boite", secret=coffre.BOITE_PAIEMENTS)
+        self._champ(boite, 3, t("Lire les avis à partir du"), "boite.depuis", b.get("depuis", "2026-08-01"),
+                    calendrier=True)
 
     def _onglet_automatisation(self) -> None:
         a = self.config_toml.get("automatique", {})
@@ -720,8 +729,13 @@ class Application(tk.Tk):
             expediteur=str(v["courriel.expediteur"]).strip(),
             destinataires=", ".join(adresses(v["courriel.destinataires"])), copie=", ".join(adresses(v["courriel.copie"])),
             envoyer_si_succes=bool(v["courriel.envoyer_si_succes"]))
+        c.setdefault("boite_paiements", {}).update(
+            serveur=str(v["boite.serveur"]).strip(), utilisateur=str(v["boite.utilisateur"]).strip(),
+            depuis=str(v["boite.depuis"]).strip() or "2026-08-01")
+        c["boite_paiements"].setdefault("port", 993)
         for cle_var, cle_coffre in (("secret.clover", coffre.CLOVER_JETON), ("secret.sage_lecture", coffre.SAGE_LECTURE),
-                                    ("secret.sage_import", coffre.SAGE_IMPORT), ("secret.courriel", coffre.COURRIEL)):
+                                    ("secret.sage_import", coffre.SAGE_IMPORT), ("secret.courriel", coffre.COURRIEL),
+                                    ("secret.boite", coffre.BOITE_PAIEMENTS)):
             valeur = str(v[cle_var])
             if valeur.startswith(MASQUE):  # tapé à la suite du masque : seul l'ajout est le mot de passe
                 valeur = valeur[len(MASQUE):]

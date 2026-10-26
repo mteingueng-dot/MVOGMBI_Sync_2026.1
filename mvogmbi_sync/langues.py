@@ -61,6 +61,14 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    "Avis de paiement (lecture de la boîte)": "Payment notices (mailbox reading)",
+    "Boîte où arrivent les avis Interac de Desjardins : l'application les lit (sans les marquer comme lus) pour "
+    "enregistrer les paiements aux fournisseurs.":
+        "Mailbox receiving Desjardins Interac notices: the application reads them (without marking them read) to "
+        "record supplier payments.",
+    "Serveur (IMAP)": "Server (IMAP)",
+    "Adresse": "Address",
+    "Lire les avis à partir du": "Read notices from",
     "Importer dans Sage": "Import into Sage",
     "Aucune facture « Prête à importer ». Reliez tous les articles et enregistrez la facture pour qu'elle le devienne.":
         "No invoice “Ready to import”. Link all items and save the invoice to make it ready.",
