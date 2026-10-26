@@ -29,7 +29,7 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
 
 # Index des pages (ordre du menu)
 (ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, FOURNISSEURS, PAIEMENTS,
- GUIDE, FAQ) = range(12)
+ RAPPROCHEMENT, GUIDE, FAQ) = range(13)
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -116,6 +116,7 @@ class Application(tk.Tk):
         self._onglet_encaissements()
         self._onglet_fournisseurs()
         self._onglet_paiements()
+        self._onglet_rapprochement()
         self._onglet_texte(t("Guide de configuration"), "guide", "📘")
         self._onglet_texte(t("Aide / FAQ"), "faq", "❓")
         self._construire_menu()
@@ -693,6 +694,13 @@ class Application(tk.Tk):
                                             self._enregistrer_depuis_boite)
         self.onglets.add(self.page_paiements, text=t("9. Paiements fournisseurs"))
         self._pages.append(("💸", t("9. Paiements fournisseurs")))
+
+    def _onglet_rapprochement(self) -> None:
+        from .page_rapprochement import PageRapprochement
+
+        self.page_rapprochement = PageRapprochement(self.onglets, self.racine, TITRE)
+        self.onglets.add(self.page_rapprochement, text=t("10. Rapprochement bancaire"))
+        self._pages.append(("🏦", t("10. Rapprochement")))
 
     def _enregistrer_depuis_boite(self, depuis: str) -> None:
         """Date de lecture des avis changée sur la page 9 : même réglage que la page Courriel."""
