@@ -28,7 +28,7 @@ TITRE = "MVOGMBI_Sync — Clover → Sage 50"
 MASQUE = "••••••••"  # affiché quand un secret est déjà enregistré dans le coffre
 
 # Index des pages (ordre du menu)
-ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, GUIDE, FAQ = range(10)
+ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, FOURNISSEURS, GUIDE, FAQ = range(11)
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -69,8 +69,8 @@ class Application(tk.Tk):
         langues.depuis_config(self.config_toml)
         self.file_messages: queue.Queue = queue.Queue()
         self.title(TITRE)
-        largeur = min(1220, self.winfo_screenwidth() - 60)
-        hauteur = min(860, self.winfo_screenheight() - 110)  # la fenêtre reste au-dessus de la barre des tâches
+        largeur = min(1320, self.winfo_screenwidth() - 60)
+        hauteur = min(980, self.winfo_screenheight() - 90)  # la fenêtre reste au-dessus de la barre des tâches
         self.geometry(f"{largeur}x{hauteur}+{max(0, (self.winfo_screenwidth() - largeur) // 2)}+20")
         self.minsize(920, 620)
         self.configure(background=FOND)
@@ -113,6 +113,7 @@ class Application(tk.Tk):
         self._onglet_correspondance()
         self._onglet_tableau()
         self._onglet_encaissements()
+        self._onglet_fournisseurs()
         self._onglet_texte(t("Guide de configuration"), "guide", "📘")
         self._onglet_texte(t("Aide / FAQ"), "faq", "❓")
         self._construire_menu()
@@ -646,6 +647,13 @@ class Application(tk.Tk):
         self.page_encaissements = PageEncaissements(self.onglets, self.racine, TITRE, self.chemin_config)
         self.onglets.add(self.page_encaissements, text=t("7. Encaissements"))
         self._pages.append(("💰", t("7. Encaissements")))
+
+    def _onglet_fournisseurs(self) -> None:
+        from .page_fournisseurs import PageFournisseurs
+
+        self.page_fournisseurs = PageFournisseurs(self.onglets, self.racine, TITRE)
+        self.onglets.add(self.page_fournisseurs, text=t("8. Factures fournisseurs"))
+        self._pages.append(("🧾", t("8. Factures fournisseurs")))
 
     def _onglet_tableau(self) -> None:
         f = self._cadre(t("6. Tableau de bord"), "📊")
