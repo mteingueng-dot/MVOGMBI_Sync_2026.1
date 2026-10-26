@@ -76,6 +76,7 @@ class CompteRendu:
     jours: list[EtatJour] = field(default_factory=list)
     simulation: bool = False
     encaissements: list[str] = field(default_factory=list)  # dépôts encaissés par le robot
+    seulement_encaissements: bool = False  # compte rendu du bouton « Encaisser dans Sage » (sans import)
 
     def note(self, texte: str) -> None:
         horodate = f"{datetime.now():%H:%M:%S} {texte}"

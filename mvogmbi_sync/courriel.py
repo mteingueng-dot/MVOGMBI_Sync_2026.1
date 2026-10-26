@@ -81,8 +81,20 @@ def envoyer(config_toml: dict, sujet: str, corps: str, corps_html: str | None = 
 
 
 def sujet_compte_rendu(cr) -> str:
+    sujet = _sujet_factures(cr)
+    encaisses = len(getattr(cr, "encaissements", []) or [])
+    if encaisses and not cr.erreur:
+        sujet += t(" — {n} dépôt(s) encaissé(s)", n=encaisses)
+    return sujet
+
+
+def _sujet_factures(cr) -> str:
     importees = [j for j in cr.jours if j.etat == "Facture importée"]
     prefixe = t("SIMULATION — ") if cr.simulation else ""
+    if getattr(cr, "seulement_encaissements", False):
+        if cr.erreur or cr.problemes:
+            return t("MVOGMBI_Sync : encaissements — {n} point(s) à vérifier", n=len(cr.problemes) + bool(cr.erreur))
+        return t("MVOGMBI_Sync : encaissements")
     if cr.erreur:
         return prefixe + t("MVOGMBI_Sync : ERREUR du traitement automatique")
     if cr.problemes:
@@ -176,6 +188,20 @@ def html_compte_rendu(cr) -> str:
         + e("\n".join(cr.lignes)) + "</pre></details>"
         f"<p style='margin-top:18px;color:#8a978e;font-size:12px'>MVOGMBI_Sync — {e(COPYRIGHT)} — "
         f"{e(t('Tous droits réservés.'))}</p></div>")
+
+
+def envoyer_bilan_encaissements(config_toml: dict, bilan: dict) -> None:
+    """Courriel après des encaissements lancés à la demande (bouton « Encaisser dans Sage »)."""
+    from .automatique import CompteRendu
+
+    cr = CompteRendu(seulement_encaissements=True)
+    cr.fichier = str(config_toml.get("sage_import", {}).get("fichier_entreprise", "")).rsplit("\\", 1)[-1]
+    cr.encaissements = list(bilan.get("encaisses", []))
+    cr.problemes = [f"Encaissement : {p}" for p in bilan.get("a_verifier", [])]
+    if bilan.get("erreur"):
+        cr.problemes.append(f"Encaissements non faits : {bilan['erreur']}")
+    cr.lignes = list(bilan.get("notes", []))
+    envoyer_compte_rendu(config_toml, cr)
 
 
 def envoyer_compte_rendu(config_toml: dict, cr) -> None:

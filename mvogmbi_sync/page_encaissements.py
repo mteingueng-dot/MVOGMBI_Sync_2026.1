@@ -174,6 +174,12 @@ class PageEncaissements(ttk.Frame):
                                               self.racine)
                     resultat = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
                 bilan = t("{ok} dépôt(s) encaissé(s) sur {n}.", ok=len(resultat.get("encaisses", [])), n=len(a_saisir))
+                if resultat:
+                    try:
+                        from .courriel import envoyer_bilan_encaissements
+                        envoyer_bilan_encaissements(self._config(), resultat)
+                    except Exception as exc:  # le courriel ne doit pas masquer le résultat
+                        resultat.setdefault("notes", []).append(f"Courriel non envoyé : {exc}")
                 notes = resultat.get("encaisses", []) + resultat.get("a_verifier", []) + (
                     [resultat["erreur"]] if resultat.get("erreur") else []) + resultat.get("notes", [])
             except Exception as exc:

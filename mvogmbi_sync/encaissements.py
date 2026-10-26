@@ -251,8 +251,10 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict
         journal(f"{len(depots)} dépôt(s) du {debut} au {fin} ; {len(a_saisir)} à encaisser.")
         if a_saisir:
             session.ouvrir_encaissements()
+            factures = {d.date.isoformat(): ", ".join(l.facture for l in d.lignes) for d in a_saisir}
             for r in appliquer(config_toml, a_saisir, CLIENT, compte, mode, journal):
-                texte = f"Dépôt du {r.date} : {r.montant:,.2f} $"
+                texte = (f"Dépôt du {r.date} : {r.montant:,.2f} $ au compte {compte} "
+                         f"({factures.get(r.date, '')})")
                 (bilan["encaisses"] if r.traite else bilan["a_verifier"]).append(
                     texte + ("" if r.traite else " — NON encaissé : " + " ".join(r.messages)))
     except Exception as exc:

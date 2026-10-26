@@ -58,6 +58,9 @@ EN: dict[str, str] = {
     "Serveur d'envoi": "Outgoing server",
     "Envoi du compte rendu": "Sending the report",
     "Outils": "Tools",
+    " — {n} dépôt(s) encaissé(s)": " — {n} deposit(s) recorded",
+    "MVOGMBI_Sync : encaissements — {n} point(s) à vérifier": "MVOGMBI_Sync: receipts — {n} point(s) to check",
+    "MVOGMBI_Sync : encaissements": "MVOGMBI_Sync: receipts",
     "Encaissements des dépôts Clover (compte Desjardins) :": "Receipts of Clover deposits (Desjardins account):",
     "Encaisser à partir des ventes du": "Record receipts from sales of",
     "AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés par le robot.":

@@ -55,3 +55,19 @@ def test_copie_cc():
     assert message["Cc"] == "a@exemple.com, b@exemple.com"  # le destinataire principal n'est pas répété en copie
     assert preparer_message({**c, "copie": ""}, "Sujet", "Corps")["Cc"] is None
     assert adresses_invalides("a@exemple.com, pas-une-adresse, b@exemple") == ["pas-une-adresse", "b@exemple"]
+
+
+def test_courriel_avec_encaissements():
+    cr = compte_rendu_succes()
+    cr.encaissements = ["Dépôt du 2026-10-26 : 8,927.79 $ au compte 1055 (Vente 2026-10-23/25)"]
+    assert sujet_compte_rendu(cr).endswith(" — 1 dépôt(s) encaissé(s)")
+    assert "Vente 2026-10-23/25" in texte_compte_rendu(cr)
+    assert "Encaissements des dépôts Clover" in html_compte_rendu(cr)
+
+
+def test_courriel_du_bouton_encaisser():
+    from mvogmbi_sync.automatique import CompteRendu
+
+    cr = CompteRendu(seulement_encaissements=True)
+    cr.encaissements = ["Dépôt du 2026-10-27 : 1,000.00 $ au compte 1055 (Vente 2026-10-26)"]
+    assert sujet_compte_rendu(cr) == "MVOGMBI_Sync : encaissements — 1 dépôt(s) encaissé(s)"
