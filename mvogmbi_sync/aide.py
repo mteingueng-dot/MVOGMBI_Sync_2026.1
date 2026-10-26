@@ -24,6 +24,8 @@ ACCUEIL = {
                  "importées comme factures d'achat."),
         ("puce", "Paiements fournisseurs : les avis de virement Interac reçus par courriel sont reliés aux factures "
                  "et saisis dans Sage."),
+        ("puce", "Rapprochement bancaire : les relevés Desjardins sont rapprochés du compte 1055 ; ce qui manque est "
+                 "enregistré dans Sage après votre confirmation."),
         ("sous_titre", "Comment ça fonctionne chaque nuit"),
         ("etape", "1. À l'heure choisie (1 h par défaut), l'application lit dans Sage la dernière facture "
                   "« Vente AAAA-MM-JJ » déjà importée."),
@@ -67,6 +69,8 @@ ACCUEIL = {
                  "invoices."),
         ("puce", "Supplier payments: the Interac transfer notices received by email are linked to the invoices and "
                  "entered in Sage."),
+        ("puce", "Bank reconciliation: Desjardins statements are reconciled with account 1055; what is missing is "
+                 "recorded in Sage after your confirmation."),
         ("sous_titre", "How it works every night"),
         ("etape", "1. At the chosen time (1 a.m. by default), the application reads in Sage the last "
                   "“Vente YYYY-MM-DD” invoice already imported."),
@@ -182,6 +186,14 @@ FAQ = {
                     "la main par exemple) : il n'est pas saisi une deuxième fois."),
         ("question", "Le virement n'est pas pour un fournisseur (remboursement, prêt…)."),
         ("reponse", "Cliquez sur « Ignorer (pas un fournisseur) » : il ne sera plus proposé."),
+        ("sous_titre", "Rapprochement bancaire"),
+        ("question", "L'« écart d'ouverture » n'est pas nul : pourquoi ?"),
+        ("reponse", "Au début de la période, le solde du compte 1055 dans Sage était déjà différent de celui de la "
+                    "banque : des mouvements plus anciens manquent dans Sage. Chargez aussi les relevés précédents."),
+        ("question", "Un mouvement reste « Absent de Sage » alors qu'il est dans Sage."),
+        ("reponse", "Le montant ou la date diffère (plus de 7 jours avant ou 3 jours après) : corrigez l'écriture dans "
+                    "Sage, ou cliquez sur « Ignorer » si elle est juste."),
+
         ("sous_titre", "Courriel et installation"),
         ("question", "Je ne reçois pas les courriels."),
         ("reponse", "Vérifiez la page Courriel et cliquez sur « Envoyer un courriel de test ». Avec Gmail ou "
@@ -289,6 +301,14 @@ FAQ = {
                     "(entered by hand, for example): it is not entered a second time."),
         ("question", "The transfer is not for a supplier (refund, loan…)."),
         ("reponse", "Click “Ignore (not a supplier)”: it will no longer be suggested."),
+        ("sous_titre", "Bank reconciliation"),
+        ("question", "The “opening difference” is not zero: why?"),
+        ("reponse", "At the start of the period, the balance of account 1055 in Sage already differed from the bank's: "
+                    "older transactions are missing from Sage. Load the previous statements too."),
+        ("question", "A transaction stays “Missing from Sage” although it is in Sage."),
+        ("reponse", "The amount or the date differs (more than 7 days before or 3 days after): fix the entry in Sage, "
+                    "or click “Ignore” if it is correct."),
+
         ("sous_titre", "Email and installation"),
         ("question", "I don't receive the emails."),
         ("reponse", "Check the Email page and click “Send a test email”. With Gmail or Outlook, an “app password” "
@@ -445,6 +465,21 @@ GUIDE = {
         ("note", "Un paiement partiel est accepté. « Ignorer » écarte un virement qui ne concerne pas un "
                  "fournisseur ; « Déjà dans Sage » signale un paiement déjà saisi à la main."),
 
+        ("sous_titre", "Rapprochement bancaire (page 10)"),
+        ("etape", "1. Téléchargez le relevé de compte PDF dans AccèsD (compte 1055, folio 321147), puis « Charger des "
+                  "relevés… ». Chaque relevé est contrôlé : solde d'ouverture + dépôts − retraits = solde de fermeture."),
+        ("etape", "2. « Actualiser » : chaque mouvement de banque est relié à son écriture Sage du compte 1055 (même "
+                  "montant, date proche, ou somme de 2 ou 3 écritures, ex. dépôt de la fin de semaine)."),
+        ("etape", "3. Pour chaque mouvement « Absent de Sage » (frais bancaires, prélèvements, virements…) : choisissez "
+                  "le compte Sage, puis « Confirmer le compte » ; le choix est retenu pour les mouvements semblables. "
+                  "« Ignorer » écarte un mouvement."),
+        ("etape", "4. Fermez Sage, puis « Saisir dans Sage » : chaque mouvement confirmé devient une écriture de journal "
+                  "(source « Relevé AAAA-MM-JJ »), vérifiée ensuite dans Sage."),
+        ("etape", "5. « Rapport Excel » : soldes, écart d'ouverture, mouvements absents, écritures pas encore passées à la "
+                  "banque ; l'« écart non expliqué » doit être 0,00 $."),
+        ("note", "Les écritures corrigées dans Sage (original et contrepassation « CORR ») s'annulent : elles sont "
+                 "ignorées. « Supprimer le relevé » met le fichier de côté (dossier « supprimes »)."),
+
         ("sous_titre", "Mode opératoire — chaque matin"),
         ("etape", "1. Lisez le courriel de la nuit : « succès », ou la liste des points à corriger."),
         ("etape", "2. Un jour bloqué : corrigez la cause (article à relier, compte manquant…) ; il sera repris la "
@@ -461,8 +496,8 @@ GUIDE = {
         ("etape", "4. Sauvegardez le dossier des données (bouton du Tableau de bord)."),
 
         ("sous_titre", "Mode opératoire — chaque mois"),
-        ("etape", "1. Dans Sage, rapprochez le compte 1055 avec le relevé Desjardins : dépôts Clover et paiements "
-                  "Interac y figurent à leur date."),
+        ("etape", "1. Page 10 : chargez le relevé Desjardins du mois, « Actualiser », choisissez le compte des "
+                  "mouvements absents de Sage, puis « Saisir dans Sage » ; l'écart non expliqué doit être nul."),
         ("etape", "2. Vérifiez qu'il ne reste aucun virement « À relier » ni facture « À vérifier »."),
         ("etape", "3. Comparez le total des ventes du mois dans Sage avec le rapport des ventes Clover."),
 
@@ -614,6 +649,21 @@ GUIDE = {
         ("note", "A partial payment is accepted. “Ignore” sets aside a transfer that is not for a supplier; "
                  "“Already in Sage” flags a payment already entered by hand."),
 
+        ("sous_titre", "Bank reconciliation (page 10)"),
+        ("etape", "1. Download the PDF account statement from AccèsD (account 1055, folio 321147), then “Load "
+                  "statements…”. Each statement is checked: opening balance + deposits − withdrawals = closing balance."),
+        ("etape", "2. “Refresh”: each bank transaction is linked to its Sage entry in account 1055 (same amount, close "
+                  "date, or sum of 2 or 3 entries, e.g. the weekend deposit)."),
+        ("etape", "3. For each transaction “Missing from Sage” (bank charges, debits, transfers…): choose the Sage "
+                  "account, then “Confirm account”; the choice is remembered for similar transactions. “Ignore” sets a "
+                  "transaction aside."),
+        ("etape", "4. Close Sage, then “Enter in Sage”: each confirmed transaction becomes a journal entry (source "
+                  "“Relevé YYYY-MM-DD”), then verified in Sage."),
+        ("etape", "5. “Excel report”: balances, opening difference, missing transactions, entries not yet at the bank; "
+                  "the “unexplained difference” must be $0.00."),
+        ("note", "Entries corrected in Sage (original and “CORR” reversal) cancel out: they are ignored. “Delete "
+                 "statement” sets the file aside (“supprimes” folder)."),
+
         ("sous_titre", "Operating procedure — every morning"),
         ("etape", "1. Read the nightly email: “success”, or the list of points to fix."),
         ("etape", "2. A blocked day: fix the cause (item to link, missing account…); it is resumed the following "
@@ -630,8 +680,8 @@ GUIDE = {
         ("etape", "4. Back up the data folder (Dashboard button)."),
 
         ("sous_titre", "Operating procedure — every month"),
-        ("etape", "1. In Sage, reconcile account 1055 with the Desjardins statement: Clover deposits and Interac "
-                  "payments appear at their date."),
+        ("etape", "1. Page 10: load the month's Desjardins statement, “Refresh”, choose the account of the "
+                  "transactions missing from Sage, then “Enter in Sage”; the unexplained difference must be zero."),
         ("etape", "2. Check that no transfer is left “To link” and no invoice “To check”."),
         ("etape", "3. Compare the month's sales total in Sage with the Clover sales report."),
 

@@ -167,7 +167,7 @@ CHAPITRES = [
     ("correspondance", "Correspondance des articles (page 5)"), ("tableau", "Tableau de bord et traitement de nuit"),
     ("encaissements", "Encaissements des dépôts Clover (page 7)"),
     ("fournisseurs", "Factures fournisseurs (page 8)"), ("paiements", "Paiements fournisseurs (page 9)"),
-    ("mode", "Mode opératoire"), ("regles", "Règles de gestion"), ("faq", "Questions fréquentes et dépannage"),
+    ("rapprochement", "Rapprochement bancaire (page 10)"), ("mode", "Mode opératoire"), ("regles", "Règles de gestion"), ("faq", "Questions fréquentes et dépannage"),
 ]
 
 
@@ -337,15 +337,25 @@ Sage ».</td></tr>
 ancienne à la plus récente ; seule la dernière peut être payée en partie. Exemple : un virement de 910,00 $ sur deux
 factures de 905,00 $ et 210,00 $ paie 905,00 $ sur la première et 5,00 $ sur la seconde.</p>""")
 
-    # ------------------------------------------------------------------ 10. Mode opératoire
-    parties.append(titre(10) + "<p>Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.</p>"
+    # ------------------------------------------------------------------ 10. Rapprochement bancaire
+    parties.append(titre(10) + figure("10_rapprochement", "Page 10 — Relevés Desjardins rapprochés du compte 1055")
+                   + blocs(g, "Rapprochement bancaire") + """
+<table class="simple"><tr><th>Chiffre</th><th>Signification</th></tr>
+<tr><td>Solde du relevé</td><td>Solde de fermeture du dernier relevé chargé.</td></tr>
+<tr><td>Solde Sage (1055)</td><td>Solde du compte 1055 dans Sage à la même date.</td></tr>
+<tr><td>Écart d'ouverture</td><td>Différence déjà présente au début de la période (relevés précédents à charger).</td></tr>
+<tr><td>Écart non expliqué</td><td>Doit être 0,00 $ : sinon un montant est mal saisi d'un côté ou de l'autre.</td></tr>
+</table>""")
+
+    # ------------------------------------------------------------------ 11. Mode opératoire
+    parties.append(titre(11) + "<p>Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.</p>"
                    + blocs(g, "Mode opératoire — chaque matin") + blocs(g, "Mode opératoire — chaque semaine")
                    + blocs(g, "Mode opératoire — chaque mois")
                    + "<div class='attention'>⚠️ Fermez Sage chaque soir avant de partir : sinon l'import de la nuit "
                      "échoue (il est repris la nuit suivante).</div>")
 
-    # ------------------------------------------------------------------ 11. Règles
-    parties.append(titre(11) + blocs(g, "Règles de facturation") + """
+    # ------------------------------------------------------------------ 12. Règles
+    parties.append(titre(12) + blocs(g, "Règles de facturation") + """
 <h3>Encaissements et paiements</h3>
 <ul>
 <li>Dépôt Clover = ventes encaissées moins les espèces ; ventes du lundi au jeudi déposées le lendemain, du vendredi
@@ -361,8 +371,8 @@ solde des factures choisies.</li>
 <li>Une facture déjà présente dans Sage (même n°, même avec un préfixe « FA- ») n'est jamais importée deux fois.</li>
 </ul>""" + blocs(g, "Fichiers et sauvegarde"))
 
-    # ------------------------------------------------------------------ 12. FAQ
-    parties.append(titre(12) + faq() + blocs(g, "Dépannage")
+    # ------------------------------------------------------------------ 13. FAQ
+    parties.append(titre(13) + faq() + blocs(g, "Dépannage")
                    + f"<p class='pied'>MVOGMBI_Sync {VERSION} — {e(COPYRIGHT)} — Tous droits réservés.</p>")
     return "\n".join(parties)
 

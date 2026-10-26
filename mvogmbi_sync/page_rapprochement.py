@@ -42,6 +42,7 @@ class PageRapprochement(ttk.Frame):
         Bouton(barre, "🔄  " + t("Actualiser"), self.actualiser, "secondaire").pack(side="left", padx=8)
         Bouton(barre, "🗑  " + t("Supprimer le relevé"), self.supprimer, "danger").pack(side="left")
         Bouton(barre, "📗  " + t("Rapport Excel"), self.rapport, "secondaire").pack(side="right")
+        Bouton(barre, "📤  " + t("Saisir dans Sage"), self.saisir, "accent").pack(side="right", padx=8)
         self.resume = ttk.Label(self, text=t("Chargez un relevé PDF Desjardins, puis « Actualiser »."),
                                 foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume.pack(fill="x")
@@ -288,6 +289,51 @@ class PageRapprochement(ttk.Frame):
         if self.mouvement and self.mouvement.etat in (CONFIRME, IGNORE):
             self.mouvement.etat, self.mouvement.compte = A_SAISIR, ""
             self._apres()
+
+    # ---------------------------------------------------------------- saisie dans Sage
+    def saisir(self) -> None:
+        """Importe en écritures de journal les mouvements « Compte choisi » (Sage fermé), puis vérifie chacun."""
+        from .sage_bureau import sage_ouvert
+
+        choisis = [m for m in self.banque if m.etat == CONFIRME]
+        if not choisis:
+            messagebox.showinfo(self.titre, t("Aucun mouvement « Compte choisi » : choisissez d'abord le compte Sage des "
+                                              "mouvements absents de Sage."))
+            return
+        if sage_ouvert():
+            messagebox.showwarning(self.titre, t("Fermez Sage : l'import exige que personne ne soit dans le fichier "
+                                                 "d'entreprise."))
+            return
+        liste = "\n".join(f"  • {m.date}  {argent(m.montant)}  → {m.compte}   {m.description[:40]}" for m in choisis[:25])
+        if len(choisis) > 25:
+            liste += "\n  …"
+        if not messagebox.askyesno(self.titre, t("Enregistrer {n} écriture(s) dans Sage (compte 1055) ?\n\n{liste}",
+                                                 n=len(choisis), liste=liste)):
+            return
+        self.resume.configure(text=t("Enregistrement des écritures dans Sage…"))
+
+        def travail():
+            try:
+                from .import_journal import importer_journal
+
+                resultats = importer_journal(self.racine, self._config(), choisis)
+                message = t("{ok} écriture(s) enregistrée(s) sur {n}.", n=len(choisis),
+                            ok=sum(1 for m in choisis if m.etat == SAISI))
+                erreurs = [r for r in resultats.values() if not r.startswith(("saisi", "déjà"))]
+                if erreurs:
+                    message += "\n\n" + "\n".join(erreurs[:15])
+            except Exception as exc:
+                message = f"✘ {exc}"
+            self.after(0, lambda: self._fin_saisie(choisis, message))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _fin_saisie(self, choisis, message: str) -> None:
+        for m in choisis:
+            self.registre.retenir(m)
+        self.registre.enregistrer()
+        messagebox.showinfo(self.titre, message)
+        self.actualiser()
 
     # ---------------------------------------------------------------- rapport
     def rapport(self) -> None:

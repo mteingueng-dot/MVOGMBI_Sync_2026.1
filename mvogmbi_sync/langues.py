@@ -61,6 +61,11 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    'Saisir dans Sage': 'Enter in Sage',
+    "Aucun mouvement « Compte choisi » : choisissez d'abord le compte Sage des mouvements absents de Sage.": 'No “Account chosen” transaction: first choose the Sage account of the transactions missing from Sage.',
+    'Enregistrer {n} écriture(s) dans Sage (compte 1055) ?\n\n{liste}': 'Record {n} entry(ies) in Sage (account 1055)?\n\n{liste}',
+    'Enregistrement des écritures dans Sage…': 'Recording the entries in Sage…',
+    '{ok} écriture(s) enregistrée(s) sur {n}.': '{ok} entry(ies) recorded out of {n}.',
     "dont écart d'ouverture": 'of which opening difference',
     '10. Rapprochement': '10. Reconciliation',
     '10. Rapprochement bancaire': '10. Bank reconciliation',

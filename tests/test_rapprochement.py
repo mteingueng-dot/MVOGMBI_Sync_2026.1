@@ -50,3 +50,16 @@ def test_decision_conservee_et_motif():
     rapprocher(b, [MouvementSage(9, "2026-09-10", "x", "y", D("-12.95"))])
     assert b[0].etat == CONFIRME                     # un choix du propriétaire n'est pas défait
     assert motif("FRAIS MENS. 09/2026") == motif("FRAIS MENS. 10/2026")
+
+
+def test_ecriture_de_journal():
+    from mvogmbi_sync.import_journal import bloc_journal, compte_sage
+
+    frais = banque("2026-02-27", "-5.95", "FIX Frais fixes d'utilisation")
+    frais.compte = "5450"
+    assert bloc_journal(frais) == ['<GenJour>', '"02-27-2026","Relevé 2026-02-27","FIX Frais fixes d\'utilisation"',
+                                   '"1055","-5.95"', '"5450","5.95"', '</GenJour>']
+    depot = banque("2026-02-06", "32.71", "DI Dépôt direct / RIA TELECOMMINICATIONS OF CANA")
+    depot.compte = "4013"
+    assert bloc_journal(depot)[2:4] == ['"1055","32.71"', '"4013","-32.71"']
+    assert compte_sage("5450") == 54500000
