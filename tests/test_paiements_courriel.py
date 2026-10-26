@@ -40,3 +40,8 @@ def test_numeros_de_facture_cites():
     assert numeros_cites("Facture 14402 du 20/08/2026") == ["14402"]
     assert "104202" in "".join(numeros_cites("Paiement FA-104202"))
     assert numeros_cites("Merci !") == []
+    assert numeros_cites("Faccture#15") == ["15"]                                # faute de frappe, n° court
+    assert numeros_cites("Facture transport du 22 octobre 2026") == []          # une date n'est pas un n°
+    assert numeros_cites("Paiement facture 14944 du 15/10/2026") == ["14944"]
+    assert numeros_cites("Facture# 780559 plus Chauffeur") == ["780559"]
+    assert numeros_cites("Remboursement pret") == []

@@ -28,7 +28,8 @@ TITRE = "MVOGMBI_Sync — Clover → Sage 50"
 MASQUE = "••••••••"  # affiché quand un secret est déjà enregistré dans le coffre
 
 # Index des pages (ordre du menu)
-ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, FOURNISSEURS, GUIDE, FAQ = range(11)
+(ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, FOURNISSEURS, PAIEMENTS,
+ GUIDE, FAQ) = range(12)
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -114,6 +115,7 @@ class Application(tk.Tk):
         self._onglet_tableau()
         self._onglet_encaissements()
         self._onglet_fournisseurs()
+        self._onglet_paiements()
         self._onglet_texte(t("Guide de configuration"), "guide", "📘")
         self._onglet_texte(t("Aide / FAQ"), "faq", "❓")
         self._construire_menu()
@@ -667,6 +669,13 @@ class Application(tk.Tk):
         self.page_fournisseurs = PageFournisseurs(self.onglets, self.racine, TITRE)
         self.onglets.add(self.page_fournisseurs, text=t("8. Factures fournisseurs"))
         self._pages.append(("🧾", t("8. Factures fournisseurs")))
+
+    def _onglet_paiements(self) -> None:
+        from .page_paiements import PagePaiements
+
+        self.page_paiements = PagePaiements(self.onglets, self.racine, TITRE)
+        self.onglets.add(self.page_paiements, text=t("9. Paiements fournisseurs"))
+        self._pages.append(("💸", t("9. Paiements fournisseurs")))
 
     def _onglet_tableau(self) -> None:
         f = self._cadre(t("6. Tableau de bord"), "📊")

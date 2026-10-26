@@ -57,10 +57,13 @@ class AvisPaiement:
 
 def numeros_cites(message: str) -> list[str]:
     """N° de facture cités : « Facture 14402 du 20/08/2026 » -> ["14402"] ; « FA-104202, #1264 » -> [...]."""
+    mois = r"(?:janv?|f[ée]vr?|mars|avr|mai|juin|juil|ao[uû]t|sept?|oct|nov|d[ée]c|jan|feb|apr|may|jun|jul|aug|dec)\w*\.?"
     sans_dates = re.sub(r"\b\d{1,4}[/-]\d{1,2}[/-]\d{2,4}\b", " ", message)
-    candidats = re.findall(r"(?:fact(?:ure)?|inv(?:oice)?|fa|n[°o]|#)\s*[-:#.]?\s*([A-Z]{0,3}-?\d{3,})", sans_dates, re.I)
+    sans_dates = re.sub(rf"\b\d{{1,2}}\s+{mois}\s+\d{{4}}\b|\b{mois}\s+\d{{1,2}},?\s+\d{{4}}\b", " ", sans_dates, flags=re.I)
+    # « Facture#1264 », « Faccture#15 » (faute de frappe), « Inv-201010-01 », « FA-104202 », « n° 14944 »
+    candidats = re.findall(r"(?:fac+t(?:ure)?|inv(?:oice)?|fa|n[°o]|#)\s*[-:#.]?\s*([A-Z]{0,3}-?\d{2,})", sans_dates, re.I)
     candidats += re.findall(r"\b([A-Z]{0,3}\d{4,})\b", sans_dates)
-    return list(dict.fromkeys(c.strip("-") for c in candidats))
+    return [c for c in dict.fromkeys(c.strip("-") for c in candidats) if not re.fullmatch(r"(19|20)\d{2}", c)]
 
 
 def texte_du_message(message: email.message.Message) -> str:
