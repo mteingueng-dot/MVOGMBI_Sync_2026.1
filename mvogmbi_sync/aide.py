@@ -5,7 +5,7 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -24,8 +24,8 @@ ACCUEIL = {
         ("etape", "4. Elle prépare pour le client « Vente Hebdomadaire » une facture par jour du lundi au jeudi "
                   "et une seule pour le vendredi, le samedi et le dimanche : une ligne par article, montant = ventes "
                   "nettes Clover, taxes TPS + TVQ (code GQ) pour les articles taxés."),
-        ("etape", "5. Elle importe les factures dans Sage, vérifie chacune d'elles et vous envoie un compte rendu "
-                  "par courriel."),
+        ("etape", "5. Elle importe les factures dans Sage, vérifie chacune d'elles, encaisse les dépôts Clover sur "
+                  "les factures (Sage ouvert par le robot, hors écran) et vous envoie un compte rendu par courriel."),
         ("sous_titre", "Contrôles de sécurité"),
         ("puce", "Jamais deux fois la même facture : une date déjà présente dans Sage est ignorée."),
         ("puce", "Arrêt au premier jour qui pose problème (article non relié, compte manquant…) ; ce jour est "
@@ -57,7 +57,8 @@ ACCUEIL = {
         ("etape", "4. For the “Vente Hebdomadaire” customer it prepares one invoice per day from Monday to "
                   "Thursday and a single one for Friday, Saturday and Sunday: one line per item, amount = Clover net "
                   "sales, GST + QST (code GQ) for taxable items."),
-        ("etape", "5. It imports the invoices into Sage, checks each one and emails you a report."),
+        ("etape", "5. It imports the invoices into Sage, checks each one, records the Clover deposits on the "
+                  "invoices (Sage opened by the robot, off screen) and emails you a report."),
         ("sous_titre", "Safety checks"),
         ("puce", "Never the same invoice twice: a date already in Sage is skipped."),
         ("puce", "Stops at the first day with a problem (unlinked item, missing account…); that day is resumed "
@@ -132,6 +133,10 @@ FAQ = {
         ("reponse", "Le dossier de données de la nouvelle installation est vide. Page Automatisation > « Reprendre "
                     "une configuration existante… », choisissez l'ancien dossier : la correspondance validée, le "
                     "journal des imports et la configuration sont recopiés."),
+        ("question", "Faut-il laisser la session Windows ouverte la nuit ?"),
+        ("reponse", "Elle doit être ouverte (vous connecté), mais elle peut être verrouillée : le robot travaille sur "
+                    "un bureau Windows caché. Sage doit être fermé à l'heure du traitement (l'import exige le mode "
+                    "mono-utilisateur)."),
         ("question", "Une fenêtre « Sage 50 - Password » ou « Import Summary » s'affiche-t-elle ?"),
         ("reponse", "Non : l'application pilote l'outil d'import de Sage de façon invisible. Si vous lancez "
                     "vous-même un fichier .IMP (double-clic), ses fenêtres apparaissent normalement : elles ne "
@@ -194,6 +199,9 @@ FAQ = {
         ("reponse", "The new installation's data folder is empty. Automation page > “Import an existing "
                     "configuration…”, choose the former folder: the validated mapping, the import log and the "
                     "configuration are copied."),
+        ("question", "Must the Windows session stay open at night?"),
+        ("reponse", "It must be open (you signed in), but it may be locked: the robot works on a hidden Windows "
+                    "desktop. Sage must be closed at run time (the import requires single-user mode)."),
         ("question", "Does a “Sage 50 - Password” or “Import Summary” window appear?"),
         ("reponse", "No: the application drives Sage's import tool invisibly. If you open an .IMP file yourself "
                     "(double-click), its windows appear normally: they do not come from MVOGMBI_Sync."),
@@ -298,9 +306,12 @@ GUIDE = {
                   "montant reçu sur chaque facture, puis « Traiter »."),
         ("etape", "3. Recalculez : le dépôt passe à « Appliqué ». Le solde restant sur la facture correspond aux "
                   "ventes en espèces."),
-        ("etape", "Ou laissez faire le robot : ouvrez Sage et sa fenêtre Clients & Ventes > Encaissements, puis "
-                  "« Encaisser dans Sage ». Il remplit la fenêtre, vérifie le total avant « Traiter », puis contrôle "
-                  "chaque encaissement dans la base ; il s'arrête au moindre écart."),
+        ("etape", "Automatique : chaque nuit, après l'import des factures, le robot ouvre Sage sur un bureau "
+                  "Windows caché (rien à l'écran, même session verrouillée), encaisse chaque dépôt, vérifie le total "
+                  "avant « Traiter », contrôle chaque encaissement dans la base, puis referme Sage. Le bouton "
+                  "« Encaisser dans Sage » fait la même chose à la demande (Sage fermé)."),
+        ("puce", "Réglage : page Sage 50, « Encaisser à partir des ventes du » ; les dépôts des ventes antérieures "
+                 "ne sont jamais touchés. Un dépôt supérieur au solde dû de la facture n'est jamais saisi."),
         ("note", "Sage ne permet pas d'importer un encaissement : l'application calcule les montants, les saisit "
                  "par robot ou vous guide, puis vérifie le résultat. Un jour férié peut décaler un dépôt d'un jour."),
 
@@ -422,9 +433,12 @@ GUIDE = {
                   "invoice, then “Process”."),
         ("etape", "3. Recalculate: the deposit turns to “Applied”. The balance left on the invoice is the cash "
                   "sales."),
-        ("etape", "Or let the robot do it: open Sage and its Receivables > Receipts window, then “Record in Sage”. It "
-                  "fills in the window, checks the total before “Process”, then verifies each receipt in the "
-                  "database; it stops at the slightest difference."),
+        ("etape", "Automatic: every night, after importing the invoices, the robot opens Sage on a hidden Windows "
+                  "desktop (nothing on screen, even with the session locked), records each deposit, checks the total "
+                  "before “Process”, verifies each receipt in the database, then closes Sage. The “Record in Sage” "
+                  "button does the same on demand (Sage closed)."),
+        ("puce", "Setting: Sage 50 page, “Record receipts from sales of”; deposits for earlier sales are never "
+                 "touched. A deposit larger than the invoice balance is never entered."),
         ("note", "Sage cannot import a receipt: the application calculates the amounts, enters them with the "
                  "robot or guides you, then checks the result. A public holiday may shift a deposit by one day."),
 

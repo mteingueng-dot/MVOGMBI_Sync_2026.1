@@ -146,29 +146,38 @@ class PageEncaissements(ttk.Frame):
         if not a_saisir:
             messagebox.showinfo(self.titre, t("Aucun dépôt « À saisir dans Sage » : calculez d'abord les dépôts."))
             return
-        import ctypes
-        if not ctypes.windll.user32.FindWindowW("#32770", "Encaissements"):
-            messagebox.showwarning(self.titre, t("Ouvrez Sage sur le fichier d'entreprise, puis la fenêtre "
-                                                 "Clients & Ventes > Encaissements, et recommencez."))
+        import subprocess
+        processus = subprocess.run(["tasklist", "/fi", "IMAGENAME eq Sage50Accounting.exe"], capture_output=True,
+                                   text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        if "Sage50Accounting" in processus:
+            messagebox.showwarning(self.titre, t("Fermez Sage : le robot l'ouvre lui-même, hors écran, pour encaisser "
+                                                 "les dépôts."))
             return
         total = argent(sum((d.montant for d in a_saisir), Decimal(0)))
-        if not messagebox.askyesno(self.titre, t("Encaisser {n} dépôt(s) ({total}) dans Sage ? N'utilisez pas Sage "
-                                                 "pendant la saisie.", n=len(a_saisir), total=total)):
+        if not messagebox.askyesno(self.titre, t("Encaisser {n} dépôt(s) ({total}) dans Sage ? Le robot ouvre Sage "
+                                                 "hors écran ; n'ouvrez pas Sage pendant ce temps.",
+                                                 n=len(a_saisir), total=total)):
             return
         self.resume.configure(text=t("Saisie des encaissements dans Sage en cours…"))
 
         def travail():
-            from .facture import CLIENT
-            from .robot_encaissements import appliquer
+            import json
+            import tempfile
 
-            notes = []
+            from .__main__ import commande_moteur
+            from .sage_bureau import executer_sur_bureau_cache
+
             try:
-                config = self._config()
-                mode = str(config.get("encaissements", {}).get("mode", "Comptant"))
-                resultats = appliquer(config, a_saisir, CLIENT, self.compte_depot(), mode, journal=notes.append)
-                bilan = t("{ok} dépôt(s) encaissé(s) sur {n}.", ok=sum(r.traite for r in resultats), n=len(a_saisir))
+                with tempfile.TemporaryDirectory() as dossier:
+                    fichier = Path(dossier) / "bilan.json"
+                    executer_sur_bureau_cache(commande_moteur() + ["encaisser-bureau", "--resultat", str(fichier)],
+                                              self.racine)
+                    resultat = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
+                bilan = t("{ok} dépôt(s) encaissé(s) sur {n}.", ok=len(resultat.get("encaisses", [])), n=len(a_saisir))
+                notes = resultat.get("encaisses", []) + resultat.get("a_verifier", []) + (
+                    [resultat["erreur"]] if resultat.get("erreur") else []) + resultat.get("notes", [])
             except Exception as exc:
-                bilan = f"✘ {exc}"
+                bilan, notes = f"✘ {exc}", []
             message = bilan + ("\n\n" + "\n".join(notes) if notes else "")
             self.after(0, lambda: (messagebox.showinfo(self.titre, message), self.calculer()))
 

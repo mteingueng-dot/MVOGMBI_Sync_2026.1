@@ -268,6 +268,10 @@ def encaisser_depot(fenetre: FenetreEncaissements, depot, ordre: list[str], clie
     for l in lignes:
         if l.facture not in ordre:
             raise ErreurRobot(f"{l.facture} n'est pas dans la liste des factures en souffrance de Sage.")
+        if l.montant_du is not None and l.montant > l.montant_du:
+            resultat.messages.append(f"{l.facture} : dépôt {l.montant} $ supérieur au solde dû {l.montant_du} $ "
+                                     "(déjà encaissée autrement ?) ; rien n'est saisi.")
+            return resultat
     attendu = sum((l.montant for l in lignes), Decimal(0))
     for tentative in range(1, 4):
         fenetre.choisir(ID_CLIENT, client)

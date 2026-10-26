@@ -120,6 +120,9 @@ def texte_compte_rendu(cr) -> str:
             parties.append("\n  " + t("Total importé : {n} facture(s), {total} taxes comprises", n=len(importees),
                                         total=_argent(sum((j.total for j in importees), Decimal("0")))))
         parties.append("")
+    if getattr(cr, "encaissements", None):
+        parties += [t("Encaissements des dépôts Clover (compte Desjardins) :")]
+        parties += [f"  {x}" for x in cr.encaissements] + [""]
     if cr.problemes:
         parties += [t("À corriger (le traitement reprendra automatiquement la nuit suivante) :")]
         parties += [f"  - {p}" for p in cr.problemes] + [""]
@@ -155,6 +158,9 @@ def html_compte_rendu(cr) -> str:
                  f"<p>{t('Le traitement reprendra automatiquement la nuit suivante.')}</p><ul>"
                  + "".join(f"<li>{e(p)}</li>" for p in cr.problemes) + "</ul>") if cr.problemes else ""
     erreur = f"<h3 style='color:#b3261e'>{t('Erreur')}</h3><pre>{e(cr.erreur)}</pre>" if cr.erreur else ""
+    encaissements = (f"<h3 style='color:#1b7f3b'>{e(t('Encaissements des dépôts Clover (compte Desjardins) :'))}</h3><ul>"
+                     + "".join(f"<li>{e(x)}</li>" for x in cr.encaissements) + "</ul>") \
+        if getattr(cr, "encaissements", None) else ""
     periode = (t("du <b>{d}</b> au <b>{f}</b>", d=cr.periode[0], f=cr.periode[1]) if cr.periode
                else t("aucune (Sage était déjà à jour)"))
     return (
@@ -165,7 +171,7 @@ def html_compte_rendu(cr) -> str:
         f"{e(t('Fichier Sage : {f}', f=cr.fichier or '?'))}<br>"
         f"{e(t('Dernière facture journalière avant le traitement : {d}', d=cr.derniere_avant or t('aucune')))}<br>"
         f"{t('Période traitée : ')}{periode}</p>"
-        f"{tableau}{total}{problemes}{erreur}"
+        f"{tableau}{total}{encaissements}{problemes}{erreur}"
         f"<details><summary>{t('Déroulement détaillé')}</summary><pre style='font-size:12px'>"
         + e("\n".join(cr.lignes)) + "</pre></details>"
         f"<p style='margin-top:18px;color:#8a978e;font-size:12px'>MVOGMBI_Sync — {e(COPYRIGHT)} — "

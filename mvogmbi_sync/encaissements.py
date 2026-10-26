@@ -208,3 +208,56 @@ def ecrire_excel(depots: list[Depot], chemin, compte_depot: str) -> None:
         ligne[0].number_format = "yyyy-mm-dd"
         ligne[3].number_format = ligne[4].number_format = "# ##0.00 $"
     classeur.save(chemin)
+
+
+def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
+    """Exécuté sur le bureau caché : ouvre Sage (fermé au départ), encaisse chaque dépôt « À saisir », referme Sage.
+
+    Renvoie {"encaisses": [...], "a_verifier": [...], "erreur": ""} pour le compte rendu.
+    """
+    from datetime import timedelta
+
+    from . import coffre
+    from .__main__ import charger_config, executable_import, ouvrir_base_sage
+    from .api_clover import ClientClover
+    from .facture import CLIENT
+    from .robot_encaissements import appliquer
+    from .sage_bureau import SessionSage, executable_sage
+
+    c = config_toml.get("encaissements", {})
+    compte = str(c.get("compte_depot", "1055"))
+    mode = str(c.get("mode", "Comptant"))
+    debut = date.fromisoformat(str(c.get("date_depart") or config_toml.get("automatique", {}).get("date_depart")))
+    fin = date.today() - timedelta(days=1)
+    if c.get("date_fin"):  # réglage d'essai : dernier jour de vente à encaisser
+        fin = min(fin, date.fromisoformat(str(c["date_fin"])))
+    fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
+    bilan = {"encaisses": [], "a_verifier": [], "erreur": ""}
+    exe = executable_sage(executable_import())
+    if not exe:
+        bilan["erreur"] = "Sage50Accounting.exe introuvable."
+        return bilan
+    client = ClientClover(charger_config(racine / "config.toml"))
+    session = SessionSage(exe, journal)
+    try:
+        utilisateur = str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin"))
+        session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
+        with ouvrir_base_sage(config_toml, fichier) as base:
+            depots = calculer(client, base, CLIENT, numero_compte_sage(compte), debut, fin)
+        a_saisir = [d for d in depots if d.etat == A_SAISIR]
+        for d in depots:
+            if d.etat == ECART:
+                bilan["a_verifier"].append(f"Dépôt du {d.date} ({d.montant:,.2f} $) : montant différent déjà saisi dans Sage.")
+        journal(f"{len(depots)} dépôt(s) du {debut} au {fin} ; {len(a_saisir)} à encaisser.")
+        if a_saisir:
+            session.ouvrir_encaissements()
+            for r in appliquer(config_toml, a_saisir, CLIENT, compte, mode, journal):
+                texte = f"Dépôt du {r.date} : {r.montant:,.2f} $"
+                (bilan["encaisses"] if r.traite else bilan["a_verifier"]).append(
+                    texte + ("" if r.traite else " — NON encaissé : " + " ".join(r.messages)))
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+        journal(f"Erreur : {exc}")
+    finally:
+        session.fermer()
+    return bilan

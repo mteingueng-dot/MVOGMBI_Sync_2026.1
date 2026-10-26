@@ -58,6 +58,14 @@ EN: dict[str, str] = {
     "Serveur d'envoi": "Outgoing server",
     "Envoi du compte rendu": "Sending the report",
     "Outils": "Tools",
+    "Encaissements des dépôts Clover (compte Desjardins) :": "Receipts of Clover deposits (Desjardins account):",
+    "Encaisser à partir des ventes du": "Record receipts from sales of",
+    "AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés par le robot.":
+        "YYYY-MM-DD. Deposits for earlier sales are never recorded by the robot.",
+    "Fermez Sage : le robot l'ouvre lui-même, hors écran, pour encaisser les dépôts.":
+        "Close Sage: the robot opens it itself, off screen, to record the deposits.",
+    "Encaisser {n} dépôt(s) ({total}) dans Sage ? Le robot ouvre Sage hors écran ; n'ouvrez pas Sage pendant ce temps.":
+        "Record {n} deposit(s) ({total}) in Sage? The robot opens Sage off screen; do not open Sage meanwhile.",
     # ------------------------------------------------------------------ encaissements
     "7. Encaissements": "7. Receipts",
     "Compte de dépôt des encaissements": "Receipts deposit account",

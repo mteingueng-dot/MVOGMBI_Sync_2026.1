@@ -75,6 +75,7 @@ class CompteRendu:
     periode: tuple[date, date] | None = None
     jours: list[EtatJour] = field(default_factory=list)
     simulation: bool = False
+    encaissements: list[str] = field(default_factory=list)  # dépôts encaissés par le robot
 
     def note(self, texte: str) -> None:
         horodate = f"{datetime.now():%H:%M:%S} {texte}"
@@ -215,6 +216,8 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
 
     if not pretes:
         cr.note("Aucune facture prête à importer.")
+        if not simulation:
+            encaisser_depots(racine, config_toml, cr)
         return cr
     chemin_imp = ecrire_imp(pretes, racine / "sortie" / "factures" / f"Auto_{pretes[0].facture.date_facture}"
                             f"_au_{pretes[-1].facture.date_facture}.IMP", config_import(config_toml))
@@ -265,7 +268,36 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
             else:
                 cr.problemes.append(f"{imp.facture.numero} : {statut} après l'import")
     cr.note(f"{len(cr.importees)} facture(s) importée(s) et vérifiée(s) dans Sage.")
+    encaisser_depots(racine, config_toml, cr)
     return cr
+
+
+def encaisser_depots(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """5. Encaissements : le robot ouvre Sage sur un bureau caché (fonctionne session verrouillée), encaisse les
+    dépôts Clover sur les factures, vérifie dans la base, puis referme Sage."""
+    import json
+    import tempfile
+
+    from .__main__ import commande_moteur
+    from .sage_bureau import executer_sur_bureau_cache
+
+    if not config_toml.get("encaissements", {}).get("automatique", True):
+        return
+    cr.note("Encaissements des dépôts Clover (Sage ouvert par le robot, hors écran)…")
+    with tempfile.TemporaryDirectory() as dossier:
+        fichier = Path(dossier) / "bilan.json"
+        code = executer_sur_bureau_cache(commande_moteur() + ["encaisser-bureau", "--resultat", str(fichier)],
+                                         racine, delai=int(config_toml.get("encaissements", {}).get("delai", 1800)))
+        bilan = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
+    for note in bilan.get("notes", []):
+        cr.note(f"  {note}")
+    cr.encaissements += bilan.get("encaisses", [])
+    cr.problemes += [f"Encaissement : {p}" for p in bilan.get("a_verifier", [])]
+    if bilan.get("erreur"):
+        cr.problemes.append(f"Encaissements non faits : {bilan['erreur']}")
+    elif code == -1:
+        cr.problemes.append("Encaissements : le robot n'a pas terminé dans le délai ; Sage a été arrêté.")
+    cr.note(f"{len(cr.encaissements)} dépôt(s) encaissé(s) dans Sage.")
 
 
 def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr: CompteRendu):

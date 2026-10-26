@@ -102,6 +102,20 @@ def commande_encaissements(args: argparse.Namespace) -> None:
             sys.exit(1)
 
 
+def commande_encaisser_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché par le traitement automatique ou la page Encaissements."""
+    import json
+
+    from .encaissements import encaisser_sur_bureau_cache
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    notes = []
+    bilan = encaisser_sur_bureau_cache(RACINE, config_toml, journal=lambda t: notes.append(t))
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
+
+
 def commande_rapport(args: argparse.Namespace) -> None:
     debut, fin = bornes(TypePeriode(args.periode), date.fromisoformat(args.date))
 
@@ -731,6 +745,11 @@ def main(argv: list[str] | None = None) -> None:
                    help="Saisir les dépôts « À saisir » dans Sage (Sage ouvert, fenêtre Encaissements affichée)")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_encaissements)
+
+    p = sous.add_parser("encaisser-bureau", help="(interne) Encaisser les dépôts dans Sage sur le bureau caché")
+    p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_encaisser_bureau)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

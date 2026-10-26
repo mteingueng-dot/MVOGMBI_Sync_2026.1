@@ -564,6 +564,9 @@ class Application(tk.Tk):
         self._champ(fichier, 4, t("Compte de dépôt des encaissements"), "enc.compte",
                     str(self.config_toml.get("encaissements", {}).get("compte_depot", "1055")),
                     aide=t("Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins)."))
+        self._champ(fichier, 6, t("Encaisser à partir des ventes du"), "enc.depart",
+                    str(self.config_toml.get("encaissements", {}).get("date_depart", date.today().isoformat())),
+                    aide=t("AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés par le robot."))
         comptes = self._carte(f, 2, t("Utilisateurs Sage"), "2")
         self._champ(comptes, 0, t("Utilisateur Sage (lecture)"), "sage.utilisateur", b.get("utilisateur", "mvogmbi_sync"),
                     aide=t("Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » "
@@ -667,6 +670,7 @@ class Application(tk.Tk):
         heure = str(v["auto.heure"]).strip()
         try:
             date.fromisoformat(str(v["auto.date_depart"]).strip())
+            date.fromisoformat(str(v["enc.depart"]).strip())
             h, m = heure.split(":")
             assert 0 <= int(h) < 24 and 0 <= int(m) < 60
             int(str(v["courriel.port"]).strip() or 587)
@@ -695,6 +699,9 @@ class Application(tk.Tk):
         c.setdefault("automatique", {}).update(date_depart=str(v["auto.date_depart"]).strip(), heure=heure)
         c["automatique"].setdefault("delai_import", 3600)
         c.setdefault("encaissements", {})["compte_depot"] = str(v["enc.compte"]).strip() or "1055"
+        c["encaissements"]["date_depart"] = str(v["enc.depart"]).strip() or date.today().isoformat()
+        c["encaissements"].setdefault("mode", "Comptant")
+        c["encaissements"].setdefault("automatique", True)
         c.setdefault("courriel", {}).update(
             serveur=str(v["courriel.serveur"]).strip(), port=int(str(v["courriel.port"]).strip() or 587),
             securite=v["courriel.securite"], utilisateur=str(v["courriel.utilisateur"]).strip(),
