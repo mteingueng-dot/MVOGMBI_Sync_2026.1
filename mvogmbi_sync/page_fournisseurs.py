@@ -128,6 +128,7 @@ class PageFournisseurs(ttk.Frame):
         self.lignes.pack(side="left", fill="both", expand=True)
         defil.pack(side="right", fill="y")
         self.lignes.bind("<<TreeviewSelect>>", lambda _e: self.choisir_ligne())
+        self.lignes.bind("<Double-Button-1>", lambda _e: self.chercher_article())
 
         # Carte d'édition de la ligne choisie : valeurs lues (à corriger), conditionnement, article Sage
         edition = tk.Frame(parent, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
@@ -164,12 +165,15 @@ class PageFournisseurs(ttk.Frame):
         recherche_cadre = tk.Frame(gauche, background=CARTE)
         recherche_cadre.pack(fill="x")
         etiquette(recherche_cadre, "Article Sage :")
-        recherche = ttk.Entry(recherche_cadre, textvariable=self.l["recherche"])
+        recherche = self.champ_recherche = ttk.Entry(recherche_cadre, textvariable=self.l["recherche"])
         recherche.pack(side="left", fill="x", expand=True)
-        recherche.bind("<KeyRelease>", lambda _e: self.chercher_sage())
+        recherche.bind("<KeyRelease>", lambda e: None if e.keysym in ("Return", "Down", "Up") else self.chercher_sage())
+        recherche.bind("<Return>", lambda _e: self.relier())
+        recherche.bind("<Down>", lambda _e: (self.resultats.focus_set(), self.resultats.selection_set(0)))
         self.resultats = tk.Listbox(gauche, height=3, font=("Consolas", 9), activestyle="none")
         self.resultats.pack(fill="x", pady=(4, 0))
         self.resultats.bind("<Double-Button-1>", lambda _e: self.relier())
+        self.resultats.bind("<Return>", lambda _e: self.relier())
         boutons = tk.Frame(rang3, background=CARTE)
         boutons.pack(side="left", anchor="n", padx=(10, 0))
         Bouton(boutons, "✔  " + t("Relier et confirmer"), self.relier, fond=CARTE, largeur=190).pack()
@@ -426,11 +430,21 @@ class PageFournisseurs(ttk.Frame):
     def ajouter_ligne(self) -> None:
         if not self.facture:
             return
-        self.facture.lignes.append(Ligne(t("Nouvelle ligne"), Decimal(1), Decimal(0), Decimal(0)))
+        self.facture.lignes.append(Ligne("", Decimal(1), Decimal(0), Decimal(0)))
         if self.facture.etat == A_SAISIR:
             self.facture.etat = A_VERIFIER
         self.afficher_lignes(len(self.facture.lignes) - 1)
         self.choisir_ligne()
+        self.chercher_article()
+
+    def chercher_article(self) -> None:
+        """Place le curseur dans la recherche « Article Sage » (taper quelques lettres, puis Entrée ou double-clic)."""
+        _, l = self.ligne_choisie()
+        if l is not None and not l.description:
+            self.l["recherche"].set("")
+            self.resultats.delete(0, "end")
+        self.champ_recherche.focus_set()
+        self.champ_recherche.select_range(0, "end")
 
     def supprimer_ligne(self) -> None:
         i, l = self.ligne_choisie()
@@ -454,11 +468,13 @@ class PageFournisseurs(ttk.Frame):
 
     def relier(self) -> None:
         i, l = self.ligne_choisie()
-        choix = self.resultats.curselection()
+        choix = self.resultats.curselection() or ((0,) if self.choix_sage else ())
         if l is None or not choix:
             messagebox.showinfo(self.titre, t("Choisissez une ligne de la facture, puis un article Sage dans la liste."))
             return
         a = self.choix_sage[choix[0]]
+        if not self.l["description"].get().strip():  # ligne ajoutée à la main : désignation de l'article Sage
+            self.l["description"].set(a.description)
         if conflit_format(l.description, a.description) and not messagebox.askyesno(
                 self.titre, t("Les formats semblent différents (« {f} » / « {s} »). Deux formats différents sont deux "
                               "articles différents. Relier quand même (conditionnement différent) ?",

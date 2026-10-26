@@ -222,6 +222,8 @@ class MemoireCorrespondance:
         return self.donnees["articles"].get(fournisseur_sage, {}).get(cle)
 
     def retenir_article(self, fournisseur_sage: str, ligne: Ligne) -> None:
+        if not ligne.cle:  # ligne sans code ni désignation : rien à mémoriser
+            return
         self.donnees["articles"].setdefault(fournisseur_sage, {})[ligne.cle] = {
             "numero_sage": ligne.numero_sage, "description_sage": ligne.description_sage,
             "facteur": str(ligne.facteur), "description_fournisseur": ligne.description}
