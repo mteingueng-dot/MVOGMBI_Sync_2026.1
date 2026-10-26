@@ -153,7 +153,15 @@ class PageFournisseurs(ttk.Frame):
         for cle, libelle, largeur in (("quantite", "Qté", 7), ("prix", "Prix fournisseur", 9), ("montant", "Montant", 10),
                                       ("qte_sage", "Qté Sage", 9), ("facteur", "Facteur", 7)):
             etiquette(rang2, libelle)
-            ttk.Entry(rang2, textvariable=self.l[cle], width=largeur).pack(side="left", padx=(0, 10))
+            if cle in ("montant", "qte_sage"):  # valeurs calculées : affichées sur fond gris, non saisissables
+                tk.Label(rang2, textvariable=self.l[cle], width=largeur, anchor="e", background="#e9eeea",
+                         foreground="#24332a", font=("Segoe UI Semibold", 10), padx=6, pady=4).pack(side="left",
+                                                                                                  padx=(0, 10))
+            else:
+                ttk.Entry(rang2, textvariable=self.l[cle], width=largeur).pack(side="left", padx=(0, 10))
+        self._chargement = False
+        for cle in ("quantite", "prix", "facteur"):
+            self.l[cle].trace_add("write", lambda *_: self._recalculer())
         Bouton(rang2, t("Appliquer"), self.appliquer_ligne, "secondaire", fond=CARTE, petit=True).pack(side="left")
         Bouton(rang2, "➕", self.ajouter_ligne, "secondaire", fond=CARTE, petit=True, largeur=34).pack(side="left", padx=4)
         Bouton(rang2, "🗑", self.supprimer_ligne, "danger", fond=CARTE, petit=True, largeur=34).pack(side="left")
@@ -383,14 +391,28 @@ class PageFournisseurs(ttk.Frame):
         i = int(choix[0])
         return i, self.facture.lignes[i]
 
+    def _recalculer(self) -> None:
+        """Montant = Qté × Prix fournisseur ; Qté Sage = Qté × Facteur (affichage immédiat, pendant la frappe)."""
+        if self._chargement:
+            return
+        try:
+            quantite, prix = decimal(self.l["quantite"].get()), decimal(self.l["prix"].get())
+            facteur = decimal(self.l["facteur"].get() or "1")
+        except ValueError:
+            return
+        self.l["montant"].set(f"{(quantite * prix).quantize(Decimal('0.01'))}")
+        self.l["qte_sage"].set(f"{(quantite * facteur).quantize(Decimal('0.001')):g}")
+
     def choisir_ligne(self) -> None:
         _, l = self.ligne_choisie()
         if not l:
             return
+        self._chargement = True  # les valeurs de la ligne s'affichent telles quelles
         for cle, valeur in (("code", l.code), ("description", l.description), ("quantite", f"{l.quantite:g}"),
                             ("prix", f"{l.prix}"), ("montant", f"{l.montant}"), ("facteur", f"{l.facteur:g}"),
                             ("qte_sage", f"{l.en_sage()[0]:g}")):
             self.l[cle].set(valeur)
+        self._chargement = False
         self.l_taxable.set(l.taxable)
         self.l["recherche"].set(l.description)
         self.chercher_sage()
@@ -408,15 +430,11 @@ class PageFournisseurs(ttk.Frame):
         try:
             l.code, l.description = self.l["code"].get().strip(), self.l["description"].get().strip()
             l.quantite, l.prix = decimal(self.l["quantite"].get()), decimal(self.l["prix"].get())
-            l.montant, facteur = decimal(self.l["montant"].get()), decimal(self.l["facteur"].get() or "1")
-            qte_sage = decimal(self.l["qte_sage"].get() or "0")
-            if facteur != l.facteur or not qte_sage or not l.quantite:
-                l.facteur = facteur  # facteur modifié : la quantité Sage en découle
-            else:
-                # quantité Sage saisie (ex. 3 sacs de 10 lb -> 13,608 kg) : facteur = qté Sage / qté facturée
-                l.facteur = (qte_sage / l.quantite).quantize(Decimal("0.000001")).normalize()
+            # Montant = Qté × Prix fournisseur ; Qté Sage = Qté × Facteur (calculées, non saisissables)
+            l.montant = (l.quantite * l.prix).quantize(Decimal("0.01"))
+            l.facteur = decimal(self.l["facteur"].get() or "1")
             if l.facteur <= 0:
-                raise ValueError(t("La quantité Sage doit être supérieure à 0."))
+                raise ValueError(t("Le facteur doit être supérieur à 0."))
         except ValueError as exc:
             messagebox.showerror(self.titre, str(exc))
             return

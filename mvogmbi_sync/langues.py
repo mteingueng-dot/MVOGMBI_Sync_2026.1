@@ -63,7 +63,7 @@ EN: dict[str, str] = {
     '8. Factures fournisseurs': '8. Supplier invoices',
     "Prix fournisseur": "Supplier price",
     "Prix Sage": "Sage price",
-    "La quantité Sage doit être supérieure à 0.": "The Sage quantity must be greater than 0.",
+    "Le facteur doit être supérieur à 0.": "The factor must be greater than 0.",
     "Dans Sage : {q} × {p} $ = {m} $ (prix Sage = montant / quantité Sage)":
         "In Sage: {q} × ${p} = ${m} (Sage price = amount / Sage quantity)",
     "Choisissez le fournisseur dans la liste des fournisseurs Sage.": "Choose the supplier from the Sage supplier list.",
