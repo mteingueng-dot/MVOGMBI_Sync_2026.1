@@ -130,6 +130,20 @@ def commande_payer_bureau(args: argparse.Namespace) -> None:
     sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
 
 
+def commande_journal_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : écritures de journal des mouvements de banque confirmés."""
+    import json
+
+    from .robot_journal import journal_sur_bureau_cache
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    notes = []
+    bilan = journal_sur_bureau_cache(RACINE, config_toml, journal=lambda t: notes.append(t))
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
+
+
 def commande_rapport(args: argparse.Namespace) -> None:
     debut, fin = bornes(TypePeriode(args.periode), date.fromisoformat(args.date))
 
@@ -769,6 +783,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_payer_bureau)
+
+    p = sous.add_parser("journal-bureau", help="(interne) Écritures de journal des mouvements de banque confirmés")
+    p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_journal_bureau)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

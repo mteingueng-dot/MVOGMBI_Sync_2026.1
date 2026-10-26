@@ -92,6 +92,7 @@ class FenetreEncaissements:
     """La fenêtre « Encaissements » ouverte dans Sage 50 (la fenêtre « Paiements » en hérite)."""
 
     titre, id_grille, colonne_montant, ligne_y0 = TITRE, ID_GRILLE, "Montant reçu", LIGNE_Y0
+    id_date, id_traiter = ID_DATE, ID_TRAITER
 
     def __init__(self, hwnd: int | None = None):
         self.h = hwnd or user32.FindWindowW("#32770", self.titre)
@@ -179,10 +180,10 @@ class FenetreEncaissements:
         self.choisir(ID_CLIENT, client)
 
     def regler_date(self, jour: str) -> None:
-        champ = user32.GetDlgItem(self.h, ID_DATE)
+        champ = user32.GetDlgItem(self.h, self.id_date)
         user32.SendMessageW(champ, WM_SETTEXT, 0, ctypes.c_wchar_p(jour))
-        user32.SendMessageW(self.h, WM_COMMAND, (EN_CHANGE << 16) | ID_DATE, champ)
-        user32.SendMessageW(self.h, WM_COMMAND, (EN_KILLFOCUS << 16) | ID_DATE, champ)
+        user32.SendMessageW(self.h, WM_COMMAND, (EN_CHANGE << 16) | self.id_date, champ)
+        user32.SendMessageW(self.h, WM_COMMAND, (EN_KILLFOCUS << 16) | self.id_date, champ)
 
     def total(self) -> Decimal:
         return _lire_montant(_texte(user32.GetDlgItem(self.h, ID_TOTAL)))
@@ -217,16 +218,19 @@ class FenetreEncaissements:
         rang = ligne - self._position()
         if not 0 <= rang < visibles:
             raise ErreurRobot(f"Ligne {ligne} hors de la zone visible de la grille.")
-        y = self.ligne_y0 + HAUTEUR_LIGNE * rang
-        position = (y << 16) | self.x_montant()
+        self.taper(self.x_montant(), self.ligne_y0 + HAUTEUR_LIGNE * rang, montant_sage(montant), self.colonne_montant)
+
+    def taper(self, x: int, y: int, texte: str, nom: str = "") -> None:
+        """Clique dans la cellule (x, y) de la grille, tape `texte` caractère par caractère, puis un seul Tab."""
+        position = (y << 16) | x
         user32.PostMessageW(self.grille, WM_LBUTTONDOWN, 1, position)
         user32.PostMessageW(self.grille, WM_LBUTTONUP, 0, position)
         time.sleep(1.0)
         editeur = self._editeur()
         if not editeur:
-            raise ErreurRobot(f"La cellule « {self.colonne_montant} » ne s'est pas ouverte.")
+            raise ErreurRobot(f"La cellule « {nom or self.colonne_montant} » ne s'est pas ouverte.")
         # surtout pas WM_SETTEXT : Sage croirait la cellule non modifiée et y mettrait tout le montant dû
-        for caractere in montant_sage(montant):
+        for caractere in texte:
             user32.PostMessageW(editeur, WM_CHAR, ord(caractere), 0)
             time.sleep(0.03)
         time.sleep(0.6)
@@ -236,7 +240,7 @@ class FenetreEncaissements:
         time.sleep(0.8)
 
     def traiter(self, resultat: ResultatEncaissement) -> bool:
-        user32.PostMessageW(self.h, WM_COMMAND, ID_TRAITER, user32.GetDlgItem(self.h, ID_TRAITER))
+        user32.PostMessageW(self.h, WM_COMMAND, self.id_traiter, user32.GetDlgItem(self.h, self.id_traiter))
         for _ in range(5):
             dialogues = self.attendre_dialogues(4)
             if not dialogues:

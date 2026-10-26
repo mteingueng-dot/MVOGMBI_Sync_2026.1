@@ -292,7 +292,8 @@ class PageRapprochement(ttk.Frame):
 
     # ---------------------------------------------------------------- saisie dans Sage
     def saisir(self) -> None:
-        """Importe en écritures de journal les mouvements « Compte choisi » (Sage fermé), puis vérifie chacun."""
+        """Saisit en écritures de journal les mouvements « Compte choisi » (Sage fermé, ouvert par l'application dans
+        la fenêtre Journal général), puis les vérifie dans Sage."""
         from .sage_bureau import sage_ouvert
 
         choisis = [m for m in self.banque if m.etat == CONFIRME]
@@ -310,30 +311,31 @@ class PageRapprochement(ttk.Frame):
         if not messagebox.askyesno(self.titre, t("Enregistrer {n} écriture(s) dans Sage (compte 1055) ?\n\n{liste}",
                                                  n=len(choisis), liste=liste)):
             return
+        self.registre.enregistrer()  # les comptes choisis doivent être sur le disque pour la saisie
         self.resume.configure(text=t("Enregistrement des écritures dans Sage…"))
 
         def travail():
-            try:
-                from .import_journal import importer_journal
+            import json
+            import tempfile
 
-                resultats = importer_journal(self.racine, self._config(), choisis)
-                message = t("{ok} écriture(s) enregistrée(s) sur {n}.", n=len(choisis),
-                            ok=sum(1 for m in choisis if m.etat == SAISI))
-                erreurs = [r for r in resultats.values() if not r.startswith(("saisi", "déjà"))]
-                if erreurs:
-                    message += "\n\n" + "\n".join(erreurs[:15])
+            from .__main__ import commande_moteur
+            from .sage_bureau import executer_sur_bureau_cache
+
+            try:
+                with tempfile.TemporaryDirectory() as dossier:
+                    fichier = Path(dossier) / "bilan.json"
+                    executer_sur_bureau_cache(commande_moteur() + ["journal-bureau", "--resultat", str(fichier)],
+                                              self.racine)
+                    bilan = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
+                message = t("{ok} écriture(s) enregistrée(s) sur {n}.", n=len(choisis), ok=len(bilan.get("saisis", [])))
+                details = bilan.get("a_verifier", []) + ([bilan["erreur"]] if bilan.get("erreur") else [])
+                if details:
+                    message += "\n\n" + "\n".join(details[:15])
             except Exception as exc:
                 message = f"✘ {exc}"
-            self.after(0, lambda: self._fin_saisie(choisis, message))
+            self.after(0, lambda: (messagebox.showinfo(self.titre, message), self.actualiser()))
 
         threading.Thread(target=travail, daemon=True).start()
-
-    def _fin_saisie(self, choisis, message: str) -> None:
-        for m in choisis:
-            self.registre.retenir(m)
-        self.registre.enregistrer()
-        messagebox.showinfo(self.titre, message)
-        self.actualiser()
 
     # ---------------------------------------------------------------- rapport
     def rapport(self) -> None:

@@ -290,26 +290,33 @@ class SessionSage:
     def _visible(self, libelle: str):
         return next((e for e in _descendants(self.principale) if _texte(e) == libelle and user32.IsWindowVisible(e)), None)
 
-    def ouvrir_paiements(self, essais: int = 6) -> int:
-        """Page « Fournisseurs & Achats » (menu de gauche), puis tâche « Paiements »."""
-        lien = _attendre(lambda: self._visible("Fournisseurs & Achats"), 60)
+    def ouvrir_tache(self, page: str, tache: str, essais: int = 6) -> int:
+        """Page du menu de gauche (ex. « Fournisseurs & Achats »), puis la tâche (ex. « Paiements ») ; renvoie la
+        fenêtre de la tâche (même titre que la tâche)."""
+        lien = _attendre(lambda: self._visible(page), 60)
         if not lien:
-            raise ErreurSage("Menu « Fournisseurs & Achats » introuvable dans Sage.")
+            raise ErreurSage(f"Menu « {page} » introuvable dans Sage.")
         for _ in range(essais):
             time.sleep(5)  # Sage termine son chargement après l'affichage de l'accueil
             self.fermer_message_chargement()
-            if not self._visible("Paiements"):
+            if not self._visible(tache):
                 for cible in (lien, user32.GetParent(lien)):  # le libellé, sinon son cadre
                     self._cliquer(cible)
-                    if _attendre(lambda: self._visible("Paiements"), 4):
+                    if _attendre(lambda: self._visible(tache), 4):
                         break
                 continue
-            self._cliquer(self._icone("Paiements"))
-            fenetre = _attendre(lambda: user32.FindWindowW("#32770", "Paiements"), 10)
+            self._cliquer(self._icone(tache))
+            fenetre = _attendre(lambda: user32.FindWindowW("#32770", tache), 10)
             if fenetre:
-                self.journal("Fenêtre Paiements ouverte.")
+                self.journal(f"Fenêtre {tache} ouverte.")
                 return fenetre
-        raise ErreurSage("La fenêtre Paiements de Sage ne s'ouvre pas.")
+        raise ErreurSage(f"La fenêtre {tache} de Sage ne s'ouvre pas.")
+
+    def ouvrir_paiements(self) -> int:
+        return self.ouvrir_tache("Fournisseurs & Achats", "Paiements")
+
+    def ouvrir_journal(self) -> int:
+        return self.ouvrir_tache("Entreprise", "Journal général")
 
     # ------------------------------------------------------------ fermeture
     def _confirmer_abandon(self) -> None:
@@ -323,7 +330,7 @@ class SessionSage:
     def fermer(self, delai: int = 60) -> None:
         if not self.processus or self.processus.poll() is not None:
             return
-        for titre in ("Encaissements", "Paiements"):
+        for titre in ("Encaissements", "Paiements", "Journal général"):
             fenetre = user32.FindWindowW("#32770", titre)
             if fenetre:
                 user32.PostMessageW(fenetre, WM_CLOSE, 0, 0)

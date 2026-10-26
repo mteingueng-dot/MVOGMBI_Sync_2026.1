@@ -53,13 +53,8 @@ def test_decision_conservee_et_motif():
 
 
 def test_ecriture_de_journal():
-    from mvogmbi_sync.import_journal import bloc_journal, compte_sage
+    from mvogmbi_sync.robot_journal import compte_sage, source
 
     frais = banque("2026-02-27", "-5.95", "FIX Frais fixes d'utilisation")
-    frais.compte = "5450"
-    assert bloc_journal(frais) == ['<GenJour>', '"02-27-2026","Relevé 2026-02-27","FIX Frais fixes d\'utilisation"',
-                                   '"1055","-5.95"', '"5450","5.95"', '</GenJour>']
-    depot = banque("2026-02-06", "32.71", "DI Dépôt direct / RIA TELECOMMINICATIONS OF CANA")
-    depot.compte = "4013"
-    assert bloc_journal(depot)[2:4] == ['"1055","32.71"', '"4013","-32.71"']
-    assert compte_sage("5450") == 54500000
+    assert source(frais) == "Relevé 2026-02-27" and len(source(frais)) <= 20
+    assert compte_sage("5690") == 56900000

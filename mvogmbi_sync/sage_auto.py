@@ -221,7 +221,8 @@ def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str 
                     resultat.erreurs.append(f"{titre} : {message}" if message else titre)
                     if "password" in message.lower() or "mot de passe" in message.lower():
                         resultat.erreurs.append("Mot de passe Sage refusé : vérifiez-le dans la configuration.")
-                    cliquer(hwnd, ("cancel", "annuler", "ok"), IDCANCEL)
+                    # « Import Error … Do you wish to continue? » (Oui / Non) : on ne continue jamais
+                    cliquer(hwnd, ("cancel", "annuler", "non", "no", "ok"), IDCANCEL)
             time.sleep(0.1)
         resultat.erreurs.append(f"L'outil d'import ne s'est pas terminé après {delai} s : arrêté.")
         processus.kill()
