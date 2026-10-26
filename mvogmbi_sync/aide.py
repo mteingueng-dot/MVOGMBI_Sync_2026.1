@@ -5,7 +5,7 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.3.2"
+VERSION = "1.4.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -134,6 +134,9 @@ FAQ = {
         ("reponse", "Non : l'application pilote l'outil d'import de Sage de façon invisible. Si vous lancez "
                     "vous-même un fichier .IMP (double-clic), ses fenêtres apparaissent normalement : elles ne "
                     "viennent pas de MVOGMBI_Sync."),
+        ("question", "Pourquoi le dépôt ne couvre-t-il pas toute la facture ?"),
+        ("reponse", "Le dépôt Clover ne contient que les ventes par carte (crédit et débit). La part payée en "
+                    "espèces reste due sur la facture jusqu'à son propre encaissement."),
         ("question", "Comment désinstaller ?"),
         ("reponse", "Paramètres Windows > Applications > MVOGMBI_Sync > Désinstaller. La tâche planifiée est "
                     "retirée ; vos données et votre configuration restent dans le dossier d'installation."),
@@ -192,6 +195,9 @@ FAQ = {
         ("question", "Does a “Sage 50 - Password” or “Import Summary” window appear?"),
         ("reponse", "No: the application drives Sage's import tool invisibly. If you open an .IMP file yourself "
                     "(double-click), its windows appear normally: they do not come from MVOGMBI_Sync."),
+        ("question", "Why does the deposit not cover the whole invoice?"),
+        ("reponse", "The Clover deposit only contains card sales (credit and debit). The part paid in cash stays "
+                    "due on the invoice until it is received separately."),
         ("question", "How do I uninstall?"),
         ("reponse", "Windows Settings > Apps > MVOGMBI_Sync > Uninstall. The scheduled task is removed; your data "
                     "and configuration stay in the installation folder."),
@@ -280,10 +286,23 @@ GUIDE = {
         ("etape", "2. Onglet « 2. Sage 50 » : choisissez le vrai fichier .SAI, puis « Tester l'accès à Sage »."),
         ("etape", "3. Vérifiez le « Premier jour à importer » et faites une simulation avant la première nuit."),
 
+        ("sous_titre", "Encaissements des dépôts Clover"),
+        ("para", "Clover dépose dans le compte Desjardins (1055) les ventes encaissées moins les espèces : c'est "
+                 "le lot de cartes que Clover ferme chaque soir. Ventes du lundi au jeudi : déposées le lendemain ; "
+                 "ventes du vendredi, samedi et dimanche : déposées ensemble le lundi."),
+        ("etape", "1. Page « 7. Encaissements » : choisissez la période de ventes, puis « Calculer les dépôts »."),
+        ("etape", "2. Pour chaque dépôt « À saisir dans Sage », le cadre du bas indique quoi saisir : dans Sage, "
+                  "Encaissements, Reçu de « Vente Hebdomadaire », Dépôt 1055, date du dépôt, montant reçu sur "
+                  "chaque facture, puis « Traiter »."),
+        ("etape", "3. Recalculez : le dépôt passe à « Appliqué ». Le solde restant sur la facture correspond aux "
+                  "ventes en espèces."),
+        ("note", "Sage ne permet pas d'importer un encaissement : la saisie se fait dans Sage, l'application "
+                 "calcule les montants et vérifie le résultat. Un jour férié peut décaler un dépôt d'un jour."),
+
         ("sous_titre", "Routine quotidienne"),
         ("puce", "Le matin, lisez le courriel : « succès » ou la liste des points à corriger."),
         ("puce", "Un jour bloqué est repris automatiquement la nuit suivante, une fois corrigé."),
-        ("puce", "Les factures sont en « Payer plus tard » : appliquez-y les dépôts bancaires dans Sage."),
+        ("puce", "Les factures sont en « Payer plus tard » : page « 7. Encaissements » pour y appliquer les dépôts."),
 
         ("sous_titre", "Règles de facturation"),
         ("puce", "Une facture par jour, client « Vente Hebdomadaire », numéro « Vente AAAA-MM-JJ », datée du jour "
@@ -387,10 +406,23 @@ GUIDE = {
         ("etape", "2. “2. Sage 50” tab: choose the real .SAI file, then “Test Sage access”."),
         ("etape", "3. Check the “First day to import” and run a simulation before the first night."),
 
+        ("sous_titre", "Receipts for Clover deposits"),
+        ("para", "Clover deposits into the Desjardins account (1055) the sales collected minus cash: this is the "
+                 "card batch Clover closes every evening. Monday to Thursday sales: deposited the next day; Friday, "
+                 "Saturday and Sunday sales: deposited together on Monday."),
+        ("etape", "1. “7. Receipts” page: choose the sales period, then “Calculate deposits”."),
+        ("etape", "2. For each deposit “To enter in Sage”, the bottom panel shows what to enter: in Sage, Receipts, "
+                  "From “Vente Hebdomadaire”, Deposit to 1055, deposit date, amount received on each invoice, then "
+                  "“Process”."),
+        ("etape", "3. Recalculate: the deposit turns to “Applied”. The balance left on the invoice is the cash "
+                  "sales."),
+        ("note", "Sage cannot import a receipt: the entry is made in Sage, the application calculates the amounts "
+                 "and checks the result. A public holiday may shift a deposit by one day."),
+
         ("sous_titre", "Daily routine"),
         ("puce", "In the morning, read the email: “success” or the list of points to fix."),
         ("puce", "A blocked day is resumed automatically the following night, once fixed."),
-        ("puce", "Invoices are “Pay later”: apply the bank deposits to them in Sage."),
+        ("puce", "Invoices are “Pay later”: “7. Receipts” page to apply the deposits to them."),
 
         ("sous_titre", "Invoicing rules"),
         ("puce", "One invoice per day, customer “Vente Hebdomadaire”, number “Vente YYYY-MM-DD”, dated on the "

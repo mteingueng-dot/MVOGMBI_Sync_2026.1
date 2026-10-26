@@ -73,6 +73,28 @@ def afficher(rapport: RapportVentes) -> None:
     print(f"  Ventes nettes      : {rapport.total_net:>12,.2f} $")
 
 
+def commande_encaissements(args: argparse.Namespace) -> None:
+    """Dépôts Clover (lots de cartes) à encaisser sur les factures journalières, et leur état dans Sage."""
+    from .api_clover import ClientClover
+    from .encaissements import calculer, ecrire_excel, numero_compte_sage
+    from .facture import CLIENT
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    compte = str(config_toml.get("encaissements", {}).get("compte_depot", "1055"))
+    client = ClientClover(charger_config(Path(args.config)))
+    depots = lire_sage(config_toml, lambda base: calculer(client, base, CLIENT, numero_compte_sage(compte),
+                                                          date.fromisoformat(args.du), date.fromisoformat(args.au)),
+                       config_toml.get("sage_import", {}).get("fichier_entreprise"))
+    for d in depots:
+        print(f"{d.date} ({d.date:%a})  dépôt {d.montant:>10,.2f} $  au compte {compte}  : {d.etat}")
+        for l in d.lignes:
+            print(f"    {l.facture:<18} {l.montant:>10,.2f} $   dû dans Sage : "
+                  f"{'' if l.montant_du is None else f'{l.montant_du:,.2f} $':>12}   {l.etat}")
+    if args.export:
+        ecrire_excel(depots, Path(args.export), compte)
+        print(f"Liste enregistrée : {args.export}")
+
+
 def commande_rapport(args: argparse.Namespace) -> None:
     debut, fin = bornes(TypePeriode(args.periode), date.fromisoformat(args.date))
 
@@ -691,6 +713,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--fichier", help="Fichier d'entreprise Sage (.SAI) ; par défaut celui de [sage_base]")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_verifier_comptes)
+
+    p = sous.add_parser("encaissements", help="Dépôts Clover à encaisser sur les factures et leur état dans Sage")
+    p.add_argument("--du", default=(date.today() - timedelta(days=31)).isoformat(), help="Premier jour de vente")
+    p.add_argument("--au", default=(date.today() - timedelta(days=1)).isoformat(), help="Dernier jour de vente")
+    p.add_argument("--export", help="Fichier Excel à créer (liste des encaissements)")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_encaissements)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

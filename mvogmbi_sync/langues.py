@@ -58,6 +58,36 @@ EN: dict[str, str] = {
     "Serveur d'envoi": "Outgoing server",
     "Envoi du compte rendu": "Sending the report",
     "Outils": "Tools",
+    # ------------------------------------------------------------------ encaissements
+    "7. Encaissements": "7. Receipts",
+    "Compte de dépôt des encaissements": "Receipts deposit account",
+    "Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins).":
+        "Sage bank account where Clover deposits card sales (1055 = Desjardins account).",
+    "Ventes du": "Sales from", "au": "to",
+    "Calculer les dépôts": "Calculate deposits",
+    "Cliquez sur « Calculer les dépôts » : lots de cartes Clover et état dans Sage.":
+        "Click “Calculate deposits”: Clover card batches and status in Sage.",
+    "Montant": "Amount", "Montant dû (Sage)": "Amount due (Sage)",
+    "Date du dépôt / facture": "Deposit date / invoice",
+    "Saisie dans Sage (Encaissements)": "Entry in Sage (Receipts)",
+    "Copier": "Copy",
+    "Sélectionnez un dépôt dans le tableau.": "Select a deposit in the table.",
+    "Vérifiez les dates (AAAA-MM-JJ).": "Check the dates (YYYY-MM-DD).",
+    "Calcul en cours : lots de cartes Clover, puis lecture de Sage…": "Calculating: Clover card batches, then reading Sage…",
+    "{n} dépôt(s), {total} au total — {a} à saisir dans Sage, {ok} déjà appliqué(s).":
+        "{n} deposit(s), {total} in total — {a} to enter in Sage, {ok} already applied.",
+    "Encaissements > Reçu de : {client}": "Receipts > From: {client}",
+    "Dépôt : {compte} (compte Desjardins)": "Deposit to: {compte} (Desjardins account)",
+    "Date : {date}": "Date: {date}",
+    "Montant reçu, facture par facture :": "Amount received, invoice by invoice:",
+    "Total du dépôt : {total}": "Deposit total: {total}",
+    "Puis « Traiter ». L'état passera à « Appliqué » au prochain calcul.":
+        "Then “Process”. The status will turn to “Applied” at the next calculation.",
+    "Calculez d'abord les dépôts.": "Calculate the deposits first.",
+    "Fichier ouvert dans Excel : fermez-le puis recommencez.": "File open in Excel: close it and try again.",
+    "Appliqué": "Applied", "À saisir dans Sage": "To enter in Sage",
+    "Montant différent dans Sage": "Different amount in Sage",
+    "Facture pas encore dans Sage": "Invoice not yet in Sage", "Dépôt à venir": "Upcoming deposit",
     "Autres destinataires": "Other recipients",
     "Facultatif : autres personnes à informer, adresses séparées par des virgules "
     "(ex. comptable@exemple.com, gerant@exemple.com).":

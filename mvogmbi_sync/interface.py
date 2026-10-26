@@ -1,7 +1,7 @@
 """Interface graphique d'installation et de suivi de MVOGMBI_Sync (tkinter, incluse avec Python).
 
 Pages : Accueil (mise en route), Clover, Sage, Courriel, Automatisation, Correspondance des articles,
-Tableau de bord, Guide de configuration, Aide / FAQ.
+Tableau de bord, Encaissements, Guide de configuration, Aide / FAQ.
 Langues : français et anglais (sélecteur dans le menu, enregistré dans config.toml [general] langue).
 Les secrets (jeton Clover, mots de passe) vont dans le coffre-fort de Windows, jamais dans config.toml.
 """
@@ -28,7 +28,7 @@ TITRE = "MVOGMBI_Sync — Clover → Sage 50"
 MASQUE = "••••••••"  # affiché quand un secret est déjà enregistré dans le coffre
 
 # Index des pages (ordre du menu)
-ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, GUIDE, FAQ = range(9)
+ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, GUIDE, FAQ = range(10)
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -112,6 +112,7 @@ class Application(tk.Tk):
         self._onglet_automatisation()
         self._onglet_correspondance()
         self._onglet_tableau()
+        self._onglet_encaissements()
         self._onglet_texte(t("Guide de configuration"), "guide", "📘")
         self._onglet_texte(t("Aide / FAQ"), "faq", "❓")
         self._construire_menu()
@@ -560,6 +561,9 @@ class Application(tk.Tk):
         self._champ(fichier, 2, t("Premier jour à importer"), "auto.date_depart",
                     a.get("date_depart", date.today().isoformat()),
                     aide=t("AAAA-MM-JJ. Utilisé seulement si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ »."))
+        self._champ(fichier, 4, t("Compte de dépôt des encaissements"), "enc.compte",
+                    str(self.config_toml.get("encaissements", {}).get("compte_depot", "1055")),
+                    aide=t("Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins)."))
         comptes = self._carte(f, 2, t("Utilisateurs Sage"), "2")
         self._champ(comptes, 0, t("Utilisateur Sage (lecture)"), "sage.utilisateur", b.get("utilisateur", "mvogmbi_sync"),
                     aide=t("Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » "
@@ -633,6 +637,13 @@ class Application(tk.Tk):
         self.onglets.add(self.page_correspondance, text=t("5. Correspondance des articles"))
         self._pages.append(("🔗", t("5. Correspondance")))
 
+    def _onglet_encaissements(self) -> None:
+        from .page_encaissements import PageEncaissements
+
+        self.page_encaissements = PageEncaissements(self.onglets, self.racine, TITRE, self.chemin_config)
+        self.onglets.add(self.page_encaissements, text=t("7. Encaissements"))
+        self._pages.append(("💰", t("7. Encaissements")))
+
     def _onglet_tableau(self) -> None:
         f = self._cadre(t("6. Tableau de bord"), "📊")
         self._titre(f, t("6. Tableau de bord")[3:])
@@ -683,6 +694,7 @@ class Application(tk.Tk):
             c["sage_import"].setdefault(cle, defaut)
         c.setdefault("automatique", {}).update(date_depart=str(v["auto.date_depart"]).strip(), heure=heure)
         c["automatique"].setdefault("delai_import", 3600)
+        c.setdefault("encaissements", {})["compte_depot"] = str(v["enc.compte"]).strip() or "1055"
         c.setdefault("courriel", {}).update(
             serveur=str(v["courriel.serveur"]).strip(), port=int(str(v["courriel.port"]).strip() or 587),
             securite=v["courriel.securite"], utilisateur=str(v["courriel.utilisateur"]).strip(),

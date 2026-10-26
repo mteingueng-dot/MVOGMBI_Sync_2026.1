@@ -13,6 +13,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - `python -m mvogmbi_sync verifier-sage` : teste la lecture directe de Sage
 - `python -m mvogmbi_sync correspondance` : lit les articles directement dans Sage (sinon `donnees/Article.txt`) et crée/met à jour `donnees/correspondance_articles.xlsx` (articles Clover -> numéros Sage)
 - `python -m mvogmbi_sync rapport --periode jour|semaine|mois --date AAAA-MM-JJ [--par-jour] [--export fichier.xlsx]`
+- `python -m mvogmbi_sync encaissements --du AAAA-MM-JJ --au AAAA-MM-JJ [--export X.xlsx]` : dépôts Clover à encaisser sur les factures et leur état dans Sage (page « 7. Encaissements »)
 
 ## Automatisation et installation
 
@@ -46,6 +47,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - Les taxes Sage (calculées sur le net) diffèrent légèrement des taxes encaissées par Clover : arrondis au cent par commande, taxes d'articles remboursés, articles « non-recette » (signalés en anomalie).
 - Facture Sage existante (« Vente Mars 2025 », 2025-03-31) : client « Vente Hebdomadaire », quantités à 2 décimales, prix à 4 décimales, colonne Taxe vide (TPS/TVQ à 0), compte de revenus par article (ex. 4016 Féculents, 4017 Fruits & Légumes, 4013 Divers), emplacement « Emplacement par défaut », facture marquée PAYÉ.
 
+- **Encaissements (règle du propriétaire)** : dépôt Clover dans Desjardins (compte 1055, config [encaissements] compte_depot) = encaissé − espèces = lot de cartes Clover (`batches`, fermé chaque soir à 21 h 32 ; vérifié au cent près) ; ventes lun.–jeu. déposées le lendemain, ven.–dim. ensemble le lundi ; encaissement daté du dépôt, appliqué sur chaque facture du jour pour son lot. Sage_SA_import ne sait PAS importer d'encaissement (seulement SalInvoice/SalOrder/PurInvoice/PurQuote/GENJOUR) : l'application calcule et vérifie (tcustrdt nTranType 1, lBnkAcctId 10550000) ; la saisie se fait dans Sage. Étape suivante envisagée : robot de saisie dans la fenêtre Encaissements.
 - Le total affiché par Clover est calculé avant arrondi : la somme des lignes peut différer de quelques cents (janvier 2026 : 52 452,91 $ en lignes contre 52 453,00 $ au total Clover).
 - Règles validées contre les exports Clover (17, 19 et 23 oct. 2026, au cent près) : une vente est datée de son premier paiement réussi (pas de la création de la commande) ; les pourcentages de rabais d'une commande s'additionnent (99 % + 10 % = 100 % max) ; `paymentState` reste souvent OPEN.
 - Liste des articles Sage : export texte cp1252 (`donnees/Article.txt`, chemin dans config.toml `[sage] articles`, en-tête `33101,3,Inventory`), colonnes : numéro, description, type, unité, prix, prix, compte d'actif, compte de revenus, compte CPV, compte d'écart, description 2, unité de vente.
