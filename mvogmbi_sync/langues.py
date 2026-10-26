@@ -86,6 +86,15 @@ EN: dict[str, str] = {
     "Calculez d'abord les dépôts.": "Calculate the deposits first.",
     "Fichier ouvert dans Excel : fermez-le puis recommencez.": "File open in Excel: close it and try again.",
     "Appliqué": "Applied", "À saisir dans Sage": "To enter in Sage",
+    "Encaisser dans Sage": "Record in Sage",
+    "Aucun dépôt « À saisir dans Sage » : calculez d'abord les dépôts.":
+        "No deposit “To enter in Sage”: calculate the deposits first.",
+    "Ouvrez Sage sur le fichier d'entreprise, puis la fenêtre Clients & Ventes > Encaissements, et recommencez.":
+        "Open Sage on the company file, then the Receivables > Receipts window, and try again.",
+    "Encaisser {n} dépôt(s) ({total}) dans Sage ? N'utilisez pas Sage pendant la saisie.":
+        "Record {n} deposit(s) ({total}) in Sage? Do not use Sage during the entry.",
+    "Saisie des encaissements dans Sage en cours…": "Recording receipts in Sage…",
+    "{ok} dépôt(s) encaissé(s) sur {n}.": "{ok} deposit(s) recorded out of {n}.",
     "Montant différent dans Sage": "Different amount in Sage",
     "Facture pas encore dans Sage": "Invoice not yet in Sage", "Dépôt à venir": "Upcoming deposit",
     "Autres destinataires": "Other recipients",

@@ -40,6 +40,7 @@ class PageEncaissements(ttk.Frame):
         ttk.Entry(barre, textvariable=self.fin, width=12).pack(side="left", padx=4)
         Bouton(barre, "⟳  " + t("Calculer les dépôts"), self.calculer).pack(side="left", padx=8)
         Bouton(barre, "📗  Excel", self.exporter, "secondaire").pack(side="right")
+        Bouton(barre, "🤖  " + t("Encaisser dans Sage"), self.encaisser, "accent").pack(side="right", padx=8)
         self.resume = ttk.Label(self, text=t("Cliquez sur « Calculer les dépôts » : lots de cartes Clover et état dans Sage."),
                                 foreground=TEXTE_DOUX, padding=(0, 8))
         self.resume.pack(fill="x")
@@ -133,6 +134,40 @@ class PageEncaissements(ttk.Frame):
             index = depots.index(a_saisir[0])
             self.tableau.selection_set(f"d{index}")
             self.tableau.see(f"d{index}")
+
+    def encaisser(self) -> None:
+        """Le robot saisit dans Sage chaque dépôt « À saisir » (Sage ouvert, fenêtre Encaissements affichée)."""
+        a_saisir = [d for d in self.depots if d.etat == A_SAISIR]
+        if not a_saisir:
+            messagebox.showinfo(self.titre, t("Aucun dépôt « À saisir dans Sage » : calculez d'abord les dépôts."))
+            return
+        import ctypes
+        if not ctypes.windll.user32.FindWindowW("#32770", "Encaissements"):
+            messagebox.showwarning(self.titre, t("Ouvrez Sage sur le fichier d'entreprise, puis la fenêtre "
+                                                 "Clients & Ventes > Encaissements, et recommencez."))
+            return
+        total = argent(sum((d.montant for d in a_saisir), Decimal(0)))
+        if not messagebox.askyesno(self.titre, t("Encaisser {n} dépôt(s) ({total}) dans Sage ? N'utilisez pas Sage "
+                                                 "pendant la saisie.", n=len(a_saisir), total=total)):
+            return
+        self.resume.configure(text=t("Saisie des encaissements dans Sage en cours…"))
+
+        def travail():
+            from .facture import CLIENT
+            from .robot_encaissements import appliquer
+
+            notes = []
+            try:
+                config = self._config()
+                mode = str(config.get("encaissements", {}).get("mode", "Chèque"))
+                resultats = appliquer(config, a_saisir, CLIENT, self.compte_depot(), mode, journal=notes.append)
+                bilan = t("{ok} dépôt(s) encaissé(s) sur {n}.", ok=sum(r.traite for r in resultats), n=len(a_saisir))
+            except Exception as exc:
+                bilan = f"✘ {exc}"
+            message = bilan + ("\n\n" + "\n".join(notes) if notes else "")
+            self.after(0, lambda: (messagebox.showinfo(self.titre, message), self.calculer()))
+
+        threading.Thread(target=travail, daemon=True).start()
 
     def depot_choisi(self):
         choix = self.tableau.selection()

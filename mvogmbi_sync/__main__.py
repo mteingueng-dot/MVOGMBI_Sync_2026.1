@@ -93,6 +93,13 @@ def commande_encaissements(args: argparse.Namespace) -> None:
     if args.export:
         ecrire_excel(depots, Path(args.export), compte)
         print(f"Liste enregistrée : {args.export}")
+    if args.appliquer:
+        from .robot_encaissements import appliquer
+
+        mode = str(config_toml.get("encaissements", {}).get("mode", "Chèque"))
+        resultats = appliquer(config_toml, depots, CLIENT, compte, mode)
+        if any(not r.traite for r in resultats):
+            sys.exit(1)
 
 
 def commande_rapport(args: argparse.Namespace) -> None:
@@ -718,6 +725,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--du", default=(date.today() - timedelta(days=31)).isoformat(), help="Premier jour de vente")
     p.add_argument("--au", default=(date.today() - timedelta(days=1)).isoformat(), help="Dernier jour de vente")
     p.add_argument("--export", help="Fichier Excel à créer (liste des encaissements)")
+    p.add_argument("--appliquer", action="store_true",
+                   help="Saisir les dépôts « À saisir » dans Sage (Sage ouvert, fenêtre Encaissements affichée)")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_encaissements)
 

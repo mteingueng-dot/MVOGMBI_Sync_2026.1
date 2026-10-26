@@ -5,7 +5,7 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -296,8 +296,11 @@ GUIDE = {
                   "chaque facture, puis « Traiter »."),
         ("etape", "3. Recalculez : le dépôt passe à « Appliqué ». Le solde restant sur la facture correspond aux "
                   "ventes en espèces."),
-        ("note", "Sage ne permet pas d'importer un encaissement : la saisie se fait dans Sage, l'application "
-                 "calcule les montants et vérifie le résultat. Un jour férié peut décaler un dépôt d'un jour."),
+        ("etape", "Ou laissez faire le robot : ouvrez Sage et sa fenêtre Clients & Ventes > Encaissements, puis "
+                  "« Encaisser dans Sage ». Il remplit la fenêtre, vérifie le total avant « Traiter », puis contrôle "
+                  "chaque encaissement dans la base ; il s'arrête au moindre écart."),
+        ("note", "Sage ne permet pas d'importer un encaissement : l'application calcule les montants, les saisit "
+                 "par robot ou vous guide, puis vérifie le résultat. Un jour férié peut décaler un dépôt d'un jour."),
 
         ("sous_titre", "Routine quotidienne"),
         ("puce", "Le matin, lisez le courriel : « succès » ou la liste des points à corriger."),
@@ -416,8 +419,11 @@ GUIDE = {
                   "“Process”."),
         ("etape", "3. Recalculate: the deposit turns to “Applied”. The balance left on the invoice is the cash "
                   "sales."),
-        ("note", "Sage cannot import a receipt: the entry is made in Sage, the application calculates the amounts "
-                 "and checks the result. A public holiday may shift a deposit by one day."),
+        ("etape", "Or let the robot do it: open Sage and its Receivables > Receipts window, then “Record in Sage”. It "
+                  "fills in the window, checks the total before “Process”, then verifies each receipt in the "
+                  "database; it stops at the slightest difference."),
+        ("note", "Sage cannot import a receipt: the application calculates the amounts, enters them with the "
+                 "robot or guides you, then checks the result. A public holiday may shift a deposit by one day."),
 
         ("sous_titre", "Daily routine"),
         ("puce", "In the morning, read the email: “success” or the list of points to fix."),
