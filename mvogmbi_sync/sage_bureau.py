@@ -62,7 +62,7 @@ def executer_sur_bureau_cache(commande: list[str], dossier: Path | None = None, 
     kernel32.CloseHandle.argtypes = [wt.HANDLE]
     bureau = user32.CreateDesktopW(BUREAU, None, None, 0, 0x10000000, None)  # GENERIC_ALL
     if not bureau:
-        raise ErreurSage(f"Création du bureau caché impossible (erreur Windows {kernel32.GetLastError()}).")
+        raise ErreurSage(f"Ouverture de Sage impossible (erreur Windows {kernel32.GetLastError()}).")
     infos = _STARTUPINFO()
     infos.cb = ctypes.sizeof(infos)
     infos.lpDesktop = f"WinSta0\\{BUREAU}"
@@ -70,7 +70,7 @@ def executer_sur_bureau_cache(commande: list[str], dossier: Path | None = None, 
     ligne = ctypes.create_unicode_buffer(subprocess.list2cmdline(commande))
     if not kernel32.CreateProcessW(None, ligne, None, None, False, 0x08000000, None,  # CREATE_NO_WINDOW
                                    str(dossier) if dossier else None, ctypes.byref(infos), ctypes.byref(processus)):
-        raise ErreurSage(f"Lancement sur le bureau caché impossible (erreur Windows {kernel32.GetLastError()}).")
+        raise ErreurSage(f"Ouverture de Sage impossible (erreur Windows {kernel32.GetLastError()}).")
     try:
         if kernel32.WaitForSingleObject(processus.hProcess, delai * 1000) != 0:
             kernel32.TerminateProcess(processus.hProcess, 1)
@@ -181,7 +181,7 @@ class SessionSage:
     # ------------------------------------------------------------ ouverture
     def ouvrir(self, fichier_sai: Path, utilisateur: str, mot_de_passe: str, delai: int = 180) -> None:
         self.processus = subprocess.Popen([str(self.exe)])
-        self.journal("Sage lancé sur le bureau caché.")
+        self.journal("Sage lancé.")
         accueil = _attendre(lambda: next((h for h in self.fenetres()
                                           if self._bouton(h, "Sélectionner une &entreprise")), None), delai)
         if not accueil:
@@ -222,7 +222,7 @@ class SessionSage:
             autres = [_texte(h) for h in self.fenetres()]
             raise ErreurSage(f"Sage n'a pas ouvert {Path(fichier_sai).name} (fenêtres : {autres}) — "
                              "mot de passe de sysadmin refusé ou fichier utilisé par quelqu'un d'autre ?")
-        self.journal(f"Sage ouvert sur {Path(fichier_sai).name} (mono-utilisateur).")
+        self.journal(f"Sage ouvert sur {Path(fichier_sai).name}.")
 
     @staticmethod
     def _contenu(h) -> str:

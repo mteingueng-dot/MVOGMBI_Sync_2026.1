@@ -24,3 +24,8 @@ essais_sage/
 build/
 dist/
 lancer_traitement.cmd
+
+# Manuel : captures d'écran avec les vraies données du marché (dépôt public) ; seul le générateur est publié
+documentation/captures/
+documentation/Manuel_MVOGMBI_Sync.html
+documentation/Manuel_MVOGMBI_Sync.pdf

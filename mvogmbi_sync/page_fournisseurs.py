@@ -13,12 +13,13 @@ from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
 from .correspondance import conflit_format, normaliser
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, fond_de
+from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau, entete_page,
+                     fond_de, rayer)
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
                            completer, etat_apres_controle, lire_copie_fournisseurs, lire_facture)
 from .langues import t
 
-COULEURS = {A_SAISIR: "#fff4d6", A_VERIFIER: "#fde2e4", PRETE: "#e3f4e8", IMPORTEE: "#eef1ef"}
+COULEURS = {A_SAISIR: "#fff4d6", A_VERIFIER: "#fde2e4", PRETE: "#e6f4ea", IMPORTEE: None}
 COLONNES_LIGNES = (("code", "Code", 60), ("description", "Désignation du fournisseur", 190), ("quantite", "Qté", 50),
                    ("prix", "Prix fournisseur", 85), ("montant", "Montant", 80), ("numero_sage", "N° Sage", 95),
                    ("description_sage", "Désignation Sage", 170), ("qte_sage", "Qté Sage", 70),
@@ -45,6 +46,8 @@ class PageFournisseurs(ttk.Frame):
         self.facture = None
         self.choix_sage = []
 
+        entete_page(self, "🧾", t("Factures fournisseurs"),
+                    t("lecture des factures, articles Sage et import dans Sage")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         Bouton(barre, "➕  " + t("Ajouter des factures…"), self.ajouter_factures).pack(side="left")
@@ -62,7 +65,7 @@ class PageFournisseurs(ttk.Frame):
 
         volets = ttk.PanedWindow(self, orient="vertical")
         volets.pack(fill="both", expand=True)
-        haut = ttk.Frame(volets)
+        haut = cadre_tableau(volets)
         volets.add(haut, weight=1)
         colonnes = (("fichier", "Fichier", 220), ("fournisseur", "Fournisseur Sage", 220), ("numero", "N°", 90),
                     ("date", "Date", 85), ("total", "Total", 90), ("etat", "État", 130))
@@ -70,8 +73,8 @@ class PageFournisseurs(ttk.Frame):
         for cle, titre_col, largeur in colonnes:
             self.liste.heading(cle, text=t(titre_col))
             self.liste.column(cle, width=largeur, anchor="e" if cle == "total" else "w", stretch=cle == "fichier")
-        for etat, couleur in COULEURS.items():
-            self.liste.tag_configure(etat, background=couleur)
+        for etat, couleur in COULEURS.items():  # sans couleur : état terminé, texte grisé sur lignes rayées
+            self.liste.tag_configure(etat, **({"background": couleur} if couleur else {"foreground": TEXTE_DOUX}))
         defil = ttk.Scrollbar(haut, orient="vertical", command=self.liste.yview)
         self.liste.configure(yscrollcommand=defil.set)
         self.liste.pack(side="left", fill="both", expand=True)
@@ -115,7 +118,7 @@ class PageFournisseurs(ttk.Frame):
                                  background=fond_de(parent))
         self.controle.pack(fill="x", pady=(4, 0))
 
-        tableau = ttk.Frame(parent)
+        tableau = cadre_tableau(parent)
         tableau.pack(fill="both", expand=True, pady=(4, 0))
         self.lignes = ttk.Treeview(tableau, columns=[c[0] for c in COLONNES_LIGNES], show="headings", height=4,
                                    selectmode="browse")
@@ -125,7 +128,7 @@ class PageFournisseurs(ttk.Frame):
                                                                         "qte_sage") else "w",
                                stretch=cle in ("description", "description_sage"))
         self.lignes.tag_configure("a_faire", background="#fff4d6")
-        self.lignes.tag_configure("ok", background="#e3f4e8")
+        self.lignes.tag_configure("ok", foreground="#1f2d24")
         defil = ttk.Scrollbar(tableau, orient="vertical", command=self.lignes.yview)
         self.lignes.configure(yscrollcommand=defil.set)
         self.lignes.pack(side="left", fill="both", expand=True)
@@ -211,6 +214,7 @@ class PageFournisseurs(ttk.Frame):
             self.liste.insert("", "end", iid=str(i), tags=(f.etat,), values=(
                 f.fichier, f.fournisseur_sage or f"({f.fournisseur_lu or '?'})", f.numero, f.date_facture,
                 f"{f.total:,.2f}" if f.total is not None else "", t(f.etat)))
+        rayer(self.liste)
         compte = {e: sum(1 for f in self.registre.factures if f.etat == e) for e in ETATS}
         self.resume.configure(text=t("{n} facture(s) — à saisir : {s}, à vérifier : {v}, prêtes : {p}, importées : {i}",
                                      n=len(self.registre.factures), s=compte[A_SAISIR], v=compte[A_VERIFIER],
@@ -274,8 +278,8 @@ class PageFournisseurs(ttk.Frame):
             return
         from .sage_bureau import sage_ouvert
         if sage_ouvert():
-            messagebox.showwarning(self.titre, t("Fermez Sage : l'import exige le mode mono-utilisateur (personne "
-                                                 "d'autre dans le fichier d'entreprise)."))
+            messagebox.showwarning(self.titre, t("Fermez Sage : l'import exige que personne ne soit "
+                                                 "dans le fichier d'entreprise."))
             return
         liste = "\n".join(f"  • {f.fournisseur_sage} n° {f.numero} — {f.total:,.2f} $" for f in pretes)
         if not messagebox.askyesno(self.titre, t("Importer {n} facture(s) dans Sage ?\n\n{liste}", n=len(pretes),
@@ -417,6 +421,7 @@ class PageFournisseurs(ttk.Frame):
                                values=(l.code, l.description, f"{l.quantite:g}", f"{l.prix:.2f}", f"{l.montant:.2f}",
                                        l.numero_sage, l.description_sage, f"{quantite:g}", f"{prix_sage:.4f}",
                                        f"{l.facteur:g}", etat))
+        rayer(self.lignes)
         if selection is not None and self.lignes.exists(str(selection)):
             self.lignes.selection_set(str(selection))
             self.lignes.see(str(selection))

@@ -287,7 +287,7 @@ def encaisser_depots(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
 
     if not config_toml.get("encaissements", {}).get("automatique", True):
         return
-    cr.note("Encaissements des dépôts Clover (Sage ouvert par le robot, hors écran)…")
+    cr.note("Encaissements des dépôts Clover…")
     with tempfile.TemporaryDirectory() as dossier:
         fichier = Path(dossier) / "bilan.json"
         code = executer_sur_bureau_cache(commande_moteur() + ["encaisser-bureau", "--resultat", str(fichier)],
@@ -300,7 +300,7 @@ def encaisser_depots(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
     if bilan.get("erreur"):
         cr.problemes.append(f"Encaissements non faits : {bilan['erreur']}")
     elif code == -1:
-        cr.problemes.append("Encaissements : le robot n'a pas terminé dans le délai ; Sage a été arrêté.")
+        cr.problemes.append("Encaissements : le traitement n'a pas terminé dans le délai ; Sage a été arrêté.")
     cr.note(f"{len(cr.encaissements)} dépôt(s) encaissé(s) dans Sage.")
 
 
@@ -318,7 +318,7 @@ def payer_fournisseurs(racine: Path, config_toml: dict, cr: CompteRendu) -> None
         return
     if not any(p.etat == CONFIRME for p in RegistrePaiements(racine).paiements):
         return
-    cr.note("Paiements fournisseurs confirmés (Sage ouvert par le robot, hors écran)…")
+    cr.note("Paiements fournisseurs confirmés…")
     with tempfile.TemporaryDirectory() as dossier:
         fichier = Path(dossier) / "bilan.json"
         code = executer_sur_bureau_cache(commande_moteur() + ["payer-bureau", "--resultat", str(fichier)],
@@ -331,7 +331,7 @@ def payer_fournisseurs(racine: Path, config_toml: dict, cr: CompteRendu) -> None
     if bilan.get("erreur"):
         cr.problemes.append(f"Paiements fournisseurs non faits : {bilan['erreur']}")
     elif code == -1:
-        cr.problemes.append("Paiements fournisseurs : le robot n'a pas terminé dans le délai ; Sage a été arrêté.")
+        cr.problemes.append("Paiements fournisseurs : le traitement n'a pas terminé dans le délai ; Sage a été arrêté.")
     cr.note(f"{len(cr.paiements)} paiement(s) fournisseur(s) saisi(s) dans Sage.")
 
 

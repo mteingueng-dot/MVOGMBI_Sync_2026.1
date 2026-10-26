@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
-from .design import Bouton
+from .design import Bouton, cadre_tableau, entete_page, rayer
 from .langues import t
 from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, conflit_format, ecrire_correspondance,
                              lire_correspondances, normaliser)
@@ -22,7 +22,7 @@ from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, conflit_
 FILTRES = ["À traiter (À confirmer + Aucun)", "Tous", CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN]  # valeurs internes
 COLONNES = [("statut", "Statut", 95), ("nom", "Article Clover", 290), ("categorie", "Catégorie", 130),
             ("ventes", "Ventes 30 j", 80), ("numero", "N° article Sage", 120), ("description", "Description Sage", 290)]
-COULEURS = {CONFIRME: "#e3f4e8", AUTOMATIQUE: "#e6eef9", A_CONFIRMER: "#fff4cc", AUCUN: "#fbe0de"}
+COULEURS = {CONFIRME: "#e6f4ea", A_CONFIRMER: "#fff4cc", AUCUN: "#fbe0de"}  # « Automatique » : lignes rayées
 
 
 class PageCorrespondance(ttk.Frame):
@@ -36,6 +36,8 @@ class PageCorrespondance(ttk.Frame):
         self.articles_sage = []
         self.choix_sage = []
 
+        entete_page(self, "🔗", t("Correspondance des articles"),
+                    t("chaque article Clover relié à son article Sage")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         ttk.Label(barre, text=t("Afficher :")).pack(side="left")
@@ -55,7 +57,7 @@ class PageCorrespondance(ttk.Frame):
         self.compteurs = ttk.Label(self, text="", foreground="#444", padding=(0, 6))
         self.compteurs.pack(fill="x")
 
-        cadre = ttk.Frame(self)
+        cadre = cadre_tableau(self)
         cadre.pack(fill="both", expand=True)
         self.tableau = ttk.Treeview(cadre, columns=[c[0] for c in COLONNES], show="headings", height=12,
                                     selectmode="browse")
@@ -120,6 +122,7 @@ class PageCorrespondance(ttk.Frame):
                 t(c.statut), c.nom_clover, c.categorie_clover, f"{c.ventes_30j:,.2f}" if c.ventes_30j else "",
                 c.numero_sage, c.description_sage))
             visibles += 1
+        rayer(self.tableau)
         compte = Counter(c.statut for c in self.lignes)
         self.compteurs.config(text=(
             t("{n} articles Clover — Confirmé : {c}   Automatique : {a}   À confirmer : {q}   Aucun : {z}   •   affichés : {v}",

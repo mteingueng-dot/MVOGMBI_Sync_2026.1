@@ -310,3 +310,91 @@ def poser_filigrane(page, image, coin: str = "se", marge: int = 16) -> tk.Label:
     etiquette.place(relx=relx, rely=rely, x=x, y=y, anchor=coin)
     etiquette.lower()
     return etiquette
+
+
+# --------------------------------------------------------------------------------------------- tableaux et pages
+ENTETE_TABLEAU = "#1f7a3a"   # vert des en-têtes de colonnes
+RAYURE = "#f4f8f5"           # une ligne sur deux
+SELECTION = "#cfe9d7"        # ligne choisie
+
+
+def styler(style: ttk.Style) -> None:
+    """Styles communs : tableaux (en-têtes verts, lignes hautes, rayures, sélection), cadres en cartes."""
+    try:  # en-tête dessiné par les éléments du thème « default » : couleurs libres (Sun Valley impose des images)
+        style.element_create("Entete.cell", "from", "default", "Treeheading.cell")
+        style.element_create("Entete.border", "from", "default", "Treeheading.border")
+    except tk.TclError:
+        pass
+    style.layout("Treeview.Heading", [
+        ("Entete.cell", {"sticky": "nswe"}),
+        ("Entete.border", {"sticky": "nswe", "children": [
+            ("Treeheading.padding", {"sticky": "nswe", "children": [
+                ("Treeheading.image", {"side": "right", "sticky": ""}),
+                ("Treeheading.text", {"sticky": "we"})]})]})])
+    style.configure("Treeview.Heading", background=ENTETE_TABLEAU, foreground="#ffffff", relief="flat",
+                    borderwidth=0, font=("Segoe UI Semibold", 9), padding=(8, 7))
+    style.map("Treeview.Heading", background=[("active", VERT_FONCE)], foreground=[("active", "#ffffff")])
+    style.configure("Treeview", rowheight=30, font=("Segoe UI", 10), background=CARTE, fieldbackground=CARTE,
+                    foreground=TEXTE, borderwidth=0)
+    style.map("Treeview", background=[("selected", SELECTION)], foreground=[("selected", TEXTE)])
+    racine = style.master
+    if racine is not None:
+        _couleurs_listes(racine)
+        # Sun Valley repeint toutes les listes en bleu (tk_setPalette) quand le thème s'applique : on repasse après
+        racine.bind("<<ThemeChanged>>", lambda _e: racine.after(50, lambda: _couleurs_listes(racine)), add="+")
+    style.configure("TLabelframe", background=CARTE, bordercolor=BORDURE, relief="solid", borderwidth=1)
+    style.configure("TLabelframe.Label", background=CARTE, foreground=VERT_FONCE, font=("Segoe UI Semibold", 10))
+
+
+COULEURS_LISTES = (("selectBackground", SELECTION), ("selectForeground", TEXTE), ("relief", "flat"),
+                   ("borderWidth", 0), ("highlightThickness", 1), ("highlightBackground", BORDURE),
+                   ("highlightColor", VERT), ("background", CARTE), ("foreground", TEXTE))
+
+
+def _couleurs_listes(racine) -> None:
+    """Listes (tk.Listbox) aux couleurs des tableaux : nouvelles (base d'options) et existantes."""
+    for option, valeur in COULEURS_LISTES + (("activeStyle", "none"),):
+        racine.option_add(f"*Listbox.{option}", valeur)
+    a_voir = [racine]
+    while a_voir:
+        w = a_voir.pop()
+        a_voir.extend(w.winfo_children())
+        if w.winfo_class() == "Listbox" and str(w.cget("selectbackground")) != VERT:  # recherche rapide : vert plein
+            w.configure(**{o.lower(): v for o, v in COULEURS_LISTES})
+
+
+def rayer(tableau: ttk.Treeview) -> None:
+    """Une ligne sur deux légèrement teintée (sauf les lignes déjà colorées par leur état)."""
+    tableau.tag_configure("rayure", background=RAYURE)
+    colorees = set()
+    for ligne in tableau.get_children():
+        tags = [t for t in tableau.item(ligne, "tags") if t != "rayure"]
+        colorees.update(t for t in tags if tableau.tag_configure(t, "background"))
+    for i, ligne in enumerate(tableau.get_children()):
+        tags = [t for t in tableau.item(ligne, "tags") if t != "rayure"]
+        if i % 2 and not any(t in colorees for t in tags):
+            tags.append("rayure")
+        tableau.item(ligne, tags=tags)
+
+
+def cadre_tableau(parent) -> tk.Frame:
+    """Cadre blanc à bordure fine qui accueille un tableau et sa barre de défilement."""
+    return tk.Frame(parent, background=CARTE, highlightthickness=1, highlightbackground=BORDURE)
+
+
+def entete_page(parent, icone: str, titre: str, sous_titre: str = "") -> tk.Frame:
+    """Titre compact d'une page de travail : icône, titre vert, filet jaune et rouge, explication en gris."""
+    fond = fond_de(parent)
+    bloc = tk.Frame(parent, background=fond)
+    ligne = tk.Frame(bloc, background=fond)
+    ligne.pack(fill="x")
+    tk.Label(ligne, text=icone, font=("Segoe UI Emoji", 15), background=fond).pack(side="left", padx=(0, 8))
+    tk.Label(ligne, text=titre, font=("Segoe UI Semibold", 15), foreground=VERT_FONCE, background=fond).pack(side="left")
+    if sous_titre:
+        tk.Label(ligne, text="—  " + sous_titre, font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=fond,
+                 anchor="w").pack(side="left", padx=(10, 0), fill="x", expand=True)
+    filet = tk.Frame(bloc, background=fond)
+    filet.pack(anchor="w", pady=(3, 8))
+    for couleur, largeur in ((JAUNE, 46), (ROUGE, 14)):
+        tk.Frame(filet, width=largeur, height=3, background=couleur).pack(side="left", padx=(0, 4))
+    return bloc

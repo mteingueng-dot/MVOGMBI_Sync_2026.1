@@ -61,6 +61,16 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    "Manuel d'utilisation (PDF)": 'User manual (PDF)',
+    "Le manuel d'utilisation est introuvable : réinstallez l'application.": 'The user manual cannot be found: reinstall the application.',
+    'Correspondance des articles': 'Item mapping',
+    'Encaissements des dépôts Clover': 'Clover deposit receipts',
+    'Factures fournisseurs': 'Supplier invoices',
+    'Paiements fournisseurs': 'Supplier payments',
+    'chaque article Clover relié à son article Sage': 'each Clover item linked to its Sage item',
+    'dépôts Clover appliqués sur les factures de vente': 'Clover deposits applied to the sales invoices',
+    'lecture des factures, articles Sage et import dans Sage': 'invoice reading, Sage items and import into Sage',
+    'virements Interac reliés aux factures fournisseurs et saisis dans Sage': 'Interac transfers linked to supplier invoices and entered in Sage',
     'Factures impayées de ce fournisseur dans Sage (Ctrl+clic : plusieurs factures pour un même virement) :': 'Unpaid invoices of this supplier in Sage (Ctrl+click: several invoices for one transfer):',
     "Le virement ({m} $) dépasse le solde des factures choisies ({s} $) : choisissez d'autres factures (Ctrl+clic).": 'The transfer (${m}) exceeds the balance of the chosen invoices (${s}): choose other invoices (Ctrl+click).',
     '  (partiel, solde {s} $)': '  (partial, balance ${s})',
@@ -75,9 +85,9 @@ EN: dict[str, str] = {
     'Le virement ({m} $) dépasse le solde de la facture ({s} $) : saisissez-le à la main dans Sage (plusieurs factures), puis « Ignorer ».': 'The transfer (${m}) exceeds the invoice balance (${s}): enter it manually in Sage (several invoices), then “Ignore”.',
     'paiement partiel : virement {m} $, solde {s} $': 'partial payment: transfer ${m}, balance ${s}',
     "Aucun paiement « Confirmé (à saisir) » : confirmez d'abord les virements.": 'No “Confirmed (to enter)” payment: confirm the transfers first.',
-    "Fermez Sage : le robot l'ouvre lui-même, hors écran, pour saisir les paiements.": 'Close Sage: the robot opens it itself, off screen, to enter the payments.',
-    "Saisir {n} paiement(s) dans Sage (compte 1055, Comptant) ?\n\n{liste}\n\nLe robot ouvre Sage hors écran ; n'ouvrez pas Sage pendant ce temps.": 'Enter {n} payment(s) in Sage (account 1055, Cash)?\n\n{liste}\n\nThe robot opens Sage off screen; do not open Sage meanwhile.',
-    'Saisie des paiements dans Sage par le robot…': 'The robot is entering the payments in Sage…',
+    "Fermez Sage : l'application l'ouvre elle-même pour saisir les paiements.": 'Close Sage: the application opens it itself to enter the payments.',
+    "Saisir {n} paiement(s) dans Sage (compte 1055, Comptant) ?\n\n{liste}\n\nL'application ouvre Sage elle-même ; n'ouvrez pas Sage pendant ce temps.": 'Enter {n} payment(s) in Sage (account 1055, Cash)?\n\n{liste}\n\nThe application opens Sage itself; do not open Sage meanwhile.',
+    'Saisie des paiements dans Sage…': 'Entering the payments in Sage…',
     '{ok} paiement(s) saisi(s) sur {n}.': '{ok} payment(s) entered out of {n}.',
     ' — {n} paiement(s) fournisseur(s)': ' — {n} supplier payment(s)',
     'MVOGMBI_Sync : paiements fournisseurs — {n} point(s) à vérifier': 'MVOGMBI_Sync: supplier payments — {n} item(s) to check',
@@ -122,7 +132,7 @@ EN: dict[str, str] = {
     "Importer dans Sage": "Import into Sage",
     "Aucune facture « Prête à importer ». Reliez tous les articles et enregistrez la facture pour qu'elle le devienne.":
         "No invoice “Ready to import”. Link all items and save the invoice to make it ready.",
-    "Fermez Sage : l'import exige le mode mono-utilisateur (personne d'autre dans le fichier d'entreprise).":
+    "Fermez Sage : l'import exige que personne ne soit dans le fichier d'entreprise.":
         "Close Sage: the import requires single-user mode (nobody else in the company file).",
     "Importer {n} facture(s) dans Sage ?\n\n{liste}": "Import {n} invoice(s) into Sage?\n\n{liste}",
     "Import dans Sage en cours (contrôles, import, vérification)…": "Importing into Sage (checks, import, verification)…",
@@ -194,12 +204,12 @@ EN: dict[str, str] = {
     "MVOGMBI_Sync : encaissements": "MVOGMBI_Sync: receipts",
     "Encaissements des dépôts Clover (compte Desjardins) :": "Receipts of Clover deposits (Desjardins account):",
     "Encaisser à partir des ventes du": "Record receipts from sales of",
-    "AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés par le robot.":
-        "YYYY-MM-DD. Deposits for earlier sales are never recorded by the robot.",
-    "Fermez Sage : le robot l'ouvre lui-même, hors écran, pour encaisser les dépôts.":
-        "Close Sage: the robot opens it itself, off screen, to record the deposits.",
-    "Encaisser {n} dépôt(s) ({total}) dans Sage ? Le robot ouvre Sage hors écran ; n'ouvrez pas Sage pendant ce temps.":
-        "Record {n} deposit(s) ({total}) in Sage? The robot opens Sage off screen; do not open Sage meanwhile.",
+    "AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés.":
+        "YYYY-MM-DD. Deposits for earlier sales are never recorded.",
+    "Fermez Sage : l'application l'ouvre elle-même pour encaisser les dépôts.":
+        "Close Sage: the application opens it itself to record the deposits.",
+    "Encaisser {n} dépôt(s) ({total}) dans Sage ? L'application ouvre Sage elle-même ; n'ouvrez pas Sage pendant ce temps.":
+        "Record {n} deposit(s) ({total}) in Sage? The application opens Sage itself; do not open Sage meanwhile.",
     # ------------------------------------------------------------------ encaissements
     "7. Encaissements": "7. Receipts",
     "Compte de dépôt des encaissements": "Receipts deposit account",

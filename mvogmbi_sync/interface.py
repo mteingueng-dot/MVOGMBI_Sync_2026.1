@@ -21,7 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import coffre, langues
 from .design import (BORDURE, CARTE, FOND, ICONE, ID_APPLICATION, JAUNE, LOGO, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE,
-                     TEXTE_DOUX, VERT, VERT_FONCE, Bouton, ChampDate, fond_de, image_filigrane)
+                     TEXTE_DOUX, VERT, VERT_FONCE, Bouton, ChampDate, fond_de, image_filigrane, styler)
 from .langues import t
 
 TITRE = "MVOGMBI_Sync — Clover → Sage 50"
@@ -134,6 +134,7 @@ class Application(tk.Tk):
         style.configure("Carte.TLabel", background=CARTE, foreground=TEXTE)
         style.configure("CarteAide.TLabel", background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 9))
         style.configure("Carte.TCheckbutton", background=CARTE)
+        styler(style)
 
     def _charger_images(self) -> dict:
         """Logo (en-tête), icône de la fenêtre et filigranes ; rien si l'image est introuvable."""
@@ -194,6 +195,12 @@ class Application(tk.Tk):
             self.boutons_menu.append(bouton)
             self.barres_menu.append(barre)
             self.pastilles_menu.append(pastille)
+        manuel = tk.Label(self.menu, text="📖   " + t("Manuel d'utilisation (PDF)"), anchor="w", font=("Segoe UI", 10),
+                          background=MENU_FOND, foreground=VERT_FONCE, padx=16, pady=9, cursor="hand2")
+        manuel.pack(fill="x", padx=(12, 10), pady=(10, 1))
+        manuel.bind("<Button-1>", lambda _e: self.ouvrir_manuel())
+        manuel.bind("<Enter>", lambda _e: manuel.configure(background=MENU_SURVOL))
+        manuel.bind("<Leave>", lambda _e: manuel.configure(background=MENU_FOND))
         self._actif = None
         bas = tk.Frame(self.menu, background=MENU_FOND)
         bas.pack(side="bottom", fill="x", padx=16, pady=14)
@@ -207,6 +214,15 @@ class Application(tk.Tk):
         from .aide import COPYRIGHT, VERSION
         for texte in (f"MVOGMBI_Sync {VERSION}", COPYRIGHT, t("Tous droits réservés.")):
             tk.Label(bas, text=texte, font=("Segoe UI", 8), foreground="#8a978e", background=MENU_FOND).pack(anchor="w")
+
+    def ouvrir_manuel(self) -> None:
+        """Manuel illustré : à côté du programme installé, sinon dans documentation/ (poste de développement)."""
+        for chemin in (self.racine / "Manuel_MVOGMBI_Sync.pdf", self.racine / "documentation" / "Manuel_MVOGMBI_Sync.pdf",
+                       Path(__file__).resolve().parent.parent / "documentation" / "Manuel_MVOGMBI_Sync.pdf"):
+            if chemin.exists():
+                os.startfile(chemin)
+                return
+        messagebox.showinfo(TITRE, t("Le manuel d'utilisation est introuvable : réinstallez l'application."))
 
     def _survol_menu(self, index: int, survol: bool) -> None:
         if self.boutons_menu[index] is self._actif:
@@ -573,7 +589,7 @@ class Application(tk.Tk):
                     aide=t("Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins)."))
         self._champ(fichier, 6, t("Encaisser à partir des ventes du"), "enc.depart",
                     str(self.config_toml.get("encaissements", {}).get("date_depart", date.today().isoformat())),
-                    calendrier=True, aide=t("AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés par le robot."))
+                    calendrier=True, aide=t("AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés."))
         comptes = self._carte(f, 2, t("Utilisateurs Sage"), "2")
         self._champ(comptes, 0, t("Utilisateur Sage (lecture)"), "sage.utilisateur", b.get("utilisateur", "mvogmbi_sync"),
                     aide=t("Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » "

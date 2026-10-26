@@ -9,14 +9,15 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .correspondance import normaliser
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche
+from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau, entete_page,
+                     rayer)
 from .fournisseurs import MemoireCorrespondance, lire_copie_fournisseurs
 from .langues import t
 from .paiements_fournisseurs import (A_RELIER, CONFIRME, DEJA, ETATS, IGNORE, NON_PAYE, PROPOSE, SAISI,
                                      RegistrePaiements, rapprocher, repartir)
 
-COULEURS = {A_RELIER: "#fff4d6", PROPOSE: "#eaf2fb", CONFIRME: "#e3f4e8", DEJA: "#eef1ef", SAISI: "#eef1ef",
-            IGNORE: "#f4f4f4", NON_PAYE: "#fde2e4"}
+COULEURS = {A_RELIER: "#fff4d6", PROPOSE: "#eaf2fb", CONFIRME: "#e6f4ea", DEJA: None, SAISI: None, IGNORE: None,
+            NON_PAYE: "#fde2e4"}
 
 
 class PagePaiements(ttk.Frame):
@@ -34,6 +35,8 @@ class PagePaiements(ttk.Frame):
         self.existants = set()
         self.paiement = None
 
+        entete_page(self, "💸", t("Paiements fournisseurs"),
+                    t("virements Interac reliés aux factures fournisseurs et saisis dans Sage")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         ttk.Label(barre, text=t("Lire depuis le")).pack(side="left", padx=(0, 4))
@@ -49,7 +52,7 @@ class PagePaiements(ttk.Frame):
         self.resume = ttk.Label(self, text="", foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume.pack(fill="x")
 
-        cadre = ttk.Frame(self)
+        cadre = cadre_tableau(self)
         cadre.pack(fill="both", expand=True)
         colonnes = (("date", "Date", 85), ("beneficiaire", "Bénéficiaire", 170), ("montant", "Montant", 90),
                     ("message", "Message", 170), ("fournisseur", "Fournisseur Sage", 180), ("facture", "Facture", 100),
@@ -60,8 +63,8 @@ class PagePaiements(ttk.Frame):
             self.tableau.heading(cle, text=t(titre_col))
             self.tableau.column(cle, width=largeur, anchor="e" if cle in ("montant", "solde") else "w",
                                 stretch=cle in ("beneficiaire", "message", "fournisseur"))
-        for etat, couleur in COULEURS.items():
-            self.tableau.tag_configure(etat, background=couleur)
+        for etat, couleur in COULEURS.items():  # sans couleur : état terminé, texte grisé sur lignes rayées
+            self.tableau.tag_configure(etat, **({"background": couleur} if couleur else {"foreground": TEXTE_DOUX}))
         defil = ttk.Scrollbar(cadre, orient="vertical", command=self.tableau.yview)
         self.tableau.configure(yscrollcommand=defil.set)
         self.tableau.pack(side="left", fill="both", expand=True)
@@ -192,6 +195,7 @@ class PagePaiements(ttk.Frame):
             self.tableau.insert("", "end", iid=str(i), tags=(p.etat,), values=(
                 a.date_virement, a.beneficiaire, f"{a.montant:,.2f}", a.message, p.fournisseur_sage, p.facture,
                 "" if p.solde_facture is None else f"{p.solde_facture:,.2f}", t(p.etat)))
+        rayer(self.tableau)
         visibles = [p for p in self.registre.paiements if p.avis.date_virement >= depuis]
         compte = {e: sum(1 for p in visibles if p.etat == e) for e in ETATS}
         self.resume.configure(text=t("{n} virement(s) — à relier : {r}, proposés : {p}, confirmés : {c}, déjà dans "
@@ -281,16 +285,16 @@ class PagePaiements(ttk.Frame):
             messagebox.showinfo(self.titre, t("Aucun paiement « Confirmé (à saisir) » : confirmez d'abord les virements."))
             return
         if sage_ouvert():
-            messagebox.showwarning(self.titre, t("Fermez Sage : le robot l'ouvre lui-même, hors écran, pour saisir "
+            messagebox.showwarning(self.titre, t("Fermez Sage : l'application l'ouvre elle-même pour saisir "
                                                  "les paiements."))
             return
         liste = "\n".join(f"  • {p.avis.date_virement}  {p.fournisseur_sage} n° {p.facture} — {p.avis.montant:,.2f} $"
                           for p in confirmes)
         if not messagebox.askyesno(self.titre, t("Saisir {n} paiement(s) dans Sage (compte 1055, Comptant) ?\n\n{liste}\n\n"
-                                                 "Le robot ouvre Sage hors écran ; n'ouvrez pas Sage pendant ce temps.",
+                                                 "L'application ouvre Sage elle-même ; n'ouvrez pas Sage pendant ce temps.",
                                                  n=len(confirmes), liste=liste)):
             return
-        self.resume.configure(text=t("Saisie des paiements dans Sage par le robot…"))
+        self.resume.configure(text=t("Saisie des paiements dans Sage…"))
 
         def travail():
             import json

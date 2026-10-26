@@ -9,11 +9,11 @@ from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .design import CARTE, TEXTE_DOUX, Bouton, ChampDate
+from .design import CARTE, TEXTE_DOUX, Bouton, ChampDate, cadre_tableau, entete_page
 from .encaissements import A_SAISIR, A_VENIR, APPLIQUE, ECART, SANS_FACTURE
 from .langues import courante, jours_semaine, t
 
-COULEURS = {APPLIQUE: "#e3f4e8", A_SAISIR: "#fff4d6", ECART: "#fde2e4", SANS_FACTURE: "#eef1ef", A_VENIR: "#ffffff"}
+COULEURS = {APPLIQUE: "#e6f4ea", A_SAISIR: "#fff4d6", ECART: "#fde2e4", SANS_FACTURE: None, A_VENIR: None}
 
 
 def argent(montant: Decimal | None) -> str:
@@ -29,6 +29,8 @@ class PageEncaissements(ttk.Frame):
         self.racine, self.titre, self.chemin_config = racine, titre, chemin_config
         self.depots = []
 
+        entete_page(self, "💰", t("Encaissements des dépôts Clover"),
+                    t("dépôts Clover appliqués sur les factures de vente")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         hier = date.today() - timedelta(days=1)
@@ -40,12 +42,12 @@ class PageEncaissements(ttk.Frame):
         ChampDate(barre, self.fin).pack(side="left", padx=4)
         Bouton(barre, "⟳  " + t("Calculer les dépôts"), self.calculer).pack(side="left", padx=8)
         Bouton(barre, "📗  Excel", self.exporter, "secondaire").pack(side="right")
-        Bouton(barre, "🤖  " + t("Encaisser dans Sage"), self.encaisser, "accent").pack(side="right", padx=8)
+        Bouton(barre, "🏦  " + t("Encaisser dans Sage"), self.encaisser, "accent").pack(side="right", padx=8)
         self.resume = ttk.Label(self, text=t("Cliquez sur « Calculer les dépôts » : lots de cartes Clover et état dans Sage."),
                                 foreground=TEXTE_DOUX, padding=(0, 8))
         self.resume.pack(fill="x")
 
-        cadre = ttk.Frame(self)
+        cadre = cadre_tableau(self)
         cadre.pack(fill="both", expand=True)
         colonnes = (("montant", t("Montant"), 120), ("du", t("Montant dû (Sage)"), 140), ("etat", t("État"), 230))
         self.tableau = ttk.Treeview(cadre, columns=[c[0] for c in colonnes], show="tree headings", height=12,
@@ -55,8 +57,8 @@ class PageEncaissements(ttk.Frame):
         for cle, titre_col, largeur in colonnes:
             self.tableau.heading(cle, text=titre_col)
             self.tableau.column(cle, width=largeur, anchor="e" if cle != "etat" else "w")
-        for etat, couleur in COULEURS.items():
-            self.tableau.tag_configure(etat, background=couleur)
+        for etat, couleur in COULEURS.items():  # sans couleur : état terminé, texte grisé sur lignes rayées
+            self.tableau.tag_configure(etat, **({"background": couleur} if couleur else {"foreground": TEXTE_DOUX}))
         self.tableau.tag_configure("depot", font=("Segoe UI Semibold", 10))
         defilement = ttk.Scrollbar(cadre, orient="vertical", command=self.tableau.yview)
         self.tableau.configure(yscrollcommand=defilement.set)
@@ -148,12 +150,12 @@ class PageEncaissements(ttk.Frame):
             return
         from .sage_bureau import sage_ouvert
         if sage_ouvert():
-            messagebox.showwarning(self.titre, t("Fermez Sage : le robot l'ouvre lui-même, hors écran, pour encaisser "
+            messagebox.showwarning(self.titre, t("Fermez Sage : l'application l'ouvre elle-même pour encaisser "
                                                  "les dépôts."))
             return
         total = argent(sum((d.montant for d in a_saisir), Decimal(0)))
-        if not messagebox.askyesno(self.titre, t("Encaisser {n} dépôt(s) ({total}) dans Sage ? Le robot ouvre Sage "
-                                                 "hors écran ; n'ouvrez pas Sage pendant ce temps.",
+        if not messagebox.askyesno(self.titre, t("Encaisser {n} dépôt(s) ({total}) dans Sage ? L'application ouvre Sage "
+                                                 "elle-même ; n'ouvrez pas Sage pendant ce temps.",
                                                  n=len(a_saisir), total=total)):
             return
         self.resume.configure(text=t("Saisie des encaissements dans Sage en cours…"))
