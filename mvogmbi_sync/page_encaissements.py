@@ -98,15 +98,20 @@ class PageEncaissements(ttk.Frame):
             try:
                 from .__main__ import charger_config, lire_sage
                 from .api_clover import ClientClover
-                from .encaissements import etat_factures_sage, evaluer, lots_par_jour, numero_compte_sage, regrouper
+                from .encaissements import (etat_factures_sage, evaluer, factures_fin_de_semaine, lots_par_jour,
+                                            noms_factures_sage, numero_compte_sage, regrouper)
                 from .facture import CLIENT
 
                 config = self._config()
                 depots = regrouper(lots_par_jour(ClientClover(charger_config(self.chemin_config)), debut, fin))
-                factures = [l.facture for d in depots for l in d.lignes]
                 compte = numero_compte_sage(self.compte_depot())
-                etat = lire_sage(config, lambda base: etat_factures_sage(base, CLIENT, compte, factures),
-                                 config.get("sage_import", {}).get("fichier_entreprise")) if factures else {}
+
+                def lecture(base):
+                    factures_fin_de_semaine(depots, noms_factures_sage(base, CLIENT))
+                    return etat_factures_sage(base, CLIENT, compte, [l.facture for d in depots for l in d.lignes])
+
+                etat = lire_sage(config, lecture, config.get("sage_import", {}).get("fichier_entreprise")) \
+                    if depots else {}
                 evaluer(depots, etat, date.today())
                 self.after(0, lambda: self.afficher(depots))
             except Exception as exc:
@@ -159,7 +164,7 @@ class PageEncaissements(ttk.Frame):
             notes = []
             try:
                 config = self._config()
-                mode = str(config.get("encaissements", {}).get("mode", "Chèque"))
+                mode = str(config.get("encaissements", {}).get("mode", "Comptant"))
                 resultats = appliquer(config, a_saisir, CLIENT, self.compte_depot(), mode, journal=notes.append)
                 bilan = t("{ok} dépôt(s) encaissé(s) sur {n}.", ok=sum(r.traite for r in resultats), n=len(a_saisir))
             except Exception as exc:
@@ -178,7 +183,7 @@ class PageEncaissements(ttk.Frame):
     def texte_saisie(self, d) -> str:
         from .facture import CLIENT
 
-        lignes = [t("Encaissements > Reçu de : {client}", client=CLIENT),
+        lignes = [t("Encaissements > Payé par : Comptant ; Reçu de : {client}", client=CLIENT),
                   t("Dépôt : {compte} (compte Desjardins)", compte=self.compte_depot()),
                   t("Date : {date}", date=d.date.isoformat()), "",
                   t("Montant reçu, facture par facture :")]

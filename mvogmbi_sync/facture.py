@@ -6,7 +6,9 @@ Règles fixées par le propriétaire :
 - montant de chaque ligne = montant net Clover hors taxes (ventes brutes + rabais + remboursements),
   prix unitaire = montant net / quantité nette ; le sous-total de la facture = ventes nettes Clover ;
 - articles taxés dans Clover (TPS 5 % + TVQ 9,975 %) : code de taxe Sage « GQ », Sage calcule les taxes ;
-- numéro : « Vente 2026-10-23 » (jour), « Vente S43-2026 » (semaine), « Vente Octobre 2026 » (mois).
+- numéro : « Vente 2026-10-23 » (jour), « Vente 2026-10-23/25 » (vendredi au dimanche, une seule facture
+  encaissée par le dépôt du lundi ; 19 caractères, le n° de facture Sage en accepte 20), « Vente S43-2026 »
+  (semaine), « Vente Octobre 2026 » (mois).
 """
 
 from __future__ import annotations
@@ -33,13 +35,37 @@ MOIS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet",
         "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
 
 
-def numero_facture(type_periode: TypePeriode, debut: date) -> str:
+def numero_facture(type_periode: TypePeriode, debut: date, fin: date | None = None) -> str:
     if type_periode is TypePeriode.JOUR:
         return f"Vente {debut.isoformat()}"
+    if type_periode is TypePeriode.FIN_DE_SEMAINE:
+        return numero_fin_de_semaine(debut, fin or debut)
     if type_periode is TypePeriode.SEMAINE:
         annee, semaine, _ = debut.isocalendar()
         return f"Vente S{semaine:02d}-{annee}"
     return f"Vente {MOIS[debut.month - 1]} {debut.year}"
+
+
+def numero_fin_de_semaine(debut: date, fin: date) -> str:
+    """« Vente 2026-10-23/25 » : du vendredi 23 au dimanche 25 (jour de fin seul : il suit toujours le début)."""
+    return f"Vente {debut.isoformat()}/{fin.day:02d}"
+
+
+def jours_facture(numero: str) -> list[date]:
+    """Jours de vente couverts par une facture « Vente AAAA-MM-JJ » ou « Vente AAAA-MM-JJ/JJ » ; [] sinon."""
+    import re
+    from datetime import timedelta
+
+    m = re.fullmatch(r"Vente (\d{4}-\d{2}-\d{2})(?:/(\d{2}))?", numero.strip())
+    if not m:
+        return []
+    debut = date.fromisoformat(m.group(1))
+    if not m.group(2):
+        return [debut]
+    jours = [debut]
+    while jours[-1].day != int(m.group(2)) and len(jours) < 7:
+        jours.append(jours[-1] + timedelta(days=1))
+    return jours
 
 
 @dataclass
@@ -92,7 +118,7 @@ class Facture:
 
 def preparer_facture(rapport: RapportVentes, type_periode: TypePeriode) -> Facture:
     """La facture est datée du dernier jour de la période."""
-    facture = Facture(numero=numero_facture(type_periode, rapport.debut), date_facture=rapport.fin)
+    facture = Facture(numero=numero_facture(type_periode, rapport.debut, rapport.fin), date_facture=rapport.fin)
     taxes_inconnues = 0
     for ligne in rapport.lignes:
         quantite = ligne.quantite_nette.quantize(DECIMALES_QUANTITE, rounding=ROUND_HALF_UP)

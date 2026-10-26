@@ -5,7 +5,7 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -21,8 +21,9 @@ ACCUEIL = {
         ("etape", "2. Elle récupère dans Clover les ventes de chaque jour suivant, jusqu'à hier : un jour manqué "
                   "est rattrapé automatiquement."),
         ("etape", "3. Elle relie chaque article Clover à son numéro d'article Sage (correspondance des articles)."),
-        ("etape", "4. Elle prépare une facture par jour pour le client « Vente Hebdomadaire » : une ligne par "
-                  "article, montant = ventes nettes Clover, taxes TPS + TVQ (code GQ) pour les articles taxés."),
+        ("etape", "4. Elle prépare pour le client « Vente Hebdomadaire » une facture par jour du lundi au jeudi "
+                  "et une seule pour le vendredi, le samedi et le dimanche : une ligne par article, montant = ventes "
+                  "nettes Clover, taxes TPS + TVQ (code GQ) pour les articles taxés."),
         ("etape", "5. Elle importe les factures dans Sage, vérifie chacune d'elles et vous envoie un compte rendu "
                   "par courriel."),
         ("sous_titre", "Contrôles de sécurité"),
@@ -53,8 +54,9 @@ ACCUEIL = {
         ("etape", "2. It retrieves from Clover the sales of each following day, up to yesterday: a missed day is "
                   "caught up automatically."),
         ("etape", "3. It links each Clover item to its Sage item number (item mapping)."),
-        ("etape", "4. It prepares one invoice per day for the “Vente Hebdomadaire” customer: one line per item, "
-                  "amount = Clover net sales, GST + QST (code GQ) for taxable items."),
+        ("etape", "4. For the “Vente Hebdomadaire” customer it prepares one invoice per day from Monday to "
+                  "Thursday and a single one for Friday, Saturday and Sunday: one line per item, amount = Clover net "
+                  "sales, GST + QST (code GQ) for taxable items."),
         ("etape", "5. It imports the invoices into Sage, checks each one and emails you a report."),
         ("sous_titre", "Safety checks"),
         ("puce", "Never the same invoice twice: a date already in Sage is skipped."),
@@ -110,7 +112,7 @@ FAQ = {
                     "des courriels indésirables."),
         ("question", "Comment rattraper une période ancienne (plusieurs mois) ?"),
         ("reponse", "Réglez le « Premier jour à importer » dans l'onglet Sage 50 si Sage ne contient encore aucune "
-                    "facture journalière, puis lancez le traitement : il importe une facture par jour jusqu'à hier."),
+                    "facture journalière, puis lancez le traitement : il importe les factures jusqu'à hier (une par jour, une par fin de semaine)."),
         ("question", "Les taxes de Sage diffèrent de quelques cents de celles de Clover."),
         ("reponse", "C'est normal : Clover arrondit les taxes commande par commande, Sage les calcule sur la "
                     "facture. Le montant des ventes (hors taxes) est, lui, identique au cent près."),
@@ -173,7 +175,7 @@ FAQ = {
                     "often required. Also check the junk folder."),
         ("question", "How do I catch up an old period (several months)?"),
         ("reponse", "Set the “First day to import” in the Sage 50 tab if Sage does not yet contain any daily "
-                    "invoice, then start the run: it imports one invoice per day up to yesterday."),
+                    "invoice, then start the run: it imports the invoices up to yesterday (one per day, one per weekend)."),
         ("question", "Sage taxes differ by a few cents from Clover's."),
         ("reponse", "This is normal: Clover rounds taxes order by order, Sage computes them on the invoice. The "
                     "sales amount (before taxes) is identical to the cent."),
@@ -292,8 +294,8 @@ GUIDE = {
                  "ventes du vendredi, samedi et dimanche : déposées ensemble le lundi."),
         ("etape", "1. Page « 7. Encaissements » : choisissez la période de ventes, puis « Calculer les dépôts »."),
         ("etape", "2. Pour chaque dépôt « À saisir dans Sage », le cadre du bas indique quoi saisir : dans Sage, "
-                  "Encaissements, Reçu de « Vente Hebdomadaire », Dépôt 1055, date du dépôt, montant reçu sur "
-                  "chaque facture, puis « Traiter »."),
+                  "Encaissements, Payé par « Comptant », Reçu de « Vente Hebdomadaire », Dépôt 1055, date du dépôt, "
+                  "montant reçu sur chaque facture, puis « Traiter »."),
         ("etape", "3. Recalculez : le dépôt passe à « Appliqué ». Le solde restant sur la facture correspond aux "
                   "ventes en espèces."),
         ("etape", "Ou laissez faire le robot : ouvrez Sage et sa fenêtre Clients & Ventes > Encaissements, puis "
@@ -308,8 +310,9 @@ GUIDE = {
         ("puce", "Les factures sont en « Payer plus tard » : page « 7. Encaissements » pour y appliquer les dépôts."),
 
         ("sous_titre", "Règles de facturation"),
-        ("puce", "Une facture par jour, client « Vente Hebdomadaire », numéro « Vente AAAA-MM-JJ », datée du jour "
-                 "des ventes."),
+        ("puce", "Client « Vente Hebdomadaire » : une facture par jour du lundi au jeudi (« Vente AAAA-MM-JJ », "
+                 "datée du jour des ventes) et une seule du vendredi au dimanche (« Vente AAAA-MM-JJ/JJ », datée du "
+                 "dimanche), encaissée d'un coup par le dépôt du lundi."),
         ("puce", "Une ligne par article : montant = ventes nettes Clover (après rabais et remboursements) ; prix "
                  "unitaire = montant / quantité."),
         ("puce", "Articles taxés dans Clover : code de taxe GQ (TPS 5 % + TVQ 9,975 %)."),
@@ -415,8 +418,8 @@ GUIDE = {
                  "Saturday and Sunday sales: deposited together on Monday."),
         ("etape", "1. “7. Receipts” page: choose the sales period, then “Calculate deposits”."),
         ("etape", "2. For each deposit “To enter in Sage”, the bottom panel shows what to enter: in Sage, Receipts, "
-                  "From “Vente Hebdomadaire”, Deposit to 1055, deposit date, amount received on each invoice, then "
-                  "“Process”."),
+                  "Paid by “Cash”, From “Vente Hebdomadaire”, Deposit to 1055, deposit date, amount received on each "
+                  "invoice, then “Process”."),
         ("etape", "3. Recalculate: the deposit turns to “Applied”. The balance left on the invoice is the cash "
                   "sales."),
         ("etape", "Or let the robot do it: open Sage and its Receivables > Receipts window, then “Record in Sage”. It "
@@ -431,8 +434,9 @@ GUIDE = {
         ("puce", "Invoices are “Pay later”: “7. Receipts” page to apply the deposits to them."),
 
         ("sous_titre", "Invoicing rules"),
-        ("puce", "One invoice per day, customer “Vente Hebdomadaire”, number “Vente YYYY-MM-DD”, dated on the "
-                 "sales day."),
+        ("puce", "Customer “Vente Hebdomadaire”: one invoice per day from Monday to Thursday (“Vente "
+                 "YYYY-MM-DD”, dated on the sales day) and a single one from Friday to Sunday (“Vente YYYY-MM-DD/DD”, "
+                 "dated on Sunday), paid at once by the Monday deposit."),
         ("puce", "One line per item: amount = Clover net sales (after discounts and refunds); unit price = "
                  "amount / quantity."),
         ("puce", "Items taxed in Clover: tax code GQ (GST 5% + QST 9.975%)."),

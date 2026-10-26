@@ -55,7 +55,8 @@ def numero_compte_sage(compte: str | int) -> int:
 @dataclass
 class LigneEncaissement:
     jour_vente: date
-    montant: Decimal                     # lot de cartes Clover du jour = part du dépôt pour cette facture
+    montant: Decimal                     # lot(s) de cartes Clover des jours de la facture = part du dépôt
+    numero: str = ""                     # n° de facture s'il diffère de « Vente AAAA-MM-JJ » (fin de semaine)
     facture_presente: bool = False
     montant_du: Decimal | None = None    # solde de la facture dans Sage
     deja_encaisse: Decimal = Decimal(0)  # encaissements déjà saisis au compte de dépôt à la date du dépôt
@@ -63,7 +64,7 @@ class LigneEncaissement:
 
     @property
     def facture(self) -> str:
-        return numero_facture(self.jour_vente)
+        return self.numero or numero_facture(self.jour_vente)
 
 
 @dataclass
@@ -97,6 +98,32 @@ def regrouper(lots: dict[date, Decimal]) -> list[Depot]:
         d = date_depot(jour)
         depots.setdefault(d, Depot(d)).lignes.append(LigneEncaissement(jour, lots[jour]))
     return [depots[d] for d in sorted(depots)]
+
+
+def factures_fin_de_semaine(depots: list[Depot], factures_sage: set[str]) -> None:
+    """Regroupe les lignes vendredi-samedi-dimanche d'un dépôt du lundi sur une seule facture « Vente AAAA-MM-JJ/JJ ».
+
+    Règle du propriétaire depuis octobre 2026 : une seule facture pour la fin de semaine. Les anciennes fins de
+    semaine facturées jour par jour restent encaissées facture par facture.
+    """
+    from .facture import numero_fin_de_semaine
+
+    for depot in depots:
+        fds = [l for l in depot.lignes if l.jour_vente.weekday() >= 4]
+        if len(fds) < 1 or any(numero_facture(l.jour_vente) in factures_sage for l in fds):
+            continue
+        vendredi = depot.date - timedelta(days=3)
+        numero = numero_fin_de_semaine(vendredi, vendredi + timedelta(days=2))
+        if fds[0].jour_vente != vendredi and numero not in factures_sage:
+            continue
+        reste = [l for l in depot.lignes if l not in fds]
+        depot.lignes = reste + [LigneEncaissement(fds[0].jour_vente, sum((l.montant for l in fds), Decimal(0)), numero)]
+
+
+def noms_factures_sage(base, client_sage: str) -> set[str]:
+    return {l["s"] for l in base.requete(
+        "SELECT TRIM(t.sSource) s FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
+        "WHERE c.sName = %s AND t.sSource LIKE 'Vente %%'", (client_sage,))}
 
 
 def etat_factures_sage(base, client_sage: str, compte_depot: int, factures: list[str]) -> dict[str, dict]:
@@ -148,6 +175,8 @@ def calculer(client, base, client_sage: str, compte_depot: int, debut: date, fin
              aujourdhui: date | None = None) -> list[Depot]:
     """Dépôts des ventes du `debut` au `fin` inclus, avec leur état dans Sage."""
     depots = regrouper(lots_par_jour(client, debut, fin))
+    if base:
+        factures_fin_de_semaine(depots, noms_factures_sage(base, client_sage))
     factures = [l.facture for d in depots for l in d.lignes]
     evaluer(depots, etat_factures_sage(base, client_sage, compte_depot, factures) if base else {},
             aujourdhui or date.today())

@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .models import RapportVentes
-from .periodes import TypePeriode, bornes, jours
+from .periodes import TypePeriode, blocs_facturation, bornes, jours
 from .sortie_excel import ecrire_rapports
 
 import os
@@ -96,7 +96,7 @@ def commande_encaissements(args: argparse.Namespace) -> None:
     if args.appliquer:
         from .robot_encaissements import appliquer
 
-        mode = str(config_toml.get("encaissements", {}).get("mode", "Chèque"))
+        mode = str(config_toml.get("encaissements", {}).get("mode", "Comptant"))
         resultats = appliquer(config_toml, depots, CLIENT, compte, mode)
         if any(not r.traite for r in resultats):
             sys.exit(1)
@@ -400,8 +400,8 @@ def produire_factures(args: argparse.Namespace):
     type_periode = TypePeriode(args.periode)
     debut, fin = bornes(type_periode, date.fromisoformat(args.date))
     par_jour = getattr(args, "par_jour", False) and debut != fin
-    periodes = [(j, j) for j in jours(debut, fin)] if par_jour else [(debut, fin)]
-    type_facture = TypePeriode.JOUR if par_jour else type_periode
+    # --par-jour : une facture par jour du lundi au jeudi, une seule du vendredi au dimanche
+    periodes = blocs_facturation(debut, fin) if par_jour else [(debut, fin, type_periode)]
 
     chemin_corresp = Path(args.correspondance)
     if not chemin_corresp.exists():
@@ -413,7 +413,7 @@ def produire_factures(args: argparse.Namespace):
         client = ClientClover(charger_config(Path(args.config)))
 
     resultats = []
-    for d, f in periodes:
+    for d, f, type_facture in periodes:
         if client is None:
             from .export_clover import lire_export
             rapport = lire_export(Path(args.export), d, f)
@@ -681,7 +681,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--correspondance", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.add_argument("--par-jour", action="store_true",
-                   help="Une facture par jour de la période (ex. tout un mois : --periode mois --par-jour)")
+                   help="Une facture par jour du lundi au jeudi et une pour vendredi-dimanche "
+                        "(ex. tout un mois : --periode mois --par-jour)")
     p.set_defaults(fonction=commande_facture)
 
     p = sous.add_parser("importer", help="Préparer la facture et l'importer automatiquement dans Sage")
@@ -693,7 +694,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--delai", type=int, default=900, help="Durée maximale de l'import, en secondes")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.add_argument("--par-jour", action="store_true",
-                   help="Une facture par jour de la période (ex. tout un mois : --periode mois --par-jour)")
+                   help="Une facture par jour du lundi au jeudi et une pour vendredi-dimanche "
+                        "(ex. tout un mois : --periode mois --par-jour)")
     p.set_defaults(fonction=commande_importer)
 
     p = sous.add_parser("langue", help="Choisir la langue de l'application : fr ou en")

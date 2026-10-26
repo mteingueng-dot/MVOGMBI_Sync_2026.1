@@ -1,4 +1,5 @@
-"""Traitement automatique de nuit : de la dernière facture présente dans Sage jusqu'à hier, une facture par jour.
+"""Traitement automatique de nuit : de la dernière facture présente dans Sage jusqu'à hier ; une facture par jour
+du lundi au jeudi et une seule pour le vendredi, le samedi et le dimanche (préparée après le dimanche).
 
 Étapes (sans intervention) :
 1. Lecture de Sage : dernière facture « Vente AAAA-MM-JJ » du client, articles, comptes, réglage du client.
@@ -24,8 +25,9 @@ from decimal import Decimal
 from pathlib import Path
 
 from . import coffre
+from .periodes import jours as jours_periode
 
-MOTIF_FACTURE = re.compile(r"^Vente (\d{4}-\d{2}-\d{2})$")
+MOTIF_FACTURE = re.compile(r"^Vente (\d{4}-\d{2}-\d{2})(/\d{2})?$")
 
 
 @dataclass
@@ -87,8 +89,11 @@ class CompteRendu:
 def lire_etat_sage(base, client: str) -> EtatSage:
     lignes = base.requete(
         "SELECT TRIM(t.sSource) s FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
-        "WHERE c.sName = %s AND TRIM(t.sSource) REGEXP %s", (client, r"^Vente [0-9]{4}-[0-9]{2}-[0-9]{2}$"))
-    dates = {date.fromisoformat(MOTIF_FACTURE.match(r["s"]).group(1)) for r in lignes if MOTIF_FACTURE.match(r["s"])}
+        "WHERE c.sName = %s AND TRIM(t.sSource) REGEXP %s", (client, r"^Vente [0-9]{4}-[0-9]{2}-[0-9]{2}(/[0-9]{2})?$"))
+    from .facture import jours_facture
+
+    # jours couverts : factures journalières et factures de fin de semaine (vendredi au dimanche)
+    dates = {j for r in lignes for j in jours_facture(r["s"])}
     return EtatSage(dates, base.client_utilise_mes_articles(client), base.articles(),
                     base.numeros_avec_caracteres_invisibles())
 
@@ -99,7 +104,7 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
     from .api_clover import ClientClover
     from .facture import CLIENT, preparer_facture
     from .import_sage import ecrire_imp, preparer_import
-    from .periodes import TypePeriode
+    from .periodes import TypePeriode, dimanche, est_fin_de_semaine
     from .sage_auto import executer, lire_pendant_connexion
 
     cr = CompteRendu(simulation=simulation)
@@ -151,7 +156,7 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
     table = mettre_a_jour_correspondance(client, etat.articles, donnees, cr)
     comptes = {a.numero: a.compte_revenus for a in etat.articles}
 
-    # 3. Préparation, jour par jour -------------------------------------------------------------------------
+    # 3. Préparation : une facture par jour du lundi au jeudi, une seule du vendredi au dimanche ----------------
     pretes = []
     jour = debut
     while jour <= fin:
@@ -160,13 +165,26 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
             cr.jours.append(EtatJour(jour, DEJA_PRESENTE))
             jour += timedelta(days=1)
             continue
-        rapport = client.rapport(jour, jour)
+        fin_bloc, type_facture = jour, TypePeriode.JOUR
+        if est_fin_de_semaine(jour):
+            fin_bloc, type_facture = dimanche(jour), TypePeriode.FIN_DE_SEMAINE
+            if fin_bloc > fin:  # la fin de semaine n'est pas terminée : facture préparée après le dimanche
+                cr.note(f"{jour} : ventes de fin de semaine, facturées ensemble après le dimanche {fin_bloc}.")
+                cr.jours.append(EtatJour(jour, REPORTEE, f"facture du vendredi au dimanche après le {fin_bloc}"))
+                break
+            if any(j in etat.dates_factures for j in jours_periode(jour, fin_bloc)):
+                cr.problemes.append(f"{jour} : une partie de la fin de semaine est déjà facturée dans Sage ; "
+                                    "facturer le reste à la main ou supprimer la facture partielle.")
+                cr.jours.append(EtatJour(jour, BLOQUEE, "fin de semaine en partie déjà facturée"))
+                break
+        rapport = client.rapport(jour, fin_bloc)
         if not rapport.lignes:
-            cr.note(f"{jour} : aucune vente.")
-            cr.jours.append(EtatJour(jour, AUCUNE_VENTE))
-            jour += timedelta(days=1)
+            cr.note(f"{jour} : aucune vente." if fin_bloc == jour else f"du {jour} au {fin_bloc} : aucune vente.")
+            cr.jours.append(EtatJour(fin_bloc, AUCUNE_VENTE))
+            jour = fin_bloc + timedelta(days=1)
             continue
-        facture = preparer_facture(rapport, TypePeriode.JOUR)
+        facture = preparer_facture(rapport, type_facture)
+        jour_etat = fin_bloc  # état repris par la date de la facture (le dimanche pour la fin de semaine)
         imp = preparer_import(facture, table)
         blocages = [f"article Clover non relié à Sage : {n}" for n in imp.non_reliees] + list(facture.anomalies)
         if imp.sous_total != rapport.total_net:
@@ -178,21 +196,22 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
         for texte in facture.avertissements:
             cr.note(f"{jour} : (info) {texte}")
         if blocages:
-            cr.problemes += [f"{jour} : {b}" for b in blocages]
-            cr.note(f"{jour} : facture NON préparée ({len(blocages)} problème(s)) ; arrêt à ce jour, "
+            cr.problemes += [f"{facture.numero} : {b}" for b in blocages]
+            cr.note(f"{facture.numero} : facture NON préparée ({len(blocages)} problème(s)) ; arrêt à ce jour, "
                     "elle sera reprise à la prochaine exécution.")
-            cr.jours.append(EtatJour(jour, BLOQUEE, " ; ".join(blocages), len(imp.lignes), imp.sous_total,
+            cr.jours.append(EtatJour(jour_etat, BLOQUEE, " ; ".join(blocages), len(imp.lignes), imp.sous_total,
                                      imp.total_taxes, imp.total))
-            suivant = jour + timedelta(days=1)
+            suivant = jour_etat + timedelta(days=1)
             while suivant <= fin:
                 cr.jours.append(EtatJour(suivant, REPORTEE, f"en attente de la correction du {jour}"))
                 suivant += timedelta(days=1)
             break
         pretes.append(imp)
-        cr.jours.append(EtatJour(jour, PRETE, "", len(imp.lignes), imp.sous_total, imp.total_taxes, imp.total))
+        detail = "" if fin_bloc == jour else f"ventes du {jour} au {fin_bloc}"
+        cr.jours.append(EtatJour(jour_etat, PRETE, detail, len(imp.lignes), imp.sous_total, imp.total_taxes, imp.total))
         cr.note(f"{facture.numero} : {len(imp.lignes)} lignes, sous-total {imp.sous_total:,.2f} $, "
                 f"total {imp.total:,.2f} $")
-        jour += timedelta(days=1)
+        jour = fin_bloc + timedelta(days=1)
 
     if not pretes:
         cr.note("Aucune facture prête à importer.")

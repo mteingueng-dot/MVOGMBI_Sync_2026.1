@@ -1,4 +1,4 @@
-"""Calcul des périodes jour / semaine / mois."""
+"""Calcul des périodes jour / fin de semaine / semaine / mois."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 class TypePeriode(str, Enum):
     JOUR = "jour"
+    FIN_DE_SEMAINE = "fin-de-semaine"  # vendredi, samedi et dimanche : une seule facture (déposés ensemble le lundi)
     SEMAINE = "semaine"
     MOIS = "mois"
 
@@ -21,11 +22,36 @@ def bornes(type_periode: TypePeriode, jour_reference: date) -> tuple[date, date]
     """
     if type_periode is TypePeriode.JOUR:
         return jour_reference, jour_reference
+    if type_periode is TypePeriode.FIN_DE_SEMAINE:
+        vendredi = jour_reference - timedelta(days=(jour_reference.weekday() - 4) % 7)
+        return vendredi, vendredi + timedelta(days=2)
     if type_periode is TypePeriode.SEMAINE:
         debut = jour_reference - timedelta(days=jour_reference.weekday())
         return debut, debut + timedelta(days=6)
     dernier = calendar.monthrange(jour_reference.year, jour_reference.month)[1]
     return jour_reference.replace(day=1), jour_reference.replace(day=dernier)
+
+
+def est_fin_de_semaine(jour: date) -> bool:
+    return jour.weekday() >= 4  # vendredi, samedi, dimanche
+
+
+def dimanche(jour: date) -> date:
+    return jour + timedelta(days=6 - jour.weekday())
+
+
+def blocs_facturation(debut: date, fin: date) -> list[tuple[date, date, TypePeriode]]:
+    """Factures d'une période : une par jour du lundi au jeudi, une pour vendredi-samedi-dimanche."""
+    blocs, jour = [], debut
+    while jour <= fin:
+        if est_fin_de_semaine(jour):
+            dernier = min(dimanche(jour), fin)
+            blocs.append((jour, dernier, TypePeriode.FIN_DE_SEMAINE))
+        else:
+            dernier = jour
+            blocs.append((jour, jour, TypePeriode.JOUR))
+        jour = dernier + timedelta(days=1)
+    return blocs
 
 
 def jours(debut: date, fin: date) -> list[date]:

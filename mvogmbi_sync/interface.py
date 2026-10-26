@@ -163,7 +163,7 @@ class Application(tk.Tk):
                  background=VERT).pack(anchor="w")
         tk.Label(textes, text=t("Synchronisation des ventes Clover → Sage 50"), font=("Segoe UI", 12, "bold"),
                  foreground="#eaf7ee", background=VERT).pack(anchor="w")
-        tk.Label(textes, text=t("Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour."),
+        tk.Label(textes, text=t("Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour, une pour la fin de semaine."),
                  font=("Segoe UI", 10), foreground="#cdebd6", background=VERT).pack(anchor="w")
         lisere = tk.Frame(self, height=5, background=FOND)
         lisere.pack(fill="x")

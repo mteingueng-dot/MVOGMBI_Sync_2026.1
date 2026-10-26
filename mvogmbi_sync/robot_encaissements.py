@@ -2,7 +2,7 @@
 
 Sage n'importe pas d'encaissement : le robot remplit la fenêtre comme une personne le ferait, puis « Traiter ».
 Méthode mise au point sur la copie d'essai (2026-10-26) :
-- en-tête : listes standard (client 25, « Payé par » 49, « Dépôt » 51) et date (SimplyDate 31, WM_SETTEXT) ;
+- en-tête : listes standard (client 25, « Payé par » 49 = « Comptant » (choix du propriétaire), « Dépôt » 51) et date (SimplyDate 31, WM_SETTEXT) ;
 - grille (CA_ContainerChild32) : une ligne par facture en souffrance du client, triée par date puis par n° interne
   (ordre identique à la base : tcustr/tcustrdt) ; 16 points par ligne, 1re ligne à y=40, « Montant reçu » à x=692 ;
 - surtout pas de Tab pour se déplacer : Sage remplit d'office le « Montant reçu » de chaque cellule traversée.
@@ -258,7 +258,7 @@ def ordre_grille(base, client: str) -> list[str]:
 
 
 def encaisser_depot(fenetre: FenetreEncaissements, depot, ordre: list[str], client: str, compte: str,
-                    mode: str = "Chèque") -> ResultatEncaissement:
+                    mode: str = "Comptant") -> ResultatEncaissement:
     """Saisit un dépôt (une ligne par facture), vérifie le total, puis « Traiter »."""
     resultat = ResultatEncaissement(depot.date.isoformat(), depot.montant)
     lignes = [l for l in depot.lignes if l.etat in ("À saisir dans Sage",)]
@@ -288,7 +288,7 @@ def encaisser_depot(fenetre: FenetreEncaissements, depot, ordre: list[str], clie
     return resultat
 
 
-def appliquer(config_toml: dict, depots, client: str, compte: str, mode: str = "Chèque", journal=print) -> list:
+def appliquer(config_toml: dict, depots, client: str, compte: str, mode: str = "Comptant", journal=print) -> list:
     """Saisit dans Sage (ouvert, fenêtre Encaissements affichée) chaque dépôt « À saisir », puis vérifie dans la base."""
     from datetime import date as _date
 

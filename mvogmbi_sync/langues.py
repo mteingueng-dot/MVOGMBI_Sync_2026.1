@@ -76,7 +76,7 @@ EN: dict[str, str] = {
     "Calcul en cours : lots de cartes Clover, puis lecture de Sage…": "Calculating: Clover card batches, then reading Sage…",
     "{n} dépôt(s), {total} au total — {a} à saisir dans Sage, {ok} déjà appliqué(s).":
         "{n} deposit(s), {total} in total — {a} to enter in Sage, {ok} already applied.",
-    "Encaissements > Reçu de : {client}": "Receipts > From: {client}",
+    "Encaissements > Payé par : Comptant ; Reçu de : {client}": "Receipts > Paid by: Cash; From: {client}",
     "Dépôt : {compte} (compte Desjardins)": "Deposit to: {compte} (Desjardins account)",
     "Date : {date}": "Date: {date}",
     "Montant reçu, facture par facture :": "Amount received, invoice by invoice:",
@@ -106,8 +106,8 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ en-tête, général
     "Marché MVOG-MBI Sherbrooke": "Marché MVOG-MBI Sherbrooke",
     "Synchronisation des ventes Clover → Sage 50": "Clover → Sage 50 sales synchronization",
-    "Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour.":
-        "Every night, Clover sales are imported into Sage 50: one invoice per day.",
+    "Chaque nuit, les ventes Clover sont importées dans Sage 50 : une facture par jour, une pour la fin de semaine.":
+        "Every night, Clover sales are imported into Sage 50: one invoice per day, one for the weekend.",
     "Langue": "Language",
     "Tous droits réservés.": "All rights reserved.",
     "Enregistrer la configuration": "Save configuration",
