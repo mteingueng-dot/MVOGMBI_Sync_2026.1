@@ -19,10 +19,10 @@ from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, 
 from .langues import t
 
 COULEURS = {A_SAISIR: "#fff4d6", A_VERIFIER: "#fde2e4", PRETE: "#e3f4e8", IMPORTEE: "#eef1ef"}
-COLONNES_LIGNES = (("code", "Code", 70), ("description", "Désignation du fournisseur", 250), ("quantite", "Qté", 55),
-                   ("prix", "Prix", 70), ("montant", "Montant", 80), ("numero_sage", "N° Sage", 95),
-                   ("description_sage", "Désignation Sage", 220), ("facteur", "Facteur", 55),
-                   ("qte_sage", "Qté Sage", 65), ("etat", "Correspondance", 105))
+COLONNES_LIGNES = (("code", "Code", 60), ("description", "Désignation du fournisseur", 190), ("quantite", "Qté", 50),
+                   ("prix", "Prix fournisseur", 85), ("montant", "Montant", 80), ("numero_sage", "N° Sage", 95),
+                   ("description_sage", "Désignation Sage", 170), ("qte_sage", "Qté Sage", 70),
+                   ("prix_sage", "Prix Sage", 80), ("facteur", "Facteur", 55), ("etat", "Correspondance", 100))
 
 
 def decimal(texte: str) -> Decimal:
@@ -83,6 +83,8 @@ class PageFournisseurs(ttk.Frame):
         volets.add(bas, weight=3)
         self._construire_detail(bas)
         self.afficher_liste()
+        if not self.fournisseurs_sage or not self.articles_sage:
+            self.after(800, self.mettre_a_jour_sage)  # première ouverture : listes lues dans Sage
 
     # ---------------------------------------------------------------- construction du détail
     def _construire_detail(self, parent) -> None:
@@ -93,6 +95,7 @@ class PageFournisseurs(ttk.Frame):
         self.liste_fournisseurs = ttk.Combobox(entete, textvariable=self.v["fournisseur"], width=34,
                                                values=self.fournisseurs_sage)
         self.liste_fournisseurs.pack(side="left", padx=(4, 12))
+        self.liste_fournisseurs.bind("<KeyRelease>", self.filtrer_fournisseurs)
         for cle, libelle, largeur in (("numero", "N° de facture", 12), ("date", "Date", 11)):
             ttk.Label(entete, text=t(libelle)).pack(side="left")
             ttk.Entry(entete, textvariable=self.v[cle], width=largeur).pack(side="left", padx=(4, 12))
@@ -130,7 +133,7 @@ class PageFournisseurs(ttk.Frame):
         edition = tk.Frame(parent, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
         edition.pack(fill="x", pady=(6, 0))
         self.l = {cle: tk.StringVar() for cle in ("code", "description", "quantite", "prix", "montant", "facteur",
-                                                  "recherche")}
+                                                  "qte_sage", "recherche")}
         self.l_taxable = tk.BooleanVar()
 
         def etiquette(cadre, texte):
@@ -146,8 +149,8 @@ class PageFournisseurs(ttk.Frame):
 
         rang2 = tk.Frame(edition, background=CARTE)
         rang2.pack(fill="x", padx=12, pady=2)
-        for cle, libelle, largeur in (("quantite", "Qté", 8), ("prix", "Prix", 10), ("montant", "Montant", 10),
-                                      ("facteur", "Facteur", 6)):
+        for cle, libelle, largeur in (("quantite", "Qté", 7), ("prix", "Prix fournisseur", 9), ("montant", "Montant", 10),
+                                      ("qte_sage", "Qté Sage", 9), ("facteur", "Facteur", 7)):
             etiquette(rang2, libelle)
             ttk.Entry(rang2, textvariable=self.l[cle], width=largeur).pack(side="left", padx=(0, 10))
         Bouton(rang2, t("Appliquer"), self.appliquer_ligne, "secondaire", fond=CARTE, petit=True).pack(side="left")
@@ -308,13 +311,14 @@ class PageFournisseurs(ttk.Frame):
         if not self.facture:
             return
         for i, l in enumerate(self.facture.lignes):
-            quantite, _ = l.en_sage()
+            quantite, prix_sage = l.en_sage()
             etat = t("Confirmée") if l.confirme else (t("Proposée") if l.numero_sage else t("À relier"))
             if l.nature != "article":
                 etat = t("Frais")
             self.lignes.insert("", "end", iid=str(i), tags=("ok" if l.confirme or l.nature != "article" else "a_faire",),
                                values=(l.code, l.description, f"{l.quantite:g}", f"{l.prix:.2f}", f"{l.montant:.2f}",
-                                       l.numero_sage, l.description_sage, f"{l.facteur:g}", f"{quantite:g}", etat))
+                                       l.numero_sage, l.description_sage, f"{quantite:g}", f"{prix_sage:.4f}",
+                                       f"{l.facteur:g}", etat))
         if selection is not None and self.lignes.exists(str(selection)):
             self.lignes.selection_set(str(selection))
             self.lignes.see(str(selection))
@@ -337,6 +341,14 @@ class PageFournisseurs(ttk.Frame):
                                     foreground=VERT_FONCE)
         return problemes
 
+    def filtrer_fournisseurs(self, evenement) -> None:
+        """Taper quelques lettres réduit la liste aux fournisseurs Sage qui les contiennent."""
+        if evenement.keysym in ("Up", "Down", "Return", "Escape", "Tab"):
+            return
+        texte = normaliser(self.v["fournisseur"].get())
+        valeurs = [n for n in self.fournisseurs_sage if texte in normaliser(n)] if texte else self.fournisseurs_sage
+        self.liste_fournisseurs.configure(values=valeurs or self.fournisseurs_sage)
+
     def voir_facture(self) -> None:
         if self.facture:
             chemin = self.registre.chemin_fichier(self.facture)
@@ -351,6 +363,9 @@ class PageFournisseurs(ttk.Frame):
         except ValueError as exc:
             messagebox.showerror(self.titre, str(exc))
             return
+        if self.facture.fournisseur_sage and self.fournisseurs_sage \
+                and self.facture.fournisseur_sage not in self.fournisseurs_sage:
+            messagebox.showwarning(self.titre, t("Choisissez le fournisseur dans la liste des fournisseurs Sage."))
         if self.facture.fournisseur_sage and self.facture.fournisseur_lu:
             self.memoire.retenir_fournisseur(self.facture.fournisseur_lu, self.facture.fournisseur_sage)
         for l in self.facture.lignes:
@@ -377,7 +392,8 @@ class PageFournisseurs(ttk.Frame):
         if not l:
             return
         for cle, valeur in (("code", l.code), ("description", l.description), ("quantite", f"{l.quantite:g}"),
-                            ("prix", f"{l.prix}"), ("montant", f"{l.montant}"), ("facteur", f"{l.facteur:g}")):
+                            ("prix", f"{l.prix}"), ("montant", f"{l.montant}"), ("facteur", f"{l.facteur:g}"),
+                            ("qte_sage", f"{l.en_sage()[0]:g}")):
             self.l[cle].set(valeur)
         self.l_taxable.set(l.taxable)
         self.l["recherche"].set(l.description)
@@ -386,8 +402,8 @@ class PageFournisseurs(ttk.Frame):
 
     def montrer_conversion(self, l: Ligne) -> None:
         quantite, prix = l.en_sage()
-        self.qte_sage.configure(text=t("Dans Sage : {q} × {p} $ = {m} $ (conditionnement × {f})",
-                                       q=f"{quantite:g}", p=f"{prix:.4f}", m=f"{l.montant:.2f}", f=f"{l.facteur:g}"))
+        self.qte_sage.configure(text=t("Dans Sage : {q} × {p} $ = {m} $ (prix Sage = montant / quantité Sage)",
+                                       q=f"{quantite:g}", p=f"{prix:.4f}", m=f"{l.montant:.2f}"))
 
     def appliquer_ligne(self) -> None:
         i, l = self.ligne_choisie()
@@ -396,11 +412,21 @@ class PageFournisseurs(ttk.Frame):
         try:
             l.code, l.description = self.l["code"].get().strip(), self.l["description"].get().strip()
             l.quantite, l.prix = decimal(self.l["quantite"].get()), decimal(self.l["prix"].get())
-            l.montant, l.facteur = decimal(self.l["montant"].get()), decimal(self.l["facteur"].get() or "1")
+            l.montant, facteur = decimal(self.l["montant"].get()), decimal(self.l["facteur"].get() or "1")
+            qte_sage = decimal(self.l["qte_sage"].get() or "0")
+            if facteur != l.facteur or not qte_sage or not l.quantite:
+                l.facteur = facteur  # facteur modifié : la quantité Sage en découle
+            else:
+                # quantité Sage saisie (ex. 3 sacs de 10 lb -> 13,608 kg) : facteur = qté Sage / qté facturée
+                l.facteur = (qte_sage / l.quantite).quantize(Decimal("0.000001")).normalize()
+            if l.facteur <= 0:
+                raise ValueError(t("La quantité Sage doit être supérieure à 0."))
         except ValueError as exc:
             messagebox.showerror(self.titre, str(exc))
             return
         l.taxable = self.l_taxable.get()
+        self.l["facteur"].set(f"{l.facteur:g}")
+        self.l["qte_sage"].set(f"{l.en_sage()[0]:g}")
         self.afficher_lignes(i)
         self.montrer_conversion(l)
         self.verifier()

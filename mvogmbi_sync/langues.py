@@ -61,6 +61,12 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    "Prix fournisseur": "Supplier price",
+    "Prix Sage": "Sage price",
+    "La quantité Sage doit être supérieure à 0.": "The Sage quantity must be greater than 0.",
+    "Dans Sage : {q} × {p} $ = {m} $ (prix Sage = montant / quantité Sage)":
+        "In Sage: {q} × ${p} = ${m} (Sage price = amount / Sage quantity)",
+    "Choisissez le fournisseur dans la liste des fournisseurs Sage.": "Choose the supplier from the Sage supplier list.",
     "Ajouter des factures…": "Add invoices…",
     "Factures fournisseurs à ajouter": "Supplier invoices to add",
     "Factures (PDF, photos)": "Invoices (PDF, photos)",
