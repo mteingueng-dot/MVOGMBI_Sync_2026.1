@@ -47,7 +47,9 @@ class PageFournisseurs(ttk.Frame):
 
         barre = ttk.Frame(self)
         barre.pack(fill="x")
-        Bouton(barre, "📥  " + t("Lire les nouvelles factures"), self.lire_nouvelles).pack(side="left")
+        Bouton(barre, "➕  " + t("Ajouter des factures…"), self.ajouter_factures).pack(side="left")
+        Bouton(barre, "📥  " + t("Lire les nouvelles factures"), self.lire_nouvelles, "secondaire").pack(side="left",
+                                                                                                    padx=(8, 0))
         Bouton(barre, "📂  " + t("Dossier des factures"), self.ouvrir_dossier, "secondaire").pack(side="left", padx=8)
         Bouton(barre, "⟳  " + t("Fournisseurs et articles Sage"), self.mettre_a_jour_sage, "secondaire").pack(side="left")
         ttk.Label(barre, text=t("Afficher :")).pack(side="left", padx=(16, 4))
@@ -190,6 +192,36 @@ class PageFournisseurs(ttk.Frame):
                                      p=compte[PRETE], i=compte[IMPORTEE])
                               + ("" if self.fournisseurs_sage else
                                  t("   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »")))
+
+    def ajouter_factures(self) -> None:
+        """Copie dans le dossier des factures les PDF ou photos choisis n'importe où sur le poste, puis les lit."""
+        import shutil
+        from tkinter import filedialog
+
+        from .fournisseurs import EXTENSIONS
+
+        motifs = " ".join(f"*{e}" for e in sorted(EXTENSIONS))
+        fichiers = filedialog.askopenfilenames(title=t("Factures fournisseurs à ajouter"),
+                                               filetypes=[(t("Factures (PDF, photos)"), motifs), (t("Tous les fichiers"), "*.*")])
+        if not fichiers:
+            return
+        self.registre.dossier.mkdir(parents=True, exist_ok=True)
+        ignores = []
+        for source in map(Path, fichiers):
+            if source.suffix.lower() not in EXTENSIONS:
+                ignores.append(source.name)
+                continue
+            if source.resolve().parent == self.registre.dossier.resolve():
+                continue  # déjà dans le dossier
+            cible = self.registre.dossier / source.name
+            numero = 2
+            while cible.exists():  # même nom, autre facture : on garde les deux
+                cible = self.registre.dossier / f"{source.stem} ({numero}){source.suffix}"
+                numero += 1
+            shutil.copy2(source, cible)
+        if ignores:
+            messagebox.showwarning(self.titre, t("Fichiers ignorés (format non accepté) : {f}", f=", ".join(ignores)))
+        self.lire_nouvelles()
 
     def lire_nouvelles(self) -> None:
         nouveaux = self.registre.nouveaux_fichiers()

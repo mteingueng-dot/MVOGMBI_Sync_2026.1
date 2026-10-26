@@ -61,6 +61,10 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    "Ajouter des factures…": "Add invoices…",
+    "Factures fournisseurs à ajouter": "Supplier invoices to add",
+    "Factures (PDF, photos)": "Invoices (PDF, photos)",
+    "Fichiers ignorés (format non accepté) : {f}": "Files skipped (format not accepted): {f}",
     'Appliquer': 'Apply',
     'Article Sage :': 'Sage item:',
     'Aucune nouvelle facture dans le dossier :\n{d}': 'No new invoice in the folder:\n{d}',
