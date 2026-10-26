@@ -46,5 +46,5 @@ securite = "starttls"
 utilisateur = ""
 expediteur = ""
 destinataires = ""
-copie = ""  # adresses en copie (CC), séparées par des virgules
+copie = ""  # « Autres destinataires » (en copie, CC), séparés par des virgules
 envoyer_si_succes = true

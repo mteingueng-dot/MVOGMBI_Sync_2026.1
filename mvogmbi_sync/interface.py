@@ -589,7 +589,7 @@ class Application(tk.Tk):
         self._champ(envoi, 0, t("Expéditeur"), "courriel.expediteur", c.get("expediteur", ""))
         self._champ(envoi, 1, t("Destinataire(s)"), "courriel.destinataires", c.get("destinataires", ""),
                     aide=t("Une ou plusieurs adresses séparées par des virgules."))
-        self._champ(envoi, 4, t("Copie (CC)"), "courriel.copie", c.get("copie", ""),
+        self._champ(envoi, 4, t("Autres destinataires"), "courriel.copie", c.get("copie", ""),
                     aide=t("Facultatif : autres personnes à informer, adresses séparées par des virgules "
                            "(ex. comptable@exemple.com, gerant@exemple.com)."))
         ttk.Checkbutton(envoi, text=t("Envoyer le compte rendu après chaque traitement, y compris en cas de succès "

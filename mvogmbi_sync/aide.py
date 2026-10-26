@@ -5,7 +5,7 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -244,8 +244,8 @@ GUIDE = {
         ("puce", "Gmail : smtp.gmail.com, port 587, starttls ; mot de passe d'application (Compte Google > "
                  "Sécurité > Mots de passe des applications)."),
         ("puce", "Outlook / Microsoft 365 : smtp.office365.com, port 587, starttls."),
-        ("etape", "Renseignez l'expéditeur, le ou les destinataires et, au besoin, des personnes en copie (CC), "
-                  "séparées par des virgules ; enregistrez, puis « Envoyer un courriel de test »."),
+        ("etape", "Renseignez l'expéditeur, le ou les destinataires et, au besoin, d'« Autres destinataires » (en copie), "
+                  "séparés par des virgules ; enregistrez, puis « Envoyer un courriel de test »."),
 
         ("sous_titre", "Étape 4 — Automatisation"),
         ("etape", "1. Choisissez l'heure du traitement (1 h par défaut) et cliquez sur « Installer la tâche "
@@ -352,8 +352,8 @@ GUIDE = {
         ("puce", "Gmail: smtp.gmail.com, port 587, starttls; app password (Google Account > Security > App "
                  "passwords)."),
         ("puce", "Outlook / Microsoft 365: smtp.office365.com, port 587, starttls."),
-        ("etape", "Fill in the sender, the recipient(s) and, if needed, people in copy (CC), separated by "
-                  "commas; save, then “Send a test email”."),
+        ("etape", "Fill in the sender, the recipient(s) and, if needed, “Other recipients” (in copy), "
+                  "separated by commas; save, then “Send a test email”."),
 
         ("sous_titre", "Step 4 — Automation"),
         ("etape", "1. Choose the run time (1 a.m. by default) and click “Install the scheduled task”."),

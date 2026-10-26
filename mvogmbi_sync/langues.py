@@ -58,7 +58,7 @@ EN: dict[str, str] = {
     "Serveur d'envoi": "Outgoing server",
     "Envoi du compte rendu": "Sending the report",
     "Outils": "Tools",
-    "Copie (CC)": "Copy (CC)",
+    "Autres destinataires": "Other recipients",
     "Facultatif : autres personnes à informer, adresses séparées par des virgules "
     "(ex. comptable@exemple.com, gerant@exemple.com).":
         "Optional: other people to inform, addresses separated by commas "
