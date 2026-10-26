@@ -36,6 +36,28 @@ def jours_semaine() -> list[str]:
 
 
 EN: dict[str, str] = {
+    # ------------------------------------------------------------------ mise en route, guide, design
+    "Guide de configuration": "Setup guide",
+    "Mise en route": "Getting started",
+    "Six étapes pour une synchronisation entièrement automatique. Chaque étape passe au vert quand elle est faite.":
+        "Six steps to a fully automatic synchronization. Each step turns green once done.",
+    "Ouvrir": "Open",
+    "Clover": "Clover", "Sage 50": "Sage 50", "Courriel": "Email", "Automatisation": "Automation",
+    "Correspondance": "Item mapping", "Premier import": "First import",
+    "Identifiant marchand et jeton API": "Merchant ID and API token",
+    "Fichier d'entreprise et mots de passe": "Company file and passwords",
+    "Compte rendu après chaque nuit": "Report after each night",
+    "Tâche planifiée installée": "Scheduled task installed",
+    "Articles Clover reliés à Sage": "Clover items linked to Sage",
+    "Une facture importée dans Sage": "One invoice imported into Sage",
+    "L'application lit les ventes payées dans Clover ; elle n'y modifie jamais rien.":
+        "The application reads paid sales in Clover; it never changes anything there.",
+    "Identifiants Clover": "Clover credentials",
+    "Fichier d'entreprise": "Company file",
+    "Utilisateurs Sage": "Sage users",
+    "Serveur d'envoi": "Outgoing server",
+    "Envoi du compte rendu": "Sending the report",
+    "Outils": "Tools",
     # ------------------------------------------------------------------ en-tête, général
     "Marché MVOG-MBI Sherbrooke": "Marché MVOG-MBI Sherbrooke",
     "Synchronisation des ventes Clover → Sage 50": "Clover → Sage 50 sales synchronization",

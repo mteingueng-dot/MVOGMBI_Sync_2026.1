@@ -33,6 +33,7 @@ Projet sans aucun lien avec le site conceptinformatique. L'utilisateur, proprié
 - `mvogmbi_sync/correspondance.py` : rapprochement Clover -> Sage (code-barres, nom identique normalisé, ressemblance rapidfuzz avec pénalité si les formats chiffrés diffèrent) ; fichier Excel où le propriétaire marque « Confirmé » ; lignes confirmées conservées à chaque régénération (clé : ID Clover).
 - `mvogmbi_sync/import_sage.py` : fichier .IMP `<SalInvoice>` VALIDÉ par un import réussi (version 12001, pays 1, n° de facture en 3e champ ; réglables dans config.toml [sage_import]) ; lignes regroupées par article Sage ; correspondance par ID Clover d'abord (le nom vendu peut avoir changé), puis par nom ; taxes « TPS/TVH » 5 % et « TVQ » 9,975 % (noms lus dans `ttaxauth`) ; mode « 0 » = payer plus tard ; date mm-jj-aaaa ; format à valider par un import dans une copie du fichier d'entreprise.
 - `mvogmbi_sync/sortie_excel.py` : rapport Excel de vérification dans `sortie/`.
+- `mvogmbi_sync/design.py` : couleurs du marché (vert, rouge, jaune), boutons arrondis `Bouton` (images Pillow : principal, secondaire, danger, accent), filigrane du logo. `aide.py` : pages Accueil, Guide de configuration et FAQ (fr/en, même structure de blocs).
 
 ## Points d'attention
 

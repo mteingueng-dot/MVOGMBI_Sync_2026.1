@@ -1,11 +1,11 @@
-"""Contenu des pages « Accueil / À propos » et « Aide / FAQ », en français et en anglais.
+"""Contenu des pages « Accueil / À propos », « Guide de configuration » et « Aide / FAQ », en français et en anglais.
 
-Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce, etape, question, reponse.
+Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce, etape, note, question, reponse.
 """
 
 from __future__ import annotations
 
-VERSION = "1.2.3"
+VERSION = "1.3.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -33,9 +33,9 @@ ACCUEIL = {
         ("puce", "Le total de chaque facture est égal aux ventes nettes Clover de la journée."),
         ("puce", "Les mots de passe et le jeton Clover sont gardés dans le coffre-fort de Windows."),
         ("sous_titre", "Pour commencer"),
-        ("para", "Remplissez les onglets 1 à 4 (Clover, Sage 50, Courriel, Automatisation), testez chaque "
-                 "connexion, installez la tâche planifiée, puis suivez les résultats dans le Tableau de bord. "
-                 "Consultez l'onglet Aide / FAQ pour les questions courantes."),
+        ("para", "Suivez la liste « Mise en route » ci-dessus : chaque étape passe au vert quand elle est faite. "
+                 "Le « Guide de configuration » décrit chaque étape en détail (Clover, Sage 50, courriel, "
+                 "automatisation, correspondance, mise en production) ; « Aide / FAQ » répond aux questions courantes."),
         ("sous_titre", "À propos"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, épicerie africaine & caribéenne."),
         ("para", "Logiciels reliés : Clover (point de vente) et Sage 50 Comptabilité, Édition canadienne."),
@@ -64,9 +64,9 @@ ACCUEIL = {
         ("puce", "Each invoice total equals the day's Clover net sales."),
         ("puce", "Passwords and the Clover token are kept in the Windows vault."),
         ("sous_titre", "Getting started"),
-        ("para", "Fill in tabs 1 to 4 (Clover, Sage 50, Email, Automation), test each connection, install the "
-                 "scheduled task, then follow the results in the Dashboard. See the Help / FAQ tab for common "
-                 "questions."),
+        ("para", "Follow the “Getting started” checklist above: each step turns green once done. The "
+                 "“Setup guide” describes every step in detail (Clover, Sage 50, email, automation, item mapping, "
+                 "going live); “Help / FAQ” answers common questions."),
         ("sous_titre", "About"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, African & Caribbean grocery."),
         ("para", "Connected software: Clover (point of sale) and Sage 50 Accounting, Canadian Edition."),
@@ -117,6 +117,23 @@ FAQ = {
         ("question", "Où trouver les journaux ?"),
         ("reponse", "Bouton « Dossier des données » du Tableau de bord : journal_automatique.log (chaque "
                     "traitement), journal_imports.csv (chaque facture), sauvegardes de la correspondance."),
+        ("question", "« Sage refuse l'utilisateur mvogmbi_sync » au test de Sage."),
+        ("reponse", "Le mot de passe de lecture enregistré n'est pas celui de l'utilisateur dans CE fichier "
+                    "d'entreprise (chaque fichier, et chaque copie, a ses propres utilisateurs). Ouvrez le fichier "
+                    "dans Sage avec sysadmin, Configuration > Définir les utilisateurs, vérifiez mvogmbi_sync et son "
+                    "mot de passe, puis retapez le même mot de passe dans l'onglet Sage 50."),
+        ("question", "« 535 Incorrect authentication data » au courriel de test."),
+        ("reponse", "Le serveur de courriel refuse l'utilisateur ou le mot de passe. L'utilisateur est en général "
+                    "l'adresse complète (ex. notification@marchemvogmbi.com). Vérifiez le mot de passe en ouvrant le "
+                    "webmail ; après plusieurs refus, le serveur peut faire patienter quelques minutes (« timed out »)."),
+        ("question", "Après une réinstallation, tous les articles sont « à confirmer »."),
+        ("reponse", "Le dossier de données de la nouvelle installation est vide. Page Automatisation > « Reprendre "
+                    "une configuration existante… », choisissez l'ancien dossier : la correspondance validée, le "
+                    "journal des imports et la configuration sont recopiés."),
+        ("question", "Une fenêtre « Sage 50 - Password » ou « Import Summary » s'affiche-t-elle ?"),
+        ("reponse", "Non : l'application pilote l'outil d'import de Sage de façon invisible. Si vous lancez "
+                    "vous-même un fichier .IMP (double-clic), ses fenêtres apparaissent normalement : elles ne "
+                    "viennent pas de MVOGMBI_Sync."),
         ("question", "Comment désinstaller ?"),
         ("reponse", "Paramètres Windows > Applications > MVOGMBI_Sync > Désinstaller. La tâche planifiée est "
                     "retirée ; vos données et votre configuration restent dans le dossier d'installation."),
@@ -160,8 +177,241 @@ FAQ = {
         ("question", "Where are the logs?"),
         ("reponse", "“Data folder” button in the Dashboard: journal_automatique.log (each run), journal_imports.csv "
                     "(each invoice), mapping backups."),
+        ("question", "“Sage rejects the mvogmbi_sync user” when testing Sage."),
+        ("reponse", "The saved read password is not the user's password in THIS company file (each file, and each "
+                    "copy, has its own users). Open the file in Sage as sysadmin, Setup > Set Up Users, check "
+                    "mvogmbi_sync and its password, then type the same password in the Sage 50 tab."),
+        ("question", "“535 Incorrect authentication data” with the test email."),
+        ("reponse", "The mail server rejects the user or password. The user is usually the full address (e.g. "
+                    "notification@marchemvogmbi.com). Check the password by opening the webmail; after several "
+                    "rejections the server may make you wait a few minutes (“timed out”)."),
+        ("question", "After a reinstall, every item is “to confirm”."),
+        ("reponse", "The new installation's data folder is empty. Automation page > “Import an existing "
+                    "configuration…”, choose the former folder: the validated mapping, the import log and the "
+                    "configuration are copied."),
+        ("question", "Does a “Sage 50 - Password” or “Import Summary” window appear?"),
+        ("reponse", "No: the application drives Sage's import tool invisibly. If you open an .IMP file yourself "
+                    "(double-click), its windows appear normally: they do not come from MVOGMBI_Sync."),
         ("question", "How do I uninstall?"),
         ("reponse", "Windows Settings > Apps > MVOGMBI_Sync > Uninstall. The scheduled task is removed; your data "
                     "and configuration stay in the installation folder."),
+    ],
+}
+
+GUIDE = {
+    "fr": [
+        ("titre", "Guide de configuration"),
+        ("para", "Ce guide décrit, étape par étape, la mise en service complète de MVOGMBI_Sync : de la première "
+                 "installation jusqu'à l'import automatique de chaque nuit dans le vrai fichier d'entreprise."),
+        ("sous_titre", "Avant de commencer"),
+        ("puce", "Un ordinateur Windows qui reste allumé la nuit, avec Sage 50 Comptabilité 2026 installé."),
+        ("puce", "L'accès administrateur au compte Clover du marché."),
+        ("puce", "Le mot de passe de l'utilisateur sysadmin de Sage."),
+        ("puce", "Une adresse courriel d'envoi (ex. notification@marchemvogmbi.com) et son mot de passe."),
+        ("note", "Conseil : faites tous les essais sur une COPIE du fichier d'entreprise (Sage : Fichier > "
+                 "Enregistrer une copie). Le vrai fichier n'est choisi qu'à l'étape « Mise en production »."),
+
+        ("sous_titre", "Étape 1 — Clover"),
+        ("etape", "1. Connectez-vous au tableau de bord Clover (www.clover.com). L'identifiant marchand (13 "
+                  "caractères) est dans l'adresse de la page, après « /m/ »."),
+        ("etape", "2. Compte et configuration > Jetons API > Créer un jeton. Donnez-lui un nom (ex. MVOGMBI_Sync) et "
+                  "les droits en LECTURE : Commandes, Inventaire, Paiements, Marchand."),
+        ("etape", "3. Dans l'onglet « 1. Clover », collez l'identifiant marchand et le jeton, puis cliquez sur "
+                  "« Tester la connexion à Clover » : le nom du marché doit s'afficher."),
+
+        ("sous_titre", "Étape 2 — Sage 50"),
+        ("etape", "1. Utilisateur de lecture. Ouvrez le fichier dans Sage avec sysadmin : Configuration > Définir "
+                  "les utilisateurs > Ajouter. Nom : mvogmbi_sync, avec un mot de passe. Droits : « Vue » sur "
+                  "Stocks & Services et sur Clients & Ventes ; « Droits d'accès aux produits tiers » : "
+                  "Consultation seule."),
+        ("etape", "2. Fiche du client « Vente Hebdomadaire » : onglet Importer/Exporter, cochez « Ce client utilise "
+                  "mes n° d'articles »."),
+        ("etape", "3. Comptes des articles : chaque article doit avoir un compte de produits. Règle du marché : "
+                  "compte d'actif 15xx → produits 40xx et coût des marchandises 50xx (ex. 1514 → 4014 / 5014)."),
+        ("etape", "4. Dans l'onglet « 2. Sage 50 » : choisissez le fichier d'entreprise (.SAI), l'utilisateur "
+                  "mvogmbi_sync et son mot de passe, puis le mot de passe de sysadmin (demandé par l'outil d'import)."),
+        ("etape", "5. « Premier jour à importer » : utilisé seulement si Sage ne contient encore aucune facture "
+                  "« Vente AAAA-MM-JJ »."),
+        ("etape", "6. Fermez Sage et cliquez sur « Tester l'accès à Sage » : le nombre d'articles, la dernière "
+                  "facture et l'état du client s'affichent. Aucune fenêtre de Sage n'apparaît."),
+        ("note", "Chaque fichier d'entreprise (et chaque copie) a ses propres utilisateurs : l'utilisateur "
+                 "mvogmbi_sync doit exister, avec le même mot de passe, dans le fichier choisi."),
+
+        ("sous_titre", "Étape 3 — Courriel"),
+        ("para", "Le compte rendu de chaque nuit (factures importées, jours bloqués, raisons) est envoyé par courriel."),
+        ("puce", "Hébergement cPanel (ex. marchemvogmbi.com) : serveur mail.marchemvogmbi.com, port 465, sécurité "
+                 "ssl ; utilisateur = adresse complète."),
+        ("puce", "Gmail : smtp.gmail.com, port 587, starttls ; mot de passe d'application (Compte Google > "
+                 "Sécurité > Mots de passe des applications)."),
+        ("puce", "Outlook / Microsoft 365 : smtp.office365.com, port 587, starttls."),
+        ("etape", "Renseignez l'expéditeur et le ou les destinataires, enregistrez, puis « Envoyer un courriel de "
+                  "test »."),
+
+        ("sous_titre", "Étape 4 — Automatisation"),
+        ("etape", "1. Choisissez l'heure du traitement (1 h par défaut) et cliquez sur « Installer la tâche "
+                  "planifiée »."),
+        ("etape", "2. Paramètres Windows > Système > Alimentation : mise en veille « Jamais » sur secteur. La "
+                  "session Windows doit rester ouverte (elle peut être verrouillée)."),
+        ("etape", "3. « État de la tâche » confirme l'installation et la prochaine exécution."),
+
+        ("sous_titre", "Étape 5 — Correspondance des articles"),
+        ("para", "Chaque article Clover doit être relié à un numéro d'article Sage. La page « Correspondance » "
+                 "affiche les statuts :"),
+        ("puce", "Automatique : même nom ou même code-barres dans Sage, relié sans intervention."),
+        ("puce", "Confirmé : relié par vous ; conservé à chaque mise à jour."),
+        ("puce", "À confirmer : une proposition existe ; vérifiez-la puis « Accepter la proposition »."),
+        ("puce", "À créer dans Sage : aucun article Sage au bon format ; créez-le dans Sage, puis « Mettre à jour "
+                 "depuis Clover et Sage »."),
+        ("etape", "Pour relier : sélectionnez l'article, cherchez l'article Sage, « Confirmer l'article choisi », "
+                  "puis « Enregistrer les modifications »."),
+        ("note", "Règle du marché : deux formats différents (500 g / 1 kg, 6-36 / 7-36) sont deux articles "
+                 "différents ; l'application refuse de les relier."),
+
+        ("sous_titre", "Étape 6 — Premier traitement"),
+        ("etape", "1. Tableau de bord > « Simulation (sans import) » : les factures sont préparées mais pas "
+                  "importées ; lisez les points à corriger."),
+        ("etape", "2. Corrigez-les (articles à relier, comptes manquants), puis « Lancer maintenant »."),
+        ("etape", "3. Dans Sage, ouvrez une facture « Vente AAAA-MM-JJ » du client « Vente Hebdomadaire » et "
+                  "comparez son total aux ventes nettes du jour dans Clover."),
+
+        ("sous_titre", "Mise en production (vrai fichier d'entreprise)"),
+        ("etape", "1. Dans le vrai fichier : créez l'utilisateur mvogmbi_sync, cochez la case du client "
+                  "« Vente Hebdomadaire » et vérifiez les comptes des articles (étape 2)."),
+        ("etape", "2. Onglet « 2. Sage 50 » : choisissez le vrai fichier .SAI, puis « Tester l'accès à Sage »."),
+        ("etape", "3. Vérifiez le « Premier jour à importer » et faites une simulation avant la première nuit."),
+
+        ("sous_titre", "Routine quotidienne"),
+        ("puce", "Le matin, lisez le courriel : « succès » ou la liste des points à corriger."),
+        ("puce", "Un jour bloqué est repris automatiquement la nuit suivante, une fois corrigé."),
+        ("puce", "Les factures sont en « Payer plus tard » : appliquez-y les dépôts bancaires dans Sage."),
+
+        ("sous_titre", "Règles de facturation"),
+        ("puce", "Une facture par jour, client « Vente Hebdomadaire », numéro « Vente AAAA-MM-JJ », datée du jour "
+                 "des ventes."),
+        ("puce", "Une ligne par article : montant = ventes nettes Clover (après rabais et remboursements) ; prix "
+                 "unitaire = montant / quantité."),
+        ("puce", "Articles taxés dans Clover : code de taxe GQ (TPS 5 % + TVQ 9,975 %)."),
+        ("puce", "Une vente est datée de son premier paiement réussi."),
+
+        ("sous_titre", "Fichiers et sauvegarde"),
+        ("puce", "Dossier des données (bouton du Tableau de bord) : correspondance_articles.xlsx, "
+                 "journal_imports.csv, journal_automatique.log et sauvegardes de la correspondance."),
+        ("puce", "Sauvegardez ce dossier régulièrement : la correspondance validée représente votre travail."),
+        ("puce", "Les mots de passe sont dans le coffre-fort de Windows, jamais dans un fichier."),
+        ("puce", "Nouvel ordinateur ou réinstallation : Automatisation > « Reprendre une configuration existante… »."),
+
+        ("sous_titre", "Dépannage"),
+        ("puce", "« Sage refuse l'utilisateur » : mot de passe différent dans ce fichier d'entreprise (étape 2)."),
+        ("puce", "« Article Clover non relié » : page Correspondance (étape 5)."),
+        ("puce", "« Article Sage sans compte de produits » : fiche de l'article dans Sage, onglet Associé."),
+        ("puce", "« Ce client utilise mes n° articles » non coché : fiche du client, onglet Importer/Exporter."),
+        ("puce", "« 535 Incorrect authentication data » : utilisateur ou mot de passe du courriel (étape 3)."),
+        ("puce", "Rien la nuit : ordinateur en veille ou session fermée ; « État de la tâche » (étape 4)."),
+    ],
+    "en": [
+        ("titre", "Setup guide"),
+        ("para", "This guide describes, step by step, the complete setup of MVOGMBI_Sync: from the first "
+                 "installation to the nightly automatic import into the real company file."),
+        ("sous_titre", "Before you start"),
+        ("puce", "A Windows computer that stays on at night, with Sage 50 Accounting 2026 installed."),
+        ("puce", "Administrator access to the market's Clover account."),
+        ("puce", "The password of Sage's sysadmin user."),
+        ("puce", "A sending email address (e.g. notification@marchemvogmbi.com) and its password."),
+        ("note", "Tip: do all your trials on a COPY of the company file (Sage: File > Save a Copy). The real file "
+                 "is only chosen at the “Going live” step."),
+
+        ("sous_titre", "Step 1 — Clover"),
+        ("etape", "1. Sign in to the Clover dashboard (www.clover.com). The merchant ID (13 characters) is in the "
+                  "page address, after “/m/”."),
+        ("etape", "2. Account & Setup > API Tokens > Create token. Give it a name (e.g. MVOGMBI_Sync) and READ "
+                  "permissions: Orders, Inventory, Payments, Merchant."),
+        ("etape", "3. In the “1. Clover” tab, paste the merchant ID and the token, then click “Test the Clover "
+                  "connection”: the market's name must appear."),
+
+        ("sous_titre", "Step 2 — Sage 50"),
+        ("etape", "1. Read-only user. Open the file in Sage as sysadmin: Setup > Set Up Users > Add. Name: "
+                  "mvogmbi_sync, with a password. Rights: “View” on Inventory & Services and on Receivables; "
+                  "“Third-party product access rights”: Read only."),
+        ("etape", "2. “Vente Hebdomadaire” customer record: Import/Export tab, check “This customer uses my item "
+                  "numbers”."),
+        ("etape", "3. Item accounts: every item needs a revenue account. Market rule: asset account 15xx → "
+                  "revenue 40xx and cost of goods 50xx (e.g. 1514 → 4014 / 5014)."),
+        ("etape", "4. In the “2. Sage 50” tab: choose the company file (.SAI), the mvogmbi_sync user and its "
+                  "password, then the sysadmin password (asked by the import tool)."),
+        ("etape", "5. “First day to import”: only used if Sage does not yet contain any “Vente YYYY-MM-DD” "
+                  "invoice."),
+        ("etape", "6. Close Sage and click “Test Sage access”: the number of items, the last invoice and the "
+                  "customer status appear. No Sage window shows up."),
+        ("note", "Each company file (and each copy) has its own users: the mvogmbi_sync user must exist, with the "
+                 "same password, in the chosen file."),
+
+        ("sous_titre", "Step 3 — Email"),
+        ("para", "The nightly report (imported invoices, blocked days, reasons) is sent by email."),
+        ("puce", "cPanel hosting (e.g. marchemvogmbi.com): server mail.marchemvogmbi.com, port 465, security ssl; "
+                 "user = full address."),
+        ("puce", "Gmail: smtp.gmail.com, port 587, starttls; app password (Google Account > Security > App "
+                 "passwords)."),
+        ("puce", "Outlook / Microsoft 365: smtp.office365.com, port 587, starttls."),
+        ("etape", "Fill in the sender and the recipient(s), save, then “Send a test email”."),
+
+        ("sous_titre", "Step 4 — Automation"),
+        ("etape", "1. Choose the run time (1 a.m. by default) and click “Install the scheduled task”."),
+        ("etape", "2. Windows Settings > System > Power: sleep “Never” when plugged in. The Windows session must "
+                  "stay open (it may be locked)."),
+        ("etape", "3. “Task status” confirms the installation and the next run."),
+
+        ("sous_titre", "Step 5 — Item mapping"),
+        ("para", "Each Clover item must be linked to a Sage item number. The “Item mapping” page shows the "
+                 "statuses:"),
+        ("puce", "Automatic: same name or same barcode in Sage, linked with no action."),
+        ("puce", "Confirmed: linked by you; kept at every update."),
+        ("puce", "To confirm: a suggestion exists; check it then “Accept the suggestion”."),
+        ("puce", "To create in Sage: no Sage item with the right size; create it in Sage, then “Update from "
+                 "Clover and Sage”."),
+        ("etape", "To link: select the item, search the Sage item, “Confirm the chosen item”, then “Save "
+                  "changes”."),
+        ("note", "Market rule: two different sizes (500 g / 1 kg, 6-36 / 7-36) are two different items; the "
+                 "application refuses to link them."),
+
+        ("sous_titre", "Step 6 — First run"),
+        ("etape", "1. Dashboard > “Simulation (no import)”: invoices are prepared but not imported; read the "
+                  "points to fix."),
+        ("etape", "2. Fix them (items to link, missing accounts), then “Run now”."),
+        ("etape", "3. In Sage, open a “Vente YYYY-MM-DD” invoice of the “Vente Hebdomadaire” customer and compare "
+                  "its total with the day's net sales in Clover."),
+
+        ("sous_titre", "Going live (real company file)"),
+        ("etape", "1. In the real file: create the mvogmbi_sync user, check the “Vente Hebdomadaire” customer box "
+                  "and check the item accounts (step 2)."),
+        ("etape", "2. “2. Sage 50” tab: choose the real .SAI file, then “Test Sage access”."),
+        ("etape", "3. Check the “First day to import” and run a simulation before the first night."),
+
+        ("sous_titre", "Daily routine"),
+        ("puce", "In the morning, read the email: “success” or the list of points to fix."),
+        ("puce", "A blocked day is resumed automatically the following night, once fixed."),
+        ("puce", "Invoices are “Pay later”: apply the bank deposits to them in Sage."),
+
+        ("sous_titre", "Invoicing rules"),
+        ("puce", "One invoice per day, customer “Vente Hebdomadaire”, number “Vente YYYY-MM-DD”, dated on the "
+                 "sales day."),
+        ("puce", "One line per item: amount = Clover net sales (after discounts and refunds); unit price = "
+                 "amount / quantity."),
+        ("puce", "Items taxed in Clover: tax code GQ (GST 5% + QST 9.975%)."),
+        ("puce", "A sale is dated by its first successful payment."),
+
+        ("sous_titre", "Files and backup"),
+        ("puce", "Data folder (Dashboard button): correspondance_articles.xlsx, journal_imports.csv, "
+                 "journal_automatique.log and mapping backups."),
+        ("puce", "Back up this folder regularly: the validated mapping is your work."),
+        ("puce", "Passwords are in the Windows vault, never in a file."),
+        ("puce", "New computer or reinstall: Automation > “Import an existing configuration…”."),
+
+        ("sous_titre", "Troubleshooting"),
+        ("puce", "“Sage rejects the user”: different password in this company file (step 2)."),
+        ("puce", "“Clover item not linked”: Item mapping page (step 5)."),
+        ("puce", "“Sage item without a revenue account”: item record in Sage, Linked tab."),
+        ("puce", "“This customer uses my item numbers” unchecked: customer record, Import/Export tab."),
+        ("puce", "“535 Incorrect authentication data”: email user or password (step 3)."),
+        ("puce", "Nothing at night: computer asleep or session closed; “Task status” (step 4)."),
     ],
 }

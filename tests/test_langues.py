@@ -2,7 +2,7 @@ import ast
 from pathlib import Path
 
 from mvogmbi_sync import langues
-from mvogmbi_sync.aide import ACCUEIL, FAQ
+from mvogmbi_sync.aide import ACCUEIL, FAQ, GUIDE
 
 PAQUET = Path(__file__).resolve().parent.parent / "mvogmbi_sync"
 
@@ -46,7 +46,7 @@ def test_t_et_changement_de_langue():
 
 
 def test_pages_aide_dans_les_deux_langues():
-    for page in (ACCUEIL, FAQ):
+    for page in (ACCUEIL, FAQ, GUIDE):
         assert set(page) == {"fr", "en"}
         assert [b[0] for b in page["fr"]] == [b[0] for b in page["en"]]  # même structure
 

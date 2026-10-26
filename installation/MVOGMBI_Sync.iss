@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.2.3"
+#define Version "1.3.0"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -64,7 +64,7 @@ Source: "..\dist\MVOGMBI_Sync\*"; DestDir: "{app}"; Flags: recursesubdirs create
 Name: "{app}\donnees"
 
 [Icons]
-Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"
+Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"; AppUserModelID: "ConceptInformatique.MVOGMBI_Sync"
 Name: "{group}\{cm:JournalTraitement}"; Filename: "{app}\donnees\journal_automatique.log"
 Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"
 

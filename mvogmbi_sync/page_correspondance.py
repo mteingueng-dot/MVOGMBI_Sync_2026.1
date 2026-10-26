@@ -14,6 +14,7 @@ from tkinter import messagebox, ttk
 from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
+from .design import Bouton
 from .langues import t
 from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, conflit_format, ecrire_correspondance,
                              lire_correspondances, normaliser)
@@ -41,16 +42,16 @@ class PageCorrespondance(ttk.Frame):
         self.libelles_filtres = {t(f): f for f in FILTRES}  # libellé affiché -> valeur interne
         self.filtre_affiche = tk.StringVar(value=t(FILTRES[0]))
         liste = ttk.Combobox(barre, textvariable=self.filtre_affiche, values=list(self.libelles_filtres),
-                             state="readonly", width=30)
+                             state="readonly", width=24)
         liste.pack(side="left", padx=(4, 10))
         liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher())
         ttk.Label(barre, text=t("Rechercher :")).pack(side="left")
         self.recherche = tk.StringVar()
-        champ = ttk.Entry(barre, textvariable=self.recherche, width=28)
+        champ = ttk.Entry(barre, textvariable=self.recherche, width=20)
         champ.pack(side="left", padx=4)
         champ.bind("<KeyRelease>", lambda _e: self.afficher())
-        ttk.Button(barre, text=t("Mettre à jour depuis Clover et Sage"), command=self.mettre_a_jour).pack(side="right")
-        ttk.Button(barre, text=t("Recharger"), command=self.charger).pack(side="right", padx=6)
+        Bouton(barre, "⟳  " + t("Mettre à jour depuis Clover et Sage"), self.mettre_a_jour).pack(side="right")
+        Bouton(barre, t("Recharger"), self.charger, "secondaire").pack(side="right", padx=8)
         self.compteurs = ttk.Label(self, text="", foreground="#444", padding=(0, 6))
         self.compteurs.pack(fill="x")
 
@@ -83,10 +84,11 @@ class PageCorrespondance(ttk.Frame):
         self.resultats.bind("<Double-Button-1>", lambda _e: self.confirmer())
         boutons = ttk.Frame(edition)
         boutons.grid(row=2, column=2, sticky="n", padx=8)
-        ttk.Button(boutons, text=t("Confirmer l'article choisi"), command=self.confirmer).pack(fill="x")
-        ttk.Button(boutons, text=t("Accepter la proposition"), command=self.accepter).pack(fill="x", pady=3)
-        ttk.Button(boutons, text=t("Retirer la confirmation"), command=self.retirer).pack(fill="x")
-        ttk.Button(edition, text=t("Enregistrer les modifications"), command=self.enregistrer).grid(
+        largeur = 240
+        Bouton(boutons, "✔  " + t("Confirmer l'article choisi"), self.confirmer, largeur=largeur).pack()
+        Bouton(boutons, t("Accepter la proposition"), self.accepter, "secondaire", largeur=largeur).pack(pady=4)
+        Bouton(boutons, t("Retirer la confirmation"), self.retirer, "danger", largeur=largeur).pack()
+        Bouton(edition, "💾  " + t("Enregistrer les modifications"), self.enregistrer, "accent").grid(
             row=2, column=3, sticky="s")
         edition.columnconfigure(1, weight=1)
         self.charger()

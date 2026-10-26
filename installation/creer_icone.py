@@ -29,7 +29,10 @@ def carre(image: Image.Image, cote: int, marge: float = 0.06) -> Image.Image:
 largeur, hauteur = logo_plein.size
 chariot = logo_plein.crop((0, 0, largeur, int(hauteur * 0.76)))
 icone = carre(chariot, 256)
-icone.save(ici / "MVOGMBI_Sync.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+tailles = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+icone.save(ici / "MVOGMBI_Sync.ico", sizes=tailles)
+# la même pour la fenêtre de l'application et la barre des tâches
+icone.save(ici.parent / "mvogmbi_sync" / "ressources" / "MVOGMBI_Sync.ico", sizes=tailles)
 
 # Assistant d'installation : logo complet sur fond blanc
 grand = Image.new("RGB", (164, 314), "white")
