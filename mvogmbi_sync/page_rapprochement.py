@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import threading
 import tkinter as tk
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -30,6 +31,7 @@ class PageRapprochement(ttk.Frame):
         self.registre = RegistreReleves(self.racine)
         self.releves, self.banque, self.sage, self.comptes = [], [], [], []
         self.chiffres: dict = {}
+        self.soldes = (None, None, None, None)
         self.mouvement = None
 
         entete_page(self, "🏦", t("Rapprochement bancaire"),
@@ -63,7 +65,8 @@ class PageRapprochement(ttk.Frame):
         self.cartes.pack(fill="x", pady=8)
         self.valeurs = {}
         for cle, libelle in (("solde_banque", "Solde du relevé"), ("solde_sage", "Solde Sage (1055)"),
-                             ("ecart", "Écart"), ("non_explique", "Écart non expliqué")):
+                             ("ecart", "Écart"), ("ecart_ouverture", "dont écart d'ouverture"),
+                             ("non_explique", "Écart non expliqué")):
             carte = tk.Frame(self.cartes, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
             carte.pack(side="left", fill="x", expand=True, padx=(0, 8))
             tk.Label(carte, text=t(libelle), background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 9)).pack(
@@ -177,25 +180,28 @@ class PageRapprochement(ttk.Frame):
                 config = self._config()
                 fichier = config.get("sage_import", {}).get("fichier_entreprise")
                 if periode:
-                    sage, solde, comptes = lire_sage(config, lambda base: (
+                    sage, solde, ouverture, comptes = lire_sage(config, lambda base: (
                         mouvements_sage(base, periode[0], periode[1]), solde_sage(base, periode[1]),
-                        comptes_sage(base)), fichier)
+                        solde_sage(base, periode[0] - timedelta(days=1)), comptes_sage(base)), fichier)
                 else:
-                    sage, solde, comptes = [], None, []
-                self.after(0, lambda: self._fin_lecture(releves, sage, solde, comptes, periode))
+                    sage, solde, ouverture, comptes = [], None, None, []
+                self.after(0, lambda: self._fin_lecture(releves, sage, solde, ouverture, comptes, periode))
             except Exception as exc:
                 message = str(exc)
                 self.after(0, lambda: self.resume.configure(text="✘ " + message))
 
         threading.Thread(target=travail, daemon=True).start()
 
-    def _fin_lecture(self, releves, sage, solde, comptes, periode) -> None:
+    def _fin_lecture(self, releves, sage, solde, ouverture_sage, comptes, periode) -> None:
         self.releves, self.sage, self.comptes, self.periode = releves, sage, comptes, periode
         self.banque = [m for r in releves for m in r.mouvements]
         rapprocher(self.banque, self.sage)
         fins = [r for r in releves if r.solde_fermeture is not None and r.fin]
         solde_banque = max(fins, key=lambda r: r.fin).solde_fermeture if fins else None
-        self.chiffres = resume(self.banque, self.sage, solde_banque, solde)
+        debuts = [r for r in releves if r.solde_ouverture is not None and r.debut]
+        ouverture_banque = min(debuts, key=lambda r: r.debut).solde_ouverture if debuts else None
+        self.soldes = (solde_banque, solde, ouverture_banque, ouverture_sage)
+        self.chiffres = resume(self.banque, self.sage, *self.soldes)
         self.champ_compte.configurer_valeurs(comptes)
         self.afficher_releves()
         self.afficher()
@@ -256,8 +262,7 @@ class PageRapprochement(ttk.Frame):
         self.registre.retenir(self.mouvement)
         self.registre.enregistrer()
         selection = self.tableau.selection()
-        self.chiffres.update(resume(self.banque, self.sage, self.chiffres.get("solde_banque"),
-                                    self.chiffres.get("solde_sage")))
+        self.chiffres = resume(self.banque, self.sage, *self.soldes)
         self.afficher()
         if selection and self.tableau.exists(selection[0]):
             self.tableau.selection_set(selection[0])

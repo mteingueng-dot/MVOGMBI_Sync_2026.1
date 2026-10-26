@@ -142,16 +142,32 @@ def _fusionner_nombres(mots: list[dict]) -> list[dict]:
 
 
 def _periode(texte: str) -> tuple[date | None, date | None]:
+    """« du 1er février au 28 février 2026 » : la première date prend l'année de la seconde si elle n'en a pas."""
     from .factures_fournisseurs import lire_date
 
-    m = re.search(r"(?:du|période du|from)\s+(.{6,25}?)\s+(?:au|to)\s+(.{6,25}?)(?:\n|$|\s{2})", texte, re.IGNORECASE)
+    m = re.search(r"\bdu\s+(\d{1,2})(?:er)?\s+([a-zéû]+)\.?\s*(\d{4})?\s+au\s+(\d{1,2})(?:er)?\s+([a-zéû]+)\.?\s+(\d{4})",
+                  texte, re.IGNORECASE)
     if m:
-        return lire_date(m[1].replace("1er", "1")), lire_date(m[2])
+        fin = lire_date(f"{m[4]} {m[5]} {m[6]}")
+        annee = int(m[3]) if m[3] else (fin.year if fin else date.today().year)
+        debut = lire_date(f"{m[1]} {m[2]} {annee}")
+        if debut and fin and debut > fin:  # « du 1er décembre au 31 janvier 2027 »
+            debut = debut.replace(year=debut.year - 1)
+        return debut, fin
     dates = [d for d in (lire_date(x) for x in re.findall(r"\d{4}-\d{2}-\d{2}", texte)) if d]
     return (min(dates), max(dates)) if dates else (None, None)
 
 
+COLONNES = {"frais": "frais", "retrait": "retrait", "retraits": "retrait", "débit": "retrait", "débits": "retrait",
+            "debit": "retrait", "dépôt": "depot", "dépôts": "depot", "depot": "depot", "depots": "depot",
+            "crédit": "depot", "crédits": "depot", "credit": "depot", "solde": "solde"}
+# Fin du compte principal : les sections suivantes du relevé (parts sociales, sommaire des frais) sont ignorées
+FIN_DU_COMPTE = re.compile(r"^(compte d'[ée]pargne et de placement|sommaire des frais|part de qualification)")
+
+
 def lire_releve(chemin: Path) -> Releve:
+    """Relevé Desjardins : colonnes Date, Code, Description, Frais, Retrait, Dépôt, Solde ; « 6 840.89 » ;
+    description parfois sur deux lignes (les montants sont alors sur la seconde)."""
     import pdfplumber
 
     releve = Releve(Path(chemin).name)
@@ -160,26 +176,27 @@ def lire_releve(chemin: Path) -> Releve:
         debut, fin = _periode(texte)
         releve.debut, releve.fin = (debut.isoformat() if debut else ""), (fin.isoformat() if fin else "")
         colonnes: dict[str, float] = {}
-        dernier: MouvementBanque | None = None
         solde_courant: Decimal | None = None
+        en_attente: tuple[date, str] | None = None  # ligne datée dont les montants sont sur la ligne suivante
+        termine = False
         for page in pdf.pages:
+            if termine:
+                break
             for mots in _lignes(page.dedupe_chars()):
                 mots = _fusionner_nombres(mots)
                 bas = " ".join(m["text"] for m in mots).lower()
-                if "solde" in bas and any(x in bas for x in ("retrait", "débit", "debit")):  # en-tête des colonnes
-                    for m in mots:
-                        nom = m["text"].lower().strip(".:")
-                        if nom in ("retrait", "retraits", "débit", "débits", "debit"):
-                            colonnes["retrait"] = m["x1"]
-                        elif nom in ("dépôt", "dépôts", "depot", "depots", "crédit", "crédits", "credit"):
-                            colonnes["depot"] = m["x1"]
-                        elif nom == "solde":
-                            colonnes["solde"] = m["x1"]
+                if colonnes and FIN_DU_COMPTE.match(bas):
+                    termine = True
+                    break
+                if "solde" in bas and "description" in bas:  # en-tête des colonnes (répété sur chaque page)
+                    colonnes = {COLONNES[m["text"].lower().strip(".:")]: m["x1"] for m in mots
+                                if m["text"].lower().strip(".:") in COLONNES}
                     continue
                 montants = [m for m in mots if MONTANT.match(m["text"])]
                 autres = [m for m in mots if m not in montants]
                 if re.search(r"solde (reporté|précédent|d'ouverture|au début|initial)|ancien solde", bas) and montants:
-                    releve.solde_ouverture = solde_courant = _montant(montants[-1]["text"])
+                    if releve.solde_ouverture is None:
+                        releve.solde_ouverture = solde_courant = _montant(montants[-1]["text"])
                     continue
                 if re.search(r"(nouveau solde|solde de fermeture|solde à la fin|solde final)", bas) and montants:
                     releve.solde_fermeture = _montant(montants[-1]["text"])
@@ -187,39 +204,43 @@ def lire_releve(chemin: Path) -> Releve:
                 if not colonnes:
                     continue
                 jour = None
-                if autres:
-                    for n in (2, 1):  # « 02 SEP » ou « 2026-09-02 »
+                for n in (2, 1):  # « 2 FEV » ou « 2026-09-02 »
+                    if len(autres) >= n:
                         jour = _date_ligne(" ".join(m["text"] for m in autres[:n]), fin)
                         if jour:
                             autres = autres[n:]
                             break
                 description = " ".join(m["text"] for m in autres).strip()
                 if not montants:
-                    if dernier and description and not jour:  # suite de la description sur la ligne suivante
-                        dernier.description = f"{dernier.description} {description}".strip()
+                    if jour and description:
+                        en_attente = (jour, description)
+                    elif en_attente and description:
+                        en_attente = (en_attente[0], f"{en_attente[1]} {description}")
+                    elif releve.mouvements and description and not jour:
+                        releve.mouvements[-1].description += f" {description}"
                     continue
-                valeurs = {"retrait": None, "depot": None, "solde": None}
+                if not jour and en_attente:  # suite de la ligne précédente, avec les montants
+                    jour, description = en_attente[0], f"{en_attente[1]} {description}".strip()
+                en_attente = None
+                valeurs = {"frais": None, "retrait": None, "depot": None, "solde": None}
                 for m in montants:
                     colonne = min(colonnes, key=lambda c: abs(colonnes[c] - m["x1"]))
                     valeurs[colonne] = _montant(m["text"])
-                if valeurs["retrait"] is None and valeurs["depot"] is None:
-                    if valeurs["solde"] is not None:
-                        solde_courant = valeurs["solde"]
+                if all(valeurs[c] is None for c in ("frais", "retrait", "depot")):
                     continue
-                montant = (valeurs["depot"] or Decimal(0)) - (valeurs["retrait"] or Decimal(0))
-                jour = jour or (date.fromisoformat(dernier.date) if dernier else None)
+                montant = (valeurs["depot"] or Decimal(0)) - (valeurs["retrait"] or Decimal(0)) - (
+                    valeurs["frais"] or Decimal(0))
+                jour = jour or (date.fromisoformat(releve.mouvements[-1].date) if releve.mouvements else None)
                 if not jour:
                     releve.remarques.append(f"ligne sans date ignorée : {bas}")
                     continue
-                dernier = MouvementBanque(jour.isoformat(), description, montant, valeurs["solde"], releve.fichier,
-                                          len(releve.mouvements))
+                mouvement = MouvementBanque(jour.isoformat(), description, montant, valeurs["solde"], releve.fichier,
+                                            len(releve.mouvements))
                 if valeurs["solde"] is not None and solde_courant is not None and solde_courant + montant != valeurs["solde"]:
-                    dernier.remarque = f"solde attendu {solde_courant + montant} $, imprimé {valeurs['solde']} $"
-                if valeurs["solde"] is not None:
-                    solde_courant = valeurs["solde"]
-                elif solde_courant is not None:
-                    solde_courant += montant
-                releve.mouvements.append(dernier)
+                    mouvement.remarque = f"solde attendu {solde_courant + montant} $, imprimé {valeurs['solde']} $"
+                solde_courant = valeurs["solde"] if valeurs["solde"] is not None else (
+                    None if solde_courant is None else solde_courant + montant)
+                releve.mouvements.append(mouvement)
         if not colonnes:
             releve.remarques.append("colonnes Retrait / Dépôt / Solde introuvables (relevé numérisé ?)")
         if releve.solde_fermeture is None and solde_courant is not None and releve.mouvements:
@@ -229,9 +250,12 @@ def lire_releve(chemin: Path) -> Releve:
 
 # --------------------------------------------------------------------------------------------- Sage
 def mouvements_sage(base, debut: date, fin: date, compte: int = COMPTE_BANQUE) -> list[MouvementSage]:
+    """Écritures du compte, sans les écritures corrigées ni leurs contreparties (tjourent.nType 64/65 : original
+    corrigé, 32/33 : contrepassation « CORR … Contrep. de Jn ») : elles s'annulent et ne passent pas à la banque."""
     lignes = base.requete(
         "SELECT e.lId, e.dtJourDate, e.sSource, e.sComment, ROUND(SUM(a.dAmount), 2) montant FROM tjentact a "
         "JOIN tjourent e ON e.lId = a.lJEntId WHERE a.lAcctId = %s AND e.dtJourDate BETWEEN %s AND %s "
+        "AND e.nType NOT IN (32, 33, 64, 65) "
         "GROUP BY e.lId, e.dtJourDate, e.sSource, e.sComment HAVING ROUND(SUM(a.dAmount), 2) <> 0 "
         "ORDER BY e.dtJourDate, e.lId", (compte, debut.isoformat(), fin.isoformat()))
     return [MouvementSage(l["lId"], l["dtJourDate"].date().isoformat(), (l["sSource"] or "").strip(),
@@ -292,14 +316,17 @@ def rapprocher(banque: list[MouvementBanque], sage: list[MouvementSage]) -> None
 
 
 def resume(banque: list[MouvementBanque], sage: list[MouvementSage], solde_banque: Decimal | None,
-           solde_de_sage: Decimal | None) -> dict:
-    """Chiffres du rapprochement : écart expliqué par les mouvements absents de Sage et les écritures en circulation."""
+           solde_de_sage: Decimal | None, ouverture_banque: Decimal | None = None,
+           ouverture_sage: Decimal | None = None) -> dict:
+    """Chiffres du rapprochement. Écart de fin = écart déjà présent à l'ouverture de la période + mouvements de banque
+    absents de Sage − écritures Sage pas encore passées à la banque ; le reste est « non expliqué »."""
     absents = sum((b.montant for b in banque if b.etat in (A_SAISIR, CONFIRME)), Decimal(0))
     circulation = sum((s.montant for s in sage if not s.rapproche), Decimal(0))
     ecart = None if solde_banque is None or solde_de_sage is None else solde_banque - solde_de_sage
-    explique = absents - circulation
-    return {"solde_banque": solde_banque, "solde_sage": solde_de_sage, "ecart": ecart, "absents": absents,
-            "circulation": circulation, "non_explique": None if ecart is None else ecart - explique}
+    ouverture = (None if ouverture_banque is None or ouverture_sage is None else ouverture_banque - ouverture_sage)
+    explique = absents - circulation + (ouverture or Decimal(0))
+    return {"solde_banque": solde_banque, "solde_sage": solde_de_sage, "ecart": ecart, "ecart_ouverture": ouverture,
+            "absents": absents, "circulation": circulation, "non_explique": None if ecart is None else ecart - explique}
 
 
 # --------------------------------------------------------------------------------------------- registre
@@ -382,7 +409,8 @@ def ecrire_rapport(chemin: Path, releves: list[Releve], banque: list[MouvementBa
     f["A1"].font = Font(bold=True, size=14, color="13772D")
     f.append([])
     for libelle, cle in (("Solde du relevé (banque)", "solde_banque"), ("Solde du compte 1055 dans Sage", "solde_sage"),
-                         ("Écart (banque − Sage)", "ecart"), ("Mouvements de banque absents de Sage", "absents"),
+                         ("Écart (banque − Sage)", "ecart"), ("Écart déjà présent à l'ouverture", "ecart_ouverture"),
+                         ("Mouvements de banque absents de Sage", "absents"),
                          ("Écritures Sage pas encore à la banque", "circulation"), ("Écart non expliqué", "non_explique")):
         f.append([libelle, float(chiffres[cle]) if chiffres[cle] is not None else ""])
     f.append([])

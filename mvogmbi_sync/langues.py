@@ -61,6 +61,7 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    "dont écart d'ouverture": 'of which opening difference',
     '10. Rapprochement': '10. Reconciliation',
     '10. Rapprochement bancaire': '10. Bank reconciliation',
     'Rapprochement bancaire': 'Bank reconciliation',
