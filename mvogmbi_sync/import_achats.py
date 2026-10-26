@@ -139,6 +139,14 @@ def facture_presente(base, fournisseur_sage: str, numero: str) -> bool:
 
 
 # --------------------------------------------------------------------------------------------- import
+def sage_ouvert() -> bool:
+    import subprocess
+
+    sortie = subprocess.run(["tasklist", "/fi", "IMAGENAME eq Sage50Accounting.exe"], capture_output=True, text=True,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    return "Sage50Accounting" in sortie
+
+
 def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], journal=print) -> dict[str, str]:
     """Contrôle, écrit le .IMP et l'importe (Sage fermé, fenêtres de l'outil cachées), puis vérifie chaque facture.
 
@@ -153,6 +161,8 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
     exe = executable_import()
     if not fichier_sai.is_file() or not exe:
         raise RuntimeError("Fichier d'entreprise Sage ou outil d'import introuvable (page Sage 50).")
+    if sage_ouvert():
+        raise RuntimeError("Sage est ouvert : fermez-le, l'import exige le mode mono-utilisateur.")
     etats = lire_sage(config_toml, lambda base: verifier_dans_sage(base, factures), str(fichier_sai))
     resultats = {f.fichier: "à importer" for f in factures}
     a_importer = []
