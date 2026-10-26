@@ -21,7 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import coffre, langues
 from .design import (BORDURE, CARTE, FOND, ICONE, ID_APPLICATION, JAUNE, LOGO, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE,
-                     TEXTE_DOUX, VERT, VERT_FONCE, Bouton, fond_de, image_filigrane, poser_filigrane)
+                     TEXTE_DOUX, VERT, VERT_FONCE, Bouton, fond_de, image_filigrane)
 from .langues import t
 
 TITRE = "MVOGMBI_Sync — Clover → Sage 50"
@@ -275,12 +275,41 @@ class Application(tk.Tk):
             self.vars[cle].set(str(Path(chemin)))
 
     def _cadre(self, titre: str, icone: str = "•", filigrane: bool = True) -> ttk.Frame:
-        cadre = ttk.Frame(self.onglets, padding=(4, 4))
-        self.onglets.add(cadre, text=titre)
+        """Page défilante (barre de défilement et molette seulement si le contenu dépasse la fenêtre),
+        avec le logo pâli en bas à droite ; renvoie le cadre où placer le contenu."""
+        exterieur = ttk.Frame(self.onglets)
+        self.onglets.add(exterieur, text=titre)
         self._pages.append((icone, titre))
-        if filigrane and self._images:
-            poser_filigrane(cadre, self._images["filigrane"])
+        toile = tk.Canvas(exterieur, background=fond_de(exterieur), highlightthickness=0, borderwidth=0)
+        barre = ttk.Scrollbar(exterieur, orient="vertical", command=toile.yview)
+        toile.configure(yscrollcommand=barre.set)
+        toile.pack(side="left", fill="both", expand=True)
+        logo = toile.create_image(0, 0, image=self._images["filigrane"], anchor="se") \
+            if filigrane and self._images else None
+        cadre = ttk.Frame(toile, padding=(4, 4))
+        fenetre = toile.create_window(0, 0, window=cadre, anchor="nw")
         cadre.columnconfigure(0, weight=1)
+
+        def ajuster(_evt=None):
+            largeur, visible, contenu = toile.winfo_width(), toile.winfo_height(), cadre.winfo_reqheight()
+            toile.itemconfigure(fenetre, width=largeur)
+            toile.configure(scrollregion=(0, 0, largeur, max(contenu, visible)))
+            if logo:
+                toile.coords(logo, largeur - 16, max(contenu, visible) - 16)
+            if contenu > visible and not barre.winfo_ismapped():
+                barre.pack(side="right", fill="y", before=toile)
+            elif contenu <= visible and barre.winfo_ismapped():
+                barre.pack_forget()
+                toile.yview_moveto(0)
+
+        def molette(evt):
+            if cadre.winfo_reqheight() > toile.winfo_height():
+                toile.yview_scroll(-evt.delta // 120, "units")
+
+        toile.bind("<Configure>", ajuster)
+        cadre.bind("<Configure>", ajuster)
+        exterieur.bind("<Enter>", lambda _e: self.bind_all("<MouseWheel>", molette))
+        exterieur.bind("<Leave>", lambda _e: self.unbind_all("<MouseWheel>"))
         return cadre
 
     def _titre(self, parent, texte: str, sous_titre: str = "") -> tk.Frame:
@@ -560,14 +589,17 @@ class Application(tk.Tk):
         self._champ(envoi, 0, t("Expéditeur"), "courriel.expediteur", c.get("expediteur", ""))
         self._champ(envoi, 1, t("Destinataire(s)"), "courriel.destinataires", c.get("destinataires", ""),
                     aide=t("Une ou plusieurs adresses séparées par des virgules."))
+        self._champ(envoi, 4, t("Copie (CC)"), "courriel.copie", c.get("copie", ""),
+                    aide=t("Facultatif : autres personnes à informer, adresses séparées par des virgules "
+                           "(ex. comptable@exemple.com, gerant@exemple.com)."))
         ttk.Checkbutton(envoi, text=t("Envoyer le compte rendu après chaque traitement, y compris en cas de succès "
                                       "(dates traitées et leur état)"), style="Carte.TCheckbutton",
                         variable=self._var("courriel.envoyer_si_succes", bool(c.get("envoyer_si_succes", True)),
-                                           tk.BooleanVar)).grid(row=3, column=1, sticky="w", pady=6)
+                                           tk.BooleanVar)).grid(row=6, column=1, sticky="w", pady=6)
         Bouton(envoi, "✉  " + t("Envoyer un courriel de test"), self.tester_courriel).grid(
-            row=4, column=1, sticky="w", pady=(6, 8))
+            row=7, column=1, sticky="w", pady=(6, 8))
         self.sortie_courriel = self._sortie(envoi, 3)
-        self.sortie_courriel.grid(row=5, column=0, columnspan=3, sticky="we")
+        self.sortie_courriel.grid(row=8, column=0, columnspan=3, sticky="we")
 
     def _onglet_automatisation(self) -> None:
         a = self.config_toml.get("automatique", {})
@@ -630,6 +662,12 @@ class Application(tk.Tk):
         except (ValueError, AssertionError):
             messagebox.showerror(TITRE, t("Vérifiez la date (AAAA-MM-JJ), l'heure (HH:MM) et le port du courriel."))
             return False
+        from .courriel import adresses, adresses_invalides
+
+        invalides = adresses_invalides(v["courriel.destinataires"]) + adresses_invalides(v["courriel.copie"])
+        if invalides:
+            messagebox.showerror(TITRE, t("Adresse(s) courriel invalide(s) : {liste}", liste=", ".join(invalides)))
+            return False
         c = self.config_toml
         c.setdefault("clover", {}).update(merchant_id=str(v["clover.merchant_id"]).strip())
         c["clover"].setdefault("base_url", "https://api.clover.com")
@@ -648,7 +686,8 @@ class Application(tk.Tk):
         c.setdefault("courriel", {}).update(
             serveur=str(v["courriel.serveur"]).strip(), port=int(str(v["courriel.port"]).strip() or 587),
             securite=v["courriel.securite"], utilisateur=str(v["courriel.utilisateur"]).strip(),
-            expediteur=str(v["courriel.expediteur"]).strip(), destinataires=str(v["courriel.destinataires"]).strip(),
+            expediteur=str(v["courriel.expediteur"]).strip(),
+            destinataires=", ".join(adresses(v["courriel.destinataires"])), copie=", ".join(adresses(v["courriel.copie"])),
             envoyer_si_succes=bool(v["courriel.envoyer_si_succes"]))
         for cle_var, cle_coffre in (("secret.clover", coffre.CLOVER_JETON), ("secret.sage_lecture", coffre.SAGE_LECTURE),
                                     ("secret.sage_import", coffre.SAGE_IMPORT), ("secret.courriel", coffre.COURRIEL)):

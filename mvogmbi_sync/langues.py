@@ -58,6 +58,12 @@ EN: dict[str, str] = {
     "Serveur d'envoi": "Outgoing server",
     "Envoi du compte rendu": "Sending the report",
     "Outils": "Tools",
+    "Copie (CC)": "Copy (CC)",
+    "Facultatif : autres personnes à informer, adresses séparées par des virgules "
+    "(ex. comptable@exemple.com, gerant@exemple.com).":
+        "Optional: other people to inform, addresses separated by commas "
+        "(e.g. accountant@example.com, manager@example.com).",
+    "Adresse(s) courriel invalide(s) : {liste}": "Invalid email address(es): {liste}",
     # ------------------------------------------------------------------ en-tête, général
     "Marché MVOG-MBI Sherbrooke": "Marché MVOG-MBI Sherbrooke",
     "Synchronisation des ventes Clover → Sage 50": "Clover → Sage 50 sales synchronization",

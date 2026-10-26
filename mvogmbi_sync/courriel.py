@@ -36,18 +36,35 @@ def _jour(j) -> str:
     return langues.jours_semaine()[j.weekday()]
 
 
-def envoyer(config_toml: dict, sujet: str, corps: str, corps_html: str | None = None) -> None:
-    c = parametres(config_toml)
-    destinataires = [d.strip() for d in str(c.get("destinataires", "")).replace(";", ",").split(",") if d.strip()]
+def adresses(texte) -> list[str]:
+    """Adresses séparées par des virgules, des points-virgules, des espaces ou des retours à la ligne."""
+    return [a for a in str(texte or "").replace(";", ",").replace("\n", ",").replace(" ", ",").split(",") if a]
+
+
+def adresses_invalides(texte) -> list[str]:
+    return [a for a in adresses(texte) if a.count("@") != 1 or "." not in a.split("@")[1] or a.startswith("@")]
+
+
+def preparer_message(c: dict, sujet: str, corps: str, corps_html: str | None = None) -> EmailMessage:
+    destinataires = adresses(c.get("destinataires"))
+    copies = [a for a in adresses(c.get("copie")) if a.lower() not in {d.lower() for d in destinataires}]
     if not c.get("serveur") or not destinataires:
         raise RuntimeError("Courriel non configuré (serveur ou destinataire manquant).")
     message = EmailMessage()
     message["Subject"] = sujet
     message["From"] = c.get("expediteur") or c.get("utilisateur")
     message["To"] = ", ".join(destinataires)
+    if copies:
+        message["Cc"] = ", ".join(copies)  # send_message envoie aussi aux adresses en copie
     message.set_content(corps)
     if corps_html:
         message.add_alternative(corps_html, subtype="html")
+    return message
+
+
+def envoyer(config_toml: dict, sujet: str, corps: str, corps_html: str | None = None) -> None:
+    c = parametres(config_toml)
+    message = preparer_message(c, sujet, corps, corps_html)
     port = int(c.get("port", 587))
     securite = str(c.get("securite", "starttls")).lower()
     contexte = ssl.create_default_context()

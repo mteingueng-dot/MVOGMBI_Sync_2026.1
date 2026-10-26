@@ -43,3 +43,15 @@ def test_courriel_sage_a_jour():
     cr = CompteRendu(fichier="MARCHE.SAI", derniere_avant=date(2026, 10, 24))
     assert sujet_compte_rendu(cr) == "MVOGMBI_Sync : Sage est à jour (dernière facture : 2026-10-24)"
     assert "aucune (Sage était déjà à jour)" in texte_compte_rendu(cr)
+
+
+def test_copie_cc():
+    from mvogmbi_sync.courriel import adresses_invalides, preparer_message
+
+    c = {"serveur": "mail.exemple.com", "expediteur": "notification@marchemvogmbi.com",
+         "destinataires": "contact@marchemvogmbi.com", "copie": "a@exemple.com; b@exemple.com\nContact@marchemvogmbi.com"}
+    message = preparer_message(c, "Sujet", "Corps")
+    assert message["To"] == "contact@marchemvogmbi.com"
+    assert message["Cc"] == "a@exemple.com, b@exemple.com"  # le destinataire principal n'est pas répété en copie
+    assert preparer_message({**c, "copie": ""}, "Sujet", "Corps")["Cc"] is None
+    assert adresses_invalides("a@exemple.com, pas-une-adresse, b@exemple") == ["pas-une-adresse", "b@exemple"]
