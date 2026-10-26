@@ -5,7 +5,8 @@ Rapprochement proposé, confirmé par le propriétaire :
 - fournisseur : bénéficiaire mémorisé (donnees/correspondance_fournisseurs.json, « beneficiaires »), sinon le nom le
   plus ressemblant parmi les fournisseurs Sage ;
 - facture : n° cité dans le message (« Facture#1264 », même écrit « FA-1264 » dans Sage), sinon la seule facture
-  impayée du fournisseur au même montant ;
+  impayée du fournisseur au même montant ; un virement peut couvrir plusieurs factures (`repartition` : de la plus
+  ancienne à la plus récente, seule la dernière peut être payée en partie) ;
 - déjà saisi : un paiement du même montant, le même jour, au compte de paiement, existe déjà pour ce fournisseur.
 Dans Sage (fenêtre Paiements) : compte 1055, « Payé par : Comptant », à la date du virement (choix du propriétaire).
 """
@@ -51,6 +52,21 @@ class Paiement:
     solde_facture: Decimal | None = None
     etat: str = A_RELIER
     remarque: str = ""
+    repartition: list[dict] = field(default_factory=list)  # plusieurs factures : {"facture", "montant", "solde"}
+
+    def lignes(self) -> list[tuple[str, Decimal, Decimal | None]]:
+        """(facture, montant payé, solde avant paiement) ; une seule ligne si le virement paie une seule facture."""
+        if self.repartition:
+            return [(r["facture"], Decimal(r["montant"]), None if r.get("solde") in (None, "") else Decimal(r["solde"]))
+                    for r in self.repartition]
+        return [(self.facture, self.avis.montant, self.solde_facture)] if self.facture else []
+
+    def appliquer_repartition(self, parts: list[tuple["FactureOuverte", Decimal]]) -> None:
+        """Une facture : champs simples ; plusieurs : `repartition` (affichage « A + B », solde total)."""
+        self.facture = " + ".join(f.numero for f, _ in parts)
+        self.solde_facture = sum((f.solde for f, _ in parts), Decimal(0))
+        self.repartition = [] if len(parts) == 1 else [
+            {"facture": f.numero, "montant": str(m), "solde": str(f.solde)} for f, m in parts]
 
     def en_dict(self) -> dict:
         d = asdict(self)
@@ -87,6 +103,23 @@ class RegistrePaiements:
         return nouveaux
 
 
+def repartir(montant: Decimal, factures: list[FactureOuverte]) -> list[tuple[FactureOuverte, Decimal]]:
+    """Répartit un virement sur des factures (de la plus ancienne à la plus récente) : chacune est soldée, la
+    dernière peut l'être en partie ; les factures inutiles sont laissées. ValueError si les soldes ne suffisent pas."""
+    reste, parts = montant, []
+    for f in sorted(factures, key=lambda f: f.date):
+        if reste <= 0:
+            break
+        if f.solde <= 0:
+            continue
+        part = min(reste, f.solde)
+        parts.append((f, part))
+        reste -= part
+    if reste > 0:
+        raise ValueError(f"le virement dépasse de {reste} $ le solde des factures choisies")
+    return parts
+
+
 # --------------------------------------------------------------------------------------------- lecture de Sage
 def factures_ouvertes(base) -> list[FactureOuverte]:
     """Factures d'achat dont le solde n'est pas nul (factures positives seulement : les notes de crédit sont exclues)."""
@@ -99,13 +132,20 @@ def factures_ouvertes(base) -> list[FactureOuverte]:
 
 
 def paiements_existants(base, compte: int, depuis: date) -> set[tuple[str, str, Decimal]]:
-    """(fournisseur, date, montant) des paiements déjà saisis au compte de paiement depuis `depuis`."""
+    """(fournisseur, date, montant) des paiements déjà saisis au compte de paiement depuis `depuis` : chaque ligne,
+    et le total de chaque paiement (lChqId) réparti sur plusieurs factures."""
     lignes = base.requete(
-        "SELECT v.sName fournisseur, d.dtDate date, -d.dAmount montant FROM tventrdt d JOIN tventr t ON t.lId = d.lVenTrId "
-        "JOIN tvendor v ON v.lId = t.lVenId WHERE d.nTranType = 1 AND d.lBnkAcctId = %s AND d.dtDate >= %s",
-        (compte, depuis.isoformat()))
-    return {(l["fournisseur"].strip(), l["date"].date().isoformat(), Decimal(str(l["montant"])).quantize(Decimal("0.01")))
-            for l in lignes}
+        "SELECT v.sName fournisseur, d.dtDate date, d.lChqId paiement, -d.dAmount montant FROM tventrdt d "
+        "JOIN tventr t ON t.lId = d.lVenTrId JOIN tvendor v ON v.lId = t.lVenId "
+        "WHERE d.nTranType = 1 AND d.lBnkAcctId = %s AND d.dtDate >= %s", (compte, depuis.isoformat()))
+    existants, totaux = set(), {}
+    for l in lignes:
+        cle = (l["fournisseur"].strip(), l["date"].date().isoformat())
+        montant = Decimal(str(l["montant"])).quantize(Decimal("0.01"))
+        existants.add((*cle, montant))
+        if l["paiement"]:
+            totaux[(*cle, l["paiement"])] = totaux.get((*cle, l["paiement"]), Decimal(0)) + montant
+    return existants | {(f, d, m) for (f, d, _), m in totaux.items()}
 
 
 # --------------------------------------------------------------------------------------------- rapprochement
@@ -164,12 +204,19 @@ def rapprocher(p: Paiement, fournisseurs: list[str], memoire: dict[str, str], ou
         p.etat, p.remarque = DEJA, "paiement du même montant, le même jour, déjà saisi dans Sage"
         return
     candidates = [f for f in ouvertes if f.fournisseur == p.fournisseur_sage]
-    choisie = next((f for f in candidates for n in p.avis.numeros_facture if meme_numero(f.numero, n)), None)
-    if not choisie:
+    citees = [f for f in candidates if any(meme_numero(f.numero, n) for n in p.avis.numeros_facture)]
+    if not citees:
         memes_montants = [f for f in candidates if f.solde == p.avis.montant]
-        choisie = memes_montants[0] if len(memes_montants) == 1 else None
-    if choisie:
-        p.facture, p.solde_facture = choisie.numero, choisie.solde
+        citees = memes_montants if len(memes_montants) == 1 else []
+    choisie = citees[0] if len(citees) == 1 else None
+    if len(citees) > 1:  # plusieurs factures citées : un seul virement pour toutes, si leurs soldes suffisent
+        try:
+            p.appliquer_repartition(repartir(p.avis.montant, citees))
+            p.remarque = f"virement réparti sur {max(len(p.repartition), 1)} facture(s)"
+        except ValueError as exc:
+            p.remarque = str(exc)
+    elif choisie:
+        p.facture, p.solde_facture, p.repartition = choisie.numero, choisie.solde, []
         p.remarque = "" if choisie.solde == p.avis.montant else \
             f"écart : virement {p.avis.montant} $ / solde de la facture {choisie.solde} $"
     p.etat = PROPOSE if p.facture else A_RELIER
@@ -192,7 +239,7 @@ def payer_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
     bilan = {"payes": [], "a_verifier": [], "erreur": ""}
     registre = RegistrePaiements(racine)
-    a_saisir = [p for p in registre.paiements if p.etat == CONFIRME and p.fournisseur_sage and p.facture]
+    a_saisir = [p for p in registre.paiements if p.etat == CONFIRME and p.fournisseur_sage and p.lignes()]
     if not a_saisir:
         return bilan
     exe = executable_sage(executable_import())

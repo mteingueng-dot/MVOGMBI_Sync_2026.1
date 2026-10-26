@@ -2,7 +2,7 @@ from decimal import Decimal as D
 
 from mvogmbi_sync.paiements_courriel import AvisPaiement
 from mvogmbi_sync.paiements_fournisseurs import (A_RELIER, DEJA, PROPOSE, FactureOuverte, Paiement, proposer_fournisseur,
-                                                 rapprocher)
+                                                 rapprocher, repartir)
 
 # Noms inventés, à l'image des avis réels (aucune vraie donnée dans le dépôt public)
 FOURNISSEURS = ["A.B.C Cash and Carry Inc.", "Abir Sherbrooke", "La Maison KOLA T.A. Fruits Inc.", "Les Aliments AL-ZED",
@@ -36,3 +36,22 @@ def test_rapprochement_facture_et_deja_saisi():
     inconnu = Paiement(avis("50.00", "pret", beneficiaire="JEAN EXEMPLE"))
     rapprocher(inconnu, FOURNISSEURS, {}, ouvertes, set())
     assert inconnu.etat == A_RELIER
+
+
+def test_repartition_sur_plusieurs_factures():
+    a = FactureOuverte("Les Aliments AL-ZED", "1264", "2026-09-01", D("905.00"))
+    b = FactureOuverte("Les Aliments AL-ZED", "FA-1346", "2026-09-20", D("210.00"))
+    c = FactureOuverte("Les Aliments AL-ZED", "1400", "2026-10-01", D("50.00"))
+    parts = repartir(D("910.00"), [c, b, a])                     # ordre de sélection quelconque : plus ancienne d'abord
+    assert [(f.numero, m) for f, m in parts] == [("1264", D("905.00")), ("FA-1346", D("5.00"))]
+    try:
+        repartir(D("2000.00"), [a, b])
+        assert False
+    except ValueError:
+        pass
+    p = Paiement(avis("910.00", "Factures 1264, 1346"))
+    rapprocher(p, FOURNISSEURS, {}, [a, b, c], set())
+    assert p.etat == PROPOSE and p.facture == "1264 + FA-1346"
+    assert p.lignes() == [("1264", D("905.00"), D("905.00")), ("FA-1346", D("5.00"), D("210.00"))]
+    copie = Paiement.depuis_dict(p.en_dict())
+    assert copie.lignes() == p.lignes()

@@ -6,9 +6,10 @@ Sage n'importe pas de paiement : le robot remplit la fenêtre, puis « Traiter �
 - grille (conteneur 5012) : toutes les écritures ouvertes du fournisseur (factures ET notes de crédit), triées par date
   puis n° interne, comme dans la base (tventr/tventrdt) ; 16 points par ligne, 1re ligne à y=42 ; colonne
   « Montant de paiement » en dernier (≈ 91 % de la largeur) ; total dans l'étiquette 101 ;
-- paiement partiel accepté (choix du propriétaire) ; jamais plus que le solde de la facture ;
+- un virement peut payer plusieurs factures (une ligne chacune, un seul « Traiter ») ; paiement partiel accepté
+  (choix du propriétaire) ; jamais plus que le solde d'une facture ;
 - fermer la fenêtre sans traiter : « Désirez-vous vraiment supprimer cette écriture de journal ? » -> Oui.
-Contrôle après « Traiter » dans la base : le solde de la facture a baissé du montant payé.
+Contrôle après « Traiter » dans la base : le solde de chaque facture a baissé du montant payé.
 """
 
 from __future__ import annotations
@@ -60,23 +61,26 @@ def solde_facture(base, fournisseur: str, numero: str) -> Decimal | None:
     return None if not lignes or lignes[0]["solde"] is None else Decimal(str(lignes[0]["solde"])).quantize(Decimal("0.01"))
 
 
-def payer(fenetre: FenetrePaiements, fournisseur: str, facture: str, montant: Decimal, jour: date,
-          ordre: list[str], solde: Decimal | None, compte: str, mode: str = "Comptant") -> ResultatEncaissement:
-    """Saisit un paiement (une ligne), vérifie le total, puis « Traiter »."""
+def payer(fenetre: FenetrePaiements, fournisseur: str, lignes: list[tuple[str, Decimal, Decimal | None]], jour: date,
+          ordre: list[str], compte: str, mode: str = "Comptant") -> ResultatEncaissement:
+    """Saisit un paiement (une ligne par facture : (n°, montant, solde dans Sage)), vérifie le total, puis « Traiter »."""
+    montant = sum((m for _, m, _ in lignes), Decimal(0))
     resultat = ResultatEncaissement(jour.isoformat(), montant)
-    if facture not in ordre:
-        resultat.messages.append(f"{facture} n'est pas parmi les factures impayées de {fournisseur} dans Sage.")
-        return resultat
-    if solde is None or montant > solde:
-        resultat.messages.append(f"{facture} : paiement {montant} $ supérieur au solde {solde} $ ; rien n'est saisi.")
-        return resultat
+    for facture, part, solde in lignes:
+        if facture not in ordre:
+            resultat.messages.append(f"{facture} n'est pas parmi les factures impayées de {fournisseur} dans Sage.")
+            return resultat
+        if solde is None or part > solde:
+            resultat.messages.append(f"{facture} : paiement {part} $ supérieur au solde {solde} $ ; rien n'est saisi.")
+            return resultat
     for tentative in range(1, 4):
         fenetre.choisir(ID_TYPE, TYPE_FACTURES)
         fenetre.choisir(ID_MODE, mode)
         fenetre.choisir(ID_COMPTE, f"{compte} ")
         fenetre.choisir(ID_FOURNISSEUR, fournisseur)
         fenetre.regler_date(jour.isoformat())
-        fenetre.saisir_ligne(ordre.index(facture), montant)
+        for facture, part, _ in lignes:
+            fenetre.saisir_ligne(ordre.index(facture), part)
         lu = fenetre.total()
         if lu == montant:
             resultat.traite = fenetre.traiter(resultat)
@@ -103,17 +107,20 @@ def appliquer(config_toml: dict, paiements, compte: str, mode: str = "Comptant",
         montant, jour = p.avis.montant, date.fromisoformat(p.avis.date_virement)
         with ouvrir_base_sage(config_toml, fichier) as base:
             ordre = ordre_grille(base, p.fournisseur_sage)
-            avant = solde_facture(base, p.fournisseur_sage, p.facture)
-        resultat = payer(fenetre, p.fournisseur_sage, p.facture, montant, jour, ordre, avant, compte, mode)
+            lignes = [(f, m, solde_facture(base, p.fournisseur_sage, f)) for f, m, _ in p.lignes()]
+        resultat = payer(fenetre, p.fournisseur_sage, lignes, jour, ordre, compte, mode)
         time.sleep(1.5)
         if resultat.traite:
             with ouvrir_base_sage(config_toml, fichier) as base:
-                apres = solde_facture(base, p.fournisseur_sage, p.facture)
-            if apres is not None and avant is not None and avant - apres == montant:
-                p.etat, p.remarque = SAISI, f"payé {montant} $ le {jour} (solde restant {apres} $)"
+                apres = {f: solde_facture(base, p.fournisseur_sage, f) for f, _, _ in lignes}
+            ecarts = [f"{f} : {apres[f]} $ (avant : {avant} $)" for f, m, avant in lignes
+                      if apres[f] is None or avant - apres[f] != m]
+            if not ecarts:
+                restes = ", ".join(f"{f} : {apres[f]} $" for f, _, _ in lignes)
+                p.etat, p.remarque = SAISI, f"payé {montant} $ le {jour} (solde restant {restes})"
             else:
                 resultat.traite = False
-                resultat.messages.append(f"Après « Traiter », solde de {p.facture} : {apres} $ (avant : {avant} $).")
+                resultat.messages.append("Après « Traiter », solde inattendu : " + " ; ".join(ecarts))
         journal(f"{p.fournisseur_sage} {p.facture} : {montant} $ le {jour} -> "
                 f"{'payé' if resultat.traite else 'NON payé'} " + " ".join(resultat.messages))
         resultats.append((p, resultat))

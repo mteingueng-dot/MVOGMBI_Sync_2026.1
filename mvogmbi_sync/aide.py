@@ -5,7 +5,7 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.9.3"
+VERSION = "1.9.4"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -145,7 +145,7 @@ FAQ = {
         ("reponse", "Le dépôt Clover ne contient que les ventes par carte (crédit et débit). La part payée en "
                     "espèces reste due sur la facture jusqu'à son propre encaissement."),
         ("question", "Comment les paiements aux fournisseurs arrivent-ils dans Sage ?"),
-        ("reponse", "Page « 9. Paiements fournisseurs » : « Lire la boîte et Sage » lit les avis Interac et propose "
+        ("reponse", "Page « 9. Paiements fournisseurs » : « Actualiser » lit les avis Interac reçus depuis la date choisie et propose "
                     "le fournisseur et la facture. Vous confirmez chaque virement. Les paiements confirmés sont "
                     "saisis par le robot (compte 1055, « Comptant », à la date du virement) la nuit, ou tout de suite "
                     "avec « Payer dans Sage » (Sage fermé). Un paiement partiel est accepté ; un virement plus grand "
@@ -215,7 +215,7 @@ FAQ = {
         ("reponse", "The Clover deposit only contains card sales (credit and debit). The part paid in cash stays "
                     "due on the invoice until it is received separately."),
         ("question", "How do supplier payments get into Sage?"),
-        ("reponse", "Page “9. Supplier payments”: “Read mailbox and Sage” reads the Interac notices and suggests the "
+        ("reponse", "Page “9. Supplier payments”: “Refresh” reads the Interac notices received since the chosen date and suggests the "
                     "supplier and invoice. You confirm each transfer. Confirmed payments are entered by the robot "
                     "(account 1055, “Cash”, at the transfer date) at night, or right away with “Pay in Sage” (Sage "
                     "closed). A partial payment is accepted; a transfer larger than the invoice balance is entered "

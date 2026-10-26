@@ -673,9 +673,15 @@ class Application(tk.Tk):
     def _onglet_paiements(self) -> None:
         from .page_paiements import PagePaiements
 
-        self.page_paiements = PagePaiements(self.onglets, self.racine, TITRE)
+        self.page_paiements = PagePaiements(self.onglets, self.racine, TITRE, self.vars.get("boite.depuis"),
+                                            self._enregistrer_depuis_boite)
         self.onglets.add(self.page_paiements, text=t("9. Paiements fournisseurs"))
         self._pages.append(("💸", t("9. Paiements fournisseurs")))
+
+    def _enregistrer_depuis_boite(self, depuis: str) -> None:
+        """Date de lecture des avis changée sur la page 9 : même réglage que la page Courriel."""
+        self.config_toml.setdefault("boite_paiements", {})["depuis"] = depuis
+        ecrire_config(self.chemin_config, self.config_toml)
 
     def _onglet_tableau(self) -> None:
         f = self._cadre(t("6. Tableau de bord"), "📊")

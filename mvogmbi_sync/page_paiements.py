@@ -9,20 +9,24 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .correspondance import normaliser
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampRecherche
+from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche
 from .fournisseurs import MemoireCorrespondance, lire_copie_fournisseurs
 from .langues import t
 from .paiements_fournisseurs import (A_RELIER, CONFIRME, DEJA, ETATS, IGNORE, NON_PAYE, PROPOSE, SAISI,
-                                     RegistrePaiements, rapprocher)
+                                     RegistrePaiements, rapprocher, repartir)
 
 COULEURS = {A_RELIER: "#fff4d6", PROPOSE: "#eaf2fb", CONFIRME: "#e3f4e8", DEJA: "#eef1ef", SAISI: "#eef1ef",
             IGNORE: "#f4f4f4", NON_PAYE: "#fde2e4"}
 
 
 class PagePaiements(ttk.Frame):
-    def __init__(self, parent, racine: Path, titre: str):
+    def __init__(self, parent, racine: Path, titre: str, depuis: tk.StringVar | None = None, au_changement_date=None):
         super().__init__(parent, padding=10)
         self.racine, self.titre = Path(racine), titre
+        self.au_changement_date = au_changement_date
+        self.depuis = depuis or tk.StringVar(value=str(self._config().get("boite_paiements", {}).get("depuis",
+                                                                                                    "2026-08-01")))
+        self.deja_lu = False
         self.registre = RegistrePaiements(self.racine)
         self.memoire = MemoireCorrespondance(self.racine)
         self.fournisseurs = lire_copie_fournisseurs(self.racine)
@@ -32,7 +36,9 @@ class PagePaiements(ttk.Frame):
 
         barre = ttk.Frame(self)
         barre.pack(fill="x")
-        Bouton(barre, "📥  " + t("Lire la boîte et Sage"), self.lire).pack(side="left")
+        ttk.Label(barre, text=t("Lire depuis le")).pack(side="left", padx=(0, 4))
+        ChampDate(barre, self.depuis).pack(side="left")
+        Bouton(barre, "🔄  " + t("Actualiser"), self.lire).pack(side="left", padx=(8, 0))
         ttk.Label(barre, text=t("Afficher :")).pack(side="left", padx=(16, 4))
         self.filtre = tk.StringVar(value=t("À traiter"))
         liste = ttk.Combobox(barre, textvariable=self.filtre, state="readonly", width=22,
@@ -82,9 +88,11 @@ class PagePaiements(ttk.Frame):
         bas.pack(fill="x", padx=12, pady=(4, 10))
         gauche = tk.Frame(bas, background=CARTE)
         gauche.pack(side="left", fill="x", expand=True)
-        tk.Label(gauche, text=t("Factures impayées de ce fournisseur dans Sage :"), background=CARTE,
+        tk.Label(gauche, text=t("Factures impayées de ce fournisseur dans Sage (Ctrl+clic : plusieurs factures pour "
+                                "un même virement) :"), background=CARTE,
                  font=("Segoe UI", 9), anchor="w").pack(fill="x")
-        self.factures = tk.Listbox(gauche, height=5, font=("Consolas", 9), activestyle="none")
+        self.factures = tk.Listbox(gauche, height=5, font=("Consolas", 9), activestyle="none", selectmode="extended",
+                                   exportselection=False)
         self.factures.pack(fill="x")
         self.factures.bind("<Double-Button-1>", lambda _e: self.confirmer())
         boutons = tk.Frame(bas, background=CARTE)
@@ -94,6 +102,19 @@ class PagePaiements(ttk.Frame):
         Bouton(boutons, t("Remettre à relier"), self.remettre, "secondaire", fond=CARTE, largeur=210).pack()
         self.choix_factures = []
         self.afficher()
+        self.bind("<Map>", lambda _e: self._premiere_lecture())
+
+    def _premiere_lecture(self) -> None:
+        """À la première ouverture de la page : lecture automatique si la boîte est réglée."""
+        if not self.deja_lu and self._config().get("boite_paiements", {}).get("serveur"):
+            self.deja_lu = True
+            self.lire()
+
+    def _date_depuis(self) -> date | None:
+        try:
+            return date.fromisoformat(self.depuis.get().strip())
+        except ValueError:
+            return None
 
     # ---------------------------------------------------------------- lecture
     def _config(self) -> dict:
@@ -102,6 +123,15 @@ class PagePaiements(ttk.Frame):
         return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
 
     def lire(self) -> None:
+        """Actualiser : relit les avis reçus depuis la date choisie et les factures impayées de Sage, puis affiche
+        tous les virements pas encore traités."""
+        depuis = self._date_depuis()
+        if not depuis:
+            messagebox.showerror(self.titre, t("Date invalide (AAAA-MM-JJ)."))
+            return
+        self.deja_lu = True
+        if self.au_changement_date:
+            self.au_changement_date(depuis.isoformat())
         self.resume.configure(text=t("Lecture de la boîte de courriel et des factures impayées dans Sage…"))
 
         def travail():
@@ -117,7 +147,6 @@ class PagePaiements(ttk.Frame):
                 b = config.get("boite_paiements", {})
                 if not b.get("serveur") or not b.get("utilisateur"):
                     raise RuntimeError(t("Réglez la boîte des avis de paiement (page Courriel)."))
-                depuis = date.fromisoformat(str(b.get("depuis", "2026-08-01")))
                 avis = lire_boite(b["serveur"], b["utilisateur"], coffre.lire(coffre.BOITE_PAIEMENTS), depuis,
                                   int(b.get("port", 993)))
                 compte = numero_compte_sage(str(config.get("encaissements", {}).get("compte_depot", "1055")))
@@ -138,8 +167,11 @@ class PagePaiements(ttk.Frame):
         nouveaux = self.registre.ajouter(avis)
         beneficiaires = self.memoire.donnees.setdefault("beneficiaires", {})
         for p in self.registre.paiements:
+            if p.etat == CONFIRME and (p.fournisseur_sage, p.avis.date_virement, p.avis.montant) in existants:
+                p.etat, p.remarque = DEJA, t("saisi entre-temps dans Sage")  # payé à la main depuis la confirmation
             rapprocher(p, noms, beneficiaires, ouvertes, existants)
         self.registre.enregistrer()
+        self.filtre.set(t("À traiter"))
         self.afficher()
         self.resume.configure(text=self.resume.cget("text") + "   •   " +
                               t("{n} nouvel(s) avis lu(s)", n=len(nouveaux)))
@@ -147,8 +179,11 @@ class PagePaiements(ttk.Frame):
     # ---------------------------------------------------------------- liste
     def afficher(self) -> None:
         choix = self.filtre.get()
+        depuis = (self._date_depuis() or date.min).isoformat()
         self.tableau.delete(*self.tableau.get_children())
         for i, p in enumerate(self.registre.paiements):
+            if p.avis.date_virement < depuis:
+                continue
             if choix == t("À traiter") and p.etat not in (A_RELIER, PROPOSE, CONFIRME):
                 continue
             if choix not in (t("À traiter"), t("Tous")) and t(p.etat) != choix:
@@ -157,9 +192,10 @@ class PagePaiements(ttk.Frame):
             self.tableau.insert("", "end", iid=str(i), tags=(p.etat,), values=(
                 a.date_virement, a.beneficiaire, f"{a.montant:,.2f}", a.message, p.fournisseur_sage, p.facture,
                 "" if p.solde_facture is None else f"{p.solde_facture:,.2f}", t(p.etat)))
-        compte = {e: sum(1 for p in self.registre.paiements if p.etat == e) for e in ETATS}
+        visibles = [p for p in self.registre.paiements if p.avis.date_virement >= depuis]
+        compte = {e: sum(1 for p in visibles if p.etat == e) for e in ETATS}
         self.resume.configure(text=t("{n} virement(s) — à relier : {r}, proposés : {p}, confirmés : {c}, déjà dans "
-                                     "Sage : {d}, ignorés : {i}, annulés/expirés : {x}", n=len(self.registre.paiements),
+                                     "Sage : {d}, ignorés : {i}, annulés/expirés : {x}", n=len(visibles),
                                      r=compte[A_RELIER], p=compte[PROPOSE], c=compte[CONFIRME], d=compte[DEJA],
                                      i=compte[IGNORE], x=compte[NON_PAYE]))
 
@@ -180,14 +216,15 @@ class PagePaiements(ttk.Frame):
         self.factures.delete(0, "end")
         nom = self.fournisseur.get().strip()
         self.choix_factures = [f for f in self.ouvertes if f.fournisseur == nom]
+        retenues = {n: m for n, m, _ in self.paiement.lignes()} if self.paiement else {}
         for f in self.choix_factures:
-            marque = "  ◄" if self.paiement and f.numero == self.paiement.facture else ""
+            marque = f"  ◄ {retenues[f.numero]:,.2f} $" if f.numero in retenues else ""
             self.factures.insert("end", f"{f.numero:<16} {f.date}   {f.solde:>12,.2f} ${marque}")
             if marque:
                 self.factures.selection_set("end")
                 self.factures.see("end")
         if not self.ouvertes:
-            self.factures.insert("end", t("(cliquez sur « Lire la boîte et Sage » pour charger les factures impayées)"))
+            self.factures.insert("end", t("(cliquez sur « Actualiser » pour charger les factures impayées)"))
 
     # ---------------------------------------------------------------- décisions
     def _apres(self) -> None:
@@ -201,18 +238,35 @@ class PagePaiements(ttk.Frame):
         p = self.paiement
         choix = self.factures.curselection()
         nom = self.fournisseur.get().strip()
-        if not p or not nom or not choix or choix[0] >= len(self.choix_factures):
+        choisies = [self.choix_factures[i] for i in choix if i < len(self.choix_factures)]
+        if not p or not nom or not choisies:
             messagebox.showinfo(self.titre, t("Choisissez le fournisseur Sage, puis la facture payée dans la liste."))
             return
-        f = self.choix_factures[choix[0]]
-        if f.solde < p.avis.montant:  # Sage ne paie pas plus que le solde ; un paiement partiel est accepté
-            messagebox.showwarning(self.titre, t("Le virement ({m} $) dépasse le solde de la facture ({s} $) : "
-                                                 "saisissez-le à la main dans Sage (plusieurs factures), puis "
-                                                 "« Ignorer ».", m=f"{p.avis.montant:,.2f}", s=f"{f.solde:,.2f}"))
+        try:  # de la plus ancienne à la plus récente ; seule la dernière peut être payée en partie
+            parts = repartir(p.avis.montant, choisies)
+        except ValueError:
+            messagebox.showwarning(self.titre, t("Le virement ({m} $) dépasse le solde des factures choisies ({s} $) : "
+                                                 "choisissez d'autres factures (Ctrl+clic).", m=f"{p.avis.montant:,.2f}",
+                                                 s=f"{sum(f.solde for f in choisies):,.2f}"))
             return
-        p.fournisseur_sage, p.facture, p.solde_facture, p.etat = nom, f.numero, f.solde, CONFIRME
-        p.remarque = "" if f.solde == p.avis.montant else t("paiement partiel : virement {m} $, solde {s} $",
-                                                              m=p.avis.montant, s=f.solde)
+        if len(choisies) > 1:
+            detail = "\n".join(f"  • {f.numero} ({f.date}) : {m:,.2f} $"
+                                + (t("  (partiel, solde {s} $)", s=f"{f.solde:,.2f}") if m < f.solde else "")
+                                for f, m in parts)
+            inutiles = len(choisies) - len(parts)
+            if not messagebox.askyesno(self.titre, t("Répartir le virement de {m} $ ainsi ?\n\n{detail}", m=f"{p.avis.montant:,.2f}",
+                                                     detail=detail)
+                                       + (t("\n\n{n} facture(s) choisie(s) inutile(s) : non payée(s).", n=inutiles)
+                                          if inutiles else "")):
+                return
+        p.fournisseur_sage, p.etat = nom, CONFIRME
+        p.appliquer_repartition(parts)
+        if len(parts) > 1:
+            p.remarque = t("virement réparti sur {n} factures", n=len(parts))
+        else:
+            f = parts[0][0]
+            p.remarque = "" if f.solde == p.avis.montant else t("paiement partiel : virement {m} $, solde {s} $",
+                                                                  m=p.avis.montant, s=f.solde)
         self.memoire.donnees.setdefault("beneficiaires", {})[normaliser(p.avis.beneficiaire)] = nom
         self.memoire.enregistrer()
         self._apres()

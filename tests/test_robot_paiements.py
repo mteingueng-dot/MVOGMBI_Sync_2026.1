@@ -38,14 +38,22 @@ ORDRE = ["NC-1", "A1", "A2"]  # note de crédit comprise : elle occupe une ligne
 
 def test_paiement_partiel_sur_la_bonne_ligne():
     f = FenetreFactice()
-    r = payer(f, "Fournisseur", "A2", D("10.00"), date(2026, 10, 20), ORDRE, D("210.00"), "1055")
+    r = payer(f, "Fournisseur", [("A2", D("10.00"), D("210.00"))], date(2026, 10, 20), ORDRE, "1055")
     assert r.traite and f.saisies == [(2, D("10.00"))] and f.jour == "2026-10-20"
+
+
+def test_un_virement_pour_plusieurs_factures():
+    f = FenetreFactice()
+    f.total = lambda: sum((m for _, m in f.saisies), D(0))
+    r = payer(f, "Fournisseur", [("A1", D("905.00"), D("905.00")), ("A2", D("5.00"), D("210.00"))],
+              date(2026, 10, 20), ORDRE, "1055")
+    assert r.traite and r.montant == D("910.00") and f.saisies == [(1, D("905.00")), (2, D("5.00"))]
 
 
 def test_refus_si_plus_que_le_solde_ou_facture_absente():
     f = FenetreFactice()
-    assert not payer(f, "Fournisseur", "A2", D("215.00"), date(2026, 10, 20), ORDRE, D("210.00"), "1055").traite
-    assert not payer(f, "Fournisseur", "A9", D("5.00"), date(2026, 10, 20), ORDRE, D("210.00"), "1055").traite
+    assert not payer(f, "Fournisseur", [("A2", D("215.00"), D("210.00"))], date(2026, 10, 20), ORDRE, "1055").traite
+    assert not payer(f, "Fournisseur", [("A9", D("5.00"), D("210.00"))], date(2026, 10, 20), ORDRE, "1055").traite
     assert f.saisies == [] and not f.traitee
 
 
