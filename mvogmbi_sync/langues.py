@@ -61,6 +61,13 @@ EN: dict[str, str] = {
     # ------------------------------------------------------------------ factures fournisseurs
     '   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »': '   •   Sage supplier list missing: click “Sage suppliers and items”',
     '8. Factures fournisseurs': '8. Supplier invoices',
+    "Importer dans Sage": "Import into Sage",
+    "Aucune facture « Prête à importer ». Reliez tous les articles et enregistrez la facture pour qu'elle le devienne.":
+        "No invoice “Ready to import”. Link all items and save the invoice to make it ready.",
+    "Fermez Sage : l'import exige le mode mono-utilisateur (personne d'autre dans le fichier d'entreprise).":
+        "Close Sage: the import requires single-user mode (nobody else in the company file).",
+    "Importer {n} facture(s) dans Sage ?\n\n{liste}": "Import {n} invoice(s) into Sage?\n\n{liste}",
+    "Import dans Sage en cours (contrôles, import, vérification)…": "Importing into Sage (checks, import, verification)…",
     "Écarter": "Set aside",
     "aucune nouvelle facture": "no new invoice",
     "Choisissez d'abord la facture à écarter dans la liste.": "First choose the invoice to set aside in the list.",

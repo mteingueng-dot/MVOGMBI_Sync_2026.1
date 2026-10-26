@@ -73,3 +73,29 @@ def test_ecarter_une_facture(tmp_path):
     assert not photo.exists() and Registre(tmp_path).factures == []
     assert registre.nouveaux_fichiers() == []  # une facture écartée n'est pas relue
 
+
+def test_numero_deja_dans_sage():
+    from mvogmbi_sync.import_achats import meme_numero
+
+    assert meme_numero("FA-104202", "104202")
+    assert meme_numero("A0084707", "a0084707")
+    assert not meme_numero("11264", "1264")      # un chiffre de plus : autre facture
+    assert not meme_numero("12", "FA-12")         # numéros trop courts : pas de rapprochement
+
+
+def test_bloc_achat_conditionnement_et_taxes():
+    from mvogmbi_sync.fournisseurs import Facture, Ligne
+    from mvogmbi_sync.import_achats import bloc_achat
+
+    f = Facture("essai.pdf", "x", fournisseur_sage="Fournisseur Test", numero="9001", date_facture="2026-10-02",
+                sous_total=D("207.80"), tps=D("1.39"), tvq=D("2.77"), total=D("211.96"))
+    f.lignes = [Ligne("Sac 10lbs", D("3"), D("60"), D("180.00"), numero_sage="B0000015", facteur=D("4.536")),
+                Ligne("Chips 24/85 g", D("1"), D("27.80"), D("27.80"), taxable=True, numero_sage="C0000001",
+                      facteur=D("24"))]
+    lignes = bloc_achat(f)
+    assert lignes[0] == "<PurInvoice>" and lignes[1] == '"Fournisseur Test"'
+    assert lignes[2] == '"2","","9001","10-02-2026","211.96","0.00","0","0","0.00"'
+    assert lignes[3] == '"B0000015","13.6080","13.2275","180.00"'
+    assert lignes[4] == ('"C0000001","24.0000","1.1583","27.80","TPS/TVH","0","1","5.00","1.39",'
+                         '"TVQ","0","1","9.975","2.77"')
+

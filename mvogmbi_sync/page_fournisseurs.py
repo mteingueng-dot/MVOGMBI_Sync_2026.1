@@ -109,6 +109,7 @@ class PageFournisseurs(ttk.Frame):
         for cle, libelle in (("sous_total", "Sous-total"), ("tps", "TPS"), ("tvq", "TVQ"), ("total", "Total")):
             ttk.Label(montants, text=t(libelle)).pack(side="left", padx=(0, 4))
             ttk.Entry(montants, textvariable=self.v[cle], width=11).pack(side="left", padx=(0, 14))
+        Bouton(montants, "📤  " + t("Importer dans Sage"), self.importer, "principal").pack(side="right", padx=(8, 0))
         Bouton(montants, "💾  " + t("Enregistrer la facture"), self.enregistrer_facture, "accent").pack(side="right")
         self.controle = tk.Label(parent, text="", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=900,
                                  background=fond_de(parent))
@@ -261,6 +262,49 @@ class PageFournisseurs(ttk.Frame):
             self.lire_nouvelles()
         elif not silencieux:
             self.resume.configure(text=self.resume.cget("text") + "   •   " + t("aucune nouvelle facture"))
+
+    def importer(self) -> None:
+        """Importe dans Sage les factures « Prêtes à importer » (Sage fermé), puis vérifie chacune."""
+        import subprocess
+
+        if self.facture:
+            self.enregistrer_facture()
+        pretes = [f for f in self.registre.factures if f.etat == PRETE]
+        if not pretes:
+            messagebox.showinfo(self.titre, t("Aucune facture « Prête à importer ». Reliez tous les articles et "
+                                              "enregistrez la facture pour qu'elle le devienne."))
+            return
+        processus = subprocess.run(["tasklist", "/fi", "IMAGENAME eq Sage50Accounting.exe"], capture_output=True,
+                                   text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        if "Sage50Accounting" in processus:
+            messagebox.showwarning(self.titre, t("Fermez Sage : l'import exige le mode mono-utilisateur (personne "
+                                                 "d'autre dans le fichier d'entreprise)."))
+            return
+        liste = "\n".join(f"  • {f.fournisseur_sage} n° {f.numero} — {f.total:,.2f} $" for f in pretes)
+        if not messagebox.askyesno(self.titre, t("Importer {n} facture(s) dans Sage ?\n\n{liste}", n=len(pretes),
+                                                 liste=liste)):
+            return
+        self.resume.configure(text=t("Import dans Sage en cours (contrôles, import, vérification)…"))
+
+        def travail():
+            try:
+                import tomllib
+
+                from .import_achats import importer_achats
+
+                config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
+                resultats = importer_achats(self.racine, config, pretes)
+                message = "\n\n".join(f"{fichier} : {texte}" for fichier, texte in resultats.items())
+            except Exception as exc:
+                message = f"✘ {exc}"
+            self.after(0, lambda: self._fin_import(message))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _fin_import(self, message: str) -> None:
+        self.registre.enregistrer()
+        self.afficher_liste()
+        messagebox.showinfo(self.titre, message)
 
     def ecarter(self) -> None:
         """Retire de la liste une facture à ne pas traiter maintenant (fichier rangé dans « ecartees »)."""
