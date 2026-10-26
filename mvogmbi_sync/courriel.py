@@ -85,6 +85,9 @@ def sujet_compte_rendu(cr) -> str:
     encaisses = len(getattr(cr, "encaissements", []) or [])
     if encaisses and not cr.erreur:
         sujet += t(" — {n} dépôt(s) encaissé(s)", n=encaisses)
+    payes = len(getattr(cr, "paiements", []) or [])
+    if payes and not cr.erreur and not getattr(cr, "seulement_paiements", False):
+        sujet += t(" — {n} paiement(s) fournisseur(s)", n=payes)
     return sujet
 
 
@@ -95,6 +98,11 @@ def _sujet_factures(cr) -> str:
         if cr.erreur or cr.problemes:
             return t("MVOGMBI_Sync : encaissements — {n} point(s) à vérifier", n=len(cr.problemes) + bool(cr.erreur))
         return t("MVOGMBI_Sync : encaissements")
+    if getattr(cr, "seulement_paiements", False):
+        if cr.erreur or cr.problemes:
+            return t("MVOGMBI_Sync : paiements fournisseurs — {n} point(s) à vérifier",
+                     n=len(cr.problemes) + bool(cr.erreur))
+        return t("MVOGMBI_Sync : {n} paiement(s) fournisseur(s) saisi(s)", n=len(cr.paiements))
     if cr.erreur:
         return prefixe + t("MVOGMBI_Sync : ERREUR du traitement automatique")
     if cr.problemes:
@@ -135,6 +143,9 @@ def texte_compte_rendu(cr) -> str:
     if getattr(cr, "encaissements", None):
         parties += [t("Encaissements des dépôts Clover (compte Desjardins) :")]
         parties += [f"  {x}" for x in cr.encaissements] + [""]
+    if getattr(cr, "paiements", None):
+        parties += [t("Paiements fournisseurs saisis dans Sage :")]
+        parties += [f"  {x}" for x in cr.paiements] + [""]
     if cr.problemes:
         parties += [t("À corriger (le traitement reprendra automatiquement la nuit suivante) :")]
         parties += [f"  - {p}" for p in cr.problemes] + [""]
@@ -173,6 +184,8 @@ def html_compte_rendu(cr) -> str:
     encaissements = (f"<h3 style='color:#1b7f3b'>{e(t('Encaissements des dépôts Clover (compte Desjardins) :'))}</h3><ul>"
                      + "".join(f"<li>{e(x)}</li>" for x in cr.encaissements) + "</ul>") \
         if getattr(cr, "encaissements", None) else ""
+    encaissements += (f"<h3 style='color:#1b7f3b'>{e(t('Paiements fournisseurs saisis dans Sage :'))}</h3><ul>"
+                      + "".join(f"<li>{e(x)}</li>" for x in cr.paiements) + "</ul>")         if getattr(cr, "paiements", None) else ""
     periode = (t("du <b>{d}</b> au <b>{f}</b>", d=cr.periode[0], f=cr.periode[1]) if cr.periode
                else t("aucune (Sage était déjà à jour)"))
     return (
@@ -200,6 +213,20 @@ def envoyer_bilan_encaissements(config_toml: dict, bilan: dict) -> None:
     cr.problemes = [f"Encaissement : {p}" for p in bilan.get("a_verifier", [])]
     if bilan.get("erreur"):
         cr.problemes.append(f"Encaissements non faits : {bilan['erreur']}")
+    cr.lignes = list(bilan.get("notes", []))
+    envoyer_compte_rendu(config_toml, cr)
+
+
+def envoyer_bilan_paiements(config_toml: dict, bilan: dict) -> None:
+    """Courriel après des paiements fournisseurs saisis à la demande (bouton « Payer dans Sage »)."""
+    from .automatique import CompteRendu
+
+    cr = CompteRendu(seulement_paiements=True)
+    cr.fichier = str(config_toml.get("sage_import", {}).get("fichier_entreprise", "")).rsplit("\\", 1)[-1]
+    cr.paiements = list(bilan.get("payes", []))
+    cr.problemes = [f"Paiement fournisseur : {p}" for p in bilan.get("a_verifier", [])]
+    if bilan.get("erreur"):
+        cr.problemes.append(f"Paiements fournisseurs non faits : {bilan['erreur']}")
     cr.lignes = list(bilan.get("notes", []))
     envoyer_compte_rendu(config_toml, cr)
 

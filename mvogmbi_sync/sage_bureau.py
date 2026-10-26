@@ -113,6 +113,27 @@ def _attendre(condition, delai: float, pas: float = 0.5):
     return None
 
 
+def sage_ouvert() -> bool:
+    """Sage 50 tourne-t-il ? Un processus arrêté de force peut rester listé (« zombie », 32 Ko) : il ne compte pas."""
+    import csv
+
+    sortie = subprocess.run(["tasklist", "/fo", "csv", "/nh", "/fi", "IMAGENAME eq Sage50Accounting.exe"],
+                            capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    for ligne in csv.reader(sortie.splitlines()):
+        if len(ligne) < 5 or not ligne[0].lower().startswith("sage50accounting"):
+            continue
+        poignee = kernel32.OpenProcess(0x1000, False, int(ligne[1]))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if poignee:
+            code = wt.DWORD()
+            vivant = kernel32.GetExitCodeProcess(poignee, ctypes.byref(code)) and code.value == 259  # STILL_ACTIVE
+            kernel32.CloseHandle(poignee)
+            if vivant:
+                return True
+        elif int("".join(c for c in ligne[4] if c.isdigit()) or 0) > 1024:  # mémoire (Ko) d'un vrai Sage
+            return True
+    return False
+
+
 def executable_sage(executable_import: Path | None) -> Path | None:
     """Sage50Accounting.exe, à côté de l'outil d'import."""
     if executable_import:
@@ -266,14 +287,49 @@ class SessionSage:
             self.fermer_message_chargement()
         raise ErreurSage("La fenêtre Encaissements de Sage ne s'ouvre pas.")
 
+    def _visible(self, libelle: str):
+        return next((e for e in _descendants(self.principale) if _texte(e) == libelle and user32.IsWindowVisible(e)), None)
+
+    def ouvrir_paiements(self, essais: int = 6) -> int:
+        """Page « Fournisseurs & Achats » (menu de gauche), puis tâche « Paiements »."""
+        lien = _attendre(lambda: self._visible("Fournisseurs & Achats"), 60)
+        if not lien:
+            raise ErreurSage("Menu « Fournisseurs & Achats » introuvable dans Sage.")
+        for _ in range(essais):
+            time.sleep(5)  # Sage termine son chargement après l'affichage de l'accueil
+            self.fermer_message_chargement()
+            if not self._visible("Paiements"):
+                for cible in (lien, user32.GetParent(lien)):  # le libellé, sinon son cadre
+                    self._cliquer(cible)
+                    if _attendre(lambda: self._visible("Paiements"), 4):
+                        break
+                continue
+            self._cliquer(self._icone("Paiements"))
+            fenetre = _attendre(lambda: user32.FindWindowW("#32770", "Paiements"), 10)
+            if fenetre:
+                self.journal("Fenêtre Paiements ouverte.")
+                return fenetre
+        raise ErreurSage("La fenêtre Paiements de Sage ne s'ouvre pas.")
+
     # ------------------------------------------------------------ fermeture
+    def _confirmer_abandon(self) -> None:
+        """Fenêtre fermée avec une saisie non traitée : Sage demande s'il faut la supprimer -> Oui (rien n'est saisi)."""
+        for h in self.fenetres():
+            if h != self.principale and any("supprimer" in _texte(e) for e in _descendants(h)):
+                oui = self._bouton(h, "&Oui") or self._bouton(h, "Oui")
+                if oui:
+                    user32.PostMessageW(h, WM_COMMAND, user32.GetDlgCtrlID(oui), oui)
+
     def fermer(self, delai: int = 60) -> None:
         if not self.processus or self.processus.poll() is not None:
             return
-        encaissements = user32.FindWindowW("#32770", "Encaissements")
-        if encaissements:
-            user32.PostMessageW(encaissements, WM_CLOSE, 0, 0)
-            time.sleep(2)
+        for titre in ("Encaissements", "Paiements"):
+            fenetre = user32.FindWindowW("#32770", titre)
+            if fenetre:
+                user32.PostMessageW(fenetre, WM_CLOSE, 0, 0)
+                time.sleep(2)
+                self._confirmer_abandon()
+                time.sleep(1)
         if self.principale:
             user32.PostMessageW(self.principale, WM_CLOSE, 0, 0)
         if _attendre(lambda: self.processus.poll() is not None, delai):

@@ -140,11 +140,9 @@ def facture_presente(base, fournisseur_sage: str, numero: str) -> bool:
 
 # --------------------------------------------------------------------------------------------- import
 def sage_ouvert() -> bool:
-    import subprocess
+    from .sage_bureau import sage_ouvert as ouvert
 
-    sortie = subprocess.run(["tasklist", "/fi", "IMAGENAME eq Sage50Accounting.exe"], capture_output=True, text=True,
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-    return "Sage50Accounting" in sortie
+    return ouvert()
 
 
 def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], journal=print) -> dict[str, str]:

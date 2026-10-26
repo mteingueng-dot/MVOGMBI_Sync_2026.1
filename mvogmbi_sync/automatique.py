@@ -77,6 +77,8 @@ class CompteRendu:
     simulation: bool = False
     encaissements: list[str] = field(default_factory=list)  # dépôts encaissés par le robot
     seulement_encaissements: bool = False  # compte rendu du bouton « Encaisser dans Sage » (sans import)
+    paiements: list[str] = field(default_factory=list)  # paiements fournisseurs saisis par le robot
+    seulement_paiements: bool = False  # compte rendu du bouton « Payer dans Sage » (sans import)
 
     def note(self, texte: str) -> None:
         horodate = f"{datetime.now():%H:%M:%S} {texte}"
@@ -270,6 +272,7 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
                 cr.problemes.append(f"{imp.facture.numero} : {statut} après l'import")
     cr.note(f"{len(cr.importees)} facture(s) importée(s) et vérifiée(s) dans Sage.")
     encaisser_depots(racine, config_toml, cr)
+    payer_fournisseurs(racine, config_toml, cr)
     return cr
 
 
@@ -299,6 +302,37 @@ def encaisser_depots(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
     elif code == -1:
         cr.problemes.append("Encaissements : le robot n'a pas terminé dans le délai ; Sage a été arrêté.")
     cr.note(f"{len(cr.encaissements)} dépôt(s) encaissé(s) dans Sage.")
+
+
+def payer_fournisseurs(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """6. Paiements fournisseurs confirmés par le propriétaire (page 9) : le robot les saisit dans la fenêtre
+    Paiements de Sage (bureau caché), vérifie le solde de chaque facture, puis referme Sage."""
+    import json
+    import tempfile
+
+    from .__main__ import commande_moteur
+    from .paiements_fournisseurs import CONFIRME, RegistrePaiements
+    from .sage_bureau import executer_sur_bureau_cache
+
+    if not config_toml.get("paiements", {}).get("automatique", True):
+        return
+    if not any(p.etat == CONFIRME for p in RegistrePaiements(racine).paiements):
+        return
+    cr.note("Paiements fournisseurs confirmés (Sage ouvert par le robot, hors écran)…")
+    with tempfile.TemporaryDirectory() as dossier:
+        fichier = Path(dossier) / "bilan.json"
+        code = executer_sur_bureau_cache(commande_moteur() + ["payer-bureau", "--resultat", str(fichier)],
+                                         racine, delai=int(config_toml.get("paiements", {}).get("delai", 1800)))
+        bilan = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
+    for note in bilan.get("notes", []):
+        cr.note(f"  {note}")
+    cr.paiements += bilan.get("payes", [])
+    cr.problemes += [f"Paiement fournisseur : {p}" for p in bilan.get("a_verifier", [])]
+    if bilan.get("erreur"):
+        cr.problemes.append(f"Paiements fournisseurs non faits : {bilan['erreur']}")
+    elif code == -1:
+        cr.problemes.append("Paiements fournisseurs : le robot n'a pas terminé dans le délai ; Sage a été arrêté.")
+    cr.note(f"{len(cr.paiements)} paiement(s) fournisseur(s) saisi(s) dans Sage.")
 
 
 def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr: CompteRendu):

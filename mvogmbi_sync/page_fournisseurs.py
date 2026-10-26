@@ -265,8 +265,6 @@ class PageFournisseurs(ttk.Frame):
 
     def importer(self) -> None:
         """Importe dans Sage les factures « Prêtes à importer » (Sage fermé), puis vérifie chacune."""
-        import subprocess
-
         if self.facture:
             self.enregistrer_facture()
         pretes = [f for f in self.registre.factures if f.etat == PRETE]
@@ -274,9 +272,8 @@ class PageFournisseurs(ttk.Frame):
             messagebox.showinfo(self.titre, t("Aucune facture « Prête à importer ». Reliez tous les articles et "
                                               "enregistrez la facture pour qu'elle le devienne."))
             return
-        processus = subprocess.run(["tasklist", "/fi", "IMAGENAME eq Sage50Accounting.exe"], capture_output=True,
-                                   text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-        if "Sage50Accounting" in processus:
+        from .sage_bureau import sage_ouvert
+        if sage_ouvert():
             messagebox.showwarning(self.titre, t("Fermez Sage : l'import exige le mode mono-utilisateur (personne "
                                                  "d'autre dans le fichier d'entreprise)."))
             return

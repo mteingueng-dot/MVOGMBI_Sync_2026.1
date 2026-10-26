@@ -89,16 +89,18 @@ class SCROLLINFO(ctypes.Structure):
 
 
 class FenetreEncaissements:
-    """La fenêtre « Encaissements » ouverte dans Sage 50."""
+    """La fenêtre « Encaissements » ouverte dans Sage 50 (la fenêtre « Paiements » en hérite)."""
+
+    titre, id_grille, colonne_montant, ligne_y0 = TITRE, ID_GRILLE, "Montant reçu", LIGNE_Y0
 
     def __init__(self, hwnd: int | None = None):
-        self.h = hwnd or user32.FindWindowW("#32770", TITRE)
+        self.h = hwnd or user32.FindWindowW("#32770", self.titre)
         if not self.h:
-            raise ErreurRobot("La fenêtre « Encaissements » de Sage n'est pas ouverte.")
+            raise ErreurRobot(f"La fenêtre « {self.titre} » de Sage n'est pas ouverte.")
         pid = wt.DWORD()
         user32.GetWindowThreadProcessId(self.h, ctypes.byref(pid))
         self.pid = pid.value
-        conteneur = user32.GetDlgItem(self.h, ID_GRILLE)
+        conteneur = user32.GetDlgItem(self.h, self.id_grille)
         self.conteneur = conteneur
         self.grille = user32.FindWindowExW(conteneur, 0, "CA_ContainerChild32", None)
 
@@ -197,25 +199,32 @@ class FenetreEncaissements:
                 return c
         return None
 
+    def x_montant(self) -> int:
+        return X_MONTANT_RECU
+
+    def lignes_visibles(self) -> int:
+        return LIGNES_VISIBLES
+
     def saisir_ligne(self, ligne: int, montant: Decimal) -> None:
-        """Tape `montant` dans « Montant reçu » de la ligne `ligne` (0 = première facture de la grille)."""
+        """Tape `montant` dans la colonne du montant de la ligne `ligne` (0 = première facture de la grille)."""
+        visibles = self.lignes_visibles()
         user32.SendMessageW(self.grille, WM_VSCROLL, SB_TOP, 0)
-        while self._position() < ligne - (LIGNES_VISIBLES // 2):
+        while self._position() < ligne - (visibles // 2):
             avant = self._position()
             user32.SendMessageW(self.grille, WM_VSCROLL, SB_LINEDOWN, 0)
             if self._position() == avant:
                 break
         rang = ligne - self._position()
-        if not 0 <= rang < LIGNES_VISIBLES:
+        if not 0 <= rang < visibles:
             raise ErreurRobot(f"Ligne {ligne} hors de la zone visible de la grille.")
-        y = LIGNE_Y0 + HAUTEUR_LIGNE * rang
-        position = (y << 16) | X_MONTANT_RECU
+        y = self.ligne_y0 + HAUTEUR_LIGNE * rang
+        position = (y << 16) | self.x_montant()
         user32.PostMessageW(self.grille, WM_LBUTTONDOWN, 1, position)
         user32.PostMessageW(self.grille, WM_LBUTTONUP, 0, position)
         time.sleep(1.0)
         editeur = self._editeur()
         if not editeur:
-            raise ErreurRobot("La cellule « Montant reçu » ne s'est pas ouverte.")
+            raise ErreurRobot(f"La cellule « {self.colonne_montant} » ne s'est pas ouverte.")
         # surtout pas WM_SETTEXT : Sage croirait la cellule non modifiée et y mettrait tout le montant dû
         for caractere in montant_sage(montant):
             user32.PostMessageW(editeur, WM_CHAR, ord(caractere), 0)

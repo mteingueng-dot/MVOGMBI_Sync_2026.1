@@ -146,10 +146,8 @@ class PageEncaissements(ttk.Frame):
         if not a_saisir:
             messagebox.showinfo(self.titre, t("Aucun dépôt « À saisir dans Sage » : calculez d'abord les dépôts."))
             return
-        import subprocess
-        processus = subprocess.run(["tasklist", "/fi", "IMAGENAME eq Sage50Accounting.exe"], capture_output=True,
-                                   text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-        if "Sage50Accounting" in processus:
+        from .sage_bureau import sage_ouvert
+        if sage_ouvert():
             messagebox.showwarning(self.titre, t("Fermez Sage : le robot l'ouvre lui-même, hors écran, pour encaisser "
                                                  "les dépôts."))
             return

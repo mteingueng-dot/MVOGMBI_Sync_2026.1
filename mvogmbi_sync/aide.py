@@ -5,7 +5,7 @@ Chaque page est une liste de blocs (type, texte) : titre, sous_titre, para, puce
 
 from __future__ import annotations
 
-VERSION = "1.9.2"
+VERSION = "1.9.3"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -144,6 +144,12 @@ FAQ = {
         ("question", "Pourquoi le dépôt ne couvre-t-il pas toute la facture ?"),
         ("reponse", "Le dépôt Clover ne contient que les ventes par carte (crédit et débit). La part payée en "
                     "espèces reste due sur la facture jusqu'à son propre encaissement."),
+        ("question", "Comment les paiements aux fournisseurs arrivent-ils dans Sage ?"),
+        ("reponse", "Page « 9. Paiements fournisseurs » : « Lire la boîte et Sage » lit les avis Interac et propose "
+                    "le fournisseur et la facture. Vous confirmez chaque virement. Les paiements confirmés sont "
+                    "saisis par le robot (compte 1055, « Comptant », à la date du virement) la nuit, ou tout de suite "
+                    "avec « Payer dans Sage » (Sage fermé). Un paiement partiel est accepté ; un virement plus grand "
+                    "que le solde de la facture se saisit à la main."),
         ("question", "Comment désinstaller ?"),
         ("reponse", "Paramètres Windows > Applications > MVOGMBI_Sync > Désinstaller. La tâche planifiée est "
                     "retirée ; vos données et votre configuration restent dans le dossier d'installation."),
@@ -208,6 +214,12 @@ FAQ = {
         ("question", "Why does the deposit not cover the whole invoice?"),
         ("reponse", "The Clover deposit only contains card sales (credit and debit). The part paid in cash stays "
                     "due on the invoice until it is received separately."),
+        ("question", "How do supplier payments get into Sage?"),
+        ("reponse", "Page “9. Supplier payments”: “Read mailbox and Sage” reads the Interac notices and suggests the "
+                    "supplier and invoice. You confirm each transfer. Confirmed payments are entered by the robot "
+                    "(account 1055, “Cash”, at the transfer date) at night, or right away with “Pay in Sage” (Sage "
+                    "closed). A partial payment is accepted; a transfer larger than the invoice balance is entered "
+                    "by hand."),
         ("question", "How do I uninstall?"),
         ("reponse", "Windows Settings > Apps > MVOGMBI_Sync > Uninstall. The scheduled task is removed; your data "
                     "and configuration stay in the installation folder."),

@@ -173,3 +173,47 @@ def rapprocher(p: Paiement, fournisseurs: list[str], memoire: dict[str, str], ou
         p.remarque = "" if choisie.solde == p.avis.montant else \
             f"écart : virement {p.avis.montant} $ / solde de la facture {choisie.solde} $"
     p.etat = PROPOSE if p.facture else A_RELIER
+
+
+# --------------------------------------------------------------------------------------------- saisie dans Sage
+def payer_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
+    """Exécuté sur le bureau caché : ouvre Sage (fermé au départ), saisit chaque paiement confirmé, referme Sage.
+
+    Renvoie {"payes": [...], "a_verifier": [...], "erreur": ""} pour le compte rendu.
+    """
+    from . import coffre
+    from .__main__ import executable_import
+    from .robot_paiements import appliquer
+    from .sage_bureau import SessionSage, executable_sage
+
+    c = config_toml.get("paiements", {})
+    compte = str(c.get("compte", "1055"))
+    mode = str(c.get("mode", "Comptant"))
+    fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
+    bilan = {"payes": [], "a_verifier": [], "erreur": ""}
+    registre = RegistrePaiements(racine)
+    a_saisir = [p for p in registre.paiements if p.etat == CONFIRME and p.fournisseur_sage and p.facture]
+    if not a_saisir:
+        return bilan
+    exe = executable_sage(executable_import())
+    if not exe:
+        bilan["erreur"] = "Sage50Accounting.exe introuvable."
+        return bilan
+    session = SessionSage(exe, journal)
+    try:
+        utilisateur = str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin"))
+        session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
+        journal(f"{len(a_saisir)} paiement(s) confirmé(s) à saisir.")
+        session.ouvrir_paiements()
+        for p, r in appliquer(config_toml, a_saisir, compte, mode, journal):
+            texte = (f"{p.avis.date_virement} : {p.avis.montant:,.2f} $ à {p.fournisseur_sage}, facture {p.facture} "
+                     f"(virement {p.avis.reference})")
+            (bilan["payes"] if r.traite else bilan["a_verifier"]).append(
+                texte + ("" if r.traite else " — NON saisi : " + " ".join(r.messages)))
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+        journal(f"Erreur : {exc}")
+    finally:
+        registre.enregistrer()  # les paiements saisis passent à « Saisi dans Sage »
+        session.fermer()
+    return bilan

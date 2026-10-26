@@ -39,6 +39,7 @@ class PagePaiements(ttk.Frame):
                              values=[t("À traiter"), t("Tous")] + [t(e) for e in ETATS])
         liste.pack(side="left")
         liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher())
+        Bouton(barre, "💸  " + t("Payer dans Sage"), self.payer, "accent").pack(side="right")
         self.resume = ttk.Label(self, text="", foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume.pack(fill="x")
 
@@ -204,16 +205,73 @@ class PagePaiements(ttk.Frame):
             messagebox.showinfo(self.titre, t("Choisissez le fournisseur Sage, puis la facture payée dans la liste."))
             return
         f = self.choix_factures[choix[0]]
-        if f.solde < p.avis.montant and not messagebox.askyesno(
-                self.titre, t("Le virement ({m} $) dépasse le solde de la facture ({s} $). Confirmer quand même ?",
-                              m=f"{p.avis.montant:,.2f}", s=f"{f.solde:,.2f}")):
+        if f.solde < p.avis.montant:  # Sage ne paie pas plus que le solde ; un paiement partiel est accepté
+            messagebox.showwarning(self.titre, t("Le virement ({m} $) dépasse le solde de la facture ({s} $) : "
+                                                 "saisissez-le à la main dans Sage (plusieurs factures), puis "
+                                                 "« Ignorer ».", m=f"{p.avis.montant:,.2f}", s=f"{f.solde:,.2f}"))
             return
         p.fournisseur_sage, p.facture, p.solde_facture, p.etat = nom, f.numero, f.solde, CONFIRME
-        p.remarque = "" if f.solde == p.avis.montant else t("paiement partiel ou écart : virement {m} $, solde {s} $",
+        p.remarque = "" if f.solde == p.avis.montant else t("paiement partiel : virement {m} $, solde {s} $",
                                                               m=p.avis.montant, s=f.solde)
         self.memoire.donnees.setdefault("beneficiaires", {})[normaliser(p.avis.beneficiaire)] = nom
         self.memoire.enregistrer()
         self._apres()
+
+    # ---------------------------------------------------------------- saisie dans Sage
+    def payer(self) -> None:
+        """Le robot saisit les paiements confirmés dans la fenêtre Paiements de Sage (Sage fermé, bureau caché)."""
+        from .sage_bureau import sage_ouvert
+
+        confirmes = [p for p in self.registre.paiements if p.etat == CONFIRME]
+        if not confirmes:
+            messagebox.showinfo(self.titre, t("Aucun paiement « Confirmé (à saisir) » : confirmez d'abord les virements."))
+            return
+        if sage_ouvert():
+            messagebox.showwarning(self.titre, t("Fermez Sage : le robot l'ouvre lui-même, hors écran, pour saisir "
+                                                 "les paiements."))
+            return
+        liste = "\n".join(f"  • {p.avis.date_virement}  {p.fournisseur_sage} n° {p.facture} — {p.avis.montant:,.2f} $"
+                          for p in confirmes)
+        if not messagebox.askyesno(self.titre, t("Saisir {n} paiement(s) dans Sage (compte 1055, Comptant) ?\n\n{liste}\n\n"
+                                                 "Le robot ouvre Sage hors écran ; n'ouvrez pas Sage pendant ce temps.",
+                                                 n=len(confirmes), liste=liste)):
+            return
+        self.resume.configure(text=t("Saisie des paiements dans Sage par le robot…"))
+
+        def travail():
+            import json
+            import tempfile
+
+            from .__main__ import commande_moteur
+            from .sage_bureau import executer_sur_bureau_cache
+
+            try:
+                with tempfile.TemporaryDirectory() as dossier:
+                    fichier = Path(dossier) / "bilan.json"
+                    executer_sur_bureau_cache(commande_moteur() + ["payer-bureau", "--resultat", str(fichier)],
+                                              self.racine)
+                    resultat = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
+                bilan = t("{ok} paiement(s) saisi(s) sur {n}.", ok=len(resultat.get("payes", [])), n=len(confirmes))
+                if resultat:
+                    try:
+                        from .courriel import envoyer_bilan_paiements
+                        envoyer_bilan_paiements(self._config(), resultat)
+                    except Exception as exc:  # le courriel ne doit pas masquer le résultat
+                        resultat.setdefault("notes", []).append(f"Courriel non envoyé : {exc}")
+                notes = resultat.get("payes", []) + resultat.get("a_verifier", []) + (
+                    [resultat["erreur"]] if resultat.get("erreur") else []) + resultat.get("notes", [])
+            except Exception as exc:
+                bilan, notes = f"✘ {exc}", []
+            message = bilan + ("\n\n" + "\n".join(notes) if notes else "")
+            self.after(0, lambda: (messagebox.showinfo(self.titre, message), self._recharger()))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _recharger(self) -> None:
+        """Le robot a mis à jour le registre (paiements « Saisi dans Sage ») : on le relit."""
+        self.registre = RegistrePaiements(self.racine)
+        self.paiement = None
+        self.afficher()
 
     def ignorer(self) -> None:
         if self.paiement:
