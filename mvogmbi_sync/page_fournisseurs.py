@@ -142,10 +142,13 @@ class PageFournisseurs(ttk.Frame):
 
         rang1 = tk.Frame(edition, background=CARTE)
         rang1.pack(fill="x", padx=12, pady=(8, 2))
+        self.champs_ligne = {}
         etiquette(rang1, "Code")
-        ttk.Entry(rang1, textvariable=self.l["code"], width=10).pack(side="left", padx=(0, 10))
+        self.champs_ligne["code"] = ttk.Entry(rang1, textvariable=self.l["code"], width=10)
+        self.champs_ligne["code"].pack(side="left", padx=(0, 10))
         etiquette(rang1, "Désignation")
-        ttk.Entry(rang1, textvariable=self.l["description"]).pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.champs_ligne["description"] = ttk.Entry(rang1, textvariable=self.l["description"])
+        self.champs_ligne["description"].pack(side="left", fill="x", expand=True, padx=(0, 10))
         ttk.Checkbutton(rang1, text=t("Taxable"), variable=self.l_taxable, style="Carte.TCheckbutton").pack(side="left")
 
         rang2 = tk.Frame(edition, background=CARTE)
@@ -158,7 +161,11 @@ class PageFournisseurs(ttk.Frame):
                          foreground="#24332a", font=("Segoe UI Semibold", 10), padx=6, pady=4).pack(side="left",
                                                                                                   padx=(0, 10))
             else:
-                ttk.Entry(rang2, textvariable=self.l[cle], width=largeur).pack(side="left", padx=(0, 10))
+                self.champs_ligne[cle] = ttk.Entry(rang2, textvariable=self.l[cle], width=largeur)
+                self.champs_ligne[cle].pack(side="left", padx=(0, 10))
+        # Entrée dans un champ de la ligne : appliquer, puis ouvrir aussitôt une nouvelle ligne
+        for champ in self.champs_ligne.values():
+            champ.bind("<Return>", lambda _e: self.appliquer_et_suivante())
         self._chargement = False
         for cle in ("quantite", "prix", "facteur"):
             self.l[cle].trace_add("write", lambda *_: self._recalculer())
@@ -437,13 +444,18 @@ class PageFournisseurs(ttk.Frame):
                 raise ValueError(t("Le facteur doit être supérieur à 0."))
         except ValueError as exc:
             messagebox.showerror(self.titre, str(exc))
-            return
+            return False
         l.taxable = self.l_taxable.get()
         self.l["facteur"].set(f"{l.facteur:g}")
         self.l["qte_sage"].set(f"{l.en_sage()[0]:g}")
         self.afficher_lignes(i)
         self.montrer_conversion(l)
         self.verifier()
+
+    def appliquer_et_suivante(self) -> str:
+        if self.appliquer_ligne() is not False:
+            self.ajouter_ligne()
+        return "break"
 
     def ajouter_ligne(self) -> None:
         if not self.facture:
@@ -503,6 +515,8 @@ class PageFournisseurs(ttk.Frame):
         self.afficher_lignes(i)
         self.montrer_conversion(l)
         self.verifier()
+        self.champs_ligne["quantite"].focus_set()  # au clavier : Qté, Tab, Prix, Tab, Facteur, Entrée
+        self.champs_ligne["quantite"].select_range(0, "end")
 
     def confirmer_proposition(self) -> None:
         i, l = self.ligne_choisie()
