@@ -491,7 +491,17 @@ class PageFournisseurs(ttk.Frame):
         self.verifier()
 
     def appliquer_et_suivante(self) -> str:
-        if self.appliquer_ligne() is not False:
+        """Entrée : applique la ligne, puis passe à la ligne suivante ; après la dernière, ouvre une nouvelle ligne."""
+        i, _ = self.ligne_choisie()
+        if i is None or self.appliquer_ligne() is False:
+            return "break"
+        if i + 1 < len(self.facture.lignes):
+            self.lignes.selection_set(str(i + 1))
+            self.lignes.see(str(i + 1))
+            self.choisir_ligne()
+            self.champs_ligne["quantite"].focus_set()
+            self.champs_ligne["quantite"].select_range(0, "end")
+        else:
             self.ajouter_ligne()
         return "break"
 
