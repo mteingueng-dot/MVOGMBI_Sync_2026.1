@@ -25,7 +25,6 @@ from .periodes import en_millisecondes
 CENT = Decimal("100")
 SANS_CATEGORIE = "Non catégorisé(e)"
 ETATS_PAYES = {"PAID", "PARTIALLY_REFUNDED", "REFUNDED"}
-JOURS_FILTRE_COMMANDES = 85  # Clover ne filtre plus les commandes par date au-delà de 90 jours
 
 
 @dataclass
@@ -109,9 +108,10 @@ class ClientClover:
         celui des commandes — puis on charge les commandes et on garde celles dont le premier paiement
         réussi tombe dans la période.
 
-        Rapidité (mesurée : une journée en 0,8 s au lieu de 21 s, mêmes montants) : pour les 85 derniers jours,
-        les commandes sont lues par paquets de 1000 (liste filtrée par date de création, 7 jours de marge pour
-        les commandes ouvertes avant) ; les autres, une par une mais 6 à la fois. `paiements` : déjà lus.
+        Rapidité (mesurée : une journée en 1 à 4 s au lieu de 21 s, mêmes montants, à toutes les dates) : les
+        commandes sont lues par paquets de 1000, liste filtrée par `clientCreatedTime` (ce filtre fonctionne aussi
+        au-delà de 90 jours, contrairement à `createdTime`), 7 jours de marge pour les commandes ouvertes avant ;
+        celles qui manqueraient sont lues une par une, 6 à la fois. `paiements` : déjà lus.
         """
         expansion = expansion or self.EXPANSION_COMMANDE
         t0, t1 = en_millisecondes(debut, fin, self.config.fuseau_horaire)
@@ -119,12 +119,12 @@ class ClientClover:
             paiements = list(self._pages("payments", {"filter": [f"createdTime>={t0}", f"createdTime<{t1}"]}))
         ids = list(dict.fromkeys(i for p in paiements if (i := (p.get("order") or {}).get("id"))))
         trouvees: dict[str, dict] = {}
-        if debut >= date.today() - timedelta(days=JOURS_FILTRE_COMMANDES):
-            filtre = [f"createdTime>={t0 - 7 * 86_400_000}", f"createdTime<{t1}"]
-            for commande in self._pages("orders", {"filter": filtre, "expand": expansion}):
-                # liste : collections imbriquées limitées ; une commande très longue est relue seule
-                if len((commande.get("lineItems") or {}).get("elements") or []) < 100:
-                    trouvees[commande["id"]] = commande
+        filtre = [f"clientCreatedTime>={t0 - 7 * 86_400_000}", f"clientCreatedTime<{t1}"]
+        voulues = set(ids)
+        for commande in self._pages("orders", {"filter": filtre, "expand": expansion}):
+            # liste : collections imbriquées limitées ; une commande très longue est relue seule
+            if commande["id"] in voulues and len((commande.get("lineItems") or {}).get("elements") or []) < 100:
+                trouvees[commande["id"]] = commande
         trouvees.update(self.charger_commandes([i for i in ids if i not in trouvees], expansion))
         for id_commande in ids:
             commande = trouvees.get(id_commande)

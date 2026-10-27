@@ -41,6 +41,24 @@ class Graphique(tk.Canvas):
         self._dessin = None
         self.bind("<Configure>", lambda _e: self.redessiner())
 
+    def _legende(self, largeur: int, elements: list[tuple[str, str, bool]], ligne: bool = False) -> int:
+        """Légende à droite du titre, ou sous le titre si la place manque ; renvoie le haut de la zone de dessin."""
+        fin_titre = 12 + 8.2 * len(self.titre) + 16 if self.titre else 0
+        largeurs = [7.5 * len(nom) + (32 if ligne else 24) for nom, _, _ in elements]
+        y, haut = 19, 44
+        x = largeur - 14 - sum(largeurs)
+        if x < fin_titre:  # pas la place à côté du titre : en dessous
+            x, y, haut = 12, 38, 60
+        for (nom, couleur, pointilles), l in zip(elements, largeurs):
+            if ligne:
+                self.create_line(x, y, x + 16, y, fill=couleur, width=2, dash=(4, 3) if pointilles else None)
+                self.create_text(x + 20, y, text=nom, anchor="w", font=POLICE, fill=TEXTE)
+            else:
+                self.create_rectangle(x, y - 5, x + 10, y + 5, fill=couleur, outline=couleur)
+                self.create_text(x + 14, y, text=nom, anchor="w", font=POLICE, fill=TEXTE)
+            x += l
+        return haut
+
     def redessiner(self) -> None:
         self.delete("all")
         largeur, hauteur = self.winfo_width(), self.winfo_height()
@@ -53,11 +71,12 @@ class Graphique(tk.Canvas):
     def barres(self, etiquettes: list[str], series: list[tuple[str, list, str]], vide: str = "") -> None:
         """`series` : [(nom, valeurs, couleur)] — la 1re est la période choisie, la 2e la comparaison."""
         def dessiner(largeur, hauteur):
-            haut, bas, gauche, droite = 44, 30, 52, 12
+            bas, gauche, droite = 30, 52, 12
             valeurs = [float(v or 0) for _, vs, _ in series for v in vs]
             if not etiquettes or not any(valeurs):
                 self.create_text(largeur / 2, hauteur / 2, text=vide, fill=TEXTE_DOUX, font=POLICE)
                 return
+            haut = self._legende(largeur, [(nom, couleur, False) for nom, _, couleur in series])
             maximum = _arrondi_haut(max(valeurs))
             zone_h = hauteur - haut - bas
             for i in range(5):  # graduations
@@ -65,15 +84,10 @@ class Graphique(tk.Canvas):
                 self.create_line(gauche, y, largeur - droite, y, fill="#eef1ef")
                 self.create_text(gauche - 6, bas_y, text=_court(maximum * i / 4), anchor="e", font=POLICE,
                                  fill=TEXTE_DOUX)
-            x = largeur - droite  # légende
-            for nom, _, couleur in reversed(series):
-                largeur_texte = 7.5 * len(nom) + 24
-                x -= largeur_texte
-                self.create_rectangle(x, 14, x + 10, 24, fill=couleur, outline=couleur)
-                self.create_text(x + 14, 19, text=nom, anchor="w", font=POLICE, fill=TEXTE)
             pas = (largeur - gauche - droite) / len(etiquettes)
             largeur_barre = max(2, min(26, pas * 0.8 / len(series)))
-            saut = max(1, int(len(etiquettes) / max(1, (largeur - gauche) // 42)))
+            place = max(len(e) for e in etiquettes) * 6.5 + 12  # largeur d'une étiquette
+            saut = max(1, -(-len(etiquettes) // max(1, int((largeur - gauche - droite) // place))))
             for i, etiquette in enumerate(etiquettes):
                 centre = gauche + pas * (i + 0.5)
                 for k, (_, vs, couleur) in enumerate(series):
@@ -132,8 +146,9 @@ class Graphique(tk.Canvas):
             debut = 90.0
             for i, (nom, v) in enumerate(parts):
                 etendue = 360 * v / total
-                self.create_arc(cx - rayon, cy - rayon, cx + rayon, cy + rayon, start=debut, extent=-min(etendue, 359.9),
-                                fill=PALETTE[i % len(PALETTE)], outline=CARTE, width=2)
+                if etendue >= 1:  # une part plus fine : Tk peindrait un cercle entier
+                    self.create_arc(cx - rayon, cy - rayon, cx + rayon, cy + rayon, start=debut,
+                                    extent=-min(etendue, 359.9), fill=PALETTE[i % len(PALETTE)], outline=CARTE, width=2)
                 debut -= etendue
             interieur = rayon * 0.58
             self.create_oval(cx - interieur, cy - interieur, cx + interieur, cy + interieur, fill=CARTE, outline=CARTE)
@@ -157,25 +172,22 @@ class Graphique(tk.Canvas):
     def courbes(self, etiquettes: list[str], series: list[tuple[str, list, str, bool]], vide: str = "") -> None:
         """`series` : [(nom, valeurs (None = pas de point), couleur, pointillés)] sur les mêmes étiquettes."""
         def dessiner(largeur, hauteur):
-            haut, bas, gauche, droite = 44, 30, 52, 14
+            bas, gauche, droite = 30, 52, 14
             valeurs = [float(v) for _, vs, _, _ in series for v in vs if v is not None]
             if not etiquettes or not any(valeurs):
                 self.create_text(largeur / 2, hauteur / 2, text=vide, fill=TEXTE_DOUX, font=POLICE)
                 return
+            haut = self._legende(largeur, [(nom, couleur, p) for nom, _, couleur, p in series], ligne=True)
             maximum = _arrondi_haut(max(valeurs))
             zone_h, zone_l = hauteur - haut - bas, largeur - gauche - droite
             for i in range(5):
                 y = hauteur - bas - zone_h * i / 4
                 self.create_line(gauche, y, largeur - droite, y, fill="#eef1ef")
                 self.create_text(gauche - 6, y, text=_court(maximum * i / 4), anchor="e", font=POLICE, fill=TEXTE_DOUX)
-            x = largeur - droite
-            for nom, _, couleur, pointilles in reversed(series):
-                x -= 7.5 * len(nom) + 32
-                self.create_line(x, 19, x + 16, 19, fill=couleur, width=2, dash=(4, 3) if pointilles else None)
-                self.create_text(x + 20, 19, text=nom, anchor="w", font=POLICE, fill=TEXTE)
             n = len(etiquettes)
             pas = zone_l / max(1, n - 1)
-            saut = max(1, int(n / max(1, zone_l // 48)))
+            place = max(len(e) for e in etiquettes) * 6.5 + 12
+            saut = max(1, -(-n // max(1, int(zone_l // place))))
             for i, etiquette in enumerate(etiquettes):
                 if i % saut == 0:
                     self.create_text(gauche + pas * i, hauteur - bas + 12, text=etiquette, font=POLICE, fill=TEXTE_DOUX)

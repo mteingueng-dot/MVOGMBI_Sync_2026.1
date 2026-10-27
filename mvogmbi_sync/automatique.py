@@ -510,6 +510,21 @@ def ecrire_journal(racine: Path, cr: CompteRendu) -> Path:
     return chemin
 
 
+def prechauffer_statistiques(racine: Path, cr: CompteRendu) -> None:
+    """Statistiques Clover (page Rapports) : les 7 derniers jours sont gardés dans le cache chaque nuit, pour que
+    les statistiques s'ouvrent sans attendre Clover. Une erreur ici ne touche pas le traitement."""
+    try:
+        from .__main__ import charger_config
+        from .api_clover import ClientClover
+        from .statistiques_clover import lire
+
+        hier = date.today() - timedelta(days=1)
+        lire(ClientClover(charger_config(racine / "config.toml")), hier - timedelta(days=6), hier,
+             racine / "donnees" / "cache_clover")
+    except Exception as exc:
+        cr.note(f"Statistiques Clover non préparées : {exc}")
+
+
 def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,
            depuis: date | None = None) -> CompteRendu:
     """Point d'entrée de la tâche planifiée : n'échoue jamais sans journal ni alerte."""
@@ -531,6 +546,8 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
         print(cr.erreur, flush=True)
     finally:
         verrou.unlink(missing_ok=True)
+    if not simulation:
+        prechauffer_statistiques(racine, cr)
     ecrire_journal(racine, cr)
     if not simulation or config_toml.get("courriel", {}).get("envoyer_si_simulation", False):
         try:

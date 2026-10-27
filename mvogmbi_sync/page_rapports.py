@@ -15,6 +15,7 @@ from tkinter import messagebox, ttk
 from .design import (CARTE, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton,
                      ChampDate, ChampRecherche, cadre_tableau, entete_page, fond_de, rayer)
 from .export_tableau import bouton_exporter
+from .statistiques_clover import SEUIL_CUMP_DOUTEUX
 from .langues import t
 
 # couleurs des lignes du suivi : vente bloquée, à encaisser, encaissée mais pas retrouvée sur les relevés
@@ -24,14 +25,16 @@ NAVIGATION = [
     ("🏠", "Accueil", [("Accueil", "accueil")]),
     ("🧾", "Activités de vente", [("Commandes", "Commandes"), ("Transactions", "Paiements"),
                                   ("Remboursements", "Remboursements")]),
-    ("📊", "Rapports", [("Aperçu des ventes", "Résumé"), ("Ventes par jour", "Par jour"),
-                       ("Jours de la semaine", "Par jour de la semaine"), ("Ventes par heure", "Par heure"),
-                       ("Ventes d'articles", "Par article"), ("Ventes par employé", "Par employé"),
-                       ("Modes de paiement", "Par mode de paiement"), ("Rabais", "Rabais"),
-                       ("Appareils", "Par appareil")]),
-    ("🏦", "Finances", [("Modes de paiement", "Par mode de paiement"), ("Types de carte", "Par type de carte"),
-                       ("Saisie des cartes", "Par mode de saisie de la carte")]),
-    ("🏷", "Articles", [("Ventes d'articles", "Par article"), ("Catégories", "Par catégorie"),
+    # dans l'ordre du menu « Rapports » de Clover (articles supprimés et cartes-cadeaux : absents de l'API Clover)
+    ("📊", "Rapports", [("Aperçu des ventes", "apercu"), ("Rapport des ventes", "Rapport des ventes"),
+                       ("Ventes d'articles", "Par article"), ("Bénéfices", "Bénéfices"),
+                       ("Ventes par employé", "Par employé"), ("Modes de paiement", "Par mode de paiement"),
+                       ("Rabais", "Rabais")]),
+    ("🏦", "Finances", [("Aperçu financier", "Résumé"), ("Modes de paiement", "Par mode de paiement"),
+                       ("Types de carte", "Par type de carte"), ("Saisie des cartes", "Par mode de saisie de la carte"),
+                       ("Ventes par jour", "Par jour"), ("Appareils", "Par appareil")]),
+    ("🏷", "Articles", [("Liste d'articles", "liste_articles"), ("Ventes d'articles", "Par article"),
+                       ("Catégories", "Par catégorie"),
                        ("Péremption", "peremption")]),
     ("👤", "Employés", [("Ventes par employé", "Par employé")]),
     ("👥", "Clients", [("Liste des clients", "Par client")]),
@@ -47,6 +50,7 @@ GRAPHIQUES_ETATS = {
     "Par mode de saisie de la carte": ("anneau", 0, 2), "Par catégorie": ("anneau", 0, 2),
     "Par appareil": ("anneau", 0, 2), "Par article": ("classement", 0, 6), "Par employé": ("classement", 0, 2),
     "Par client": ("classement", 0, 2), "Rabais": ("classement", 0, 2), "prev_achats": ("classement", 0, 7),
+    "Bénéfices": ("classement", 0, 6),
 }
 NOTES_ETATS: dict[str, str] = {}   # texte sous le titre d'un état (prévisions)
 A_COMMANDER_TEXTE = "À commander"
@@ -89,7 +93,9 @@ def tableau_simple(parent, hauteur: int = 12) -> ttk.Treeview:
     cadre.pack(fill="both", expand=True, pady=(6, 0))
     tableau = ttk.Treeview(cadre, show="headings", height=hauteur, selectmode="browse")
     defil = ttk.Scrollbar(cadre, orient="vertical", command=tableau.yview)
-    tableau.configure(yscrollcommand=defil.set)
+    horizontal = ttk.Scrollbar(cadre, orient="horizontal", command=tableau.xview)  # tableaux larges
+    tableau.configure(yscrollcommand=defil.set, xscrollcommand=horizontal.set)
+    horizontal.pack(side="bottom", fill="x")
     tableau.pack(side="left", fill="both", expand=True)
     defil.pack(side="right", fill="y")
     return tableau
@@ -116,7 +122,8 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
             if isinstance(v, Decimal):
                 if "%" in entete:
                     v = f"{v} %".replace(".", ",")
-                elif any(m in entete for m in ("Quantité", "Cumul", "Vendu", "Stock", "Besoin", "À acheter", "Sold")):
+                elif any(m in entete for m in ("Quantité", "Cumul", "Vendu", "Stock ", "Stock", "Besoin", "À acheter",
+                                                 "Sold")) and "Valeur" not in entete:
                     v = f"{v.normalize():f}".replace(".", ",")
                 else:
                     v = montant(v)
@@ -412,6 +419,26 @@ class PageRapports(ttk.Frame):
         self.g_articles = Graphique(graphiques, 175, t("Meilleurs articles"))
         self.g_articles.grid(row=1, column=2, sticky="nsew", pady=(8, 0))
 
+        # page « Aperçu des ventes » (comme Clover) : quatre graphiques
+        self.page_apercu = tk.Frame(self.contenu_stats, background=fond_de(cadre))
+        tk.Label(self.page_apercu, text=t("Aperçu des ventes"), font=("Segoe UI Semibold", 13), foreground=VERT_FONCE,
+                 background=fond_de(cadre)).pack(anchor="w")
+        self.resume_apercu = tk.Label(self.page_apercu, text="", font=("Segoe UI", 10), foreground=TEXTE,
+                                      background=fond_de(cadre), justify="left", anchor="w", wraplength=780)
+        self.resume_apercu.pack(fill="x", pady=(2, 6))
+        grille = tk.Frame(self.page_apercu, background=fond_de(cadre))
+        grille.pack(fill="both", expand=True)
+        grille.columnconfigure((0, 1), weight=1, uniform="a")
+        grille.rowconfigure((0, 1), weight=1)
+        self.g_ap_evolution = Graphique(grille, 200, t("Ventes brutes et nettes"))
+        self.g_ap_evolution.grid(row=0, column=0, sticky="nsew", padx=(0, 4), pady=(0, 4))
+        self.g_ap_composition = Graphique(grille, 200, t("Des ventes brutes aux ventes nettes"))
+        self.g_ap_composition.grid(row=0, column=1, sticky="nsew", padx=(4, 0), pady=(0, 4))
+        self.g_ap_semaine = Graphique(grille, 200, t("Ventes par jour de la semaine"))
+        self.g_ap_semaine.grid(row=1, column=0, sticky="nsew", padx=(0, 4), pady=(4, 0))
+        self.g_ap_heure = Graphique(grille, 200, t("Ventes par heure"))
+        self.g_ap_heure.grid(row=1, column=1, sticky="nsew", padx=(4, 0), pady=(4, 0))
+
         # page « tableau » : un état (titre, tableau, export)
         self.page_tableau = tk.Frame(self.contenu_stats, background=fond_de(cadre))
         ligne = tk.Frame(self.page_tableau, background=fond_de(cadre))
@@ -443,6 +470,11 @@ class PageRapports(ttk.Frame):
         self.donnees_prev = None
         self.vues_prev: dict = {}
         self._lecture_prev = False
+        self.kpi_cadre = tk.Frame(self.page_tableau, background=fond_de(cadre))  # à droite de l'aperçu financier
+        self.vues_articles: dict = {}
+        self._lecture_articles = False
+        self.couts_clover: dict = {}   # ID Clover -> (n° Sage, CUMP Sage)
+        self.moyens_stats: list = []
 
         # page « Péremption »
         self.page_peremption = tk.Frame(self.contenu_stats, background=fond_de(cadre))
@@ -523,8 +555,7 @@ class PageRapports(ttk.Frame):
 
         def progression(i, n, debut, fin):
             self.after(0, lambda: self.etat_stats.configure(
-                text=t("Lecture de Clover : jours {i} à {j} sur {n} ({d} → {f})…", i=i, j=min(n, i + (fin - debut).days),
-                       n=n, d=debut, f=fin)))
+                text=t("Lecture de Clover : {i} jour(s) lu(s) sur {n}…", i=i, n=n)))
 
         def travail():
             try:
@@ -537,7 +568,8 @@ class PageRapports(ttk.Frame):
                 du2, au2, libelle = comparaison(du, au, self.nom_periode)
                 donnees = lire(client, du, au, cache, progression)
                 autres = lire(client, du2, au2, cache, progression)
-                resultat = {"vues": statistiques(donnees), "avant": statistiques(autres), "libelle": libelle,
+                couts = self._couts_sage()
+                resultat = {"vues": statistiques(donnees, couts), "avant": statistiques(autres, couts), "libelle": libelle,
                             "series": series(donnees, du, au), "series_avant": series(autres, du2, au2),
                             "moyens": montants_par_moyen(donnees), "du": du, "au": au}
                 self.after(0, lambda: self._fin_statistiques(resultat))
@@ -548,11 +580,22 @@ class PageRapports(ttk.Frame):
 
         threading.Thread(target=travail, daemon=True).start()
 
+    def _couts_sage(self) -> dict:
+        """ID Clover -> (n° Sage, CUMP) ; coûts lus dans Sage une fois par jour ; rien si Sage est illisible."""
+        from .couts_sage import charger, cout_par_clover
+
+        try:
+            self.couts_clover = cout_par_clover(self.racine, charger(self.racine, self._config()))
+        except Exception:
+            self.couts_clover = {}
+        return self.couts_clover
+
     def _fin_statistiques(self, r: dict) -> None:
         from .graphiques import BLEU, BLEU_PALE
 
         self._calcul_en_cours = False
         self.vues_stats = r["vues"]
+        self.moyens_stats = r["moyens"]
         actuel, avant = dict(r["vues"]["Résumé"][1]), dict(r["avant"]["Résumé"][1])
         for titre, cle, argent in self.INDICATEURS:
             valeur_l, ecart_l = self.cartes_stats[titre]
@@ -637,14 +680,21 @@ class PageRapports(ttk.Frame):
 
     def _montrer(self, cle: str, section: str) -> None:
         self.vue_courante, self.section_ouverte = cle, section
-        for page in (self.page_accueil, self.page_tableau, self.page_peremption):
+        for page in (self.page_accueil, self.page_apercu, self.page_tableau, self.page_peremption):
             page.pack_forget()
         if cle == "accueil":
             self.page_accueil.pack(fill="both", expand=True)
+        elif cle == "apercu":
+            self.page_apercu.pack(fill="both", expand=True)
+            self.afficher_apercu()
         elif cle == "peremption":
             self.page_peremption.pack(fill="both", expand=True)
             if not self.peremption:
                 self.lire_peremption()
+        elif cle == "liste_articles":
+            self.page_tableau.pack(fill="both", expand=True)
+            self.titre_etat.configure(text=t("Liste d'articles"))
+            self.afficher_statistiques()
         elif cle in PREVISIONS:
             self.page_tableau.pack(fill="both", expand=True)
             self.titre_etat.configure(text=t(next(l for _, _, e in NAVIGATION for l, c in e if c == cle)))
@@ -658,15 +708,55 @@ class PageRapports(ttk.Frame):
             self.afficher_statistiques()
         self._surligner()
 
+    def afficher_apercu(self) -> None:
+        """Aperçu des ventes : évolution brutes / nettes, composition, jour de la semaine, heure."""
+        from .graphiques import BLEU, BLEU_PALE
+
+        if not self.vues_stats:
+            return
+        v = self.vues_stats
+        resume = dict(v["Résumé"][1])
+        brutes, nettes = resume["Ventes brutes (articles)"], resume["Ventes nettes (articles)"]
+        self.resume_apercu.configure(text=t(
+            "Ventes brutes {b}   •   rabais {r}   •   remboursements {m}   •   ventes nettes {n}   •   "
+            "{c} commande(s), panier moyen {p}", b=montant(brutes), r=montant(resume["Rabais"]),
+            m=montant(resume["Remboursements (articles)"]), n=montant(nettes), c=resume["Commandes payées"],
+            p=montant(resume["Panier moyen"])))
+        lignes = v["Rapport des ventes"][1]  # par jour (ou par heure pour une journée)
+        etiquettes = [l[0][8:10] + "/" + l[0][5:7] if len(l[0]) == 10 else l[0] for l in lignes]
+        if len(lignes) > 1 and len(lignes[0][0]) == 10:
+            self.g_ap_evolution.courbes(etiquettes, [(t("Ventes brutes"), [l[3] for l in lignes], BLEU_PALE, False),
+                                                     (t("Ventes nettes"), [l[6] for l in lignes], BLEU, False)],
+                                        t("Aucune vente"))
+        else:
+            self.g_ap_evolution.barres(etiquettes, [(t("Ventes brutes"), [l[3] for l in lignes], BLEU_PALE),
+                                                    (t("Ventes nettes"), [l[6] for l in lignes], BLEU)], t("Aucune vente"))
+        self.g_ap_composition.anneau([(t("Ventes nettes"), nettes), (t("Rabais"), abs(resume["Rabais"])),
+                                      (t("Remboursements"), abs(resume["Remboursements (articles)"]))],
+                                     t("Aucune vente"), format_valeur=montant)
+        semaine = v["Par jour de la semaine"][1]
+        self.g_ap_semaine.barres([t(l[0])[:3] for l in semaine], [(t("Ventes nettes"), [l[2] for l in semaine], BLEU)],
+                                 t("Aucune vente"))
+        heures = v["Par heure"][1]
+        self.g_ap_heure.barres([l[0].replace(" h", "h") for l in heures],
+                               [(t("Ventes nettes"), [l[2] for l in heures], BLEU)], t("Aucune vente"))
+
     def afficher_statistiques(self) -> None:
         nom = self.vue_courante
+        if nom == "apercu":
+            self.afficher_apercu()
+            return
         if nom in ("accueil", "peremption"):
             return
         if nom in PREVISIONS:
             self.cadre_horizon.pack(side="left")
         else:
             self.cadre_horizon.pack_forget()
-        source = self.vues_prev if nom in PREVISIONS else self.vues_stats
+        if nom == "liste_articles" and not self.vues_articles:
+            self.lire_liste_articles()
+        source = (self.vues_prev if nom in PREVISIONS else self.vues_articles if nom == "liste_articles"
+                  else self.vues_stats)
+        self._afficher_kpi(nom == "Résumé")
         if nom not in source:
             self.tableau_stats.delete(*self.tableau_stats.get_children())
             self.g_etat.pack_forget()
@@ -679,9 +769,99 @@ class PageRapports(ttk.Frame):
         if texte:
             lignes = [l for l in lignes if any(texte in str(v).casefold() for v in l)]
         lignes = [[t(x) if isinstance(x, str) and nom == "Résumé" else x for x in l] for l in lignes]
-        remplir(self.tableau_stats, entetes, lignes, {"Indicateur": 320, "Article": 280, "Client": 240,
+        remplir(self.tableau_stats, entetes, lignes, {"Indicateur": 175 if nom == "Résumé" else 320,
+                                                      "Valeur": 105, "Article": 280, "Client": 240,
                                                       "Employé": 190, "Appareil": 300, "Date et heure": 130},
                 (lambda i: ("a_commander",) if t(A_COMMANDER_TEXTE) in lignes[i] else ()))
+
+    def _afficher_kpi(self, montrer: bool) -> None:
+        """Aperçu financier : tableau étroit à gauche, le plus de KPI possible en cartes à droite."""
+        from .statistiques_clover import kpis
+
+        cadre_table = self.tableau_stats.master
+        self.kpi_cadre.pack_forget()
+        for enfant in self.kpi_cadre.winfo_children():
+            enfant.destroy()
+        if not montrer or not self.vues_stats:
+            if not cadre_table.winfo_manager():
+                cadre_table.pack(fill="both", expand=True, pady=(6, 0))
+            return
+        # toute la place aux indicateurs (le tableau, rempli quand même, reste exportable)
+        cadre_table.pack_forget()
+        self.kpi_cadre.pack(fill="both", expand=True, pady=(6, 0))
+        colonnes = 4
+        for i, (titre, genre, valeur) in enumerate(kpis(self.vues_stats, self.moyens_stats)):
+            carte = tk.Frame(self.kpi_cadre, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
+            carte.grid(row=i // colonnes, column=i % colonnes, sticky="nsew", padx=3, pady=3)
+            self.kpi_cadre.columnconfigure(i % colonnes, weight=1, uniform="kpi")
+            texte = (montant(valeur) if genre == "$" else f"{valeur} %".replace(".", ",") if genre == "%"
+                     else str(valeur).replace(".", ",") if genre == "n" else t(str(valeur)))
+            tk.Label(carte, text=t(titre), background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 9),
+                     anchor="w").pack(fill="x", padx=8, pady=(5, 0))
+            tk.Label(carte, text=texte, background=CARTE, foreground=VERT_FONCE if titre.startswith("Bénéfice")
+                     else TEXTE, font=("Segoe UI Semibold", 12 if genre != "t" else 9), anchor="w",
+                     wraplength=150, justify="left").pack(fill="x", padx=8, pady=(0, 5))
+
+    # ---------------------------------------------------------------- liste d'articles (Clover + coût Sage)
+    def lire_liste_articles(self) -> None:
+        if self._lecture_articles:
+            return
+        self._lecture_articles = True
+        self.note_etat.configure(text=t("Lecture des articles dans Clover et des coûts dans Sage…"))
+
+        def travail():
+            try:
+                from .__main__ import charger_config
+                from .api_clover import ClientClover
+                from .couts_sage import charger, correspondance
+
+                client = ClientClover(charger_config(self.racine / "config.toml"))
+                articles = [a for a in client._pages("items", {"expand": "categories,itemStock"})
+                            if not a.get("deleted")]
+                try:
+                    couts = charger(self.racine, self._config())
+                except Exception:
+                    couts = {}
+                lien = correspondance(self.racine)
+                self.after(0, lambda: self._fin_liste_articles(articles, couts, lien))
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: (self.note_etat.configure(text="✘ " + texte),
+                                       setattr(self, "_lecture_articles", False)))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _fin_liste_articles(self, articles: list, couts: dict, lien: dict) -> None:
+        self._lecture_articles = False
+        types = {"FIXED": "Fixe", "VARIABLE": "Variable", "PER_UNIT": "Au poids / à l'unité"}
+        lignes = []
+        for a in sorted(articles, key=lambda x: (x.get("name") or "").casefold()):
+            prix = Decimal(int(a.get("price") or 0)) / 100
+            numero = lien.get(a["id"], "")
+            cout = couts.get(numero)
+            cump = cout.cump if cout else None
+            stock = (a.get("itemStock") or {}).get("quantity")
+            categories = (a.get("categories") or {}).get("elements") or []
+            lignes.append([
+                (a.get("name") or "").strip(), categories[0].get("name", "") if categories else "",
+                (a.get("code") or "").strip(), (a.get("sku") or "").strip(), prix,
+                t(types.get(a.get("priceType"), a.get("priceType") or "")) + (
+                    f" ({a['unitName']})" if a.get("unitName") else ""),
+                Decimal(int(a["cost"])) / 100 if a.get("cost") else None,
+                None if stock is None else Decimal(str(stock)).normalize(), numero, cump,
+                ((prix - cump) * 100 / prix).quantize(Decimal("0.1")) if cump is not None and prix else None,
+                cout.quantite.normalize() if cout else None, cout.valeur if cout else None,
+                t("Oui") if a.get("defaultTaxRates") else t("Non"), t("Caché") if a.get("hidden") else t("Visible"),
+                t("CUMP douteux (à vérifier dans Sage)") if cump and prix and cump > SEUIL_CUMP_DOUTEUX * prix else ""])
+        self.vues_articles["liste_articles"] = (
+            ["Article", "Catégorie", "Code-barres", "SKU", "Prix de vente", "Type de prix", "Coût Clover",
+             "Stock Clover", "N° Sage", "CUMP Sage", "Marge sur prix %", "Stock Sage", "Valeur du stock Sage",
+             "Taxable", "Affichage", "Contrôle"], lignes)
+        relies = sum(1 for l in lignes if l[8])
+        NOTES_ETATS["liste_articles"] = t("{n} article(s) Clover, dont {r} relié(s) à un article Sage ({c} avec un "
+                                          "CUMP). Marge sur prix = (prix de vente − CUMP Sage) / prix de vente.",
+                                          n=len(lignes), r=relies, c=sum(1 for l in lignes if l[9] is not None))
+        self.afficher_statistiques()
 
     def _graphique_etat(self, nom: str, lignes: list[list]) -> None:
         """Graphique adapté à l'état : courbe, barres, anneau ou classement (rien pour les listes détaillées)."""
@@ -707,6 +887,13 @@ class PageRapports(ttk.Frame):
                                format_valeur=lambda v: f"{v:.0f}")
             self.g_etat.pack(fill="x", pady=(6, 0), before=self.tableau_stats.master)
             return
+        if nom == "Rapport des ventes" and lignes:  # brutes et nettes, comme Clover
+            etiquettes = [l[0][8:10] + "/" + l[0][5:7] if len(l[0]) == 10 else l[0] for l in lignes]
+            self.g_etat.titre = t("Ventes brutes et nettes")
+            self.g_etat.barres(etiquettes, [(t("Ventes brutes"), [l[3] for l in lignes], BLEU_PALE),
+                                            (t("Ventes nettes"), [l[6] for l in lignes], BLEU)], t("Aucune vente"))
+            self.g_etat.pack(fill="x", pady=(6, 0), before=self.tableau_stats.master)
+            return
         genre = GRAPHIQUES_ETATS.get(nom)
         if not genre or not lignes:
             self.g_etat.pack_forget()
@@ -714,7 +901,7 @@ class PageRapports(ttk.Frame):
         type_, i_nom, i_val = genre
         valeurs = [(str(l[i_nom]), abs(l[i_val]) if isinstance(l[i_val], Decimal) else Decimal(l[i_val] or 0))
                    for l in lignes]
-        self.g_etat.titre = ""
+        self.g_etat.titre = t("Les 8 premiers") if type_ == "classement" else ""
         if type_ == "courbe":
             self.g_etat.courbes([v[0][8:10] + "/" + v[0][5:7] for v in valeurs],
                                 [(t("Ventes nettes"), [v[1] for v in valeurs], BLEU, False)], t("Aucune vente"))

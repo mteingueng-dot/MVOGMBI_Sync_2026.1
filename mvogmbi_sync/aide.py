@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.9.18"
+VERSION = "1.9.20"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -586,7 +586,12 @@ GUIDE = {
                  "dernière), graphiques des ventes par heure ou par jour, du montant perçu, des meilleurs articles et "
                  "des employés. La journée en cours se met à jour toutes les 5 minutes. Le menu de gauche mène à "
                  "chaque état, rangé comme dans Clover : Activités de vente (commandes, transactions, remboursements), "
-                 "Rapports, Finances, Articles (dont la péremption), Employés, Clients. Chaque état a une recherche "
+                 "Rapports (dans l'ordre de Clover : aperçu des ventes en graphiques, rapport des ventes par jour avec "
+                 "ventes brutes et nettes, ventes d'articles, ventes par employé, modes de paiement, rabais), Finances, "
+                 "Articles (liste d'articles avec les caractéristiques Clover, le n° et le CUMP Sage et la marge ; "
+                 "péremption), Employés, Clients. Bénéfices : ventes nettes Clover moins quantité × CUMP de l'article "
+                 "dans Sage (un CUMP plus de 5 fois le prix de vente est jugé douteux et écarté). Aperçu financier : "
+                 "28 indicateurs (KPI). Chaque état a une recherche "
                  "et son graphique (courbe d'évolution, barres, anneau ou classement)."),
         ("puce", "Prévisions : ventes des prochains jours (même jour de la semaine sur 4 semaines, corrigé de la "
                  "tendance), achats à prévoir (rythme de vente des 28 derniers jours, stock et coût Clover) et articles "
@@ -818,7 +823,11 @@ GUIDE = {
                  "this month, last month, last 30 days, this year, custom period), indicators with their change "
                  "(today compared with the same day last week), charts of sales by hour or by day, amount collected, "
                  "top items and employees. The current day refreshes every 5 minutes. The left menu leads to each "
-                 "report, arranged as in Clover: Sales activity (orders, transactions, refunds), Reports, Finances, "
+                 "report, arranged as in Clover: Sales activity (orders, transactions, refunds), Reports (in Clover's "
+                 "order: sales overview in charts, daily sales report with gross and net sales, item sales, sales by "
+                 "employee, payment methods, discounts), Finances (financial overview with 28 KPIs), Items (item "
+                 "list with Clover details, Sage number, Sage average cost and margin), Profits (Clover net sales minus "
+                 "quantity × Sage average cost; a cost over 5 times the selling price is deemed doubtful), "
                  "Items (including expiry), Employees, Customers. Each report has a search box and its chart (trend "
                  "line, bars, ring or ranking)."),
         ("puce", "Forecasts: sales of the coming days (same weekday over 4 weeks, adjusted for the trend), purchases "

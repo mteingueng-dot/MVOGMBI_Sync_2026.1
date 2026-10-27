@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -24,6 +25,7 @@ from .api_clover import _cents, _rabais, est_payee, lignes_commande, moment_paie
 from .periodes import en_millisecondes
 
 ZERO = Decimal(0)
+SEUIL_CUMP_DOUTEUX = 5  # CUMP Sage plus de 5 fois le prix de vente moyen : valeur de stock erronée dans Sage
 EXPANSION = ("lineItems,lineItems.discounts,lineItems.modifications,lineItems.taxRates,discounts,payments,customers,"
              "employee")
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
@@ -31,7 +33,7 @@ SAISIES = {"EMV_CONTACTLESS": "Sans contact", "EMV_CONTACT": "Puce", "SWIPED": "
            "KEYED": "Saisie manuelle", "MSR_CONTACTLESS": "Sans contact (bande)", "SCANNED": "Lue (code)"}
 CARTES = {"MC": "Mastercard", "VISA": "Visa", "AMEX": "American Express", "INTERAC": "Interac (débit)",
           "DISCOVER": "Discover", "JCB": "JCB", "UNIONPAY": "UnionPay"}
-VUES = ["Résumé", "Par jour", "Par jour de la semaine", "Par heure", "Par employé", "Par mode de paiement",
+VUES = ["Résumé", "Rapport des ventes", "Bénéfices", "Par jour", "Par jour de la semaine", "Par heure", "Par employé", "Par mode de paiement",
         "Par type de carte", "Par mode de saisie de la carte", "Par appareil", "Par client", "Par article",
         "Par catégorie", "Commandes", "Paiements", "Rabais", "Remboursements"]
 
@@ -103,16 +105,18 @@ def lire(client, debut: date, fin: date, cache: Path | None = None, progression=
         else:
             blocs.append([jour])
     lus = 0
-    for bloc in blocs:
-        if progression:
-            progression(lus + 1, len(a_lire), bloc[0], bloc[-1])
-        for jour, donnees in lire_bloc(client, bloc[0], bloc[-1]).items():
-            par_jour[jour] = donnees
-            if cache and jour < aujourdhui:  # jour terminé : gardé
-                cache.mkdir(parents=True, exist_ok=True)
-                (cache / f"{jour.isoformat()}.json").write_text(json.dumps(donnees, ensure_ascii=False),
-                                                                 encoding="utf-8")
-        lus += len(bloc)
+    # 3 blocs à la fois (une année : 4 min au lieu de 2 h avec l'ancienne lecture, puis quelques secondes)
+    with ThreadPoolExecutor(max_workers=3) as groupe:
+        for bloc, resultat in zip(blocs, groupe.map(lambda b: lire_bloc(type(client)(client.config), b[0], b[-1]), blocs)):
+            for jour, donnees in resultat.items():
+                par_jour[jour] = donnees
+                if cache and jour < aujourdhui:  # jour terminé : gardé
+                    cache.mkdir(parents=True, exist_ok=True)
+                    (cache / f"{jour.isoformat()}.json").write_text(json.dumps(donnees, ensure_ascii=False),
+                                                                     encoding="utf-8")
+            lus += len(bloc)
+            if progression:
+                progression(lus, len(a_lire), bloc[0], bloc[-1])
     for jour in jours:
         donnees = par_jour.get(jour, {})
         d.commandes += donnees.get("commandes", [])
@@ -195,8 +199,9 @@ def _regrouper(commandes: list[Commande], cle) -> dict:
     return groupes
 
 
-def statistiques(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
-    """Toutes les vues : nom -> (en-têtes, lignes)."""
+def statistiques(d: DonneesClover, couts: dict | None = None) -> dict[str, tuple[list[str], list[list]]]:
+    """Toutes les vues : nom -> (en-têtes, lignes). `couts` : ID Clover -> (n° Sage, CUMP Sage) pour les bénéfices
+    (coût des ventes = quantité nette × CUMP ; marge calculée sur les seuls articles dont le coût est connu)."""
     commandes = preparer(d)
     total = sum((c.nettes for c in commandes), ZERO)
     vues: dict[str, tuple[list[str], list[list]]] = {}
@@ -260,8 +265,10 @@ def statistiques(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
         (p.get("cardTransaction") or {}).get("entryType"), (p.get("cardTransaction") or {}).get("entryType") or
         "Sans carte"))
 
-    # ---- articles et catégories
-    articles = defaultdict(lambda: {"cat": "", "qte": ZERO, "brut": ZERO, "rabais": ZERO, "remb": ZERO, "cmd": set()})
+    # ---- articles et catégories (avec le coût d'achat Sage quand il est connu)
+    couts = couts or {}
+    articles = defaultdict(lambda: {"cat": "", "qte": ZERO, "brut": ZERO, "rabais": ZERO, "remb": ZERO, "cmd": set(),
+                                    "id": "", "cump": None, "cout": None, "nettes_cout": ZERO})
     for c in commandes:
         for l in c.lignes:
             a = articles[l.nom]
@@ -271,21 +278,58 @@ def statistiques(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
             a["rabais"] += l.rabais
             a["remb"] += l.remboursements
             a["cmd"].add(c.id)
-    vues["Par article"] = (["Article", "Catégorie", "Quantité nette", "Ventes brutes", "Rabais", "Remboursements",
-                            "Ventes nettes", "Commandes", "% des ventes"],
-                           [[k, a["cat"], a["qte"], a["brut"], a["rabais"], a["remb"], a["brut"] + a["rabais"] + a["remb"],
-                             len(a["cmd"]), _pourcent(a["brut"] + a["rabais"] + a["remb"], total)]
-                            for k, a in sorted(articles.items(), key=lambda x: -(x[1]["brut"] + x[1]["rabais"]
-                                                                                 + x[1]["remb"]))])
-    categories = defaultdict(lambda: {"qte": ZERO, "nettes": ZERO, "articles": set()})
+            numero, cump = couts.get(l.id_article, ("", None))
+            a["id"], a["cump"] = l.id_article, cump if cump is not None else a["cump"]
+            a["qte_vendue"] = a.get("qte_vendue", ZERO) + l.quantite_vendue
+    douteux = 0
+    for a in articles.values():
+        a["nettes"] = a["brut"] + a["rabais"] + a["remb"]
+        prix_unitaire = a["brut"] / a["qte_vendue"] if a.get("qte_vendue") else ZERO
+        if a["cump"] is not None and prix_unitaire and a["cump"] > SEUIL_CUMP_DOUTEUX * prix_unitaire:
+            douteux += 1  # erreur de valeur de stock dans Sage : coût ignoré
+            a["douteux"] = True
+        elif a["cump"] is not None:
+            a["cout"] = a["qte"] * a["cump"]
+            a["nettes_cout"] = a["nettes"]
+        if a["cout"] is not None:
+            a["cout"] = a["cout"].quantize(Decimal("0.01"))
+            a["benefice"] = (a["nettes_cout"] - a["cout"]).quantize(Decimal("0.01"))
+            a["marge"] = _pourcent(a["benefice"], a["nettes_cout"])
+        else:
+            a["benefice"] = a["marge"] = None
+    ordre = sorted(articles.items(), key=lambda x: -x[1]["nettes"])
+    entetes = ["Article", "Catégorie", "Quantité nette", "Ventes brutes", "Rabais", "Remboursements", "Ventes nettes",
+               "Commandes", "% des ventes"]
+    if couts:
+        entetes += ["CUMP Sage", "Coût des ventes", "Bénéfice", "Marge %"]
+    vues["Par article"] = (entetes, [
+        [k, a["cat"], a["qte"], a["brut"], a["rabais"], a["remb"], a["nettes"], len(a["cmd"]), _pourcent(a["nettes"], total)]
+        + ([a["cump"], a["cout"], a["benefice"], a["marge"]] if couts else []) for k, a in ordre])
+    categories = defaultdict(lambda: {"qte": ZERO, "nettes": ZERO, "articles": set(), "cout": ZERO, "benefice": ZERO,
+                                      "nettes_cout": ZERO})
     for k, a in articles.items():
         g = categories[a["cat"]]
         g["qte"] += a["qte"]
-        g["nettes"] += a["brut"] + a["rabais"] + a["remb"]
+        g["nettes"] += a["nettes"]
         g["articles"].add(k)
-    vues["Par catégorie"] = (["Catégorie", "Quantité nette", "Ventes nettes", "Articles différents", "% des ventes"],
-                             [[k, g["qte"], g["nettes"], len(g["articles"]), _pourcent(g["nettes"], total)]
-                              for k, g in sorted(categories.items(), key=lambda x: -x[1]["nettes"])])
+        if a["cout"] is not None:
+            g["cout"] += a["cout"]
+            g["benefice"] += a["benefice"]
+            g["nettes_cout"] += a["nettes_cout"]
+    vues["Par catégorie"] = (
+        ["Catégorie", "Quantité nette", "Ventes nettes", "Articles différents", "% des ventes"]
+        + (["Coût des ventes", "Bénéfice", "Marge %"] if couts else []),
+        [[k, g["qte"], g["nettes"], len(g["articles"]), _pourcent(g["nettes"], total)]
+         + ([g["cout"], g["benefice"], _pourcent(g["benefice"], g["nettes_cout"])] if couts else [])
+         for k, g in sorted(categories.items(), key=lambda x: -x[1]["nettes"])])
+    avec_cout = [(k, a) for k, a in articles.items() if a["cout"] is not None]
+    vues["Bénéfices"] = (["Article", "Catégorie", "Quantité nette", "Ventes nettes", "CUMP Sage", "Coût des ventes",
+                          "Bénéfice", "Marge %"],
+                         [[k, a["cat"], a["qte"], a["nettes_cout"], a["cump"], a["cout"], a["benefice"], a["marge"]]
+                          for k, a in sorted(avec_cout, key=lambda x: -x[1]["benefice"])])
+    cout_total = sum((a["cout"] for _, a in avec_cout), ZERO)
+    benefice_total = sum((a["benefice"] for _, a in avec_cout), ZERO)
+    nettes_cout = sum((a["nettes_cout"] for _, a in avec_cout), ZERO)
 
     # ---- détail : commandes, paiements, rabais, remboursements
     vues["Commandes"] = (["Date et heure", "N°", "Employé", "Client", "Articles", "Ventes nettes", "Taxes", "Encaissé",
@@ -329,6 +373,24 @@ def statistiques(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
                                                .get("id"), ""), -_cents(r.get("amount")), -_cents(r.get("taxAmount"))]
                                for r in sorted(d.remboursements, key=lambda r: -r.get("createdTime", 0))])
 
+    # ---- rapport des ventes (comme Clover) : par jour, ou par heure pour une seule journée
+    un_jour = len({c.moment.date() for c in commandes}) <= 1
+    rapport = defaultdict(lambda: [0, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO])
+    for c in commandes:
+        g = rapport[f"{c.moment.hour:02d} h" if un_jour else c.moment.date().isoformat()]
+        g[0] += 1
+        g[1] += sum((l.ventes_brutes for l in c.lignes), ZERO)
+        g[2] += sum((l.rabais for l in c.lignes), ZERO)
+        g[3] += sum((l.remboursements for l in c.lignes), ZERO)
+        g[4] += c.nettes
+        g[5] += c.taxes
+        g[6] += c.pourboires
+        g[7] += c.encaisse
+    vues["Rapport des ventes"] = (
+        ["Heure" if un_jour else "Date", "Jour", "Commandes", "Ventes brutes", "Rabais", "Remboursements",
+         "Ventes nettes", "Taxes", "Pourboires", "Montant perçu"],
+        [[k, "" if un_jour else JOURS[date.fromisoformat(k).weekday()], *g] for k, g in sorted(rapport.items())])
+
     # ---- résumé
     quantite = sum((l.quantite_nette for c in commandes for l in c.lignes), ZERO)
     rabais_total = sum((l.rabais for c in commandes for l in c.lignes), ZERO)
@@ -353,7 +415,13 @@ def statistiques(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
         ["Commandes avec un client identifié", sum(1 for c in commandes if c.client != "Sans client")],
         ["Employés ayant vendu", len({c.employe for c in commandes})],
         ["Paiements", len(paiements)],
-    ])
+    ] + ([
+        ["Coût des ventes (CUMP Sage)", cout_total],
+        ["Bénéfice brut", benefice_total],
+        ["Marge brute (%)", _pourcent(benefice_total, nettes_cout)],
+        ["Ventes nettes sans coût Sage", total - nettes_cout],
+        ["Articles au coût Sage douteux", douteux],
+    ] if couts else []))
     return {nom: vues[nom] for nom in VUES}
 
 
@@ -435,3 +503,59 @@ def montants_par_moyen(d: DonneesClover) -> list[tuple[str, Decimal]]:
                                                                          or "cash" in libelle else "Autre")
         groupes[cle] += _cents(p.get("amount"))
     return list(groupes.items())
+
+
+def kpis(vues: dict, moyens: list[tuple[str, Decimal]]) -> list[tuple[str, str, object]]:
+    """Indicateurs de l'aperçu financier : (titre, genre « $ », « % », « n » ou « t », valeur)."""
+    r = dict(vues["Résumé"][1])
+    commandes, jours = r["Commandes payées"], r["Jours avec des ventes"] or 1
+    brutes, nettes = r["Ventes brutes (articles)"], r["Ventes nettes (articles)"]
+    quantite = Decimal(str(r["Quantité nette d'articles"]))
+    paye = r["Montant encaissé (paiements)"]
+    moyens = dict(moyens)
+
+    def premier(nom: str, i_val: int = 2):
+        lignes = vues[nom][1]
+        return max(lignes, key=lambda l: l[i_val]) if lignes else None
+
+    meilleur_jour = premier("Par jour")
+    meilleur_jds = premier("Par jour de la semaine")
+    meilleure_heure = premier("Par heure")
+    article = vues["Par article"][1][0] if vues["Par article"][1] else None
+    categorie = vues["Par catégorie"][1][0] if vues["Par catégorie"][1] else None
+    employe = vues["Par employé"][1][0] if vues["Par employé"][1] else None
+    liste = [
+        ("Ventes brutes", "$", brutes), ("Ventes nettes", "$", nettes), ("Montant perçu", "$", paye),
+        ("Taxes encaissées", "$", r["Taxes encaissées"]), ("Commandes", "n", commandes),
+        ("Panier moyen", "$", r["Panier moyen"]), ("Ventes nettes par jour", "$", r["Ventes nettes par jour d'ouverture"]),
+        ("Commandes par jour", "n", (Decimal(commandes) / jours).quantize(Decimal("0.1"))),
+        ("Articles par commande", "n", (quantite / commandes).quantize(Decimal("0.1")) if commandes else ZERO),
+        ("Prix moyen d'un article", "$", (nettes / quantite).quantize(Decimal("0.01")) if quantite else ZERO),
+        ("Taux de rabais", "%", _pourcent(-r["Rabais"], brutes)),
+        ("Taux de remboursement", "%", _pourcent(-r["Remboursements (articles)"], brutes)),
+        ("Part payée par carte", "%", _pourcent(moyens.get("Carte", ZERO), paye)),
+        ("Part payée en espèces", "%", _pourcent(moyens.get("Espèces", ZERO), paye)),
+        ("Paiement moyen", "$", _moyenne(paye, r["Paiements"])),
+        ("Commandes avec un client", "%", _pourcent(Decimal(r["Commandes avec un client identifié"]),
+                                                   Decimal(commandes or 1))),
+        ("Jours avec des ventes", "n", r["Jours avec des ventes"]),
+        ("Articles différents vendus", "n", r["Articles différents vendus"]),
+    ]
+    if "Bénéfice brut" in r:
+        liste[4:4] = [("Coût des ventes (Sage)", "$", r["Coût des ventes (CUMP Sage)"]),
+                      ("Bénéfice brut", "$", r["Bénéfice brut"]), ("Marge brute", "%", r["Marge brute (%)"]),
+                      ("Bénéfice par jour", "$", (r["Bénéfice brut"] / jours).quantize(Decimal("0.01")))]
+    if meilleur_jour:
+        montant_jour = f"{meilleur_jour[2]:,.2f} $".replace(",", " ").replace(".", ",")
+        liste.append(("Meilleur jour", "t", f"{meilleur_jour[0]} ({montant_jour})"))
+    if meilleur_jds:
+        liste.append(("Jour de la semaine le plus fort", "t", meilleur_jds[0]))
+    if meilleure_heure:
+        liste.append(("Heure la plus forte", "t", meilleure_heure[0]))
+    if article:
+        liste.append(("Meilleur article", "t", article[0]))
+    if categorie:
+        liste.append(("Meilleure catégorie", "t", categorie[0]))
+    if employe:
+        liste.append(("Meilleur vendeur", "t", employe[0]))
+    return liste

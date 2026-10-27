@@ -39,3 +39,20 @@ def test_toutes_les_vues():
     assert vues["Par mode de saisie de la carte"][1][-1][0] == "Sans contact"
     assert vues["Par article"][1][0][:3] == ["Plantain", "Fruits & Légumes", D("2")]
     assert vues["Rabais"][1] == [["Rabais 10%", 2, D("-3.00")]]
+
+
+def test_benefices_et_kpi_avec_le_cump_sage():
+    from mvogmbi_sync.statistiques_clover import kpis
+
+    d = DonneesClover(commandes=[commande("A", 1000), commande("B", 2000)],
+                      paiements=[paiement("A", 900, "VISA", "EMV_CONTACTLESS"), paiement("B", 1800, mode="Espèces")],
+                      employes={"E1": "Alice"}, categories={"I1": "Fruits & Légumes"})
+    vues = statistiques(d, {"I1": ("B0000192", D("0.50"))})
+    resume = dict(vues["Résumé"][1])
+    assert resume["Coût des ventes (CUMP Sage)"] == D("1.00") and resume["Bénéfice brut"] == D("26.00")
+    assert resume["Marge brute (%)"] == D("96.3")
+    assert vues["Bénéfices"][1][0][:7] == ["Plantain", "Fruits & Légumes", D("2"), D("27.00"), D("0.50"), D("1.00"),
+                                          D("26.00")]
+    indicateurs = {titre: valeur for titre, _, valeur in kpis(vues, [("Carte", D("9.00")), ("Espèces", D("18.00"))])}
+    assert indicateurs["Bénéfice brut"] == D("26.00") and indicateurs["Part payée en espèces"] == D("66.7")
+    assert "Coût des ventes (CUMP Sage)" not in dict(statistiques(d)["Résumé"][1])  # sans coûts : pas de bénéfice
