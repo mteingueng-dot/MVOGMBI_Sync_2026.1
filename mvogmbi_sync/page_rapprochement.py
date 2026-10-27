@@ -293,6 +293,10 @@ class PageRapprochement(ttk.Frame):
                 self.tableau.insert("", "end", iid=f"s{i}", tags=(EN_CIRCULATION,), values=(
                     s.date, f"{s.description}  [{s.source}]", argent(s.montant) if s.montant > 0 else "",
                     argent(-s.montant) if s.montant < 0 else "", t(EN_CIRCULATION), f"n° {s.ident}"))
+        # le mouvement le plus récent en haut (banque et écritures Sage mêlées)
+        lignes = sorted(self.tableau.get_children(), key=lambda i: self.tableau.item(i, "values")[0], reverse=True)
+        for rang, ligne in enumerate(lignes):
+            self.tableau.move(ligne, "", rang)
         rayer(self.tableau)
         compte = {e: sum(1 for m in self.banque if m.etat == e) for e in ETATS}
         self.resume.configure(text=t("{n} mouvement(s) de banque — rapprochés : {r}, absents de Sage : {a}, à encaisser "

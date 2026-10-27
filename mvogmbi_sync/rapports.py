@@ -314,3 +314,69 @@ def _filtrer(lignes: list[list], texte: str) -> list[list]:
         return lignes
     return [l for l in lignes if any(texte in str(v).casefold() for v in l)]
 
+
+
+# --------------------------------------------------------------------------------------------- historique en mémoire
+def historique(base) -> dict:
+    """Tout l'historique des clients et des fournisseurs lu en une fois (une seule ouverture de Sage) ; les
+    recherches client, fournisseur, vente, encaissement et paiement se font ensuite en mémoire, sans attendre."""
+    clients = base.requete(
+        "SELECT d.dtDate, d.nTranType, TRIM(t.sSource) f, TRIM(d.sSource) piece, d.dAmount, TRIM(c.sName) nom "
+        "FROM tcustrdt d JOIN tcustr t ON t.lId = d.lCusTrId JOIN tcustomr c ON c.lId = t.lCusId "
+        "WHERE d.bReversed = 0 ORDER BY d.dtDate, d.lId")
+    fournisseurs = base.requete(
+        "SELECT d.dtDate, d.nTranType, TRIM(t.sSource) f, TRIM(d.sSource) piece, d.dAmount, TRIM(v.sName) nom "
+        "FROM tventrdt d JOIN tventr t ON t.lId = d.lVenTrId JOIN tvendor v ON v.lId = t.lVenId "
+        "WHERE d.bReversed = 0 ORDER BY d.dtDate, d.lId")
+    ventes = base.requete(
+        "SELECT t.dtDate, TRIM(t.sSource) f, TRIM(c.sName) client, t.dPreTaxAmt m, "
+        "(SELECT SUM(d.dAmount) FROM tcustrdt d WHERE d.lCusTrId = t.lId) du FROM tcustr t "
+        "JOIN tcustomr c ON c.lId = t.lCusId WHERE t.nTranType = 0 ORDER BY t.dtDate DESC, t.lId DESC")
+    for liste in (clients, fournisseurs, ventes):
+        for l in liste:
+            l["jour"] = l["dtDate"].date() if hasattr(l["dtDate"], "date") else l["dtDate"]
+    return {"clients": clients, "fournisseurs": fournisseurs, "ventes": ventes,
+            "noms_clients": noms(base, "tcustomr"), "noms_fournisseurs": noms(base, "tvendor")}
+
+
+def _dans(l: dict, du, au) -> bool:
+    return (du is None or l["jour"] >= du) and (au is None or l["jour"] <= au)
+
+
+def _mouvements(lignes: list[dict], types: dict, nom: str, du, au) -> list[list]:
+    solde, resultat = Decimal(0), []
+    for l in lignes:
+        if l["nom"] != nom or not _dans(l, du, au):
+            continue
+        montant = _d(l["dAmount"])
+        solde += montant
+        resultat.append([_jour(l["dtDate"]), types.get(l["nTranType"], f"Type {l['nTranType']}"), l["f"],
+                         l["piece"] if l["piece"] != l["f"] else "", montant, solde])
+    return resultat
+
+
+def h_mouvements_client(h: dict, nom: str, du=None, au=None):
+    return ["Date", "Type", "Facture", "Pièce", "Montant", "Solde"], _mouvements(h["clients"], TYPES_CLIENT, nom, du, au)
+
+
+def h_mouvements_fournisseur(h: dict, nom: str, du=None, au=None):
+    return (["Date", "Type", "Facture", "Pièce", "Montant", "Solde dû"],
+            _mouvements(h["fournisseurs"], TYPES_FOURNISSEUR, nom, du, au))
+
+
+def h_ventes(h: dict, texte: str = "", du=None, au=None):
+    return (["Date", "Facture", "Client", "Montant", "Solde dû"],
+            _filtrer([[_jour(l["dtDate"]), l["f"], l["client"], _d(l["m"]), _d(l["du"])]
+                      for l in h["ventes"] if _dans(l, du, au)], texte))
+
+
+def h_encaissements(h: dict, texte: str = "", du=None, au=None):
+    return (["Date", "Client", "Facture", "N° d'encaissement", "Montant"],
+            _filtrer([[_jour(l["dtDate"]), l["nom"], l["f"], l["piece"], -_d(l["dAmount"])]
+                      for l in reversed(h["clients"]) if l["nTranType"] == 1 and _dans(l, du, au)], texte))
+
+
+def h_paiements(h: dict, texte: str = "", du=None, au=None):
+    return (["Date", "Fournisseur", "Facture", "Pièce", "Montant"],
+            _filtrer([[_jour(l["dtDate"]), l["nom"], l["f"], l["piece"], -_d(l["dAmount"])]
+                      for l in reversed(h["fournisseurs"]) if l["nTranType"] in (1, 2) and _dans(l, du, au)], texte))

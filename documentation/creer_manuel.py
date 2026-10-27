@@ -527,6 +527,10 @@ other.</td></tr></table>"""))
     # ------------------------------------------------------------------ 11. Mode opératoire
     parties.append(titre(11) + figure("14_rapports", x("Page 11 — Rapports : suivi complet de chaque vente",
                                                         "Page 11 — Reports: complete tracking of each sale"))
+                   + figure("15_statistiques", x("Page 11 — Statistiques Clover : cartes, courbes, anneaux et menu des "
+                                                 "états, comme le tableau de bord de Clover",
+                                                 "Page 11 — Clover statistics: cards, curves, rings and the report "
+                                                 "menu, like the Clover dashboard"))
                    + blocs("Rapports (page 11)"))
 
     parties.append(titre(12) + "<p>" + x("Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.",

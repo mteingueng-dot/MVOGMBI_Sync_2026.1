@@ -148,3 +148,57 @@ def changer_mon_mot_de_passe(parent, racine: Path, utilisateur: Utilisateur, tit
     fenetre.bind("<Escape>", lambda _e: fenetre.destroy())
     premier.focus_set()
     fenetre.grab_set()
+
+
+class Verrou(tk.Toplevel):
+    """Application verrouillée après une période d'inactivité (règle du propriétaire du 2026-10-27) : la fenêtre
+    principale est cachée ; le mot de passe de la personne connectée la rouvre, ou l'on change d'utilisateur."""
+
+    def __init__(self, application, racine: Path, utilisateur: Utilisateur, titre: str, deverrouiller, changer):
+        super().__init__(application)
+        self.racine, self.utilisateur = racine, utilisateur
+        self.deverrouiller, self.changer = deverrouiller, changer
+        self.title(titre)
+        self.configure(background=FOND)
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)  # reste verrouillée tant que le mot de passe manque
+        carte = tk.Frame(self, background=CARTE, highlightthickness=1, highlightbackground=BORDURE, padx=34, pady=24)
+        carte.pack(padx=30, pady=30)
+        self._logo = None
+        try:
+            from PIL import Image, ImageTk
+
+            image = Image.open(LOGO)
+            image.thumbnail((90, 90))
+            self._logo = ImageTk.PhotoImage(image)
+            tk.Label(carte, image=self._logo, background=CARTE).grid(row=0, column=0, pady=(0, 8))
+        except Exception:
+            pass
+        tk.Label(carte, text="🔒  " + t("Application verrouillée"), font=("Segoe UI Semibold", 15),
+                 foreground=VERT_FONCE, background=CARTE).grid(row=1, column=0)
+        tk.Label(carte, text=t("Verrouillée après {n} minute(s) sans activité. Session de {nom}.",
+                               n=application.minutes_verrou, nom=utilisateur.nom),
+                 font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=CARTE, wraplength=300,
+                 justify="center").grid(row=2, column=0, pady=(2, 6))
+        self.mdp = tk.StringVar()
+        champ = _champ(carte, 3, t("Mot de passe"), self.mdp, secret=True)
+        self.message = tk.Label(carte, text="", font=("Segoe UI", 9), foreground=ROUGE, background=CARTE)
+        self.message.grid(row=5, column=0, sticky="w", pady=(8, 0))
+        Bouton(carte, "🔓  " + t("Déverrouiller"), self.valider, fond=CARTE, largeur=300).grid(row=6, column=0,
+                                                                                            pady=(10, 4))
+        Bouton(carte, t("Changer d'utilisateur"), self.changer, "secondaire", fond=CARTE, largeur=300).grid(
+            row=7, column=0)
+        self.bind("<Return>", lambda _e: self.valider())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_reqwidth()) // 2
+        y = (self.winfo_screenheight() - self.winfo_reqheight()) // 3
+        self.geometry(f"+{max(0, x)}+{max(0, y)}")
+        self.attributes("-topmost", True)
+        champ.focus_force()
+
+    def valider(self) -> None:
+        if Registre(self.racine).verifier(self.utilisateur.nom, self.mdp.get()) is None:
+            self.mdp.set("")
+            self.message.configure(text=t("Mot de passe incorrect."))
+            return
+        self.deverrouiller()

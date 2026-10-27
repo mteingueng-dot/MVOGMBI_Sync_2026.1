@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.9.20"
+VERSION = "1.9.25"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -210,11 +210,12 @@ FAQ = {
         ("reponse", "Les salaires sont reliés aux paies de Sage (source « PAY… ») du même montant, même versés plusieurs "
                     "semaines plus tard. Aucune paie de ce montant : saisissez ou corrigez la paie dans le module Paie "
                     "de Sage (un cent d'écart suffit à l'empêcher), puis « Actualiser »."),
-        ("question", "Comment exporter un tableau en Excel ou en CSV ?"),
+        ("question", "Comment exporter un tableau en Excel, en CSV ou en PDF ?"),
         ("reponse", "Bouton « ⬇ Exporter » au-dessus du tableau (pages Correspondance, Encaissements, Factures et "
-                    "Paiements fournisseurs, Rapprochement), ou clic droit sur n'importe quel tableau : « Exporter en "
-                    "Excel » ou « Exporter en CSV ». Ce qui est affiché est exporté (filtre et recherche compris) ; "
-                    "le CSV utilise le séparateur « ; » d'Excel en français."),
+                    "Paiements fournisseurs, Rapprochement, Rapports), ou clic droit sur n'importe quel tableau : "
+                    "« Exporter en Excel », « Exporter en CSV » ou « Exporter en PDF ». Ce qui est affiché est exporté "
+                    "(filtre et recherche compris) ; le CSV utilise le séparateur « ; » d'Excel en français ; le PDF "
+                    "(fait par Microsoft Edge) est prêt à imprimer, à l'horizontale pour les tableaux larges."),
 
         ("sous_titre", "Utilisateurs et accès"),
         ("question", "Comment donner accès à l'application à un employé ?"),
@@ -229,6 +230,10 @@ FAQ = {
                     "fermez l'application et supprimez donnees\\utilisateurs.json ; au lancement suivant, le compte "
                     "administrateur est recréé (la configuration et les données restent). Gardez donc la session "
                     "Windows protégée par son propre mot de passe."),
+        ("question", "L'application se verrouille toute seule."),
+        ("reponse", "Après 5 minutes sans souris ni clavier, la fenêtre se cache : votre mot de passe la rouvre "
+                    "(« Déverrouiller »), ou « Changer d'utilisateur » ramène à la connexion. Les traitements en cours "
+                    "continuent. Délai réglable dans config.toml : [general] verrouillage_minutes (0 = jamais)."),
         ("question", "Le traitement de nuit a-t-il besoin d'une connexion ?"),
         ("reponse", "Non : la tâche planifiée travaille sans ouvrir de session dans l'application. La connexion protège "
                     "les pages de l'application ; les mots de passe ne sont jamais gardés, seulement une empreinte "
@@ -356,10 +361,12 @@ FAQ = {
         ("reponse", "Salaries are linked to the Sage payroll entries (source “PAY…”) of the same amount, even when "
                     "paid several weeks later. No payroll of that amount: enter or correct it in the Sage Payroll "
                     "module (one cent of difference is enough to prevent it), then “Refresh”."),
-        ("question", "How do I export a table to Excel or CSV?"),
+        ("question", "How do I export a table to Excel, CSV or PDF?"),
         ("reponse", "“⬇ Export” button above the table (Item mapping, Receipts, Supplier invoices and payments, "
-                    "Reconciliation pages), or right-click any table: “Export to Excel” or “Export to CSV”. What is "
-                    "shown is exported (filter and search included); the CSV uses the “;” separator of French Excel."),
+                    "Reconciliation, Reports pages), or right-click any table: “Export to Excel”, “Export to CSV” or "
+                    "“Export to PDF”. What is shown is exported (filter and search included); the CSV uses the “;” "
+                    "separator of French Excel; the PDF (made by Microsoft Edge) is ready to print, in landscape for "
+                    "wide tables."),
 
         ("sous_titre", "Users and access"),
         ("question", "How do I give an employee access to the application?"),
@@ -374,6 +381,10 @@ FAQ = {
                     "application and delete donnees\\utilisateurs.json; at the next start, the administrator account "
                     "is created again (setup and data are kept). So keep the Windows session protected by its own "
                     "password."),
+        ("question", "The application locks itself."),
+        ("reponse", "After 5 minutes without mouse or keyboard, the window hides: your password reopens it "
+                    "(“Unlock”), or “Switch user” goes back to sign-in. Running jobs continue. Delay set in "
+                    "config.toml: [general] verrouillage_minutes (0 = never)."),
         ("question", "Does the nightly run need a sign-in?"),
         ("reponse", "No: the scheduled task works without signing in to the application. Signing in protects the "
                     "application pages; passwords are never kept, only an encrypted fingerprint, and every sign-in is "
@@ -591,7 +602,12 @@ GUIDE = {
                  "Articles (liste d'articles avec les caractéristiques Clover, le n° et le CUMP Sage et la marge ; "
                  "péremption), Employés, Clients. Bénéfices : ventes nettes Clover moins quantité × CUMP de l'article "
                  "dans Sage (un CUMP plus de 5 fois le prix de vente est jugé douteux et écarté). Aperçu financier : "
-                 "28 indicateurs (KPI). Chaque état a une recherche "
+                 "28 indicateurs (KPI). Filtres globaux (article, client, employé, catégorie) appliqués à tous les "
+                 "états, sans relire Clover. Évolution par année : ventes par jour de la période, une courbe par année. "
+                 "Carte de chaleur : ventes par jour de la semaine et par heure. Graphiques enrichis : titre, aire sous "
+                 "la courbe, ligne de la moyenne, point le plus haut, valeurs sur les barres ; au survol d'une courbe, "
+                 "d'une barre, d'une part d'anneau, d'une ligne de classement ou d'une case, une infobulle donne le "
+                 "détail. Chaque tableau a son titre. Chaque état a une recherche "
                  "et son graphique (courbe d'évolution, barres, anneau ou classement)."),
         ("puce", "Prévisions : ventes des prochains jours (même jour de la semaine sur 4 semaines, corrigé de la "
                  "tendance), achats à prévoir (rythme de vente des 28 derniers jours, stock et coût Clover) et articles "
@@ -827,7 +843,11 @@ GUIDE = {
                  "order: sales overview in charts, daily sales report with gross and net sales, item sales, sales by "
                  "employee, payment methods, discounts), Finances (financial overview with 28 KPIs), Items (item "
                  "list with Clover details, Sage number, Sage average cost and margin), Profits (Clover net sales minus "
-                 "quantity × Sage average cost; a cost over 5 times the selling price is deemed doubtful), "
+                 "quantity × Sage average cost; a cost over 5 times the selling price is deemed doubtful), global "
+                 "filters (item, customer, employee, category) applied to every report, year-over-year trend (one "
+                 "curve per year), heat map (sales by weekday and hour), richer charts (title, area under the curve, "
+                 "average line, highest point, values on bars) with tooltips on curves, bars, ring slices, ranking "
+                 "rows and heat map cells, a title on every table, "
                  "Items (including expiry), Employees, Customers. Each report has a search box and its chart (trend "
                  "line, bars, ring or ranking)."),
         ("puce", "Forecasts: sales of the coming days (same weekday over 4 weeks, adjusted for the trend), purchases "

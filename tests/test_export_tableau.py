@@ -47,3 +47,13 @@ def test_export_excel_et_csv(tableau, tmp_path):
     ecrire_csv(tmp_path / "t.csv", entetes, lignes)
     with open(tmp_path / "t.csv", encoding="utf-8-sig", newline="") as f:
         assert list(csv.reader(f, delimiter=";"))[2] == ["Vente 2026-10-23/25", "8,271.38", "À saisir"]
+
+
+def test_export_pdf(tmp_path):
+    from mvogmbi_sync.export_tableau import EDGE, ecrire_pdf
+
+    if not any(e.exists() for e in EDGE):
+        pytest.skip("Microsoft Edge absent")
+    lignes = [["2026-10-26", "lundi", "8 271,38 $", "Appliqué"]] * 60
+    ecrire_pdf(tmp_path / "t.pdf", "Encaissements", ["Date", "Jour", "Montant", "État"], lignes)
+    assert (tmp_path / "t.pdf").read_bytes()[:5] == b"%PDF-"

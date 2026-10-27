@@ -27,6 +27,7 @@ NAVIGATION = [
                                   ("Remboursements", "Remboursements")]),
     # dans l'ordre du menu « Rapports » de Clover (articles supprimés et cartes-cadeaux : absents de l'API Clover)
     ("📊", "Rapports", [("Aperçu des ventes", "apercu"), ("Rapport des ventes", "Rapport des ventes"),
+                       ("Évolution par année", "evolution_annees"), ("Carte de chaleur", "Jour × heure"),
                        ("Ventes d'articles", "Par article"), ("Bénéfices", "Bénéfices"),
                        ("Ventes par employé", "Par employé"), ("Modes de paiement", "Par mode de paiement"),
                        ("Rabais", "Rabais")]),
@@ -45,12 +46,23 @@ PREVISIONS = ("prev_ventes", "prev_achats", "prev_commande")
 HORIZONS = (7, 10, 14, 21, 28, 30, 45, 60, 90)  # jours : horizon des prévisions et période des articles à commander
 # graphique au-dessus de chaque état : (genre, colonne de l'étiquette, colonne de la valeur)
 GRAPHIQUES_ETATS = {
-    "Par jour": ("courbe", 0, 2), "Par heure": ("barres", 0, 2), "Par jour de la semaine": ("barres", 0, 2),
+    "Par jour": ("courbe", 0, 3),  # colonnes : date, jour, commandes, ventes nettes… "Par heure": ("barres", 0, 2), "Par jour de la semaine": ("barres", 0, 2),
     "Par mode de paiement": ("anneau", 0, 2), "Par type de carte": ("anneau", 0, 2),
     "Par mode de saisie de la carte": ("anneau", 0, 2), "Par catégorie": ("anneau", 0, 2),
     "Par appareil": ("anneau", 0, 2), "Par article": ("classement", 0, 6), "Par employé": ("classement", 0, 2),
     "Par client": ("classement", 0, 2), "Rabais": ("classement", 0, 2), "prev_achats": ("classement", 0, 7),
     "Bénéfices": ("classement", 0, 6),
+}
+TITRES_GRAPHIQUES = {
+    "Par jour": "Ventes nettes par jour", "Par heure": "Ventes nettes par heure",
+    "Par jour de la semaine": "Ventes nettes par jour de la semaine",
+    "Par mode de paiement": "Montant perçu par mode de paiement", "Par type de carte": "Montant perçu par type de carte",
+    "Par mode de saisie de la carte": "Montant perçu par mode de saisie de la carte",
+    "Par catégorie": "Ventes nettes par catégorie", "Par appareil": "Ventes nettes par appareil",
+    "Par article": "Les 8 articles qui vendent le plus", "Par employé": "Les 8 meilleurs vendeurs",
+    "Par client": "Les 8 meilleurs clients", "Rabais": "Les 8 rabais les plus importants",
+    "Bénéfices": "Les 8 articles les plus rentables", "prev_achats": "Les 8 plus gros achats à prévoir",
+    "Jour × heure": "Ventes nettes par jour de la semaine et par heure",
 }
 NOTES_ETATS: dict[str, str] = {}   # texte sous le titre d'un état (prévisions)
 A_COMMANDER_TEXTE = "À commander"
@@ -102,7 +114,7 @@ def tableau_simple(parent, hauteur: int = 12) -> ttk.Treeview:
 
 
 def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], largeurs: dict[str, int] | None = None,
-            tags=None) -> None:
+            tags=None, decroissant: bool = True) -> None:
     """Colonnes et lignes d'un tableau de résultats ; montants en « 1 234,56 $ », quantités telles quelles."""
     tableau.delete(*tableau.get_children())
     cles = [f"c{i}" for i in range(len(entetes))]
@@ -116,7 +128,14 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
         extensible = entete in EXTENSIBLES  # garde au moins sa largeur : les colonnes de chiffres restent fixes
         tableau.column(cle, width=largeur, minwidth=largeur if extensible else 40, anchor="e" if nombre else "w",
                        stretch=extensible)
-    for i, ligne in enumerate(lignes):
+    # tableaux datés : la date la plus récente en haut (demande du propriétaire du 2026-10-27)
+    ordre = list(range(len(lignes)))
+    if decroissant and lignes and entetes and str(entetes[0]).startswith("Date") and len(lignes) > 1:
+        premiere, derniere = str(lignes[0][0]), str(lignes[-1][0])
+        if len(premiere) == 5 or premiere <= derniere:  # « jj/mm » (chronologique) ou date ISO croissante
+            ordre.reverse()
+    for i in ordre:
+        ligne = lignes[i]
         valeurs = []
         for entete, v in zip(entetes, ligne):
             if isinstance(v, Decimal):
@@ -195,6 +214,9 @@ class PageRapports(ttk.Frame):
         self.etat = ttk.Label(cadre, text=t("Cliquez sur « Actualiser » : historique des traitements, Sage et relevés."),
                               foreground=TEXTE_DOUX, padding=(0, 6))
         self.etat.pack(fill="x")
+        tk.Label(cadre, text=t("Suivi complet des ventes : traitement, encaissement et rapprochement"),
+                 font=("Segoe UI Semibold", 10), foreground=TEXTE, background=fond_de(cadre), anchor="w").pack(
+            fill="x")
         self.tableau_suivi = tableau_simple(cadre)
         for cle, couleur in COULEURS.items():
             self.tableau_suivi.tag_configure(cle, background=couleur)
@@ -282,6 +304,9 @@ class PageRapports(ttk.Frame):
         Bouton(periode, "🔍  " + t("Rechercher"), self.rechercher, petit=True).pack(side="left", padx=8)
         self.aide_recherche = ttk.Label(cadre, text="", foreground=TEXTE_DOUX, padding=(0, 6))
         self.aide_recherche.pack(fill="x")
+        self.titre_recherche = tk.Label(cadre, text="", font=("Segoe UI Semibold", 10), foreground=TEXTE,
+                                        background=fond_de(cadre), anchor="w")
+        self.titre_recherche.pack(fill="x")
         self.tableau_recherche = tableau_simple(cadre)
         bouton_exporter(barre, self.tableau_recherche, t("Recherche")).pack(side="right")
         self._preparer_recherche(lire=False)
@@ -309,6 +334,8 @@ class PageRapports(ttk.Frame):
             return
         if type_ in self.listes:
             self.champ_valeur.configurer_valeurs(self.listes[type_])
+        elif lire and type_ in ("Client", "Fournisseur"):  # listes tirées de l'historique (une seule lecture)
+            self._avec_historique(lambda _h: self.aide_recherche.configure(text=t(aides[type_])))
         elif lire:
             def fin(valeurs):
                 self.listes[type_] = valeurs
@@ -344,9 +371,38 @@ class PageRapports(ttk.Frame):
         def fin(resultat):
             entetes, lignes = resultat
             remplir(self.tableau_recherche, entetes, lignes, {"Client / fournisseur": 220, "Facture": 170})
+            self.titre_recherche.configure(text=t("Résultats : {type}", type=t(type_)) + (f" — {valeur}" if valeur else ""))
             self.aide_recherche.configure(text=t("{n} résultat(s).", n=len(lignes)))
 
-        self._lire_sage(fonctions[type_], fin, t("Recherche dans Sage…"), self.aide_recherche)
+        if type_ == "Article":  # trop de mouvements pour la mémoire : requête dans Sage
+            self._lire_sage(fonctions[type_], fin, t("Recherche dans Sage…"), self.aide_recherche)
+            return
+        en_memoire = {"Client": rapports.h_mouvements_client, "Fournisseur": rapports.h_mouvements_fournisseur,
+                      "Vente": rapports.h_ventes, "Encaissement": rapports.h_encaissements,
+                      "Paiement": rapports.h_paiements}[type_]
+        self._avec_historique(lambda h: fin(en_memoire(h, valeur, du, au)))
+
+    def _avec_historique(self, suite) -> None:
+        """Historique Sage des clients et fournisseurs : lu une fois (10 minutes), puis recherches instantanées."""
+        import time
+
+        from . import rapports
+
+        h = getattr(self, "historique_sage", None)
+        if h and time.time() - h["_lu"] < 600:
+            suite(h)
+            return
+
+        def garder(h):
+            h["_lu"] = time.time()
+            self.historique_sage = h
+            self.listes["Client"], self.listes["Fournisseur"] = h["noms_clients"], h["noms_fournisseurs"]
+            if self._type() in ("Client", "Fournisseur"):
+                self.champ_valeur.configurer_valeurs(self.listes[self._type()])
+            suite(h)
+
+        self._lire_sage(rapports.historique, garder, t("Lecture de l'historique de Sage (une fois)…"),
+                        self.aide_recherche)
 
     # ---------------------------------------------------------------- statistiques Clover
     INDICATEURS = (("Ventes brutes", "Ventes brutes (articles)", True),
@@ -375,6 +431,19 @@ class PageRapports(ttk.Frame):
         self.auto = tk.BooleanVar(value=True)
         ttk.Checkbutton(barre, text=t("Journée en cours : actualiser toutes les 5 minutes"),
                         variable=self.auto).pack(side="left", padx=12)
+        filtres = ttk.Frame(cadre)  # filtres globaux : tous les états de la période
+        filtres.pack(fill="x", pady=(6, 0))
+        ttk.Label(filtres, text=t("Filtrer :")).pack(side="left", padx=(0, 6))
+        self.filtres = {}
+        self.champs_filtres = {}
+        for nom in ("Article", "Client", "Employé", "Catégorie"):
+            ttk.Label(filtres, text=t(nom)).pack(side="left", padx=(6, 3))
+            variable = tk.StringVar()
+            champ = ChampRecherche(filtres, variable, [], largeur=12, au_choix=lambda _v=None: self.recalculer())
+            champ.pack(side="left")
+            self.filtres[nom], self.champs_filtres[nom] = variable, champ
+        Bouton(filtres, "✔  " + t("Appliquer"), self.recalculer, petit=True).pack(side="left", padx=(8, 4))
+        Bouton(filtres, "✖  " + t("Effacer"), self.effacer_filtres, "secondaire", petit=True).pack(side="left")
         self.etat_stats = ttk.Label(cadre, text="", foreground=TEXTE_DOUX, padding=(0, 4))
         self.etat_stats.pack(fill="x")
 
@@ -464,6 +533,9 @@ class PageRapports(ttk.Frame):
         self.note_etat.pack(fill="x", pady=(4, 0))
         self.g_etat = Graphique(self.page_tableau, 170)
         self.g_etat.pack(fill="x", pady=(6, 0))
+        self.titre_tableau = tk.Label(self.page_tableau, text="", font=("Segoe UI Semibold", 10), foreground=TEXTE,
+                                      background=fond_de(cadre), anchor="w")
+        self.titre_tableau.pack(fill="x", pady=(8, 0))
         self.tableau_stats = tableau_simple(self.page_tableau)
         self.tableau_stats.tag_configure("a_commander", background=COULEURS_PEREMPTION["rouge"])
         bouton_exporter(ligne, self.tableau_stats, t("Statistiques Clover")).pack(side="right")
@@ -472,6 +544,9 @@ class PageRapports(ttk.Frame):
         self._lecture_prev = False
         self.kpi_cadre = tk.Frame(self.page_tableau, background=fond_de(cadre))  # à droite de l'aperçu financier
         self.vues_articles: dict = {}
+        self.vues_annees: dict = {}
+        self.donnees_annees: dict = {}
+        self._lecture_annees = False
         self._lecture_articles = False
         self.couts_clover: dict = {}   # ID Clover -> (n° Sage, CUMP Sage)
         self.moyens_stats: list = []
@@ -569,9 +644,11 @@ class PageRapports(ttk.Frame):
                 donnees = lire(client, du, au, cache, progression)
                 autres = lire(client, du2, au2, cache, progression)
                 couts = self._couts_sage()
-                resultat = {"vues": statistiques(donnees, couts), "avant": statistiques(autres, couts), "libelle": libelle,
-                            "series": series(donnees, du, au), "series_avant": series(autres, du2, au2),
-                            "moyens": montants_par_moyen(donnees), "du": du, "au": au}
+                self.brut_stats = {"donnees": donnees, "autres": autres, "couts": couts, "du": du,
+                                   "au": au, "du2": du2, "au2": au2, "libelle": libelle,
+                                   "completes": statistiques(donnees, couts)}  # sans filtre : calculé une fois
+                self.donnees_annees = {}  # évolution par année : relue pour la nouvelle période
+                resultat = self._calculer(self.brut_stats)
                 self.after(0, lambda: self._fin_statistiques(resultat))
             except Exception as exc:
                 texte = str(exc)
@@ -579,6 +656,43 @@ class PageRapports(ttk.Frame):
                                        setattr(self, "_calcul_en_cours", False)))
 
         threading.Thread(target=travail, daemon=True).start()
+
+    def _filtres_actifs(self) -> dict[str, str]:
+        return {nom: v.get().strip() for nom, v in self.filtres.items() if v.get().strip()}
+
+    def _calculer(self, b: dict) -> dict:
+        """Statistiques de la période et de sa comparaison, filtres globaux appliqués."""
+        from .statistiques_clover import filtrer, montants_par_moyen, resume_rapide, series, statistiques
+
+        f = self._filtres_actifs()
+        donnees, autres = filtrer(b["donnees"], f), filtrer(b["autres"], f)
+        return {"vues": statistiques(donnees, b["couts"]) if f else b["completes"], "avant": resume_rapide(autres),
+                "libelle": b["libelle"], "series": series(donnees, b["du"], b["au"]),
+                "series_avant": series(autres, b["du2"], b["au2"]), "moyens": montants_par_moyen(donnees),
+                "du": b["du"], "au": b["au"], "du2": b["du2"], "filtres": f}
+
+    def recalculer(self) -> None:
+        """Un filtre a changé : nouveau calcul sur les données déjà lues (pas de nouvelle lecture de Clover)."""
+        if not getattr(self, "brut_stats", None) or self._calcul_en_cours:
+            return
+        self._calcul_en_cours = True
+        self.etat_stats.configure(text=t("Calcul avec les filtres…"))
+
+        def travail():
+            try:
+                resultat = self._calculer(self.brut_stats)
+                self.after(0, lambda: self._fin_statistiques(resultat))
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: (self.etat_stats.configure(text="✘ " + texte),
+                                       setattr(self, "_calcul_en_cours", False)))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def effacer_filtres(self) -> None:
+        for variable in self.filtres.values():
+            variable.set("")
+        self.recalculer()
 
     def _couts_sage(self) -> dict:
         """ID Clover -> (n° Sage, CUMP) ; coûts lus dans Sage une fois par jour ; rien si Sage est illisible."""
@@ -596,6 +710,14 @@ class PageRapports(ttk.Frame):
         self._calcul_en_cours = False
         self.vues_stats = r["vues"]
         self.moyens_stats = r["moyens"]
+        completes = self.brut_stats["completes"]  # choix des filtres : toutes les valeurs de la période
+        for nom, vue, colonne in (("Article", "Par article", 0), ("Client", "Par client", 0),
+                                  ("Employé", "Par employé", 0), ("Catégorie", "Par catégorie", 0)):
+            self.champs_filtres[nom].configurer_valeurs(sorted({str(l[colonne]) for l in completes[vue][1]}
+                                                               - {"Sans client"}, key=str.casefold))
+        self.vues_annees.clear()
+        if self.donnees_annees:
+            self._calculer_annees()
         actuel, avant = dict(r["vues"]["Résumé"][1]), dict(r["avant"]["Résumé"][1])
         for titre, cle, argent in self.INDICATEURS:
             valeur_l, ecart_l = self.cartes_stats[titre]
@@ -621,8 +743,10 @@ class PageRapports(ttk.Frame):
             self.g_ventes.barres(etiquettes, [(nom, valeurs, BLEU), (t(r["libelle"]).capitalize(), valeurs_avant,
                                                                      BLEU_PALE)], t("Aucune vente"))
         else:
-            self.g_ventes.courbes(etiquettes, [(nom, valeurs, BLEU, False),
-                                               (t(r["libelle"]).capitalize(), valeurs_avant, BLEU_PALE, True)],
+            legende_avant = t(r["libelle"]).capitalize()
+            if r["du2"].year != r["du"].year and r["du"].year == r["au"].year:  # l'an dernier : légende = années
+                nom, legende_avant = str(r["du"].year), str(r["du2"].year)
+            self.g_ventes.courbes(etiquettes, [(nom, valeurs, BLEU, False), (legende_avant, valeurs_avant, BLEU_PALE, True)],
                                   t("Aucune vente"))
         self.g_moyens.anneau([(t(k), v) for k, v in r["moyens"]], t("Aucun paiement"), format_valeur=montant)
         self.g_categories.anneau([(l[0], l[2]) for l in r["vues"]["Par catégorie"][1]], t("Aucune vente"),
@@ -630,7 +754,9 @@ class PageRapports(ttk.Frame):
         articles = [(l[0], l[6]) for l in r["vues"]["Par article"][1][:8]]
         self.g_articles.classement(articles, vide=t("Aucune vente"), format_valeur=montant)
         self.etat_stats.configure(text=t("Mis à jour à {h} — variations par rapport à {x}.",
-                                         h=f"{datetime.now():%H:%M}", x=t(r["libelle"])))
+                                         h=f"{datetime.now():%H:%M}", x=t(r["libelle"]))
+                                  + (t("   •   filtres : {f}", f=", ".join(f"{t(k)} = {v}" for k, v in r["filtres"].items()))
+                                     if r["filtres"] else ""))
         self.afficher_statistiques()
         # journée en cours : nouvelle lecture dans 5 minutes
         if self._minuterie:
@@ -691,9 +817,9 @@ class PageRapports(ttk.Frame):
             self.page_peremption.pack(fill="both", expand=True)
             if not self.peremption:
                 self.lire_peremption()
-        elif cle == "liste_articles":
+        elif cle in ("liste_articles", "evolution_annees"):
             self.page_tableau.pack(fill="both", expand=True)
-            self.titre_etat.configure(text=t("Liste d'articles"))
+            self.titre_etat.configure(text=t("Liste d'articles") if cle == "liste_articles" else t("Évolution par année"))
             self.afficher_statistiques()
         elif cle in PREVISIONS:
             self.page_tableau.pack(fill="both", expand=True)
@@ -754,8 +880,10 @@ class PageRapports(ttk.Frame):
             self.cadre_horizon.pack_forget()
         if nom == "liste_articles" and not self.vues_articles:
             self.lire_liste_articles()
+        if nom == "evolution_annees" and not self.vues_annees:
+            self.lire_annees()
         source = (self.vues_prev if nom in PREVISIONS else self.vues_articles if nom == "liste_articles"
-                  else self.vues_stats)
+                  else self.vues_annees if nom == "evolution_annees" else self.vues_stats)
         self._afficher_kpi(nom == "Résumé")
         if nom not in source:
             self.tableau_stats.delete(*self.tableau_stats.get_children())
@@ -769,10 +897,12 @@ class PageRapports(ttk.Frame):
         if texte:
             lignes = [l for l in lignes if any(texte in str(v).casefold() for v in l)]
         lignes = [[t(x) if isinstance(x, str) and nom == "Résumé" else x for x in l] for l in lignes]
-        remplir(self.tableau_stats, entetes, lignes, {"Indicateur": 175 if nom == "Résumé" else 320,
-                                                      "Valeur": 105, "Article": 280, "Client": 240,
-                                                      "Employé": 190, "Appareil": 300, "Date et heure": 130},
-                (lambda i: ("a_commander",) if t(A_COMMANDER_TEXTE) in lignes[i] else ()))
+        libelle = next((l for _, _, etats in NAVIGATION for l, c in etats if c == nom), nom)
+        self.titre_tableau.configure(text=t("Tableau : {etat} — {n} ligne(s)", etat=t(libelle), n=len(lignes)))
+        remplir(self.tableau_stats, entetes, lignes, decroissant=nom not in PREVISIONS, largeurs={
+            "Indicateur": 175 if nom == "Résumé" else 320, "Valeur": 105, "Article": 280, "Client": 240,
+            "Employé": 190, "Appareil": 300, "Date et heure": 130},
+            tags=lambda i: ("a_commander",) if t(A_COMMANDER_TEXTE) in lignes[i] else ())
 
     def _afficher_kpi(self, montrer: bool) -> None:
         """Aperçu financier : tableau étroit à gauche, le plus de KPI possible en cartes à droite."""
@@ -784,10 +914,12 @@ class PageRapports(ttk.Frame):
             enfant.destroy()
         if not montrer or not self.vues_stats:
             if not cadre_table.winfo_manager():
+                self.titre_tableau.pack(fill="x", pady=(8, 0))
                 cadre_table.pack(fill="both", expand=True, pady=(6, 0))
             return
         # toute la place aux indicateurs (le tableau, rempli quand même, reste exportable)
         cadre_table.pack_forget()
+        self.titre_tableau.pack_forget()
         self.kpi_cadre.pack(fill="both", expand=True, pady=(6, 0))
         colonnes = 4
         for i, (titre, genre, valeur) in enumerate(kpis(self.vues_stats, self.moyens_stats)):
@@ -863,6 +995,66 @@ class PageRapports(ttk.Frame):
                                           n=len(lignes), r=relies, c=sum(1 for l in lignes if l[9] is not None))
         self.afficher_statistiques()
 
+    # ---------------------------------------------------------------- évolution par année
+    ANNEES_COMPAREES = 2  # années d'avant comparées à la période
+
+    def lire_annees(self) -> None:
+        """Même période les années d'avant (cache Clover), puis courbe par jour avec une série par année."""
+        if self._lecture_annees or not getattr(self, "brut_stats", None):
+            return
+        self._lecture_annees = True
+        b = self.brut_stats
+        self.note_etat.configure(text=t("Lecture de la même période les années d'avant…"))
+
+        def travail():
+            try:
+                from .__main__ import charger_config
+                from .api_clover import ClientClover
+                from .statistiques_clover import lire
+
+                client = ClientClover(charger_config(self.racine / "config.toml"))
+                annees = {b["du"].year: b["donnees"]}
+                for k in range(1, self.ANNEES_COMPAREES + 1):
+                    try:
+                        du, au = b["du"].replace(year=b["du"].year - k), b["au"].replace(year=b["au"].year - k)
+                    except ValueError:
+                        du, au = b["du"].replace(year=b["du"].year - k, day=28), b["au"].replace(year=b["au"].year - k, day=28)
+                    annees[b["du"].year - k] = lire(client, du, au, self.racine / "donnees" / "cache_clover")
+                self.after(0, lambda: self._fin_annees(annees))
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: (self.note_etat.configure(text="✘ " + texte),
+                                       setattr(self, "_lecture_annees", False)))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _fin_annees(self, annees: dict) -> None:
+        self._lecture_annees = False
+        self.donnees_annees = annees
+        self._calculer_annees()
+
+    def _calculer_annees(self) -> None:
+        from .statistiques_clover import evolution_par_annee, filtrer
+
+        if not self.donnees_annees:
+            return
+        b, f = self.brut_stats, self._filtres_actifs()
+        etiquettes, series = evolution_par_annee({a: filtrer(d, f) for a, d in self.donnees_annees.items()},
+                                                 b["du"], b["au"])
+        annees = list(series)
+        lignes = []
+        for i, jour in enumerate(etiquettes):
+            valeurs = [series[a][i] for a in annees]
+            ecart = (None if len(valeurs) < 2 or not valeurs[1] or valeurs[0] is None else
+                     ((valeurs[0] - valeurs[1]) * 100 / valeurs[1]).quantize(Decimal("0.1")))
+            lignes.append([jour] + valeurs + [ecart])
+        self.vues_annees["evolution_annees"] = (["Date"] + [str(a) for a in annees] + [
+            f"% {annees[0]} / {annees[1]}" if len(annees) > 1 else "%"], lignes)
+        self.series_annees = (etiquettes, series)
+        totaux = {a: sum((v or 0 for v in series[a]), Decimal(0)) for a in annees}
+        NOTES_ETATS["evolution_annees"] = "   •   ".join(f"{a} : {montant(v)}" for a, v in totaux.items())
+        self.afficher_statistiques()
+
     def _graphique_etat(self, nom: str, lignes: list[list]) -> None:
         """Graphique adapté à l'état : courbe, barres, anneau ou classement (rien pour les listes détaillées)."""
         from .graphiques import BLEU, BLEU_PALE
@@ -876,7 +1068,16 @@ class PageRapports(ttk.Frame):
             self.g_etat.titre = t("Ventes nettes : 28 derniers jours et prévision")
             self.g_etat.courbes(etiquettes, [(t("Ventes réelles"), reels, BLEU, False),
                                              (t("Prévision"), prevus, "#f6b81a", True)], t("Aucune vente"))
-            self.g_etat.pack(fill="x", pady=(6, 0), before=self.tableau_stats.master)
+            self.g_etat.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
+            return
+        if nom == "evolution_annees" and getattr(self, "series_annees", None):
+            from .graphiques import PALETTE
+
+            etiquettes, series = self.series_annees
+            self.g_etat.titre = t("Ventes nettes par jour, année par année")
+            self.g_etat.courbes(etiquettes, [(str(a), v, PALETTE[k % len(PALETTE)], k > 0)
+                                             for k, (a, v) in enumerate(series.items())], t("Aucune vente"))
+            self.g_etat.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
             return
         if nom == "prev_commande":
             compte = {}
@@ -885,14 +1086,21 @@ class PageRapports(ttk.Frame):
             self.g_etat.titre = t("Articles vendus en {n} jours", n=self._horizon())
             self.g_etat.anneau([(t(k), Decimal(v)) for k, v in compte.items()], t("Aucune vente"),
                                format_valeur=lambda v: f"{v:.0f}")
-            self.g_etat.pack(fill="x", pady=(6, 0), before=self.tableau_stats.master)
+            self.g_etat.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
             return
         if nom == "Rapport des ventes" and lignes:  # brutes et nettes, comme Clover
             etiquettes = [l[0][8:10] + "/" + l[0][5:7] if len(l[0]) == 10 else l[0] for l in lignes]
             self.g_etat.titre = t("Ventes brutes et nettes")
             self.g_etat.barres(etiquettes, [(t("Ventes brutes"), [l[3] for l in lignes], BLEU_PALE),
                                             (t("Ventes nettes"), [l[6] for l in lignes], BLEU)], t("Aucune vente"))
-            self.g_etat.pack(fill="x", pady=(6, 0), before=self.tableau_stats.master)
+            self.g_etat.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
+            return
+        if nom == "Jour × heure" and lignes:
+            entetes = self.vues_stats[nom][0]
+            self.g_etat.titre = t(TITRES_GRAPHIQUES[nom])
+            self.g_etat.chaleur([t(l[0])[:3] for l in lignes], [e.replace(" h", "h") for e in entetes[1:-1]],
+                                [l[1:-1] for l in lignes], t("Aucune vente"))
+            self.g_etat.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
             return
         genre = GRAPHIQUES_ETATS.get(nom)
         if not genre or not lignes:
@@ -901,7 +1109,7 @@ class PageRapports(ttk.Frame):
         type_, i_nom, i_val = genre
         valeurs = [(str(l[i_nom]), abs(l[i_val]) if isinstance(l[i_val], Decimal) else Decimal(l[i_val] or 0))
                    for l in lignes]
-        self.g_etat.titre = t("Les 8 premiers") if type_ == "classement" else ""
+        self.g_etat.titre = t(TITRES_GRAPHIQUES.get(nom, "Les 8 premiers"))
         if type_ == "courbe":
             self.g_etat.courbes([v[0][8:10] + "/" + v[0][5:7] for v in valeurs],
                                 [(t("Ventes nettes"), [v[1] for v in valeurs], BLEU, False)], t("Aucune vente"))
@@ -913,7 +1121,7 @@ class PageRapports(ttk.Frame):
         else:
             self.g_etat.classement(sorted(valeurs, key=lambda v: -v[1])[:8], vide=t("Aucune vente"),
                                    format_valeur=montant, couleur=BLEU_PALE if nom == "Rabais" else BLEU)
-        self.g_etat.pack(fill="x", pady=(6, 0), before=self.tableau_stats.master)
+        self.g_etat.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
 
     # ---------------------------------------------------------------- prévisions
     def _horizon(self) -> int:
@@ -1026,6 +1234,8 @@ class PageRapports(ttk.Frame):
                                                        "(JJ/MM/AAAA) ; SKU vides ou sans date ignorés. Cliquez sur "
                                                        "« Actualiser »."), foreground=TEXTE_DOUX, padding=(0, 6))
         self.etat_peremption.pack(fill="x")
+        tk.Label(cadre, text=t("Articles et dates de péremption (champ SKU de Clover)"), font=("Segoe UI Semibold", 10),
+                 foreground=TEXTE, background=fond_de(cadre), anchor="w").pack(fill="x", pady=(4, 0))
         self.tableau_peremption = tableau_simple(cadre)
         for cle, couleur in COULEURS_PEREMPTION.items():
             self.tableau_peremption.tag_configure(cle, background=couleur)

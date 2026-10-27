@@ -213,7 +213,8 @@ class PageFournisseurs(ttk.Frame):
     def afficher_liste(self) -> None:
         choix = self.filtre.get()
         self.liste.delete(*self.liste.get_children())
-        for i, f in enumerate(self.registre.factures):
+        for i, f in sorted(enumerate(self.registre.factures), key=lambda x: (x[1].date_facture or "", x[0]),
+                           reverse=True):  # la plus récente en haut
             if choix != t("Toutes") and t(f.etat) != choix:
                 continue
             self.liste.insert("", "end", iid=str(i), tags=(f.etat,), values=(

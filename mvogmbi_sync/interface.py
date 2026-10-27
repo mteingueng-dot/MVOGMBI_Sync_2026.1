@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 import tomllib
 from datetime import date, timedelta
@@ -139,6 +140,7 @@ class Application(tk.Tk):
         self._attente = self.after(200, self._relayer_messages)
         self.actualiser_tableau()
         self.aller(ACCUEIL)
+        self._preparer_verrou()
 
     def permis(self, index: int) -> bool:
         """Page visible pour l'utilisateur connecté (profil)."""
@@ -274,6 +276,46 @@ class Application(tk.Tk):
         from .connexion import changer_mon_mot_de_passe
 
         changer_mon_mot_de_passe(self, self.racine, self.session, TITRE)
+
+    # ---------------------------------------------------------------- verrouillage après inactivité
+    def _preparer_verrou(self) -> None:
+        """Verrouillage après [general] verrouillage_minutes (5 par défaut ; 0 = jamais) sans souris ni clavier."""
+        self.minutes_verrou = int(self.config_toml.get("general", {}).get("verrouillage_minutes", 5) or 0)
+        self._verrou = None
+        self._derniere_activite = time.time()
+        if self.session is None or self.minutes_verrou <= 0:
+            return
+        for evenement in ("<Any-KeyPress>", "<Any-ButtonPress>", "<Motion>", "<MouseWheel>"):
+            self.bind_all(evenement, self._activite, add="+")
+        self.after(10_000, self._surveiller_inactivite)
+
+    def _activite(self, _evenement=None) -> None:
+        if self._verrou is None:
+            self._derniere_activite = time.time()
+
+    def _surveiller_inactivite(self) -> None:
+        try:
+            if self._verrou is None and time.time() - self._derniere_activite >= self.minutes_verrou * 60:
+                self.verrouiller()
+            self.after(10_000, self._surveiller_inactivite)
+        except tk.TclError:  # fenêtre fermée
+            pass
+
+    def verrouiller(self) -> None:
+        from .connexion import Verrou
+
+        if self._verrou is not None or self.session is None:
+            return
+        self.withdraw()  # rien n'est visible tant que le mot de passe n'est pas redonné ; les traitements continuent
+        self._verrou = Verrou(self, self.racine, self.session, TITRE, self._deverrouiller, self.se_deconnecter)
+
+    def _deverrouiller(self) -> None:
+        if self._verrou is not None:
+            self._verrou.destroy()
+            self._verrou = None
+        self.deiconify()
+        self.lift()
+        self._derniere_activite = time.time()
 
     def se_deconnecter(self) -> None:
         self.deconnecter = True  # retour à la fenêtre de connexion

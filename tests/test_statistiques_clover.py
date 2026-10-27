@@ -56,3 +56,17 @@ def test_benefices_et_kpi_avec_le_cump_sage():
     indicateurs = {titre: valeur for titre, _, valeur in kpis(vues, [("Carte", D("9.00")), ("Espèces", D("18.00"))])}
     assert indicateurs["Bénéfice brut"] == D("26.00") and indicateurs["Part payée en espèces"] == D("66.7")
     assert "Coût des ventes (CUMP Sage)" not in dict(statistiques(d)["Résumé"][1])  # sans coûts : pas de bénéfice
+
+
+def test_filtres_globaux():
+    from mvogmbi_sync.statistiques_clover import filtrer
+
+    d = DonneesClover(commandes=[commande("A", 1000, client="C1"), commande("B", 2000, employe="E2")],
+                      paiements=[paiement("A", 900), paiement("B", 1800)],
+                      employes={"E1": "Alice", "E2": "Bruno"}, clients={"C1": "Jean Exemple"},
+                      categories={"I1": "Fruits & Légumes"})
+    assert dict(statistiques(filtrer(d, {"Employé": "Bruno"}))["Résumé"][1])["Commandes payées"] == 1
+    assert [c["id"] for c in filtrer(d, {"Client": "jean exemple"}).commandes] == ["A"]
+    assert len(filtrer(d, {"Catégorie": "Fruits & Légumes", "Article": "Plantain"}).commandes) == 2
+    assert filtrer(d, {"Article": "Riz"}).commandes == [] and filtrer(d, {}) is d
+    assert len(filtrer(d, {"Employé": "Bruno"}).paiements) == 1  # les paiements suivent les commandes

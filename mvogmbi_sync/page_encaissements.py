@@ -124,7 +124,7 @@ class PageEncaissements(ttk.Frame):
         self.depots = depots
         self.tableau.delete(*self.tableau.get_children())
         jours = jours_semaine()
-        for i, d in enumerate(depots):
+        for i, d in sorted(enumerate(depots), key=lambda x: (x[1].date, x[0]), reverse=True):  # plus récent en haut
             texte = f"{d.date.isoformat()} ({jours[d.date.weekday()]})" + (f"  •  {d.origine}" if d.origine else "")
             if d.remarque:
                 texte += f"  —  {d.remarque}"

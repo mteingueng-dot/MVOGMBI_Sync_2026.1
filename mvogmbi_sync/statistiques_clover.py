@@ -21,7 +21,7 @@ from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .api_clover import _cents, _rabais, est_payee, lignes_commande, moment_paiement
+from .api_clover import SANS_CATEGORIE, _cents, _rabais, est_payee, lignes_commande, moment_paiement
 from .periodes import en_millisecondes
 
 ZERO = Decimal(0)
@@ -33,7 +33,7 @@ SAISIES = {"EMV_CONTACTLESS": "Sans contact", "EMV_CONTACT": "Puce", "SWIPED": "
            "KEYED": "Saisie manuelle", "MSR_CONTACTLESS": "Sans contact (bande)", "SCANNED": "Lue (code)"}
 CARTES = {"MC": "Mastercard", "VISA": "Visa", "AMEX": "American Express", "INTERAC": "Interac (débit)",
           "DISCOVER": "Discover", "JCB": "JCB", "UNIONPAY": "UnionPay"}
-VUES = ["Résumé", "Rapport des ventes", "Bénéfices", "Par jour", "Par jour de la semaine", "Par heure", "Par employé", "Par mode de paiement",
+VUES = ["Résumé", "Rapport des ventes", "Bénéfices", "Jour × heure", "Par jour", "Par jour de la semaine", "Par heure", "Par employé", "Par mode de paiement",
         "Par type de carte", "Par mode de saisie de la carte", "Par appareil", "Par client", "Par article",
         "Par catégorie", "Commandes", "Paiements", "Rabais", "Remboursements"]
 
@@ -49,6 +49,13 @@ class DonneesClover:
     appareils: dict[str, str] = field(default_factory=dict)
     categories: dict[str, str] = field(default_factory=dict)
     fuseau: str = "America/Toronto"
+    prepare: list | None = field(default=None, repr=False, compare=False)  # commandes préparées (calculées une fois)
+
+
+_MEMOIRE: dict[str, dict] = {}          # jours terminés déjà lus (fichier -> données), le temps de la session
+_LIGNES: dict[tuple, list] = {}        # (commande, modification, filtre) -> lignes de vente calculées
+_REFERENTIELS: dict[str, tuple] = {}    # marchand -> (moment, employés, clients, appareils, catégories)
+DUREE_REFERENTIELS = 3600               # secondes
 
 
 def _sans_carte(paiements: list[dict]) -> list[dict]:
@@ -94,8 +101,10 @@ def lire(client, debut: date, fin: date, cache: Path | None = None, progression=
     a_lire = []
     for jour in jours:
         fichier = cache / f"{jour.isoformat()}.json" if cache else None
-        if fichier and jour < aujourdhui and fichier.exists():
-            par_jour[jour] = json.loads(fichier.read_text(encoding="utf-8"))
+        if fichier and jour < aujourdhui and str(fichier) in _MEMOIRE:
+            par_jour[jour] = _MEMOIRE[str(fichier)]
+        elif fichier and jour < aujourdhui and fichier.exists():
+            par_jour[jour] = _MEMOIRE[str(fichier)] = json.loads(fichier.read_text(encoding="utf-8"))
         else:
             a_lire.append(jour)
     blocs: list[list[date]] = []
@@ -111,6 +120,7 @@ def lire(client, debut: date, fin: date, cache: Path | None = None, progression=
             for jour, donnees in resultat.items():
                 par_jour[jour] = donnees
                 if cache and jour < aujourdhui:  # jour terminé : gardé
+                    _MEMOIRE[str(cache / f"{jour.isoformat()}.json")] = donnees
                     cache.mkdir(parents=True, exist_ok=True)
                     (cache / f"{jour.isoformat()}.json").write_text(json.dumps(donnees, ensure_ascii=False),
                                                                      encoding="utf-8")
@@ -122,13 +132,25 @@ def lire(client, debut: date, fin: date, cache: Path | None = None, progression=
         d.commandes += donnees.get("commandes", [])
         d.paiements += donnees.get("paiements", [])
         d.remboursements += donnees.get("remboursements", [])
-    d.employes = {e["id"]: e.get("name") or e.get("nickname") or e["id"] for e in client._pages("employees", {})}
-    d.clients = {c["id"]: " ".join(x for x in (c.get("firstName"), c.get("lastName")) if x).strip() or c["id"]
-                 for c in client._pages("customers", {})}
-    d.appareils = {a["id"]: f"{a.get('productName') or a.get('model') or 'Appareil'} ({a.get('serial') or a['id'][:8]})"
-                   for a in client._pages("devices", {})}
-    d.categories = client.categories_par_article()
+    d.employes, d.clients, d.appareils, d.categories = referentiels(client)
     return d
+
+
+def referentiels(client) -> tuple:
+    """Employés, clients, appareils et catégories d'articles de Clover, relus au plus une fois par heure."""
+    import time
+
+    cle = client.config.merchant_id
+    deja = _REFERENTIELS.get(cle)
+    if deja and time.time() - deja[0] < DUREE_REFERENTIELS:
+        return deja[1:]
+    employes = {e["id"]: e.get("name") or e.get("nickname") or e["id"] for e in client._pages("employees", {})}
+    clients = {c["id"]: " ".join(x for x in (c.get("firstName"), c.get("lastName")) if x).strip() or c["id"]
+               for c in client._pages("customers", {})}
+    appareils = {a["id"]: f"{a.get('productName') or a.get('model') or 'Appareil'} ({a.get('serial') or a['id'][:8]})"
+                 for a in client._pages("devices", {})}
+    _REFERENTIELS[cle] = (time.time(), employes, clients, appareils, client.categories_par_article())
+    return _REFERENTIELS[cle][1:]
 
 
 # --------------------------------------------------------------------------------------------- calcul
@@ -154,6 +176,9 @@ def _cumul():
 
 
 def preparer(d: DonneesClover) -> list[Commande]:
+    """Commandes payées prêtes pour les regroupements (calculées une seule fois par jeu de données)."""
+    if d.prepare is not None:
+        return d.prepare
     fuseau = ZoneInfo(d.fuseau)
     paiements_par_commande = defaultdict(list)
     for p in d.paiements:
@@ -163,7 +188,10 @@ def preparer(d: DonneesClover) -> list[Commande]:
     for o in d.commandes:
         if not est_payee(o):
             continue
-        lignes = lignes_commande(o, d.categories)
+        cle = (o["id"], o.get("modifiedTime"), o.get("_filtre", ""))  # lignes calculées une fois par commande
+        lignes = _LIGNES.get(cle)
+        if lignes is None:
+            lignes = _LIGNES[cle] = lignes_commande(o, d.categories)
         paiements = paiements_par_commande.get(o["id"], [])
         clients = [d.clients.get(c["id"], c["id"]) for c in (o.get("customers") or {}).get("elements") or []]
         employe = (o.get("employee") or {})
@@ -178,7 +206,8 @@ def preparer(d: DonneesClover) -> list[Commande]:
             encaisse=sum((_cents(p.get("amount")) for p in paiements), ZERO),
             pourboires=sum((_cents(p.get("tipAmount")) for p in paiements), ZERO),
             modes=", ".join(sorted({(p.get("tender") or {}).get("label", "?") for p in paiements}))))
-    return sorted(resultat, key=lambda c: c.moment)
+    d.prepare = sorted(resultat, key=lambda c: c.moment)
+    return d.prepare
 
 
 def _pourcent(partie: Decimal, total: Decimal) -> Decimal:
@@ -349,6 +378,7 @@ def statistiques(d: DonneesClover, couts: dict | None = None) -> dict[str, tuple
                            _cents(p.get("taxAmount")), _cents(p.get("tipAmount")), _cents(p.get("cashbackAmount"))]
                           for p in sorted(paiements, key=lambda p: -p.get("createdTime", 0))])
     rabais = defaultdict(lambda: [0, ZERO])
+    lignes_par_commande = {c.id: c.lignes for c in commandes}  # lignes déjà calculées
     for o in d.commandes:
         if not est_payee(o):
             continue
@@ -359,7 +389,7 @@ def statistiques(d: DonneesClover, couts: dict | None = None) -> dict[str, tuple
                 g = rabais[r.get("name") or "Rabais d'article"]
                 g[0] += 1
                 g[1] += _rabais([r], base)
-        base = sum((l.ventes_brutes for l in lignes_commande(o, d.categories)), ZERO)
+        base = sum((l.ventes_brutes for l in lignes_par_commande.get(o["id"], [])), ZERO)
         for r in (o.get("discounts") or {}).get("elements") or []:
             g = rabais[(r.get("name") or "Rabais de commande") + " (commande)"]
             g[0] += 1
@@ -372,6 +402,16 @@ def statistiques(d: DonneesClover, couts: dict | None = None) -> dict[str, tuple
                                 d.employes.get((r.get("employee") or (r.get("orderRef") or {}).get("employee") or {})
                                                .get("id"), ""), -_cents(r.get("amount")), -_cents(r.get("taxAmount"))]
                                for r in sorted(d.remboursements, key=lambda r: -r.get("createdTime", 0))])
+
+    # ---- carte de chaleur : ventes nettes par jour de la semaine × heure
+    grille = defaultdict(Decimal)
+    for c in commandes:
+        grille[(c.moment.weekday(), c.moment.hour)] += c.nettes
+    heures = sorted({h for _, h in grille}) or list(range(9, 21))
+    heures = list(range(min(heures), max(heures) + 1))
+    vues["Jour × heure"] = (["Jour"] + [f"{h:02d} h" for h in heures] + ["Total"],
+                            [[JOURS[j]] + [grille.get((j, h), ZERO) for h in heures]
+                             + [sum((grille.get((j, h), ZERO) for h in heures), ZERO)] for j in range(7)])
 
     # ---- rapport des ventes (comme Clover) : par jour, ou par heure pour une seule journée
     un_jour = len({c.moment.date() for c in commandes}) <= 1
@@ -559,3 +599,97 @@ def kpis(vues: dict, moyens: list[tuple[str, Decimal]]) -> list[tuple[str, str, 
     if employe:
         liste.append(("Meilleur vendeur", "t", employe[0]))
     return liste
+
+
+# --------------------------------------------------------------------------------------------- filtres globaux
+FILTRES = ("Article", "Client", "Employé", "Catégorie")
+
+
+def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
+    """Données réduites aux filtres de la page Rapports : client et employé gardent les commandes concernées ;
+    article et catégorie ne gardent que leurs lignes (et les commandes qui en ont). Paiements et remboursements
+    suivent les commandes gardées ; avec un filtre d'article ou de catégorie, un paiement ne compte que pour la part
+    des lignes gardées dans sa commande."""
+    filtres = {k: v.strip() for k, v in (filtres or {}).items() if v and v.strip()}
+    if not filtres:
+        return d
+    article, client = filtres.get("Article", "").casefold(), filtres.get("Client", "").casefold()
+    employe, categorie = filtres.get("Employé", "").casefold(), filtres.get("Catégorie", "").casefold()
+    gardees, parts = [], {}
+
+    def valeur(lignes) -> Decimal:
+        return sum((_cents(l.get("price")) * (Decimal(l["unitQty"]) / 1000 if l.get("unitQty") else 1)
+                    for l in lignes), ZERO)
+
+    for o in d.commandes:
+        nom_employe = ((o.get("employee") or {}).get("name") or d.employes.get((o.get("employee") or {}).get("id"), ""))
+        clients = [d.clients.get(c["id"], c["id"]) for c in (o.get("customers") or {}).get("elements") or []]
+        if employe and nom_employe.casefold() != employe:
+            continue
+        if client and client not in {c.casefold() for c in clients}:
+            continue
+        if article or categorie:
+            lignes = [l for l in (o.get("lineItems") or {}).get("elements") or []
+                      if (not article or (l.get("name") or "").strip().casefold() == article)
+                      and (not categorie or d.categories.get((l.get("item") or {}).get("id"), SANS_CATEGORIE)
+                           .casefold() == categorie)]
+            if not lignes:
+                continue
+            tout = valeur((o.get("lineItems") or {}).get("elements") or [])
+            parts[o["id"]] = valeur(lignes) / tout if tout else Decimal(1)
+            o = {**o, "lineItems": {"elements": lignes}, "discounts": {"elements": []},  # rabais de commande : non répartis
+                 "_filtre": f"{article}|{categorie}"}
+        gardees.append(o)
+    ids = {o["id"] for o in gardees}
+
+    def part(p: dict) -> dict:
+        k = parts.get((p.get("order") or {}).get("id"))
+        if k is None:
+            return p
+        return {**p, **{c: int(Decimal(int(p.get(c) or 0)) * k) for c in ("amount", "taxAmount", "tipAmount")}}
+
+    return DonneesClover(commandes=gardees,
+                         paiements=[part(p) for p in d.paiements if (p.get("order") or {}).get("id") in ids],
+                         remboursements=[r for r in d.remboursements if (r.get("orderRef") or {}).get("id") in ids],
+                         employes=d.employes, clients=d.clients, appareils=d.appareils, categories=d.categories,
+                         fuseau=d.fuseau)
+
+
+def evolution_par_annee(par_annee: dict[int, DonneesClover], du: date, au: date) -> tuple[list[str], dict[int, list]]:
+    """Ventes nettes par jour (jj/mm) de la période, une série par année (mêmes dates les années d'avant)."""
+    jours = [du + timedelta(days=i) for i in range((au - du).days + 1)]
+    etiquettes = [f"{j.day:02d}/{j.month:02d}" for j in jours]
+    series = {}
+    for annee, d in sorted(par_annee.items(), reverse=True):
+        decalage = du.year - annee
+        totaux: dict[date, Decimal] = defaultdict(Decimal)
+        for c in preparer(d):
+            totaux[c.moment.date()] += c.nettes
+        valeurs = []
+        for j in jours:
+            try:
+                meme = j.replace(year=j.year - decalage)
+            except ValueError:  # 29 février
+                meme = j.replace(year=j.year - decalage, day=28)
+            valeurs.append(totaux.get(meme, ZERO) if meme < date.today() or decalage == 0 else None)
+        if any(valeurs):
+            series[annee] = valeurs
+    return etiquettes, series
+
+
+def resume_rapide(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
+    """Seulement les chiffres des cartes (période de comparaison) : bien plus rapide que `statistiques`."""
+    commandes = preparer(d)
+    lignes = [l for c in commandes for l in c.lignes]
+    nettes = sum((c.nettes for c in commandes), ZERO)
+    paye = sum((_cents(p.get("amount")) for p in d.paiements if p.get("result") == "SUCCESS"), ZERO)
+    return {"Résumé": (["Indicateur", "Valeur"], [
+        ["Commandes payées", len(commandes)],
+        ["Ventes brutes (articles)", sum((l.ventes_brutes for l in lignes), ZERO)],
+        ["Ventes nettes (articles)", nettes],
+        ["Taxes encaissées", sum((c.taxes for c in commandes), ZERO)],
+        ["Montant encaissé (paiements)", paye],
+        ["Panier moyen", _moyenne(nettes, len(commandes))],
+        ["Rabais", sum((l.rabais for l in lignes), ZERO)],
+        ["Remboursements (articles)", sum((l.remboursements for l in lignes), ZERO)],
+    ])}

@@ -186,7 +186,8 @@ class PagePaiements(ttk.Frame):
         choix = self.filtre.get()
         depuis = (self._date_depuis() or date.min).isoformat()
         self.tableau.delete(*self.tableau.get_children())
-        for i, p in enumerate(self.registre.paiements):
+        for i, p in sorted(enumerate(self.registre.paiements), key=lambda x: (x[1].avis.date_virement, x[0]),
+                           reverse=True):  # le plus récent en haut
             if p.avis.date_virement < depuis:
                 continue
             if choix == t("À traiter") and p.etat not in (A_RELIER, PROPOSE, CONFIRME):
