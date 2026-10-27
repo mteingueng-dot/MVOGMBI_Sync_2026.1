@@ -25,14 +25,14 @@ from pathlib import Path
 
 # Pages de l'interface, dans l'ordre du menu (mêmes rangs que les index de interface.py)
 PAGES = ("accueil", "clover", "sage", "courriel", "automatisation", "correspondance", "tableau", "encaissements",
-         "fournisseurs", "paiements", "rapprochement", "guide", "faq")
+         "fournisseurs", "paiements", "rapprochement", "rapports", "guide", "faq")
 UTILISATEURS = "utilisateurs"  # page de gestion : administrateurs seulement
 
 ADMIN = "Administrateur"
 PROFILS_DEFAUT = {
     ADMIN: list(PAGES),
     "Comptable": ["accueil", "correspondance", "tableau", "encaissements", "fournisseurs", "paiements",
-                  "rapprochement", "guide", "faq"],
+                  "rapprochement", "rapports", "guide", "faq"],
     "Employé": ["accueil", "tableau", "guide", "faq"],
 }
 LONGUEUR_MIN = 6

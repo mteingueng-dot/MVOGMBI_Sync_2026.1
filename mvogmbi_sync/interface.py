@@ -31,7 +31,7 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
 
 # Index des pages (ordre du menu)
 (ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, FOURNISSEURS, PAIEMENTS,
- RAPPROCHEMENT, GUIDE, FAQ, UTILISATEURS) = range(14)
+ RAPPROCHEMENT, RAPPORTS, GUIDE, FAQ, UTILISATEURS) = range(15)
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -129,6 +129,7 @@ class Application(tk.Tk):
         self._onglet_fournisseurs()
         self._onglet_paiements()
         self._onglet_rapprochement()
+        self._onglet_rapports()
         self._onglet_texte(t("Guide de configuration"), "guide", "📘")
         self._onglet_texte(t("Aide / FAQ"), "faq", "❓")
         if self.permis(UTILISATEURS):
@@ -805,9 +806,24 @@ class Application(tk.Tk):
     def _onglet_rapprochement(self) -> None:
         from .page_rapprochement import PageRapprochement
 
-        self.page_rapprochement = PageRapprochement(self.onglets, self.racine, TITRE)
+        self.page_rapprochement = PageRapprochement(self.onglets, self.racine, TITRE, self._vers_page_manuelle)
         self.onglets.add(self.page_rapprochement, text=t("10. Rapprochement bancaire"))
         self._pages.append(("🏦", t("10. Rapprochement")))
+
+    def _onglet_rapports(self) -> None:
+        from .page_rapports import PageRapports
+
+        self.page_rapports = PageRapports(self.onglets, self.racine, TITRE)
+        self.onglets.add(self.page_rapports, text=t("11. Rapports"))
+        self._pages.append(("📊", t("11. Rapports")))
+
+    def _vers_page_manuelle(self, cle: str) -> None:
+        """Après un encaissement ou un paiement fournisseur manuel noté à la page 10 : page 7 ou 9, relue."""
+        if cle == "paiements" and self.permis(PAIEMENTS):
+            self.page_paiements._recharger()
+            self.aller(PAIEMENTS)
+        elif cle == "encaissements" and self.permis(ENCAISSEMENTS):
+            self.aller(ENCAISSEMENTS)
 
     def _enregistrer_depuis_boite(self, depuis: str) -> None:
         """Date de lecture des avis changée sur la page 9 : même réglage que la page Courriel."""

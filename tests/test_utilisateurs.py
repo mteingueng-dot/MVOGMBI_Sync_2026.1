@@ -54,4 +54,4 @@ def test_profil_libre_enregistre(tmp_path):
     r.enregistrer()
     donnees = json.loads((tmp_path / "donnees" / "utilisateurs.json").read_text(encoding="utf-8"))
     assert donnees["profils"]["Livreur"] == ["accueil", "fournisseurs"]
-    assert len(Registre(tmp_path).profils[ADMIN]) == 13
+    assert len(Registre(tmp_path).profils[ADMIN]) == 14

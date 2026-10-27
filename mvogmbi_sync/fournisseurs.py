@@ -17,8 +17,9 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -313,3 +314,67 @@ def facture_existe(base, fournisseur_sage: str, numero: str) -> bool:
     lignes = base.requete("SELECT COUNT(*) n FROM tventr t JOIN tvendor v ON v.lId = t.lVenId "
                           "WHERE v.sName = %s AND TRIM(t.sSource) = %s", (fournisseur_sage, numero.strip()))
     return bool(lignes and lignes[0]["n"])
+
+
+# --------------------------------------------------------------------------------------------- archives
+ARCHIVES = Path("archives") / "factures_fournisseurs"
+
+
+def nom_archive(facture: Facture) -> str:
+    """« 2026-08-20 Nourriture D'afrique n° 14402 » (caractères interdits par Windows remplacés)."""
+    texte = f"{facture.date_facture or 'sans date'} {facture.fournisseur_sage or facture.fournisseur_lu} n° {facture.numero}"
+    return re.sub(r'[\\/:*?"<>|]+', "-", texte).strip()[:150]
+
+
+def archiver(racine: Path, facture: Facture) -> Path:
+    """Facture importée gardée pour consultation (donnees/archives/factures_fournisseurs/AAAA/) : copie du PDF ou
+    de la photo, détail complet en JSON (en-tête, lignes, articles Sage, facteurs) et feuille Excel lisible.
+    Renvoie le fichier JSON ; refaire l'archive d'une facture la remplace."""
+    import shutil
+
+    from .export_tableau import ecrire_excel
+
+    dossier = Path(racine) / "donnees" / ARCHIVES / (facture.date_facture[:4] or "sans date")
+    dossier.mkdir(parents=True, exist_ok=True)
+    base = dossier / nom_archive(facture)
+    source = Path(racine) / "donnees" / "factures_fournisseurs" / facture.fichier
+    if source.exists():
+        shutil.copy2(source, base.with_name(base.name + source.suffix.lower()))
+    donnees = facture.en_dict()
+    donnees["archivee_le"] = datetime.now().isoformat(timespec="seconds")
+    donnees["fichier_archive"] = base.name + source.suffix.lower() if source.exists() else ""
+    chemin = base.with_name(base.name + ".json")
+    chemin.write_text(json.dumps(donnees, ensure_ascii=False, indent=1), encoding="utf-8")
+    entetes = ["Description", "Code", "Qté", "Prix fournisseur", "Montant", "N° Sage", "Article Sage", "Facteur",
+               "Qté Sage"]
+    lignes = [[l.description, l.code, str(l.quantite), str(l.prix), str(l.montant), l.numero_sage, l.description_sage,
+               str(l.facteur), str((l.quantite * l.facteur).quantize(Decimal("0.0001")))] for l in facture.lignes]
+    lignes += [[], ["Fournisseur Sage", facture.fournisseur_sage], ["N° de facture", facture.numero],
+               ["Date", facture.date_facture], ["Sous-total", str(facture.sous_total or "")],
+               ["TPS", str(facture.tps)], ["TVQ", str(facture.tvq)], ["Total", str(facture.total or "")],
+               ["Fichier d'origine", facture.fichier]]
+    ecrire_excel(base.with_name(base.name + ".xlsx"), "Facture", entetes, lignes)
+    return chemin
+
+
+def archives(racine: Path) -> list[dict]:
+    """Toutes les factures archivées (les plus récentes d'abord) ; « chemin » = fichier JSON."""
+    resultat = []
+    for chemin in (Path(racine) / "donnees" / ARCHIVES).glob("*/*.json"):
+        try:
+            d = json.loads(chemin.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        d["chemin"] = str(chemin)
+        resultat.append(d)
+    return sorted(resultat, key=lambda d: (d.get("date_facture", ""), d.get("numero", "")), reverse=True)
+
+
+def archiver_importees(racine: Path) -> int:
+    """Archive les factures importées qui ne le sont pas encore (factures d'avant les archives) ; renvoie leur nombre."""
+    registre = Registre(racine)
+    deja = {(d.get("fournisseur_sage"), d.get("numero")) for d in archives(racine)}
+    nouvelles = [f for f in registre.factures if f.etat == IMPORTEE and (f.fournisseur_sage, f.numero) not in deja]
+    for f in nouvelles:
+        archiver(racine, f)
+    return len(nouvelles)

@@ -15,6 +15,7 @@ from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Ch
 from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
 from .rapprochement import (A_ENCAISSER, A_PAIE, A_SAISIR, CONFIRME, DELAI_PAIE, EN_CIRCULATION, IGNORE, RAPPROCHE,
+                            MouvementBanque,
                             SAISI, RegistreReleves, comptes_sage, ecrire_rapport, mouvements_sage, periode_des,
                             rapprocher, restreindre, resume, solde_sage)
 
@@ -30,9 +31,11 @@ def argent(valeur) -> str:
 
 
 class PageRapprochement(ttk.Frame):
-    def __init__(self, parent, racine: Path, titre: str):
+    def __init__(self, parent, racine: Path, titre: str, naviguer=None):
+        """`naviguer(cle)` : ouvre la page « encaissements » ou « paiements » (après un encaissement ou un paiement
+        fournisseur manuel)."""
         super().__init__(parent, padding=10)
-        self.racine, self.titre = Path(racine), titre
+        self.racine, self.titre, self.naviguer = Path(racine), titre, naviguer
         self.registre = RegistreReleves(self.racine)
         self.releves, self.banque, self.sage, self.comptes = [], [], [], []
         self.chiffres: dict = {}
@@ -103,7 +106,7 @@ class PageRapprochement(ttk.Frame):
         cadre.pack(fill="both", expand=True, pady=(6, 0))
         colonnes = (("date", "Date", 90), ("description", "Description", 330), ("entree", "Entrée", 110),
                     ("sortie", "Sortie", 110), ("etat", "État", 170), ("lien", "Sage / compte", 220))
-        self.tableau = ttk.Treeview(cadre, columns=[c[0] for c in colonnes], show="headings", height=9,
+        self.tableau = ttk.Treeview(cadre, columns=[c[0] for c in colonnes], show="headings", height=4,
                                     selectmode="browse")
         for cle, titre_col, largeur in colonnes:
             self.tableau.heading(cle, text=t(titre_col))
@@ -135,6 +138,12 @@ class PageRapprochement(ttk.Frame):
         Bouton(ligne, "✔  " + t("Confirmer le compte"), self.confirmer, fond=CARTE).pack(side="left", padx=(12, 0))
         Bouton(ligne, t("Ignorer"), self.ignorer, "secondaire", fond=CARTE).pack(side="left", padx=6)
         Bouton(ligne, t("Remettre à traiter"), self.remettre, "secondaire", fond=CARTE).pack(side="left")
+        manuels = tk.Frame(carte, background=CARTE)  # argent des ventes ou paiement fournisseur saisis à la main
+        manuels.pack(fill="x", padx=12, pady=(0, 8))
+        Bouton(manuels, "💰  " + t("Encaissement manuel"), self.encaissement_manuel, "accent", fond=CARTE,
+               petit=True).pack(side="left")
+        Bouton(manuels, "💸  " + t("Paiement fournisseur manuel"), self.paiement_manuel, "accent", fond=CARTE,
+               petit=True).pack(side="left", padx=6)
         self.remarque = tk.Label(carte, text="", background=CARTE, foreground=ROUGE, font=("Segoe UI", 9), anchor="w")
         self.remarque.pack(fill="x", padx=12, pady=(0, 8))
         self.afficher_releves()
@@ -265,13 +274,15 @@ class PageRapprochement(ttk.Frame):
             etiquette.configure(text=argent(valeur) if valeur is not None else "—", foreground=couleur)
         choix = self.filtre.get()
         self.tableau.delete(*self.tableau.get_children())
+        prevus = self._manuels_prevus()
         if choix != t(EN_CIRCULATION):
             for i, m in enumerate(self.banque):
                 if choix == t("À traiter") and m.etat not in A_TRAITER:
                     continue
                 if choix not in (t("À traiter"), t("Tous")) and t(m.etat) != choix:
                     continue
-                lien = (", ".join(f"n° {n}" for n in m.sage) if m.sage else m.compte or t(RENVOIS.get(m.etat, "")))
+                lien = (", ".join(f"n° {n}" for n in m.sage) if m.sage else
+                        m.compte or prevus.get(m.cle) or t(RENVOIS.get(m.etat, "")))
                 self.tableau.insert("", "end", iid=f"b{i}", tags=(m.etat,), values=(
                     m.date, m.description, argent(m.montant) if m.montant > 0 else "",
                     argent(-m.montant) if m.montant < 0 else "", t(m.etat), lien))
@@ -345,6 +356,144 @@ class PageRapprochement(ttk.Frame):
         if self.mouvement and self.mouvement.etat in (CONFIRME, IGNORE):
             self.mouvement.etat, self.mouvement.compte = A_SAISIR, ""
             self._apres()
+
+    # ---------------------------------------------------------------- encaissements et paiements manuels
+    def _manuels_prevus(self) -> dict[str, str]:
+        """Clé de mouvement -> renvoi affiché, pour les encaissements et paiements fournisseurs décidés à la main."""
+        from .encaissements import RegistreEncaissementsManuels
+        from .paiements_fournisseurs import RegistrePaiements
+
+        prevus = {e["cle"]: t("→ page 7 : encaissement manuel sur {f}", f=e["facture"])
+                  for e in RegistreEncaissementsManuels(self.racine).liste}
+        for p in RegistrePaiements(self.racine).paiements:
+            if p.avis.identifiant.startswith("releve:"):
+                prevus[p.avis.identifiant[len("releve:"):]] = t("→ page 9 : paiement fournisseur manuel")
+        return prevus
+
+    def _mouvement_libre(self, entree: bool) -> MouvementBanque | None:
+        m = self.mouvement
+        if not m or m.etat in (RAPPROCHE, SAISI) or (m.montant > 0) != entree:
+            messagebox.showinfo(self.titre, t("Choisissez une entrée d'argent absente de Sage.") if entree else
+                                t("Choisissez une sortie d'argent absente de Sage."))
+            return None
+        return m
+
+    def paiement_manuel(self) -> None:
+        """Sortie d'argent payée à un fournisseur : ajoutée à la page Paiements fournisseurs, où l'on choisit le
+        fournisseur et la facture, puis « Payer dans Sage »."""
+        from .paiements_courriel import AvisPaiement
+        from .paiements_fournisseurs import RegistrePaiements
+
+        m = self._mouvement_libre(entree=False)
+        if not m:
+            return
+        morceaux = [x.strip() for x in m.description.split("/") if x.strip()]
+        avis = AvisPaiement(identifiant=f"releve:{m.cle}", date_courriel=m.date, date_virement=m.date,
+                            montant=-m.montant, beneficiaire=morceaux[1] if len(morceaux) > 1 else m.description,
+                            reference=m.releve, message=m.description, source="Relevé Desjardins")
+        registre = RegistrePaiements(self.racine)
+        if not registre.ajouter([avis]):
+            messagebox.showinfo(self.titre, t("Ce mouvement est déjà à la page 9 (Paiements fournisseurs)."))
+        registre.enregistrer()
+        self.afficher()
+        if messagebox.askyesno(self.titre, t("Paiement de {m} ajouté à la page 9 : choisissez le fournisseur et la "
+                                             "facture, confirmez, puis « Payer dans Sage ».\n\nOuvrir la page 9 ?",
+                                             m=argent(-m.montant))) and self.naviguer:
+            self.naviguer("paiements")
+
+    def encaissement_manuel(self) -> None:
+        """Entrée d'argent à encaisser sur une facture de vente choisie : notée, puis saisie dans Sage par la page
+        Encaissements (« Encaisser dans Sage »)."""
+        m = self._mouvement_libre(entree=True)
+        if not m:
+            return
+        self.resume.configure(text=t("Lecture des factures de vente ouvertes dans Sage…"))
+
+        def travail():
+            try:
+                from .__main__ import lire_sage
+                from .encaissements import etat_factures_sage, numero_compte_sage
+                from .facture import CLIENT
+                from .rapprochement import factures_ventes
+
+                config = self._config()
+                compte = numero_compte_sage(str(config.get("encaissements", {}).get("compte_depot", "1055")))
+
+                def lire(base):
+                    dates = factures_ventes(base, CLIENT)
+                    etat = etat_factures_sage(base, CLIENT, compte, list(dates))
+                    return [(n, d, etat.get(n, {}).get("du")) for n, d in dates.items()]
+
+                factures = lire_sage(config, lire, config.get("sage_import", {}).get("fichier_entreprise"))
+                self.after(0, lambda: self._choisir_facture(m, factures))
+            except Exception as exc:
+                message = str(exc)
+                self.after(0, lambda: self.resume.configure(text="✘ " + message))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _choisir_facture(self, m: MouvementBanque, factures) -> None:
+        from .encaissements import RegistreEncaissementsManuels, origine
+        from .rapprochement import facture_du_jour
+
+        self.afficher()
+        ouvertes = sorted(((n, d, du) for n, d, du in factures if du and du > 0), key=lambda x: (x[1], x[0]))
+        if not ouvertes:
+            messagebox.showinfo(self.titre, t("Aucune facture de vente avec un solde dû dans Sage."))
+            return
+        libelles = [f"{n}  —  {t('solde')} {argent(du)}" for n, d, du in ouvertes]
+        # facture du jour du mouvement, sinon la plus récente dont le solde couvre le montant
+        proposee = facture_du_jour(date.fromisoformat(m.date), {n: d for n, d, _ in ouvertes}) or next(
+            (n for n, _, du in reversed(ouvertes) if du >= m.montant), ouvertes[-1][0])
+        fenetre = tk.Toplevel(self)
+        fenetre.title(t("Encaissement manuel"))
+        fenetre.configure(background=CARTE)
+        fenetre.transient(self.winfo_toplevel())
+        cadre = tk.Frame(fenetre, background=CARTE, padx=20, pady=16)
+        cadre.pack()
+        tk.Label(cadre, text=t("{d} : {desc}\nEntrée de {m}", d=m.date, desc=m.description, m=argent(m.montant)),
+                 background=CARTE, justify="left", font=("Segoe UI", 10)).grid(row=0, column=0, columnspan=2,
+                                                                                 sticky="w", pady=(0, 10))
+        tk.Label(cadre, text=t("Facture de vente"), background=CARTE).grid(row=1, column=0, sticky="w")
+        choix = tk.StringVar(value=next((l for l, (n, _, _) in zip(libelles, ouvertes) if n == proposee),
+                                        libelles[-1]))
+        ttk.Combobox(cadre, textvariable=choix, values=libelles, state="readonly", width=44).grid(
+            row=1, column=1, sticky="w", padx=(8, 0))
+        tk.Label(cadre, text=t("Montant"), background=CARTE).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        montant = tk.StringVar()
+        ttk.Entry(cadre, textvariable=montant, width=14).grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+
+        def ajuster(_e=None) -> None:  # montant du mouvement, au plus le solde dû de la facture choisie
+            du = ouvertes[libelles.index(choix.get())][2]
+            montant.set(f"{min(m.montant, du):.2f}")
+
+        ajuster()
+        cadre.grid_slaves(row=1, column=1)[0].bind("<<ComboboxSelected>>", ajuster)
+
+        def valider() -> None:
+            numero, _, du = ouvertes[libelles.index(choix.get())]
+            try:
+                valeur = Decimal(montant.get().replace(",", ".").replace(" ", "")).quantize(Decimal("0.01"))
+            except Exception:
+                messagebox.showwarning(self.titre, t("Montant invalide."), parent=fenetre)
+                return
+            if valeur <= 0 or valeur > m.montant or valeur > du:
+                messagebox.showwarning(self.titre, t("Le montant doit être positif, sans dépasser le mouvement ni le "
+                                                     "solde dû de la facture ({du}).", du=argent(du)), parent=fenetre)
+                return
+            registre = RegistreEncaissementsManuels(self.racine)
+            registre.ajouter(m.cle, date.fromisoformat(m.date), valeur, numero, origine(m))
+            registre.enregistrer()
+            fenetre.destroy()
+            self.afficher()
+            if messagebox.askyesno(self.titre, t("Encaissement de {m} sur {f} noté. Il sera saisi dans Sage par « "
+                                                 "Encaisser dans Sage » (page 7).\n\nOuvrir la page 7 ?",
+                                                 m=argent(valeur), f=numero)) and self.naviguer:
+                self.naviguer("encaissements")
+
+        Bouton(cadre, "✔  " + t("Noter l'encaissement"), valider, fond=CARTE).grid(row=3, column=0, columnspan=2,
+                                                                                  pady=(14, 0))
+        fenetre.grab_set()
 
     # ---------------------------------------------------------------- saisie dans Sage
     def saisir(self) -> None:

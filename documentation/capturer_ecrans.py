@@ -151,6 +151,7 @@ def main(origine: Path, langue: str = "fr") -> None:
     page(i.GUIDE, "11_guide")
     page(i.FAQ, "12_faq")
     page(i.UTILISATEURS, "13_utilisateurs")
+    page(i.RAPPORTS, "14_rapports", lambda: app.page_rapports.actualiser(), delai=30000)
     app.after(2500, suivant)
     app.mainloop()
     shutil.rmtree(copie, ignore_errors=True)

@@ -23,10 +23,12 @@ rattachée à la facture (lCusTrId).
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .periodes import en_millisecondes
@@ -220,8 +222,67 @@ def calculer(client, base, client_sage: str, compte_depot: int, debut: date, fin
             aujourdhui or date.today(), dates_especes)
     if banque:
         depots += especes_a_encaisser(base, client_sage, compte_depot, depots, banque, debut, fin)
-        depots.sort(key=lambda d: (d.date, bool(d.origine)))
+    if base and racine:
+        depots += depots_manuels(racine, base, client_sage, compte_depot, debut, fin)
+    depots.sort(key=lambda d: (d.date, bool(d.origine)))
     return depots
+
+
+class RegistreEncaissementsManuels:
+    """Encaissements décidés à la main depuis la page Rapprochement (donnees/encaissements_manuels.json) : un
+    mouvement de banque (clé) -> facture de vente et montant ; saisis ensuite dans Sage par la page Encaissements."""
+
+    def __init__(self, racine):
+        self.chemin = Path(racine) / "donnees" / "encaissements_manuels.json"
+        self.liste: list[dict] = (json.loads(self.chemin.read_text(encoding="utf-8"))
+                                  if self.chemin.exists() else [])
+
+    def cles(self) -> set[str]:
+        return {e["cle"] for e in self.liste}
+
+    def trouver(self, cle: str) -> dict | None:
+        return next((e for e in self.liste if e["cle"] == cle), None)
+
+    def ajouter(self, cle: str, jour: date, montant: Decimal, facture: str, origine_: str) -> None:
+        self.liste = [e for e in self.liste if e["cle"] != cle]
+        self.liste.append({"cle": cle, "date": jour.isoformat(), "montant": str(montant), "facture": facture,
+                           "origine": origine_})
+
+    def retirer(self, cle: str) -> None:
+        self.liste = [e for e in self.liste if e["cle"] != cle]
+
+    def enregistrer(self) -> None:
+        self.chemin.parent.mkdir(parents=True, exist_ok=True)
+        self.chemin.write_text(json.dumps(self.liste, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def depots_manuels(racine, base, client_sage: str, compte_depot: int, debut: date, fin: date) -> list[Depot]:
+    """Encaissements manuels : à saisir tant que Sage n'a pas un encaissement de ce montant sur la facture ; les
+    encaissements déjà faits ne sont montrés que dans la période."""
+    from .rapprochement import factures_ventes, jours_couverts
+
+    liste = RegistreEncaissementsManuels(racine).liste
+    if not liste:
+        return []
+    dates = factures_ventes(base, client_sage)
+    etat = etat_factures_sage(base, client_sage, compte_depot, sorted({e["facture"] for e in liste}))
+    resultat = []
+    for e in liste:
+        jour, montant, numero = date.fromisoformat(e["date"]), Decimal(e["montant"]), e["facture"]
+        depot = Depot(max(jour, dates.get(numero, jour)), origine=f"Manuel — {e['origine']}")
+        if numero not in dates:
+            depot.etat, depot.remarque = A_VERIFIER, f"facture {numero} introuvable dans Sage"
+            depot.lignes = [LigneEncaissement(jour, montant, numero, etat=A_VERIFIER)]
+        else:
+            e_sage = etat.get(numero, {})
+            fait = montant in e_sage.get("recus", {}).get(depot.date, [])
+            if fait and not debut <= jour <= fin + timedelta(days=7):
+                continue
+            depot.etat = APPLIQUE if fait else A_SAISIR
+            depot.lignes = [LigneEncaissement(jours_couverts(numero)[0], montant, numero, True,
+                                              e_sage.get("du"), etat=depot.etat)]
+        resultat.append(depot)
+    return resultat
 
 
 def mouvements_especes(racine, base, debut: date, fin: date):
@@ -237,7 +298,8 @@ def mouvements_especes(racine, base, debut: date, fin: date):
     banque = [m for r in releves for m in r.mouvements]
     sage = mouvements_sage(base, periode[0] - timedelta(days=7), periode[1] + timedelta(days=7))
     rapprocher(banque, sage)
-    retenus = [m for m in banque if est_especes(m) and m.etat in (RAPPROCHE, A_ENCAISSER)
+    manuels = RegistreEncaissementsManuels(racine).cles()  # encaissés à la main : pas de répartition automatique
+    retenus = [m for m in banque if est_especes(m) and m.etat in (RAPPROCHE, A_ENCAISSER) and m.cle not in manuels
                and debut <= date.fromisoformat(m.date) <= fin]
     dates_sage = {s.ident: date.fromisoformat(s.date) for s in sage}
     return retenus, {dates_sage[n] for m in retenus for n in m.sage if n in dates_sage}
@@ -350,9 +412,11 @@ def ecrire_excel(depots: list[Depot], chemin, compte_depot: str) -> None:
     classeur.save(chemin)
 
 
-def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
+def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, factures: list[str] | None = None) -> dict:
     """Exécuté sur le bureau caché : ouvre Sage (fermé au départ), encaisse chaque dépôt « À saisir », referme Sage.
 
+    `factures` (traitement de nuit) : seulement les dépôts dont toutes les lignes vont sur ces factures, c'est-à-dire
+    les ventes importées pendant l'exécution (règle du propriétaire : une vente bloquée n'est pas encaissée).
     Renvoie {"encaisses": [...], "a_verifier": [...], "erreur": ""} pour le compte rendu.
     """
     from datetime import timedelta
@@ -376,6 +440,12 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict
     fin = date.today() - timedelta(days=1)
     if c.get("date_fin"):  # réglage d'essai : dernier jour de vente à encaisser
         fin = min(fin, date.fromisoformat(str(c["date_fin"])))
+    if factures:  # ventes de la session : leurs jours seulement
+        from .facture import jours_facture
+
+        jours = [j for n in factures for j in jours_facture(n)]
+        if jours:
+            debut, fin = max(debut, min(jours)), min(fin, max(jours))
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
     bilan = {"encaisses": [], "a_verifier": [], "erreur": ""}
     exe = executable_sage(executable_import())
@@ -390,14 +460,18 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict
         with ouvrir_base_sage(config_toml, fichier) as base:
             depots = calculer(client, base, CLIENT, numero_compte_sage(compte), debut, fin, racine=racine)
         depots = [d for d in depots if d.date >= premier_depot]
+        if factures is not None:
+            importees = set(factures)
+            depots = [d for d in depots if d.lignes and all(l.facture in importees for l in d.lignes)]
         a_saisir = [d for d in depots if d.etat == A_SAISIR]
         for d in depots:
             if d.etat == ECART:
                 bilan["a_verifier"].append(f"Dépôt du {d.date} ({d.montant:,.2f} $) : montant différent déjà saisi dans Sage.")
             elif d.etat == A_VERIFIER:
                 bilan["a_verifier"].append(f"{d.origine} du {d.date} ({d.montant:,.2f} $) : {d.remarque}.")
-        journal(f"{len(depots)} dépôt(s) depuis le {premier_depot} (ventes du {debut} au {fin}) ; "
-                f"{len(a_saisir)} à encaisser.")
+        journal(f"{len(depots)} dépôt(s) " + (f"des {len(factures)} vente(s) importée(s) " if factures else
+                                               f"depuis le {premier_depot} ") +
+                f"(ventes du {debut} au {fin}) ; {len(a_saisir)} à encaisser.")
         if a_saisir:
             session.ouvrir_encaissements()
             for d, r in zip(a_saisir, appliquer(config_toml, a_saisir, CLIENT, compte, mode, journal)):

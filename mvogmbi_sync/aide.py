@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.9.11"
+VERSION = "1.9.14"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -27,21 +27,26 @@ ACCUEIL = {
         ("puce", "Rapprochement bancaire : les relevés Desjardins sont rapprochés du compte 1055 ; ce qui manque est "
                  "enregistré dans Sage après votre confirmation."),
         ("sous_titre", "Comment ça fonctionne chaque nuit"),
-        ("etape", "1. À l'heure choisie (1 h par défaut), l'application lit dans Sage la dernière facture "
-                  "« Vente AAAA-MM-JJ » déjà importée."),
-        ("etape", "2. Elle récupère dans Clover les ventes de chaque jour suivant, jusqu'à hier : un jour manqué "
-                  "est rattrapé automatiquement."),
+        ("etape", "1. À l'heure choisie (1 h par défaut), l'application lit dans Sage les factures « Vente "
+                  "AAAA-MM-JJ » déjà importées et repère chaque jour sans facture depuis la date de départ."),
+        ("etape", "2. Elle récupère dans Clover les ventes de ces jours, du plus ancien au plus récent : un jour "
+                  "manqué (même au milieu de la période) est rattrapé en premier."),
         ("etape", "3. Elle relie chaque article Clover à son numéro d'article Sage (correspondance des articles)."),
         ("etape", "4. Elle prépare une facture par jour du lundi au jeudi et une seule pour le vendredi, le samedi "
                   "et le dimanche : une ligne par article, montant = ventes nettes Clover, taxes TPS + TVQ (code GQ) "
                   "pour les articles taxés."),
-        ("etape", "5. Elle importe les factures dans Sage, vérifie chacune d'elles, puis encaisse les dépôts Clover "
-                  "et saisit les paiements fournisseurs que vous avez confirmés."),
-        ("etape", "6. Elle vous envoie un compte rendu par courriel : succès, ou liste des points à corriger."),
+        ("etape", "5. Elle importe les factures dans Sage, vérifie chacune d'elles, puis encaisse les dépôts des "
+                  "seules ventes importées pendant ce traitement et saisit les paiements fournisseurs que vous avez "
+                  "confirmés."),
+        ("etape", "6. Elle vous envoie un compte rendu par courriel : succès, ou liste des points à corriger, avec "
+                  "le journal en pièces jointes Excel (Ventes, Encaissements, Paiements fournisseurs, Journal)."),
         ("sous_titre", "Contrôles de sécurité"),
         ("puce", "Jamais deux fois la même facture : une date ou un numéro déjà présent dans Sage est ignoré."),
-        ("puce", "Arrêt au premier jour qui pose problème (article non relié, compte manquant…) ; ce jour est "
-                 "repris la nuit suivante, une fois le problème corrigé, sans trou dans la suite des factures."),
+        ("puce", "Un jour qui pose problème (article non relié, compte manquant…) est bloqué seul, ainsi que "
+                 "son encaissement ; pour une vente de fin de semaine, c'est toute la fin de semaine. Les autres "
+                 "jours continuent ; le jour bloqué est repris en priorité la nuit suivante, une fois corrigé."),
+        ("puce", "Une ancienne facture dont le numéro ne correspond pas à sa date dans Sage (ex. « Vente "
+                 "2026-06-07 » datée du 2025-06-07) est signalée et ignorée."),
         ("puce", "Deux formats différents (ex. 500 g et 1 kg) ne sont jamais confondus."),
         ("puce", "Le total de chaque facture est égal aux ventes nettes Clover de la journée."),
         ("puce", "Rien n'est saisi sans contrôle du total, et chaque saisie est vérifiée ensuite dans Sage."),
@@ -74,18 +79,22 @@ ACCUEIL = {
         ("sous_titre", "How it works every night"),
         ("etape", "1. At the chosen time (1 a.m. by default), the application reads in Sage the last "
                   "“Vente YYYY-MM-DD” invoice already imported."),
-        ("etape", "2. It retrieves from Clover the sales of each following day, up to yesterday: a missed day is "
-                  "caught up automatically."),
+        ("etape", "2. It retrieves from Clover the sales of every day without an invoice since the start date, "
+                  "oldest first: a missed day (even in the middle of the period) is caught up first."),
         ("etape", "3. It links each Clover item to its Sage item number (item mapping)."),
         ("etape", "4. It prepares one invoice per day from Monday to Thursday and a single one for Friday, Saturday "
                   "and Sunday: one line per item, amount = Clover net sales, GST + QST (code GQ) for taxable items."),
-        ("etape", "5. It imports the invoices into Sage, checks each one, then records the Clover deposits and "
-                  "enters the supplier payments you have confirmed."),
-        ("etape", "6. It emails you a report: success, or the list of points to fix."),
+        ("etape", "5. It imports the invoices into Sage, checks each one, then records the deposits of the sales "
+                  "imported during this run only and enters the supplier payments you have confirmed."),
+        ("etape", "6. It emails you a report: success, or the list of points to fix, with the log as Excel "
+                  "attachments (Sales, Receipts, Supplier payments, Log)."),
         ("sous_titre", "Safety checks"),
         ("puce", "Never the same invoice twice: a date or number already in Sage is skipped."),
-        ("puce", "Stops at the first day with a problem (unlinked item, missing account…); that day is resumed "
-                 "the following night once fixed, with no gap in the invoice sequence."),
+        ("puce", "A day with a problem (unlinked item, missing account…) is blocked alone, with its receipt; for a "
+                 "weekend sale, the whole weekend. The other days continue; the blocked day is retried first the "
+                 "following night, once fixed."),
+        ("puce", "An old invoice whose number does not match its date in Sage (e.g. “Vente 2026-06-07” dated "
+                 "2025-06-07) is reported and ignored."),
         ("puce", "Two different sizes (e.g. 500 g and 1 kg) are never mixed up."),
         ("puce", "Each invoice total equals the day's Clover net sales."),
         ("puce", "Nothing is entered without checking the total, and every entry is then verified in Sage."),
@@ -537,6 +546,10 @@ GUIDE = {
                  "fournisseur ; « Déjà dans Sage » signale un paiement déjà saisi à la main."),
 
         ("sous_titre", "Rapprochement bancaire (page 10)"),
+        ("para", "« Encaissement manuel » (entrée d'argent choisie) : choisissez la facture de vente et le montant ; "
+                 "l'encaissement est noté à la page 7 et saisi dans Sage par « Encaisser dans Sage ». « Paiement "
+                 "fournisseur manuel » (sortie d'argent choisie) : le mouvement est ajouté à la page 9, où l'on choisit "
+                 "le fournisseur et la facture, puis « Payer dans Sage »."),
         ("etape", "1. Téléchargez le relevé de compte PDF dans AccèsD (compte 1055, folio 321147), puis « Charger des "
                   "relevés… ». Chaque relevé est contrôlé : solde d'ouverture + dépôts − retraits = solde de fermeture."),
         ("etape", "2. « Actualiser » : chaque mouvement de banque est relié à son écriture Sage du compte 1055 (même "
@@ -557,6 +570,21 @@ GUIDE = {
                  "Dépôts de salaire : reliés aux paies de Sage, sinon « Paie absente de Sage » (à corriger dans le "
                  "module Paie)."),
 
+        ("sous_titre", "Rapports (page 11)"),
+        ("puce", "Suivi des ventes : une ligne par facture de vente — date de traitement, journée(s), statut "
+                 "(importée, bloquée, échec), montants HT, taxes et TTC, commentaire, état de l'encaissement (solde dû "
+                 "dans Sage) et état du rapprochement (encaissements retrouvés sur les relevés chargés à la page 10)."),
+        ("puce", "Recherche dans l'historique de Sage : par client (factures et encaissements), fournisseur "
+                 "(factures, paiements, notes de crédit, avec le solde dû), vente, encaissement, paiement, ou article "
+                 "(ventes, achats, retours et ajustements, avec le cumul), sur une période au choix."),
+        ("puce", "Factures fournisseurs archivées : chaque facture importée est gardée (copie du PDF, détail des "
+                 "lignes en Excel) dans donnees\\archives\\factures_fournisseurs ; recherche par fournisseur, n°, "
+                 "date ou article."),
+        ("puce", "Statistiques Clover : pour la période choisie, résumé, ventes par jour, jour de la semaine, heure, "
+                 "employé, mode de paiement, type de carte, mode de saisie de la carte, appareil, client, article, "
+                 "catégorie, ainsi que la liste des commandes, des paiements, des rabais et des remboursements. Chaque "
+                 "jour lu dans Clover est gardé : une période déjà calculée s'affiche ensuite tout de suite."),
+        ("note", "Chaque tableau s'exporte en Excel ou en CSV (« ⬇ Exporter »)."),
         ("sous_titre", "Mode opératoire — chaque matin"),
         ("etape", "1. Lisez le courriel de la nuit : « succès », ou la liste des points à corriger."),
         ("etape", "2. Un jour bloqué : corrigez la cause (article à relier, compte manquant…) ; il sera repris la "
@@ -737,6 +765,10 @@ GUIDE = {
                  "“Already in Sage” flags a payment already entered by hand."),
 
         ("sous_titre", "Bank reconciliation (page 10)"),
+        ("para", "“Manual receipt” (selected incoming amount): choose the sales invoice and the amount; the receipt "
+                 "is noted on page 7 and entered in Sage with “Record in Sage”. “Manual supplier payment” (selected "
+                 "outgoing amount): the transaction is added to page 9, where you choose the supplier and the invoice, "
+                 "then “Pay in Sage”."),
         ("etape", "1. Download the PDF account statement from AccèsD (account 1055, folio 321147), then “Load "
                   "statements…”. Each statement is checked: opening balance + deposits − withdrawals = closing balance."),
         ("etape", "2. “Refresh”: each bank transaction is linked to its Sage entry in account 1055 (same amount, close "
@@ -757,6 +789,20 @@ GUIDE = {
                  "deposits: linked to the Sage payroll, otherwise “Payroll missing from Sage” (to fix in the Payroll "
                  "module)."),
 
+        ("sous_titre", "Reports (page 11)"),
+        ("puce", "Sales tracking: one line per sales invoice — processing date, day(s), status (imported, blocked, "
+                 "failed), amounts before tax, taxes and including tax, comment, receipt status (balance due in Sage) "
+                 "and reconciliation status (receipts found on the statements loaded on page 10)."),
+        ("puce", "Sage history search: by customer (invoices and receipts), supplier (invoices, payments, credit notes, "
+                 "with the balance due), sale, receipt, payment, or item (sales, purchases, returns and adjustments, "
+                 "with the running total), over any period."),
+        ("puce", "Archived supplier invoices: each imported invoice is kept (PDF copy, line details in Excel) in "
+                 "donnees\\archives\\factures_fournisseurs; search by supplier, number, date or item."),
+        ("puce", "Clover statistics: for the chosen period, summary, sales by day, weekday, hour, employee, payment "
+                 "method, card type, card entry mode, device, customer, item, category, plus the list of orders, "
+                 "payments, discounts and refunds. Each day read from Clover is kept: a period already calculated "
+                 "then shows right away."),
+        ("note", "Every table can be exported to Excel or CSV (“⬇ Export”)."),
         ("sous_titre", "Operating procedure — every morning"),
         ("etape", "1. Read the nightly email: “success”, or the list of points to fix."),
         ("etape", "2. A blocked day: fix the cause (item to link, missing account…); it is resumed the following "

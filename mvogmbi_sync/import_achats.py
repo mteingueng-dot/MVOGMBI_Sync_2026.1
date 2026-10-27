@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from .facture import TAUX_TPS, TAUX_TVQ
-from .fournisseurs import IMPORTEE, Facture
+from .fournisseurs import IMPORTEE, Facture, archiver
 
 CENT = Decimal("0.01")
 
@@ -194,6 +194,10 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
         if presentes.get(f.fichier):
             f.etat = IMPORTEE
             resultats[f.fichier] = f"importée (n° {f.numero}, {f.total} $)"
+            try:  # gardée pour consultation (page Rapports)
+                archiver(racine, f)
+            except OSError as exc:
+                resultats[f.fichier] += f" ; archive non faite : {exc}"
         else:
             resultats[f.fichier] = "ÉCHEC : absente de Sage après l'import" + (
                 " — " + " ; ".join(resultat.erreurs) if resultat.erreurs else "")

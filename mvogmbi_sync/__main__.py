@@ -110,7 +110,8 @@ def commande_encaisser_bureau(args: argparse.Namespace) -> None:
 
     config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
     notes = []
-    bilan = encaisser_sur_bureau_cache(RACINE, config_toml, journal=lambda t: notes.append(t))
+    factures = json.loads(Path(args.factures).read_text(encoding="utf-8")) if args.factures else None
+    bilan = encaisser_sur_bureau_cache(RACINE, config_toml, journal=lambda t: notes.append(t), factures=factures)
     bilan["notes"] = notes
     Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
     sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
@@ -778,6 +779,7 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sous.add_parser("encaisser-bureau", help="(interne) Encaisser les dépôts dans Sage sur le bureau caché")
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
+    p.add_argument("--factures", help="Fichier JSON : seules ces factures (ventes importées pendant la nuit)")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_encaisser_bureau)
 

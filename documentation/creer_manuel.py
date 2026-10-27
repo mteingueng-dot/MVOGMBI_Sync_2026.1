@@ -184,6 +184,7 @@ CHAPITRES = [
     ("fournisseurs", "Factures fournisseurs (page 8)", "Supplier invoices (page 8)"),
     ("paiements", "Paiements fournisseurs (page 9)", "Supplier payments (page 9)"),
     ("rapprochement", "Rapprochement bancaire (page 10)", "Bank reconciliation (page 10)"),
+    ("rapports", "Rapports et recherches (page 11)", "Reports and searches (page 11)"),
     ("mode", "Mode opératoire", "Operating procedure"),
     ("regles", "Règles de gestion", "Business rules"),
     ("faq", "Questions fréquentes et dépannage", "Frequently asked questions and troubleshooting"),
@@ -249,7 +250,8 @@ verrouillée).</div>
 <h2>Contrôles de sécurité</h2>
 <ul>
 <li>Jamais deux fois la même facture ou le même paiement : ce qui existe déjà dans Sage est ignoré.</li>
-<li>Arrêt au premier jour qui pose problème ; il est repris la nuit suivante, une fois corrigé.</li>
+<li>Un jour qui pose problème est bloqué seul (toute la fin de semaine pour le vendredi, le samedi ou le dimanche),
+avec son encaissement ; les autres jours continuent et le jour bloqué est repris en priorité la nuit suivante.</li>
 <li>Deux formats différents (500 g et 1 kg) ne sont jamais confondus.</li>
 <li>Rien n'est saisi sans contrôle du total, et chaque saisie est vérifiée ensuite dans Sage.</li>
 <li>Les mots de passe sont gardés dans le coffre-fort de Windows, jamais dans un fichier.</li>
@@ -283,7 +285,8 @@ anything, then closes it. The computer must stay on and the Windows session open
 <h2>Safety checks</h2>
 <ul>
 <li>Never the same invoice or payment twice: what already exists in Sage is skipped.</li>
-<li>Stops at the first day with a problem; it is picked up the next night, once fixed.</li>
+<li>A day with a problem is blocked alone (the whole weekend for Friday, Saturday or Sunday), with its receipt;
+the other days continue and the blocked day is retried first the next night.</li>
 <li>Two different sizes (500 g and 1 kg) are never mixed up.</li>
 <li>Nothing is entered without checking the total, and every entry is then verified in Sage.</li>
 <li>Passwords are kept in the Windows vault, never in a file.</li>
@@ -522,7 +525,11 @@ load).</td></tr>
 other.</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 11. Mode opératoire
-    parties.append(titre(11) + "<p>" + x("Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.",
+    parties.append(titre(11) + figure("14_rapports", x("Page 11 — Rapports : suivi complet de chaque vente",
+                                                        "Page 11 — Reports: complete tracking of each sale"))
+                   + blocs("Rapports (page 11)"))
+
+    parties.append(titre(12) + "<p>" + x("Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.",
                                          "What to do, and when, to keep everything up to date in Sage.") + "</p>"
                    + blocs("Mode opératoire — chaque matin") + blocs("Mode opératoire — chaque semaine")
                    + blocs("Mode opératoire — chaque mois")
@@ -532,7 +539,7 @@ other.</td></tr></table>"""))
                                                       "import fails (it is retried the next night).") + "</div>")
 
     # ------------------------------------------------------------------ 12. Règles
-    parties.append(titre(12) + blocs("Règles de facturation") + x("""
+    parties.append(titre(13) + blocs("Règles de facturation") + x("""
 <h3>Encaissements et paiements</h3>
 <ul>
 <li>Dépôt Clover = ventes encaissées moins les espèces ; ventes du lundi au jeudi déposées le lendemain, du vendredi
@@ -565,7 +572,7 @@ of the chosen invoices.</li>
 </ul>""") + blocs("Fichiers et sauvegarde"))
 
     # ------------------------------------------------------------------ 13. FAQ
-    parties.append(titre(13) + faq() + blocs("Dépannage")
+    parties.append(titre(14) + faq() + blocs("Dépannage")
                    + f"<p class='pied'>MVOGMBI_Sync {VERSION} — {e(COPYRIGHT)} — "
                      f"{x('Tous droits réservés.', 'All rights reserved.')}</p>")
     return "\n".join(parties)

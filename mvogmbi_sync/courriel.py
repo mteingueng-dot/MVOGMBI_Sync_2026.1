@@ -2,6 +2,8 @@
 
 Le courriel donne la période traitée et, pour chaque date, son état (facture importée et montants,
 aucune vente, déjà présente, bloquée et pourquoi, reportée à la nuit suivante), puis les points à corriger.
+Le journal détaillé est joint en Excel, une pièce jointe par module (règle du propriétaire du 2026-10-27) : Ventes,
+Encaissements, Paiements fournisseurs (quand ils ont travaillé) et Journal complet.
 """
 
 from __future__ import annotations
@@ -45,7 +47,8 @@ def adresses_invalides(texte) -> list[str]:
     return [a for a in adresses(texte) if a.count("@") != 1 or "." not in a.split("@")[1] or a.startswith("@")]
 
 
-def preparer_message(c: dict, sujet: str, corps: str, corps_html: str | None = None) -> EmailMessage:
+def preparer_message(c: dict, sujet: str, corps: str, corps_html: str | None = None,
+                     pieces: list[tuple[str, bytes]] | None = None) -> EmailMessage:
     destinataires = adresses(c.get("destinataires"))
     copies = [a for a in adresses(c.get("copie")) if a.lower() not in {d.lower() for d in destinataires}]
     if not c.get("serveur") or not destinataires:
@@ -59,12 +62,16 @@ def preparer_message(c: dict, sujet: str, corps: str, corps_html: str | None = N
     message.set_content(corps)
     if corps_html:
         message.add_alternative(corps_html, subtype="html")
+    for nom, contenu in pieces or []:
+        message.add_attachment(contenu, maintype="application",
+                               subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=nom)
     return message
 
 
-def envoyer(config_toml: dict, sujet: str, corps: str, corps_html: str | None = None) -> None:
+def envoyer(config_toml: dict, sujet: str, corps: str, corps_html: str | None = None,
+            pieces: list[tuple[str, bytes]] | None = None) -> None:
     c = parametres(config_toml)
-    message = preparer_message(c, sujet, corps, corps_html)
+    message = preparer_message(c, sujet, corps, corps_html, pieces)
     port = int(c.get("port", 587))
     securite = str(c.get("securite", "starttls")).lower()
     contexte = ssl.create_default_context()
@@ -214,6 +221,7 @@ def envoyer_bilan_encaissements(config_toml: dict, bilan: dict) -> None:
     if bilan.get("erreur"):
         cr.problemes.append(f"Encaissements non faits : {bilan['erreur']}")
     cr.lignes = list(bilan.get("notes", []))
+    cr.notes_encaissements = list(cr.lignes)
     envoyer_compte_rendu(config_toml, cr)
 
 
@@ -228,6 +236,7 @@ def envoyer_bilan_paiements(config_toml: dict, bilan: dict) -> None:
     if bilan.get("erreur"):
         cr.problemes.append(f"Paiements fournisseurs non faits : {bilan['erreur']}")
     cr.lignes = list(bilan.get("notes", []))
+    cr.notes_paiements = list(cr.lignes)
     envoyer_compte_rendu(config_toml, cr)
 
 
@@ -239,4 +248,52 @@ def envoyer_compte_rendu(config_toml: dict, cr) -> None:
     langues.depuis_config(config_toml)  # courriel dans la langue choisie dans l'application
     if cr.succes and not c.get("envoyer_si_succes", True):
         return
-    envoyer(config_toml, sujet_compte_rendu(cr), texte_compte_rendu(cr), html_compte_rendu(cr))
+    envoyer(config_toml, sujet_compte_rendu(cr), texte_compte_rendu(cr), html_compte_rendu(cr), pieces_jointes(cr))
+
+
+def _classeur(titre: str, entetes: list[str], lignes: list[list[str]]) -> bytes:
+    import io
+
+    from .export_tableau import ecrire_excel
+
+    tampon = io.BytesIO()
+    ecrire_excel(tampon, titre, entetes, lignes)
+    return tampon.getvalue()
+
+
+def _module(probleme: str) -> str:
+    if probleme.startswith(("Encaissement", "Encaissements")):
+        return "encaissements"
+    if probleme.startswith(("Paiement fournisseur", "Paiements fournisseurs")):
+        return "paiements"
+    return "ventes"
+
+
+def pieces_jointes(cr) -> list[tuple[str, bytes]]:
+    """Une pièce jointe Excel par module qui a travaillé (ventes, encaissements, paiements fournisseurs) et le
+    journal complet de l'exécution."""
+    jour = f"{cr.debut:%Y-%m-%d}"
+    probleme = t("Problème")
+    pieces = []
+    problemes = {m: [p for p in cr.problemes if _module(p) == m] for m in ("ventes", "encaissements", "paiements")}
+    if cr.jours or problemes["ventes"]:
+        lignes = [[str(j.jour), t(j.etat), j.detail, str(j.lignes) if j.lignes else "",
+                   f"{j.sous_total:.2f}" if j.lignes else "", f"{j.taxes:.2f}" if j.lignes else "",
+                   f"{j.total:.2f}" if j.lignes else ""] for j in cr.jours]
+        lignes += [["", probleme, p, "", "", "", ""] for p in problemes["ventes"]]
+        pieces.append((f"{t('Ventes')}_{jour}.xlsx", _classeur(t("Ventes"), [
+            t("Date"), t("État"), t("Détail"), t("Lignes"), t("Sous-total"), t("Taxes"), t("Total")], lignes)))
+    for cle, titre, faits, notes in (
+            ("encaissements", t("Encaissements"), cr.encaissements, cr.notes_encaissements),
+            ("paiements", t("Paiements fournisseurs"), cr.paiements, cr.notes_paiements)):
+        if faits or notes or problemes[cle]:
+            lignes = ([[t("Fait"), x] for x in faits] + [[t("Problème"), x] for x in problemes[cle]]
+                      + [[t("Journal"), x] for x in notes])
+            pieces.append((f"{titre.replace(' ', '_')}_{jour}.xlsx",
+                           _classeur(titre, [t("Type"), t("Détail")], lignes)))
+    lignes = [[x[:8], x[9:]] if x[:2].isdigit() and x[2:3] == ":" else ["", x] for x in cr.lignes]
+    lignes += [["", f"{probleme} : {p}"] for p in cr.problemes]
+    if cr.erreur:
+        lignes.append(["", f"{t('Erreur')} : {cr.erreur}"])
+    pieces.append((f"{t('Journal')}_{jour}.xlsx", _classeur(t("Journal"), [t("Heure"), t("Message")], lignes)))
+    return pieces
