@@ -9,6 +9,9 @@ Sage : lignes du compte 10550000 dans tjentact (montant > 0 = entrée) jointes �
 solde = taccount.dYtcLY (ouverture de l'exercice) + mouvements jusqu'à la date.
 Rapprochement : même montant, même sens, date Sage de 7 jours avant à 3 jours après la date de banque (la plus
 proche) ; sinon 2 ou 3 écritures Sage de la même période dont la somme égale le mouvement de banque.
+Virements Interac reçus et dépôts d'espèces au guichet (règles du propriétaire, 2026-10-26) : ils font partie des
+espèces des ventes ; absents de Sage, ils ne vont pas en écriture de journal : la page Encaissements les encaisse sur
+les factures de vente (encaissements.especes_a_encaisser).
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from itertools import combinations
 from pathlib import Path
@@ -32,6 +35,14 @@ CONFIRME = "Compte choisi (à saisir)"
 SAISI = "Saisi dans Sage"
 IGNORE = "Ignoré"
 EN_CIRCULATION = "Seulement dans Sage"
+A_ENCAISSER = "À encaisser sur les ventes"
+
+INTERAC = re.compile(r"virement\s+interac\s+de\b", re.I)
+DEPOT_ESPECES = re.compile(r"^DGA\b|d.p.t au GA", re.I)  # « DGA Dépôt au GA » : espèces déposées au guichet
+A_PAIE = "Paie absente de Sage"
+SALAIRE = re.compile(r"salaire", re.I)  # « PPW Paiement internet à / Depot Salaire/PAY05012026 »
+REFERENCE_PAIE = re.compile(r"PAYE?(\d{8})", re.I)
+DELAI_PAIE = 120  # jours : un salaire peut être versé longtemps après la paie de Sage
 
 MONTANT = re.compile(r"^-?\d{1,3}(?:[   ]?\d{3})*[.,]\d{2}-?$")
 
@@ -271,6 +282,13 @@ def solde_sage(base, jour: date, compte: int = COMPTE_BANQUE) -> Decimal:
             ).quantize(Decimal("0.01"))
 
 
+def factures_ventes(base, client: str) -> dict[str, date]:
+    """Factures de vente du client « Vente Hebdomadaire » dans Sage : n° -> date de la facture."""
+    return {l["s"]: l["d"].date() if hasattr(l["d"], "date") else l["d"] for l in base.requete(
+        "SELECT TRIM(t.sSource) s, t.dtDate d FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
+        "WHERE c.sName = %s AND t.sSource LIKE 'Vente %%'", (client,))}
+
+
 def comptes_sage(base) -> list[str]:
     """« 5450 Frais bancaires » : comptes actifs, pour le choix du compte d'une écriture à saisir."""
     from .base_sage import numero_compte
@@ -285,11 +303,50 @@ def _dans_fenetre(banque: MouvementBanque, sage: MouvementSage) -> bool:
     return -APRES <= ecart <= AVANT
 
 
-def rapprocher(banque: list[MouvementBanque], sage: list[MouvementSage]) -> None:
-    """Relie les mouvements de banque aux écritures Sage (ne touche pas aux mouvements saisis, choisis ou ignorés)."""
+def _date_reference(texte: str) -> date | None:
+    """« PAY05012026 », « PAYE05012026 » (jjmmaaaa) ou « PAY20260119 » (aaaammjj) -> date de la paie."""
+    m = REFERENCE_PAIE.search(texte or "")
+    if not m:
+        return None
+    chiffres = m.group(1)
+    for jour, mois, annee in ((chiffres[:2], chiffres[2:4], chiffres[4:]), (chiffres[6:], chiffres[4:6], chiffres[:4])):
+        try:
+            return date(int(annee), int(mois), int(jour))
+        except ValueError:
+            continue
+    return None
+
+
+def est_salaire(m: MouvementBanque) -> bool:
+    return m.montant < 0 and bool(SALAIRE.search(m.description))
+
+
+def _rapprocher_salaires(a_relier: list[MouvementBanque], sage: list[MouvementSage],
+                         anterieures: list[MouvementSage]) -> None:
+    """Dépôts de salaire (règle du propriétaire) : reliés aux paies de Sage (source « PAY… ») du même montant, même
+    payées plusieurs semaines plus tard ; la paie dont la référence (date) est celle du relevé passe en premier."""
+    for b in sorted((x for x in a_relier if est_salaire(x)), key=lambda x: x.date):
+        jour, reference = date.fromisoformat(b.date), _date_reference(b.description)
+        candidates = [s for s in sage + anterieures if not s.rapproche and s.montant == b.montant
+                      and s.source.upper().startswith("PAY")
+                      and -APRES <= (jour - date.fromisoformat(s.date)).days <= DELAI_PAIE]
+        if not candidates:
+            continue
+        s = min(candidates, key=lambda c: (reference is None or _date_reference(c.source) != reference,
+                                           abs((jour - date.fromisoformat(c.date)).days)))
+        s.rapproche, b.etat, b.sage = True, RAPPROCHE, [s.ident]
+        if s not in sage:
+            sage.append(s)
+
+
+def rapprocher(banque: list[MouvementBanque], sage: list[MouvementSage],
+               anterieures: list[MouvementSage] | None = None) -> None:
+    """Relie les mouvements de banque aux écritures Sage (ne touche pas aux mouvements saisis, choisis ou ignorés).
+    `anterieures` : paies de Sage d'avant la période des relevés (salaires versés en retard) ; celles qui sont reliées
+    sont ajoutées à `sage`."""
     for s in sage:
         s.rapproche = False
-    a_relier = [b for b in banque if b.etat in (A_SAISIR, RAPPROCHE)]
+    a_relier = [b for b in banque if b.etat in (A_SAISIR, RAPPROCHE, A_ENCAISSER, A_PAIE)]
     for b in a_relier:
         b.etat, b.sage = A_SAISIR, []
     for b in banque:  # mouvements déjà saisis par l'application : leurs écritures restent prises
@@ -297,6 +354,8 @@ def rapprocher(banque: list[MouvementBanque], sage: list[MouvementSage]) -> None
             for s in sage:
                 if s.ident in b.sage:
                     s.rapproche = True
+    # 0. dépôts de salaire -> paies de Sage
+    _rapprocher_salaires(a_relier, sage, [s for s in anterieures or [] if s.ident not in {x.ident for x in sage}])
     # 1. une écriture du même montant, à la date la plus proche
     for b in sorted(a_relier, key=lambda x: x.date):
         candidates = [s for s in sage if not s.rapproche and s.montant == b.montant and _dans_fenetre(b, s)]
@@ -313,14 +372,61 @@ def rapprocher(banque: list[MouvementBanque], sage: list[MouvementSage]) -> None
                     s.rapproche = True
                 b.etat, b.sage = RAPPROCHE, [s.ident for s in groupe]
                 break
+    # 3. Interac reçu ou dépôt d'espèces absent de Sage : à encaisser sur les factures de vente (page Encaissements)
+    for b in a_relier:
+        if b.etat == A_SAISIR and est_especes(b):
+            b.etat = A_ENCAISSER
+        elif b.etat == A_SAISIR and est_salaire(b):
+            b.etat = A_PAIE  # la paie se saisit dans le module Paie de Sage, pas en écriture de journal
+
+
+def est_interac(m: MouvementBanque) -> bool:
+    return m.montant > 0 and bool(INTERAC.search(m.description))
+
+
+def est_especes(m: MouvementBanque) -> bool:
+    """Argent des ventes encaissé hors Clover : virement Interac reçu ou dépôt d'espèces au guichet automatique."""
+    return m.montant > 0 and (est_interac(m) or bool(DEPOT_ESPECES.search(m.description)))
+
+
+def jours_couverts(numero: str) -> list[date]:
+    """Jours de vente d'une facture : jour, fin de semaine, « Vente S43-2026 » ou « Vente Octobre 2026 »."""
+    from .facture import MOIS as MOIS_FACTURE
+    from .facture import jours_facture
+
+    jours = jours_facture(numero)
+    if jours:
+        return jours
+    m = re.fullmatch(r"Vente S(\d{2})-(\d{4})", numero.strip())
+    if m:
+        lundi = date.fromisocalendar(int(m.group(2)), int(m.group(1)), 1)
+        return [lundi + timedelta(days=i) for i in range(7)]
+    m = re.fullmatch(r"Vente (\S+) (\d{4})", numero.strip())
+    if m and m.group(1) in MOIS_FACTURE:
+        premier = date(int(m.group(2)), MOIS_FACTURE.index(m.group(1)) + 1, 1)
+        return [premier + timedelta(days=i) for i in range(31) if (premier + timedelta(days=i)).month == premier.month]
+    return []
+
+
+def facture_du_jour(jour: date, factures: dict[str, date] | set[str]) -> str:
+    """Facture de vente qui couvre `jour` (la plus précise : jour, puis fin de semaine, semaine, mois) ; « » sinon."""
+    candidates = [(len(jours), n) for n in factures if jour in (jours := jours_couverts(n))]
+    return min(candidates)[1] if candidates else ""
 
 
 def resume(banque: list[MouvementBanque], sage: list[MouvementSage], solde_banque: Decimal | None,
            solde_de_sage: Decimal | None, ouverture_banque: Decimal | None = None,
-           ouverture_sage: Decimal | None = None) -> dict:
+           ouverture_sage: Decimal | None = None, debut: date | None = None) -> dict:
     """Chiffres du rapprochement. Écart de fin = écart déjà présent à l'ouverture de la période + mouvements de banque
-    absents de Sage − écritures Sage pas encore passées à la banque ; le reste est « non expliqué »."""
-    absents = sum((b.montant for b in banque if b.etat in (A_SAISIR, CONFIRME)), Decimal(0))
+    absents de Sage − écritures Sage pas encore passées à la banque ; le reste est « non expliqué ».
+
+    Un mouvement relié à une écriture Sage d'AVANT le `debut` de la période (salaire versé en retard, écriture saisie
+    quelques jours plus tôt) compte comme absent : l'écriture est déjà dans l'écart d'ouverture."""
+    dates = {s.ident: s.date for s in sage}
+    avant = (lambda b: debut is not None and b.etat == RAPPROCHE and b.sage
+             and all(n in dates and date.fromisoformat(dates[n]) < debut for n in b.sage))
+    absents = sum((b.montant for b in banque if b.etat in (A_SAISIR, CONFIRME, A_ENCAISSER, A_PAIE) or avant(b)),
+                  Decimal(0))
     circulation = sum((s.montant for s in sage if not s.rapproche), Decimal(0))
     ecart = None if solde_banque is None or solde_de_sage is None else solde_banque - solde_de_sage
     ouverture = (None if ouverture_banque is None or ouverture_sage is None else ouverture_banque - ouverture_sage)
@@ -440,6 +546,32 @@ def ecrire_rapport(chemin: Path, releves: list[Releve], banque: list[MouvementBa
     chemin.parent.mkdir(parents=True, exist_ok=True)
     classeur.save(chemin)
     return chemin
+
+
+def restreindre(releves: list[Releve], du: date, au: date):
+    """Mouvements de banque du `du` au `au` inclus, solde à l'ouverture du `du` et solde à la fin du `au`.
+
+    Solde courant suivi relevé par relevé (dans l'ordre des dates) : solde d'ouverture du relevé, puis chaque
+    mouvement ; le solde imprimé sur la ligne, quand il existe, fait foi."""
+    banque, ouverture, fermeture = [], None, None
+    for r in sorted(releves, key=lambda r: r.debut or "9999"):
+        courant = r.solde_ouverture
+        if r.debut and date.fromisoformat(r.debut) >= du and ouverture is None:
+            ouverture = courant
+        for m in r.mouvements:
+            jour = date.fromisoformat(m.date)
+            if jour < du:
+                pass
+            elif jour <= au:
+                if ouverture is None:
+                    ouverture = courant
+                banque.append(m)
+            courant = m.solde if m.solde is not None else (None if courant is None else courant + m.montant)
+            if jour <= au:
+                fermeture = courant
+        if r.fin and date.fromisoformat(r.fin) <= au and r.solde_fermeture is not None:
+            fermeture = r.solde_fermeture
+    return banque, ouverture, fermeture
 
 
 def periode_des(releves: list[Releve]) -> tuple[date, date] | None:

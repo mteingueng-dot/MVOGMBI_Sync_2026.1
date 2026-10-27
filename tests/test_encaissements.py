@@ -71,3 +71,22 @@ def test_depot_du_lundi_sur_la_facture_de_fin_de_semaine():
     mai, octobre = depots
     assert [l.facture for l in mai.lignes] == ["Vente 2026-05-22", "Vente 2026-05-23", "Vente 2026-05-24"]
     assert [(l.facture, l.montant) for l in octobre.lignes] == [("Vente 2026-10-23/25", D("350.00"))]
+
+
+def test_fin_de_semaine_facturee_en_partie():
+    """Vendredi et samedi déjà facturés jour par jour, dimanche seul ensuite (cas du 2026-10-26)."""
+    from mvogmbi_sync.encaissements import factures_fin_de_semaine
+    from mvogmbi_sync.facture import numero_fin_de_semaine
+
+    assert numero_fin_de_semaine(date(2026, 10, 25), date(2026, 10, 25)) == "Vente 2026-10-25"
+    lots = {date(2026, 10, 23): D("100.00"), date(2026, 10, 24): D("200.00"), date(2026, 10, 25): D("50.00")}
+    for dimanche in ("Vente 2026-10-25/25", "Vente 2026-10-25"):  # ancien et nouveau n° du dimanche seul
+        depots = regrouper(lots)
+        factures_fin_de_semaine(depots, {"Vente 2026-10-23", "Vente 2026-10-24", dimanche})
+        assert [(l.facture, l.montant) for l in depots[0].lignes] == [
+            ("Vente 2026-10-23", D("100.00")), ("Vente 2026-10-24", D("200.00")), (dimanche, D("50.00"))]
+    # samedi et dimanche ensemble, vendredi déjà facturé
+    depots = regrouper(lots)
+    factures_fin_de_semaine(depots, {"Vente 2026-10-23", "Vente 2026-10-24/25"})
+    assert [(l.facture, l.montant) for l in depots[0].lignes] == [
+        ("Vente 2026-10-23", D("100.00")), ("Vente 2026-10-24/25", D("250.00"))]

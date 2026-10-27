@@ -17,6 +17,7 @@ from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Ch
                      fond_de, rayer)
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
                            completer, etat_apres_controle, lire_copie_fournisseurs, lire_facture)
+from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
 
 COULEURS = {A_SAISIR: "#fff4d6", A_VERIFIER: "#fde2e4", PRETE: "#e6f4ea", IMPORTEE: None}
@@ -60,6 +61,8 @@ class PageFournisseurs(ttk.Frame):
                              values=[t("Toutes")] + [t(e) for e in ETATS])
         liste.pack(side="left")
         liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher_liste())
+        Bouton(barre, "📤  " + t("Importer toutes les factures prêtes"), lambda: self.importer(toutes=True),
+               "accent").pack(side="right", padx=(8, 0))
         self.resume = ttk.Label(self, text="", foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume.pack(fill="x")
 
@@ -80,6 +83,7 @@ class PageFournisseurs(ttk.Frame):
         self.liste.pack(side="left", fill="both", expand=True)
         defil.pack(side="right", fill="y")
         self.liste.bind("<<TreeviewSelect>>", lambda _e: self.choisir_facture())
+        bouton_exporter(barre, self.liste, t("Factures fournisseurs")).pack(side="right")
         self.liste.bind("<Delete>", lambda _e: self.ecarter())
         self.bind("<Map>", lambda _e: self.actualiser(silencieux=True))  # retour sur la page : liste à jour
 
@@ -112,7 +116,7 @@ class PageFournisseurs(ttk.Frame):
         for cle, libelle in (("sous_total", "Sous-total"), ("tps", "TPS"), ("tvq", "TVQ"), ("total", "Total")):
             ttk.Label(montants, text=t(libelle)).pack(side="left", padx=(0, 4))
             ttk.Entry(montants, textvariable=self.v[cle], width=11).pack(side="left", padx=(0, 14))
-        Bouton(montants, "📤  " + t("Importer dans Sage"), self.importer, "principal").pack(side="right", padx=(8, 0))
+        Bouton(montants, "📤  " + t("Importer cette facture"), self.importer, "principal").pack(side="right", padx=(8, 0))
         Bouton(montants, "💾  " + t("Enregistrer la facture"), self.enregistrer_facture, "accent").pack(side="right")
         self.controle = tk.Label(parent, text="", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=900,
                                  background=fond_de(parent))
@@ -134,6 +138,7 @@ class PageFournisseurs(ttk.Frame):
         self.lignes.pack(side="left", fill="both", expand=True)
         defil.pack(side="right", fill="y")
         self.lignes.bind("<<TreeviewSelect>>", lambda _e: self.choisir_ligne())
+        rendre_exportable(self.lignes, t("Lignes de la facture"))
         self.lignes.bind("<Double-Button-1>", lambda _e: self.chercher_article())
 
         # Carte d'édition de la ligne choisie : valeurs lues (à corriger), conditionnement, article Sage
@@ -267,15 +272,28 @@ class PageFournisseurs(ttk.Frame):
         elif not silencieux:
             self.resume.configure(text=self.resume.cget("text") + "   •   " + t("aucune nouvelle facture"))
 
-    def importer(self) -> None:
-        """Importe dans Sage les factures « Prêtes à importer » (Sage fermé), puis vérifie chacune."""
+    def importer(self, toutes: bool = False) -> None:
+        """Importe dans Sage la facture ouverte (ou, avec `toutes`, toutes les factures « Prêtes à importer »), Sage
+        fermé, puis vérifie chacune."""
         if self.facture:
             self.enregistrer_facture()
-        pretes = [f for f in self.registre.factures if f.etat == PRETE]
-        if not pretes:
-            messagebox.showinfo(self.titre, t("Aucune facture « Prête à importer ». Reliez tous les articles et "
-                                              "enregistrez la facture pour qu'elle le devienne."))
+        if toutes:
+            pretes = [f for f in self.registre.factures if f.etat == PRETE]
+            if not pretes:
+                messagebox.showinfo(self.titre, t("Aucune facture « Prête à importer ». Reliez tous les articles et "
+                                                  "enregistrez la facture pour qu'elle le devienne."))
+                return
+        elif not self.facture:
+            messagebox.showinfo(self.titre, t("Choisissez dans la liste la facture à importer (ou « Importer toutes "
+                                              "les factures prêtes »)."))
             return
+        elif self.facture.etat != PRETE:
+            messagebox.showinfo(self.titre, t("Cette facture n'est pas prête à importer (état : {etat}). Reliez tous "
+                                              "ses articles et vérifiez les totaux, puis enregistrez-la.",
+                                              etat=t(self.facture.etat)))
+            return
+        else:
+            pretes = [self.facture]
         from .sage_bureau import sage_ouvert
         if sage_ouvert():
             messagebox.showwarning(self.titre, t("Fermez Sage : l'import exige que personne ne soit "

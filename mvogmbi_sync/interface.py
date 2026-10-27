@@ -8,14 +8,16 @@ Les secrets (jeton Clover, mots de passe) vont dans le coffre-fort de Windows, j
 
 from __future__ import annotations
 
+import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
 import tkinter as tk
 import tomllib
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -29,7 +31,7 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
 
 # Index des pages (ordre du menu)
 (ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, FOURNISSEURS, PAIEMENTS,
- RAPPROCHEMENT, GUIDE, FAQ) = range(13)
+ RAPPROCHEMENT, GUIDE, FAQ, UTILISATEURS) = range(14)
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -61,10 +63,19 @@ def ecrire_config(chemin: Path, config: dict) -> None:
 
 # --------------------------------------------------------------------------------------------- application
 class Application(tk.Tk):
-    def __init__(self, racine: Path):
+    def __init__(self, racine: Path, session=None):
+        """`session` : utilisateur connecté (pages selon son profil) ; None = toutes les pages (outils, captures)."""
         super().__init__()
         self.racine = racine
         self.relancer = False
+        self.deconnecter = False
+        self.session = session
+        if session is not None:
+            from .utilisateurs import Registre
+
+            self._permises = Registre(racine).pages(session)
+        else:
+            self._permises = None
         self.chemin_config = racine / "config.toml"
         self.config_toml = lire_config(self.chemin_config)
         langues.depuis_config(self.config_toml)
@@ -99,7 +110,8 @@ class Application(tk.Tk):
 
         bas = ttk.Frame(contenu, padding=(0, 10, 0, 0))
         bas.pack(side="bottom", fill="x")
-        Bouton(bas, "💾  " + t("Enregistrer la configuration"), self.enregistrer).pack(side="right")
+        if any(self.permis(i) for i in (CLOVER, SAGE, COURRIEL, AUTOMATISATION)):
+            Bouton(bas, "💾  " + t("Enregistrer la configuration"), self.enregistrer).pack(side="right")
         self.etat = ttk.Label(bas, text="", foreground=TEXTE_DOUX)
         self.etat.pack(side="left")
         self.onglets = ttk.Notebook(contenu, style="Pages.TNotebook")
@@ -119,11 +131,21 @@ class Application(tk.Tk):
         self._onglet_rapprochement()
         self._onglet_texte(t("Guide de configuration"), "guide", "📘")
         self._onglet_texte(t("Aide / FAQ"), "faq", "❓")
+        if self.permis(UTILISATEURS):
+            self._onglet_utilisateurs()
         self._construire_menu()
 
         self._attente = self.after(200, self._relayer_messages)
         self.actualiser_tableau()
         self.aller(ACCUEIL)
+
+    def permis(self, index: int) -> bool:
+        """Page visible pour l'utilisateur connecté (profil)."""
+        from .utilisateurs import PAGES, UTILISATEURS as CLE_UTILISATEURS
+
+        if self._permises is None:
+            return True
+        return (PAGES[index] if index < len(PAGES) else CLE_UTILISATEURS) in self._permises
 
     # ---------------------------------------------------------------- apparence
     def _styles(self) -> None:
@@ -181,11 +203,12 @@ class Application(tk.Tk):
         self.boutons_menu, self.barres_menu, self.pastilles_menu = [], [], []
         for index, (icone, titre) in enumerate(self._pages):
             ligne = tk.Frame(self.menu, background=MENU_FOND)
-            ligne.pack(fill="x", padx=(8, 10), pady=1)
+            if self.permis(index):  # page cachée : absente du menu
+                ligne.pack(fill="x", padx=(8, 10), pady=1)
             barre = tk.Frame(ligne, width=4, background=MENU_FOND)
             barre.pack(side="left", fill="y")
             bouton = tk.Label(ligne, text=f"{icone}   {titre}", anchor="w", font=("Segoe UI", 10),
-                              background=MENU_FOND, foreground=TEXTE, padx=16, pady=9, cursor="hand2")
+                              background=MENU_FOND, foreground=TEXTE, padx=16, pady=7, cursor="hand2")
             bouton.pack(side="left", fill="x", expand=True)
             pastille = tk.Label(ligne, text="", font=("Segoe UI", 9), background=MENU_FOND, padx=6)
             pastille.place(relx=1.0, rely=0.5, anchor="e")
@@ -197,7 +220,7 @@ class Application(tk.Tk):
             self.barres_menu.append(barre)
             self.pastilles_menu.append(pastille)
         manuel = tk.Label(self.menu, text="📖   " + t("Manuel d'utilisation (PDF)"), anchor="w", font=("Segoe UI", 10),
-                          background=MENU_FOND, foreground=VERT_FONCE, padx=16, pady=9, cursor="hand2")
+                          background=MENU_FOND, foreground=VERT_FONCE, padx=16, pady=7, cursor="hand2")
         manuel.pack(fill="x", padx=(12, 10), pady=(10, 1))
         manuel.bind("<Button-1>", lambda _e: self.ouvrir_manuel())
         manuel.bind("<Enter>", lambda _e: manuel.configure(background=MENU_SURVOL))
@@ -205,6 +228,18 @@ class Application(tk.Tk):
         self._actif = None
         bas = tk.Frame(self.menu, background=MENU_FOND)
         bas.pack(side="bottom", fill="x", padx=16, pady=14)
+        if self.session is not None:
+            tk.Label(bas, text=f"👤  {self.session.nom}", font=("Segoe UI Semibold", 10), foreground=TEXTE,
+                     background=MENU_FOND).pack(anchor="w")
+            tk.Label(bas, text=t(self.session.profil), font=("Segoe UI", 9), foreground="#5a6b60",
+                     background=MENU_FOND).pack(anchor="w", padx=(24, 0))
+            for texte, commande in ((t("Changer mon mot de passe"), self.changer_mot_de_passe),
+                                    (t("Se déconnecter"), self.se_deconnecter)):
+                lien = tk.Label(bas, text=texte, font=("Segoe UI", 9, "underline"), foreground=VERT_FONCE,
+                                background=MENU_FOND, cursor="hand2")
+                lien.pack(anchor="w", padx=(24, 0))
+                lien.bind("<Button-1>", lambda _e, c=commande: c())
+            tk.Frame(bas, height=10, background=MENU_FOND).pack()
         tk.Label(bas, text="🌐  Langue / Language", font=("Segoe UI", 9), foreground="#5a6b60",
                  background=MENU_FOND).pack(anchor="w")
         self.langue = tk.StringVar(value=langues.LANGUES[langues.courante()])
@@ -217,9 +252,11 @@ class Application(tk.Tk):
             tk.Label(bas, text=texte, font=("Segoe UI", 8), foreground="#8a978e", background=MENU_FOND).pack(anchor="w")
 
     def ouvrir_manuel(self) -> None:
-        """Manuel illustré : à côté du programme installé, sinon dans documentation/ (poste de développement)."""
-        for chemin in (self.racine / "Manuel_MVOGMBI_Sync.pdf", self.racine / "documentation" / "Manuel_MVOGMBI_Sync.pdf",
-                       Path(__file__).resolve().parent.parent / "documentation" / "Manuel_MVOGMBI_Sync.pdf"):
+        """Manuel illustré dans la langue de l'application (sinon en français) : à côté du programme installé, sinon
+        dans documentation/ (poste de développement)."""
+        noms = (["User_Manual_MVOGMBI_Sync.pdf"] if langues.courante() == "en" else []) + ["Manuel_MVOGMBI_Sync.pdf"]
+        dossiers = (self.racine, self.racine / "documentation", Path(__file__).resolve().parent.parent / "documentation")
+        for chemin in (d / n for n in noms for d in dossiers):
             if chemin.exists():
                 os.startfile(chemin)
                 return
@@ -232,7 +269,18 @@ class Application(tk.Tk):
         self.boutons_menu[index].configure(background=couleur)
         self.pastilles_menu[index].configure(background=couleur)
 
+    def changer_mot_de_passe(self) -> None:
+        from .connexion import changer_mon_mot_de_passe
+
+        changer_mon_mot_de_passe(self, self.racine, self.session, TITRE)
+
+    def se_deconnecter(self) -> None:
+        self.deconnecter = True  # retour à la fenêtre de connexion
+        self.destroy()
+
     def aller(self, index: int) -> None:
+        if not self.permis(index):
+            return
         self.onglets.select(index)
         for i, bouton in enumerate(self.boutons_menu):
             actif = i == index
@@ -487,6 +535,10 @@ class Application(tk.Tk):
         (AUTOMATISATION, "4", "Automatisation", "Tâche planifiée installée"),
         (CORRESPONDANCE, "5", "Correspondance", "Articles Clover reliés à Sage"),
         (TABLEAU, "6", "Premier import", "Une facture importée dans Sage"),
+        (ENCAISSEMENTS, "7", "Encaissements", "Dépôts appliqués sur les factures"),
+        (FOURNISSEURS, "8", "Factures fournisseurs", "Factures d'achat importées dans Sage"),
+        (PAIEMENTS, "9", "Paiements fournisseurs", "Boîte des avis de paiement reliée"),
+        (RAPPROCHEMENT, "10", "Rapprochement bancaire", "Relevés Desjardins chargés"),
     )
 
     def _onglet_accueil(self) -> None:
@@ -497,15 +549,31 @@ class Application(tk.Tk):
         self._pages.append(("🏠", t("Accueil")))
         cadre.columnconfigure(0, weight=1)
         cadre.rowconfigure(1, weight=1)
+        self.lignes_etapes, self.progression_etapes = {}, None
+        if self.session is None or self.session.est_admin:  # la mise en service : administrateur
+            self._mise_en_route(cadre)
+        zone = self._zone_document(cadre, TEXTE_ACCUEIL[langues.courante()])
+        zone.grid(row=1, column=0, sticky="nsew")
+        defilement = ttk.Scrollbar(cadre, orient="vertical", command=zone.yview)
+        zone.configure(yscrollcommand=defilement.set)
+        defilement.grid(row=1, column=1, sticky="ns")
+
+    def _mise_en_route(self, cadre) -> None:
+        """Carte « Mise en route » : les dix étapes, une par page, avec ✔ quand elle est faite."""
         carte = self._carte(cadre, 0, t("Mise en route"), "✓",
-                            t("Six étapes pour une synchronisation entièrement automatique. Chaque étape passe au "
-                              "vert quand elle est faite."))
-        self.lignes_etapes = {}
-        for n, (page, numero, titre, description) in enumerate(self.ETAPES):
+                            t("Dix étapes, une par page, pour une gestion entièrement automatique. Chaque étape "
+                              "passe au vert (✔) quand elle est faite."))
+        self.progression_etapes = tk.Label(carte, text="", font=("Segoe UI Semibold", 9), foreground=VERT_FONCE,
+                                           background=CARTE)
+        self.progression_etapes.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        etapes = [e for e in self.ETAPES if self.permis(e[0])]  # pages du profil seulement
+        moitie = (len(etapes) + 1) // 2  # deux colonnes : 1 à 5 à gauche, 6 à 10 à droite
+        for n, (page, numero, titre, description) in enumerate(etapes):
             case = tk.Frame(carte, background=CARTE)
-            case.grid(row=n // 3, column=n % 3, sticky="we", padx=(0, 18), pady=6)
-            carte.columnconfigure(n % 3, weight=1)
-            etat = tk.Label(case, text="●", font=("Segoe UI", 14), foreground=JAUNE, background=CARTE)
+            case.grid(row=1 + n % moitie, column=n // moitie, sticky="we", padx=(0, 18), pady=4)
+            carte.columnconfigure(n // moitie, weight=1, uniform="etapes")
+            etat = tk.Label(case, text="●", font=("Segoe UI Semibold", 14), foreground=JAUNE, background=CARTE,
+                            width=2)
             etat.grid(row=0, column=0, rowspan=2, padx=(0, 8))
             tk.Label(case, text=f"{numero}. {t(titre)}", font=("Segoe UI Semibold", 10), foreground=TEXTE,
                      background=CARTE).grid(row=0, column=1, sticky="w")
@@ -516,11 +584,6 @@ class Application(tk.Tk):
                 row=0, column=2, rowspan=2, padx=(10, 0))
             case.columnconfigure(1, weight=1)
             self.lignes_etapes[page] = (etat, detail, t(description))
-        zone = self._zone_document(cadre, TEXTE_ACCUEIL[langues.courante()])
-        zone.grid(row=1, column=0, sticky="nsew")
-        defilement = ttk.Scrollbar(cadre, orient="vertical", command=zone.yview)
-        zone.configure(yscrollcommand=defilement.set)
-        defilement.grid(row=1, column=1, sticky="ns")
 
     def _etat_etapes(self) -> dict[int, tuple[bool, str]]:
         """Pour chaque étape de mise en route : (faite, précision)."""
@@ -544,16 +607,50 @@ class Application(tk.Tk):
             if lignes:
                 derniere = lignes[-1].split(";")[1]
         etats[TABLEAU] = (bool(derniere), derniere)
+        enc = c.get("encaissements", {})
+        log = self.racine / "donnees" / "journal_automatique.log"
+        encaisse = log.exists() and bool(re.search(r"[1-9]\d* dépôt\(s\) encaissé",
+                                                    log.read_text(encoding="utf-8", errors="replace")))
+        etats[ENCAISSEMENTS] = (bool(enc.get("date_depart")) and encaisse,
+                                t("Depuis le {date}", date=enc["date_depart"]) if enc.get("date_depart") and encaisse
+                                else "")
+        etats[FOURNISSEURS] = self._etat_registre("factures_fournisseurs.json", "Importée dans Sage",
+                                                  "{n} facture(s) importée(s)")
+        b = c.get("boite_paiements", {})
+        boite = bool(b.get("serveur") and b.get("utilisateur")) and coffre.present(coffre.BOITE_PAIEMENTS)
+        saisis = self._etat_registre("paiements_fournisseurs.json", ("Saisi dans Sage", "Déjà dans Sage"),
+                                     "{n} paiement(s) saisi(s)")[1]
+        etats[PAIEMENTS] = (boite, saisis if boite else "")
+        dossier = self.racine / "donnees" / "releves_desjardins"
+        releves = len(list(dossier.glob("*.pdf"))) if dossier.is_dir() else 0
+        etats[RAPPROCHEMENT] = (releves > 0, t("{n} relevé(s) chargé(s)", n=releves) if releves else "")
         return etats
+
+    def _etat_registre(self, nom: str, etats, texte: str) -> tuple[bool, str]:
+        """(au moins un élément dans l'un des `etats`, « n … ») d'un registre JSON de donnees/."""
+        chemin = self.racine / "donnees" / nom
+        try:
+            elements = json.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else []
+        except (OSError, ValueError):
+            elements = []
+        etats = (etats,) if isinstance(etats, str) else etats
+        n = sum(1 for x in elements if isinstance(x, dict) and x.get("etat") in etats)
+        return n > 0, t(texte, n=n) if n else ""
 
     def _maj_etapes(self) -> None:
         etats = self._etat_etapes()
+        etats = {page: etat for page, etat in etats.items() if page in self.lignes_etapes}
         for page, (faite, precision) in etats.items():
             etat, detail, description = self.lignes_etapes[page]
             etat.configure(text="✔" if faite else "●", foreground=VERT if faite else JAUNE)
             detail.configure(text=precision or description)
-            if page in (CLOVER, SAGE, COURRIEL, AUTOMATISATION) and hasattr(self, "pastilles_menu"):
+            if hasattr(self, "pastilles_menu"):
                 self.pastilles_menu[page].configure(text="✔" if faite else "●", foreground=VERT if faite else JAUNE)
+        faites = sum(1 for faite, _ in etats.values() if faite)
+        if self.progression_etapes is None:
+            return None
+        self.progression_etapes.configure(text=t("{n} étape(s) sur {total} terminée(s)", n=faites, total=len(etats))
+                                          + ("  ✔" if faites == len(etats) else ""))
         return None
 
     # ---------------------------------------------------------------- pages de configuration
@@ -687,6 +784,16 @@ class Application(tk.Tk):
         self.onglets.add(self.page_fournisseurs, text=t("8. Factures fournisseurs"))
         self._pages.append(("🧾", t("8. Factures fournisseurs")))
 
+    def _onglet_utilisateurs(self) -> None:
+        from .page_utilisateurs import PageUtilisateurs
+        from .utilisateurs import PAGES
+
+        libelles = {cle: titre for cle, (_, titre) in zip(PAGES, self._pages)}
+        self.page_utilisateurs = PageUtilisateurs(self.onglets, self.racine, TITRE, libelles,
+                                                  self.session.nom if self.session else "")
+        self.onglets.add(self.page_utilisateurs, text=t("Utilisateurs"))
+        self._pages.append(("👥", t("Utilisateurs")))
+
     def _onglet_paiements(self) -> None:
         from .page_paiements import PagePaiements
 
@@ -721,8 +828,18 @@ class Application(tk.Tk):
         Bouton(haut, "📁  " + t("Dossier des données"), lambda: self.ouvrir(self.racine / "donnees"),
                "secondaire").pack(side="left", padx=8)
         Bouton(haut, "⟳", self.actualiser_tableau, "secondaire", largeur=40).pack(side="right")
+        # une date ou une période choisie (rattrapage) au lieu de « dernière facture de Sage jusqu'à hier »
+        periode = ttk.Frame(f)
+        periode.grid(row=3, column=0, columnspan=3, sticky="we", pady=(12, 0))
+        hier = (date.today() - timedelta(days=1)).isoformat()
+        self.periode_du, self.periode_au = tk.StringVar(value=hier), tk.StringVar(value=hier)
+        ttk.Label(periode, text=t("Charger une date ou une période : du")).pack(side="left")
+        ChampDate(periode, self.periode_du).pack(side="left", padx=4)
+        ttk.Label(periode, text=t("au")).pack(side="left")
+        ChampDate(periode, self.periode_au).pack(side="left", padx=4)
+        Bouton(periode, "📥  " + t("Charger la période"), self.charger_periode, "secondaire").pack(side="left", padx=8)
         self.sortie_tableau = self._sortie(f, 18)
-        self.sortie_tableau.grid(row=3, column=0, columnspan=3, sticky="we", pady=(14, 0))
+        self.sortie_tableau.grid(row=4, column=0, columnspan=3, sticky="we", pady=(14, 0))
 
     # ---------------------------------------------------------------- actions
     def enregistrer(self) -> bool:
@@ -912,10 +1029,26 @@ class Application(tk.Tk):
                                      fichiers=", ".join(copies)))
         self.destroy()
 
-    def lancer(self, simulation: bool) -> None:
+    def charger_periode(self) -> None:
+        """Importe les factures de la date ou de la période choisie (jours déjà dans Sage sautés ; vendredi à
+        dimanche : une seule facture)."""
+        try:
+            du, au = date.fromisoformat(self.periode_du.get().strip()), date.fromisoformat(self.periode_au.get().strip())
+            assert du <= au < date.today()
+        except (ValueError, AssertionError):
+            messagebox.showerror(TITRE, t("Vérifiez les dates (AAAA-MM-JJ) : du ≤ au, au plus tard hier."))
+            return
+        if not messagebox.askyesno(TITRE, t("Charger dans Sage les ventes du {du} au {au} ? Les jours déjà facturés "
+                                            "sont sautés ; vendredi, samedi et dimanche forment une seule facture.",
+                                            du=du, au=au)):
+            return
+        self.lancer(False, depuis=du, jusqua=au, confirme=True)
+
+    def lancer(self, simulation: bool, depuis: date | None = None, jusqua: date | None = None,
+               confirme: bool = False) -> None:
         if not self.enregistrer():
             return
-        if not simulation and not messagebox.askyesno(
+        if not simulation and not confirme and not messagebox.askyesno(
                 TITRE, t("Lancer le traitement maintenant ? Les factures manquantes seront importées dans Sage.")):
             return
         zone = self.sortie_tableau
@@ -927,6 +1060,10 @@ class Application(tk.Tk):
             commande = commande_moteur() + ["auto"]
             if simulation:
                 commande.append("--simulation")
+            if depuis:
+                commande += ["--depuis", depuis.isoformat()]
+            if jusqua:
+                commande += ["--jusqua", jusqua.isoformat()]
             processus = subprocess.Popen(commande, cwd=self.racine, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                          text=True, encoding="utf-8", errors="replace",
                                          env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"},
@@ -992,8 +1129,18 @@ def lancer_interface(racine: Path) -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(ID_APPLICATION)
     except Exception:
         pass
-    while True:  # un changement de langue reconstruit la fenêtre
-        application = Application(racine)
+    from .connexion import connecter
+
+    session = None
+    while True:  # un changement de langue reconstruit la fenêtre ; une déconnexion revient à la connexion
+        if session is None:
+            langues.depuis_config(lire_config(racine / "config.toml"))
+            session = connecter(racine, TITRE)
+            if session is None:
+                break
+        application = Application(racine, session)
         application.mainloop()
-        if not application.relancer:
+        if application.deconnecter:
+            session = None
+        elif not application.relancer:
             break

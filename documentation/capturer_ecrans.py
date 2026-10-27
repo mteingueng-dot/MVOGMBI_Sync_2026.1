@@ -3,7 +3,9 @@
 L'application est ouverte sur une COPIE temporaire des données (config.toml + donnees/) : rien n'est modifié dans le
 dossier d'origine, aucune lecture de boîte de courriel n'est lancée. Ensuite : python documentation/creer_manuel.py
 
-    python documentation/capturer_ecrans.py [dossier de l'application installée]
+    python documentation/capturer_ecrans.py [dossier de l'application installée] [--langue en]
+
+En anglais, les captures vont dans documentation/captures/en/ (manuel anglais).
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes as w
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -50,14 +53,39 @@ def capturer(hwnd, chemin: Path) -> None:
     u.ReleaseDC(0, dc_ecran)
 
 
-def main(origine: Path) -> None:
+def choisir_langue(config: Path, langue: str) -> None:
+    """Fixe [general] langue dans le config.toml de la copie."""
+    texte = config.read_text(encoding="utf-8")
+    if re.search(r"(?m)^langue\s*=", texte):
+        texte = re.sub(r'(?m)^langue\s*=.*$', f'langue = "{langue}"', texte, count=1)
+    elif "[general]" in texte:
+        texte = texte.replace("[general]", f'[general]\nlangue = "{langue}"', 1)
+    else:
+        texte = f'[general]\nlangue = "{langue}"\n\n' + texte
+    config.write_text(texte, encoding="utf-8")
+
+
+def main(origine: Path, langue: str = "fr") -> None:
+    global SORTIE
+    if langue != "fr":
+        SORTIE = SORTIE / langue
     copie = Path(tempfile.mkdtemp(prefix="mvogmbi_captures_"))
     shutil.copy2(origine / "config.toml", copie / "config.toml")
+    choisir_langue(copie / "config.toml", langue)
     shutil.copytree(origine / "donnees", copie / "donnees")
     os.environ["MVOGMBI_RACINE"] = str(copie)
+    sys.path.insert(0, str(ICI.parent))
+    from mvogmbi_sync.utilisateurs import ADMIN, Registre
+
+    comptes = Registre(copie)  # comptes fictifs, sur la copie seulement (page Utilisateurs)
+    comptes.utilisateurs = []
+    for nom, profil in (("Gérant", ADMIN), ("Comptable", "Comptable"), ("Caisse 1", "Employé")):
+        comptes.ajouter(nom, profil, "exemple123")
+    comptes.enregistrer()
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
     sys.path.insert(0, str(ICI.parent))
     from mvogmbi_sync import interface, page_paiements
+    from mvogmbi_sync.langues import t
     from mvogmbi_sync.paiements_fournisseurs import PROPOSE
 
     page_paiements.PagePaiements._premiere_lecture = lambda self: None  # pas de lecture de la boîte
@@ -102,7 +130,7 @@ def main(origine: Path) -> None:
 
     def virement_propose():
         p = app.page_paiements
-        p.filtre.set("Tous")
+        p.filtre.set(t("Tous"))
         p.afficher()
         cible = next((i for i, x in enumerate(p.registre.paiements) if x.etat == PROPOSE), None)
         if cible is not None and p.tableau.exists(str(cible)):
@@ -122,6 +150,7 @@ def main(origine: Path) -> None:
     page(i.RAPPROCHEMENT, "10_rapprochement", lambda: app.page_rapprochement.actualiser(), delai=12000)
     page(i.GUIDE, "11_guide")
     page(i.FAQ, "12_faq")
+    page(i.UTILISATEURS, "13_utilisateurs")
     app.after(2500, suivant)
     app.mainloop()
     shutil.rmtree(copie, ignore_errors=True)
@@ -129,4 +158,7 @@ def main(origine: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]) if len(sys.argv) > 1 else INSTALLEE)
+    arguments = [a for a in sys.argv[1:] if not a.startswith("--")]
+    langue = sys.argv[sys.argv.index("--langue") + 1] if "--langue" in sys.argv else "fr"
+    arguments = [a for a in arguments if a != langue]
+    main(Path(arguments[0]) if arguments else INSTALLEE, langue)

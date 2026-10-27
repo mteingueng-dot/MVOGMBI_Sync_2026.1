@@ -5,19 +5,24 @@ from __future__ import annotations
 import shutil
 import threading
 import tkinter as tk
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampRecherche, cadre_tableau, entete_page,
-                     fond_de, rayer)
+from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau,
+                     entete_page, fond_de, rayer)
+from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
-from .rapprochement import (A_SAISIR, CONFIRME, EN_CIRCULATION, IGNORE, RAPPROCHE, SAISI, RegistreReleves, comptes_sage,
-                            ecrire_rapport, mouvements_sage, periode_des, rapprocher, resume, solde_sage)
+from .rapprochement import (A_ENCAISSER, A_PAIE, A_SAISIR, CONFIRME, DELAI_PAIE, EN_CIRCULATION, IGNORE, RAPPROCHE,
+                            SAISI, RegistreReleves, comptes_sage, ecrire_rapport, mouvements_sage, periode_des,
+                            rapprocher, restreindre, resume, solde_sage)
 
-ETATS = [A_SAISIR, CONFIRME, RAPPROCHE, SAISI, IGNORE]
-COULEURS = {A_SAISIR: "#fff4d6", CONFIRME: "#e6f4ea", RAPPROCHE: None, SAISI: None, IGNORE: None}
+ETATS = [A_SAISIR, A_ENCAISSER, A_PAIE, CONFIRME, RAPPROCHE, SAISI, IGNORE]
+A_TRAITER = (A_SAISIR, A_ENCAISSER, A_PAIE, CONFIRME)
+COULEURS = {A_SAISIR: "#fff4d6", A_ENCAISSER: "#efe8fb", A_PAIE: "#fde2e4", CONFIRME: "#e6f4ea", RAPPROCHE: None,
+            SAISI: None, IGNORE: None}
+RENVOIS = {A_ENCAISSER: "→ page 7 Encaissements", A_PAIE: "→ module Paie de Sage"}
 
 
 def argent(valeur) -> str:
@@ -43,6 +48,16 @@ class PageRapprochement(ttk.Frame):
         Bouton(barre, "🗑  " + t("Supprimer le relevé"), self.supprimer, "danger").pack(side="left")
         Bouton(barre, "📗  " + t("Rapport Excel"), self.rapport, "secondaire").pack(side="right")
         Bouton(barre, "📤  " + t("Saisir dans Sage"), self.saisir, "accent").pack(side="right", padx=8)
+        periode = ttk.Frame(self)
+        periode.pack(fill="x", pady=(8, 0))
+        ttk.Label(periode, text=t("Période du")).pack(side="left", padx=(0, 4))
+        self.du, self.au = tk.StringVar(), tk.StringVar()
+        ChampDate(periode, self.du).pack(side="left")
+        ttk.Label(periode, text=t("au")).pack(side="left", padx=4)
+        ChampDate(periode, self.au).pack(side="left")
+        Bouton(periode, "🔄  " + t("Rapprocher cette période"), self.actualiser, petit=True).pack(side="left", padx=8)
+        Bouton(periode, t("Toute la période des relevés"), self.toute_la_periode, "secondaire", petit=True).pack(
+            side="left")
         self.resume = ttk.Label(self, text=t("Chargez un relevé PDF Desjardins, puis « Actualiser »."),
                                 foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume.pack(fill="x")
@@ -102,6 +117,8 @@ class PageRapprochement(ttk.Frame):
         self.tableau.pack(side="left", fill="both", expand=True)
         defil.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
+        bouton_exporter(barre, self.tableau, t("Rapprochement bancaire")).pack(side="right")
+        rendre_exportable(self.liste, t("Relevés Desjardins"))
 
         # décision pour le mouvement choisi
         carte = tk.Frame(self, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
@@ -139,7 +156,7 @@ class PageRapprochement(ttk.Frame):
             cible = self.registre.dossier / Path(f).name
             if Path(f).resolve() != cible.resolve():
                 shutil.copy2(f, cible)
-        self.actualiser()
+        self.toute_la_periode()
 
     def supprimer(self) -> None:
         choix = self.liste.selection()
@@ -168,7 +185,31 @@ class PageRapprochement(ttk.Frame):
         rayer(self.liste)
 
     # ---------------------------------------------------------------- lecture et rapprochement
+    def toute_la_periode(self) -> None:
+        self.du.set("")
+        self.au.set("")
+        self.actualiser()
+
+    def _choix_periode(self) -> tuple[date, date] | None | bool:
+        """(du, au) choisis ; None = toute la période des relevés ; False = date invalide (message affiché)."""
+        textes = (self.du.get().strip(), self.au.get().strip())
+        if not any(textes):
+            return None
+        try:
+            du, au = (date.fromisoformat(x) if x else None for x in textes)
+        except ValueError:
+            messagebox.showwarning(self.titre, t("Date invalide : utilisez le format AAAA-MM-JJ (ou le calendrier 📅)."))
+            return False
+        du, au = du or date.min, au or date.max
+        if du > au:
+            messagebox.showwarning(self.titre, t("La date de début est après la date de fin."))
+            return False
+        return du, au
+
     def actualiser(self) -> None:
+        choix = self._choix_periode()
+        if choix is False:
+            return
         self.resume.configure(text=t("Lecture des relevés et des écritures du compte 1055 dans Sage…"))
 
         def travail():
@@ -178,34 +219,44 @@ class PageRapprochement(ttk.Frame):
                 self.registre = RegistreReleves(self.racine)
                 releves = self.registre.lire()
                 periode = periode_des(releves)
+                if periode and choix:  # période choisie, ramenée à celle des relevés chargés
+                    periode = (max(periode[0], choix[0]), min(periode[1], choix[1]))
+                    if periode[0] > periode[1]:
+                        periode = None
                 config = self._config()
                 fichier = config.get("sage_import", {}).get("fichier_entreprise")
                 if periode:
-                    sage, solde, ouverture, comptes = lire_sage(config, lambda base: (
+                    sage, solde, ouverture, comptes, paies = lire_sage(config, lambda base: (
                         mouvements_sage(base, periode[0], periode[1]), solde_sage(base, periode[1]),
-                        solde_sage(base, periode[0] - timedelta(days=1)), comptes_sage(base)), fichier)
+                        solde_sage(base, periode[0] - timedelta(days=1)), comptes_sage(base),
+                        [s for s in mouvements_sage(base, periode[0] - timedelta(days=DELAI_PAIE),
+                                                    periode[0] - timedelta(days=1)) if s.source.upper().startswith("PAY")]),
+                        fichier)
                 else:
-                    sage, solde, ouverture, comptes = [], None, None, []
-                self.after(0, lambda: self._fin_lecture(releves, sage, solde, ouverture, comptes, periode))
+                    sage, solde, ouverture, comptes, paies = [], None, None, [], []
+                self.after(0, lambda: self._fin_lecture(releves, sage, solde, ouverture, comptes, periode, paies))
             except Exception as exc:
                 message = str(exc)
                 self.after(0, lambda: self.resume.configure(text="✘ " + message))
 
         threading.Thread(target=travail, daemon=True).start()
 
-    def _fin_lecture(self, releves, sage, solde, ouverture_sage, comptes, periode) -> None:
+    def _fin_lecture(self, releves, sage, solde, ouverture_sage, comptes, periode, paies=()) -> None:
         self.releves, self.sage, self.comptes, self.periode = releves, sage, comptes, periode
-        self.banque = [m for r in releves for m in r.mouvements]
-        rapprocher(self.banque, self.sage)
-        fins = [r for r in releves if r.solde_fermeture is not None and r.fin]
-        solde_banque = max(fins, key=lambda r: r.fin).solde_fermeture if fins else None
-        debuts = [r for r in releves if r.solde_ouverture is not None and r.debut]
-        ouverture_banque = min(debuts, key=lambda r: r.debut).solde_ouverture if debuts else None
+        if periode:
+            self.du.set(periode[0].isoformat())
+            self.au.set(periode[1].isoformat())
+            self.banque, ouverture_banque, solde_banque = restreindre(releves, *periode)
+        else:
+            self.banque, ouverture_banque, solde_banque = [], None, None
+        rapprocher(self.banque, self.sage, list(paies))  # salaires versés en retard : paies d'avant la période
         self.soldes = (solde_banque, solde, ouverture_banque, ouverture_sage)
-        self.chiffres = resume(self.banque, self.sage, *self.soldes)
+        self.chiffres = resume(self.banque, self.sage, *self.soldes, debut=self.periode[0] if self.periode else None)
         self.champ_compte.configurer_valeurs(comptes)
         self.afficher_releves()
         self.afficher()
+        if not periode and releves:
+            self.resume.configure(text=t("Aucun relevé chargé ne couvre cette période."))
 
     def afficher(self) -> None:
         for cle, etiquette in self.valeurs.items():
@@ -216,11 +267,11 @@ class PageRapprochement(ttk.Frame):
         self.tableau.delete(*self.tableau.get_children())
         if choix != t(EN_CIRCULATION):
             for i, m in enumerate(self.banque):
-                if choix == t("À traiter") and m.etat not in (A_SAISIR, CONFIRME):
+                if choix == t("À traiter") and m.etat not in A_TRAITER:
                     continue
                 if choix not in (t("À traiter"), t("Tous")) and t(m.etat) != choix:
                     continue
-                lien = (", ".join(f"n° {n}" for n in m.sage) if m.sage else m.compte)
+                lien = (", ".join(f"n° {n}" for n in m.sage) if m.sage else m.compte or t(RENVOIS.get(m.etat, "")))
                 self.tableau.insert("", "end", iid=f"b{i}", tags=(m.etat,), values=(
                     m.date, m.description, argent(m.montant) if m.montant > 0 else "",
                     argent(-m.montant) if m.montant < 0 else "", t(m.etat), lien))
@@ -233,10 +284,11 @@ class PageRapprochement(ttk.Frame):
                     argent(-s.montant) if s.montant < 0 else "", t(EN_CIRCULATION), f"n° {s.ident}"))
         rayer(self.tableau)
         compte = {e: sum(1 for m in self.banque if m.etat == e) for e in ETATS}
-        self.resume.configure(text=t("{n} mouvement(s) de banque — rapprochés : {r}, absents de Sage : {a}, compte "
-                                     "choisi : {c}, ignorés : {i} • écritures Sage seulement : {s}",
+        self.resume.configure(text=t("{n} mouvement(s) de banque — rapprochés : {r}, absents de Sage : {a}, à encaisser "
+                                     "sur les ventes : {e}, paies absentes : {p}, compte choisi : {c}, ignorés : {i} • "
+                                     "écritures Sage seulement : {s}",
                                      n=len(self.banque), r=compte[RAPPROCHE] + compte[SAISI], a=compte[A_SAISIR],
-                                     c=compte[CONFIRME], i=compte[IGNORE],
+                                     e=compte[A_ENCAISSER], p=compte[A_PAIE], c=compte[CONFIRME], i=compte[IGNORE],
                                      s=sum(1 for s in self.sage if not s.rapproche)))
 
     # ---------------------------------------------------------------- décisions
@@ -257,13 +309,17 @@ class PageRapprochement(ttk.Frame):
                                    sens=t("Entrée") if m.montant > 0 else t("Sortie"), m=argent(abs(m.montant)),
                                    r=m.releve))
         self.compte.set(m.compte)
-        self.remarque.configure(text=m.remarque)
+        conseil = {A_ENCAISSER: t("Argent des ventes (Interac ou espèces) : il s'encaisse sur les factures de vente à la "
+                                  "page 7 « Encaissements », pas en écriture de journal."),
+                   A_PAIE: t("Dépôt de salaire : aucune paie du même montant dans Sage (source PAY…). Saisissez ou "
+                             "corrigez la paie dans le module Paie de Sage, puis « Actualiser ».")}.get(m.etat, "")
+        self.remarque.configure(text=m.remarque or conseil)
 
     def _apres(self) -> None:
         self.registre.retenir(self.mouvement)
         self.registre.enregistrer()
         selection = self.tableau.selection()
-        self.chiffres = resume(self.banque, self.sage, *self.soldes)
+        self.chiffres = resume(self.banque, self.sage, *self.soldes, debut=self.periode[0] if self.periode else None)
         self.afficher()
         if selection and self.tableau.exists(selection[0]):
             self.tableau.selection_set(selection[0])

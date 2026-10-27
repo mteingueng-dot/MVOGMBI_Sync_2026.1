@@ -12,6 +12,7 @@ from .correspondance import normaliser
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau, entete_page,
                      rayer)
 from .fournisseurs import MemoireCorrespondance, lire_copie_fournisseurs
+from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
 from .paiements_fournisseurs import (A_RELIER, CONFIRME, DEJA, ETATS, IGNORE, NON_PAYE, PROPOSE, SAISI,
                                      RegistrePaiements, rapprocher, repartir)
@@ -70,6 +71,7 @@ class PagePaiements(ttk.Frame):
         self.tableau.pack(side="left", fill="both", expand=True)
         defil.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
+        bouton_exporter(barre, self.tableau, t("Paiements fournisseurs")).pack(side="right", padx=8)
 
         carte = tk.Frame(self, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
         carte.pack(fill="x", pady=(8, 0))

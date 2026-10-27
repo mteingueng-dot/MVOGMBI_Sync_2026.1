@@ -103,7 +103,9 @@ def lire_etat_sage(base, client: str) -> EtatSage:
 
 
 def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = None,
-                         simulation: bool = False) -> CompteRendu:
+                         simulation: bool = False, depuis: date | None = None) -> CompteRendu:
+    """`depuis` : période choisie par le propriétaire (bouton « Charger la période ») au lieu de « dernière facture de
+    Sage + 1 jour » ; les jours déjà facturés sont sautés."""
     from .__main__ import charger_config, config_import, executable_import, ouvrir_base_sage
     from .api_clover import ClientClover
     from .facture import CLIENT, preparer_facture
@@ -143,11 +145,15 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
 
     ecrire_copie(etat.articles, donnees / "articles_sage.csv")
     debut = max(date_depart, (etat.derniere_date + timedelta(days=1)) if etat.derniere_date else date_depart)
+    plancher = date_depart
+    if depuis:  # un samedi ou un dimanche choisi : la facture de fin de semaine commence le vendredi
+        debut = plancher = depuis - timedelta(days=max(0, depuis.weekday() - 4))
     cr.fichier, cr.derniere_avant = fichier_sai.name, etat.derniere_date
     if debut <= fin:
         cr.periode = (debut, fin)
     cr.note(f"Dernière facture journalière dans Sage : {etat.derniere_date or 'aucune'} ; "
-            f"à traiter : du {debut} au {fin}" if debut <= fin else "Sage est à jour : rien à importer.")
+            f"à traiter : du {debut} au {fin}" if debut <= fin else
+            ("Période choisie : rien à importer." if depuis else "Sage est à jour : rien à importer."))
     if debut > fin:
         return cr
     if not etat.client_configure:
@@ -171,12 +177,15 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
             continue
         fin_bloc, type_facture = jour, TypePeriode.JOUR
         if est_fin_de_semaine(jour):
+            # une seule facture du vendredi au dimanche (le dépôt du lundi couvre les trois jours)
+            vendredi = jour - timedelta(days=jour.weekday() - 4)
+            jour = max(vendredi, plancher)
             fin_bloc, type_facture = dimanche(jour), TypePeriode.FIN_DE_SEMAINE
             if fin_bloc > fin:  # la fin de semaine n'est pas terminée : facture préparée après le dimanche
                 cr.note(f"{jour} : ventes de fin de semaine, facturées ensemble après le dimanche {fin_bloc}.")
                 cr.jours.append(EtatJour(jour, REPORTEE, f"facture du vendredi au dimanche après le {fin_bloc}"))
                 break
-            if any(j in etat.dates_factures for j in jours_periode(jour, fin_bloc)):
+            if any(j in etat.dates_factures for j in jours_periode(vendredi, fin_bloc)):
                 cr.problemes.append(f"{jour} : une partie de la fin de semaine est déjà facturée dans Sage ; "
                                     "facturer le reste à la main ou supprimer la facture partielle.")
                 cr.jours.append(EtatJour(jour, BLOQUEE, "fin de semaine en partie déjà facturée"))
@@ -426,7 +435,8 @@ def ecrire_journal(racine: Path, cr: CompteRendu) -> Path:
     return chemin
 
 
-def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False) -> CompteRendu:
+def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,
+           depuis: date | None = None) -> CompteRendu:
     """Point d'entrée de la tâche planifiée : n'échoue jamais sans journal ni alerte."""
     from .courriel import envoyer_compte_rendu
 
@@ -440,7 +450,7 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
     verrou.write_text(f"{datetime.now():%Y-%m-%d %H:%M:%S}", encoding="utf-8")
     cr = CompteRendu(simulation=simulation)
     try:
-        cr = executer_automatique(racine, config_toml, jusqua, simulation)
+        cr = executer_automatique(racine, config_toml, jusqua, simulation, depuis)
     except Exception as exc:
         cr.erreur = f"{exc}\n{traceback.format_exc()}"
         print(cr.erreur, flush=True)

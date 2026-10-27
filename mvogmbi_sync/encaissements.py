@@ -7,7 +7,13 @@ Règles du propriétaire :
 - ventes du lundi au jeudi : déposées le lendemain ; ventes du vendredi, samedi et dimanche : déposées
   ensemble le lundi suivant ;
 - l'encaissement est enregistré dans Sage à la date du dépôt, au compte Desjardins (1055), et appliqué
-  sur la facture de chaque jour de vente pour le montant de son lot.
+  sur la facture de chaque jour de vente pour le montant de son lot ;
+- virements Interac reçus et dépôts d'espèces au guichet (relevés Desjardins de la page Rapprochement, règles du
+  2026-10-26) : ils font partie des espèces des ventes. Interac : encaissé sur la facture qui couvre le jour du
+  virement. Dépôt d'espèces : réparti sur les factures de la période dont il reste des espèces à encaisser (solde
+  dû moins les lots de cartes pas encore encaissés), de la plus ancienne à la plus récente. Encaissement daté du
+  mouvement de banque (au plus tôt à la date de la facture) ; un seul encaissement par mouvement, pour qu'il se
+  rapproche du relevé.
 
 Sage n'accepte pas d'importer un encaissement (Sage_SA_import.exe ne lit que factures, commandes, achats
 et écritures de journal) : l'application calcule les encaissements et vérifie dans Sage s'ils sont saisis.
@@ -33,6 +39,7 @@ A_SAISIR = "À saisir dans Sage"
 ECART = "Montant différent dans Sage"
 SANS_FACTURE = "Facture pas encore dans Sage"
 A_VENIR = "Dépôt à venir"
+A_VERIFIER = "Espèces à répartir à la main"
 
 
 def date_depot(jour_vente: date) -> date:
@@ -72,6 +79,8 @@ class Depot:
     date: date
     lignes: list[LigneEncaissement] = field(default_factory=list)
     etat: str = ""
+    origine: str = ""      # mouvement du relevé (Interac, dépôt d'espèces) ; « » = lot de cartes Clover
+    remarque: str = ""
 
     @property
     def montant(self) -> Decimal:
@@ -101,23 +110,40 @@ def regrouper(lots: dict[date, Decimal]) -> list[Depot]:
 
 
 def factures_fin_de_semaine(depots: list[Depot], factures_sage: set[str]) -> None:
-    """Regroupe les lignes vendredi-samedi-dimanche d'un dépôt du lundi sur une seule facture « Vente AAAA-MM-JJ/JJ ».
+    """Range les lignes vendredi-samedi-dimanche d'un dépôt du lundi sur la facture de Sage qui couvre chaque jour.
 
-    Règle du propriétaire depuis octobre 2026 : une seule facture pour la fin de semaine. Les anciennes fins de
-    semaine facturées jour par jour restent encaissées facture par facture.
+    Règle du propriétaire depuis octobre 2026 : une seule facture « Vente AAAA-MM-JJ/JJ » pour la fin de semaine (une
+    ligne pour tout le lot). Les anciennes fins de semaine facturées jour par jour, ou en partie (« Vente 2026-10-24 »
+    puis « Vente 2026-10-25/25 » pour le dimanche seul), sont encaissées facture par facture. Jour pas encore facturé :
+    sa facture journalière si le reste de la fin de semaine l'est jour par jour, sinon la facture de fin de semaine.
     """
-    from .facture import numero_fin_de_semaine
+    from .facture import jours_facture, numero_fin_de_semaine
 
+    couverture: dict[date, str] = {}
+    for numero in sorted(factures_sage, key=lambda n: -len(jours_facture(n))):  # la plus précise l'emporte
+        for jour in jours_facture(numero):
+            couverture[jour] = numero
     for depot in depots:
-        fds = [l for l in depot.lignes if l.jour_vente.weekday() >= 4]
-        if len(fds) < 1 or any(numero_facture(l.jour_vente) in factures_sage for l in fds):
-            continue
-        vendredi = depot.date - timedelta(days=3)
-        numero = numero_fin_de_semaine(vendredi, vendredi + timedelta(days=2))
-        if fds[0].jour_vente != vendredi and numero not in factures_sage:
-            continue
-        reste = [l for l in depot.lignes if l not in fds]
-        depot.lignes = reste + [LigneEncaissement(fds[0].jour_vente, sum((l.montant for l in fds), Decimal(0)), numero)]
+        groupes: dict[str, list[LigneEncaissement]] = {}
+        lignes = []
+        for l in depot.lignes:
+            if l.jour_vente.weekday() < 4:
+                lignes.append(l)
+                continue
+            vendredi = l.jour_vente - timedelta(days=l.jour_vente.weekday() - 4)
+            fin_de_semaine = [vendredi + timedelta(days=i) for i in range(3)]
+            numero = couverture.get(l.jour_vente) or (
+                numero_facture(l.jour_vente) if any(j in couverture for j in fin_de_semaine)  # facturée jour par jour
+                else numero_fin_de_semaine(vendredi, fin_de_semaine[-1]))
+            if numero not in groupes:
+                groupes[numero] = []
+                lignes.append(numero)  # place de la ligne regroupée
+            groupes[numero].append(l)
+        depot.lignes = [
+            l if isinstance(l, LigneEncaissement) else
+            (groupes[l][0] if l == numero_facture(groupes[l][0].jour_vente) else
+             LigneEncaissement(groupes[l][0].jour_vente, sum((x.montant for x in groupes[l]), Decimal(0)), l))
+            for l in lignes]
 
 
 def noms_factures_sage(base, client_sage: str) -> set[str]:
@@ -137,17 +163,26 @@ def etat_factures_sage(base, client_sage: str, compte_depot: int, factures: list
         f"WHERE c.sName = %s AND t.sSource IN ({marques})", (client_sage, *factures))
     etat: dict[str, dict] = {}
     for l in lignes:
-        e = etat.setdefault(l["facture"], {"du": Decimal(0), "encaisse": defaultdict(Decimal)})
+        e = etat.setdefault(l["facture"], {"du": Decimal(0), "encaisse": defaultdict(Decimal),
+                                           "recus": defaultdict(list)})
         montant = Decimal(str(l["montant"])).quantize(CENT)
         e["du"] += montant
         if l["type"] == 1 and int(l["banque"] or 0) == compte_depot:
-            e["encaisse"][l["date"].date() if hasattr(l["date"], "date") else l["date"]] -= montant
+            jour = l["date"].date() if hasattr(l["date"], "date") else l["date"]
+            e["encaisse"][jour] -= montant
+            e["recus"][jour].append(-montant)
     return etat
 
 
-def evaluer(depots: list[Depot], etat_sage: dict[str, dict], aujourdhui: date) -> None:
-    """Fixe l'état de chaque ligne et de chaque dépôt d'après Sage."""
+def evaluer(depots: list[Depot], etat_sage: dict[str, dict], aujourdhui: date,
+            dates_especes: set[date] = frozenset()) -> None:
+    """Fixe l'état de chaque ligne et de chaque dépôt (lots de cartes Clover) d'après Sage.
+
+    `dates_especes` : dates où Sage a aussi des encaissements d'Interac ou d'espèces ; un autre montant ce jour-là
+    n'est alors pas un écart, et le lot n'est appliqué que si Sage a un encaissement de son montant exact."""
     for depot in depots:
+        if depot.origine:
+            continue
         for l in depot.lignes:
             e = etat_sage.get(l.facture)
             l.facture_presente = e is not None
@@ -156,9 +191,10 @@ def evaluer(depots: list[Depot], etat_sage: dict[str, dict], aujourdhui: date) -
                 continue
             l.montant_du = e["du"]
             l.deja_encaisse = e["encaisse"].get(depot.date, Decimal(0))
-            if l.deja_encaisse == l.montant:
+            recus = e.get("recus", {}).get(depot.date, [])
+            if l.deja_encaisse == l.montant or l.montant in recus:
                 l.etat = APPLIQUE
-            elif l.deja_encaisse:
+            elif l.deja_encaisse and depot.date not in dates_especes:
                 l.etat = ECART
             elif depot.date > aujourdhui:
                 l.etat = A_VENIR
@@ -172,15 +208,119 @@ def evaluer(depots: list[Depot], etat_sage: dict[str, dict], aujourdhui: date) -
 
 
 def calculer(client, base, client_sage: str, compte_depot: int, debut: date, fin: date,
-             aujourdhui: date | None = None) -> list[Depot]:
-    """Dépôts des ventes du `debut` au `fin` inclus, avec leur état dans Sage."""
+             aujourdhui: date | None = None, racine=None) -> list[Depot]:
+    """Dépôts des ventes du `debut` au `fin` inclus, avec leur état dans Sage ; avec `racine`, aussi les virements
+    Interac et dépôts d'espèces des relevés Desjardins chargés (page Rapprochement)."""
     depots = regrouper(lots_par_jour(client, debut, fin))
     if base:
         factures_fin_de_semaine(depots, noms_factures_sage(base, client_sage))
+    banque, dates_especes = mouvements_especes(racine, base, debut, fin) if base and racine else ([], set())
     factures = [l.facture for d in depots for l in d.lignes]
     evaluer(depots, etat_factures_sage(base, client_sage, compte_depot, factures) if base else {},
-            aujourdhui or date.today())
+            aujourdhui or date.today(), dates_especes)
+    if banque:
+        depots += especes_a_encaisser(base, client_sage, compte_depot, depots, banque, debut, fin)
+        depots.sort(key=lambda d: (d.date, bool(d.origine)))
     return depots
+
+
+def mouvements_especes(racine, base, debut: date, fin: date):
+    """Virements Interac reçus et dépôts d'espèces du `debut` au `fin` dans les relevés chargés, rapprochés de Sage ;
+    renvoie (mouvements, dates des écritures Sage déjà reliées à l'un d'eux)."""
+    from .rapprochement import (A_ENCAISSER, RAPPROCHE, RegistreReleves, est_especes, mouvements_sage, periode_des,
+                                rapprocher)
+
+    releves = RegistreReleves(racine).lire()
+    periode = periode_des(releves)
+    if not periode:
+        return [], set()
+    banque = [m for r in releves for m in r.mouvements]
+    sage = mouvements_sage(base, periode[0] - timedelta(days=7), periode[1] + timedelta(days=7))
+    rapprocher(banque, sage)
+    retenus = [m for m in banque if est_especes(m) and m.etat in (RAPPROCHE, A_ENCAISSER)
+               and debut <= date.fromisoformat(m.date) <= fin]
+    dates_sage = {s.ident: date.fromisoformat(s.date) for s in sage}
+    return retenus, {dates_sage[n] for m in retenus for n in m.sage if n in dates_sage}
+
+
+def origine(m) -> str:
+    """« Interac ALICE PATRICIA » ou « Dépôt d'espèces »."""
+    from .rapprochement import est_interac
+
+    if not est_interac(m):
+        return "Dépôt d'espèces"
+    morceaux = [x.strip() for x in m.description.split("/") if x.strip()]
+    return f"Interac {morceaux[1]}" if len(morceaux) > 1 else "Interac"
+
+
+def especes_a_encaisser(base, client_sage: str, compte_depot: int, depots_clover: list[Depot], mouvements,
+                        debut: date, fin: date) -> list[Depot]:
+    """Un encaissement par virement Interac / dépôt d'espèces, réparti sur les factures de vente (voir l'en-tête)."""
+    from .rapprochement import factures_ventes, jours_couverts
+
+    factures = {}
+    for n, d in factures_ventes(base, client_sage).items():
+        jours = jours_couverts(n)
+        if jours and jours[0] <= fin and jours[-1] >= debut:
+            factures[n] = d
+    etat = etat_factures_sage(base, client_sage, compte_depot, list(factures))
+    return repartir_especes(mouvements, factures, {n: etat.get(n, {}).get("du", Decimal(0)) for n in factures},
+                            depots_clover)
+
+
+def repartir_especes(mouvements, factures: dict[str, date], dus: dict[str, Decimal],
+                     depots_clover: list[Depot]) -> list[Depot]:
+    """Répartition (sans Sage) : `factures` n° -> date, `dus` n° -> solde dû dans Sage."""
+    from .rapprochement import RAPPROCHE, est_interac, facture_du_jour, jours_couverts
+
+    a_venir: dict[str, Decimal] = defaultdict(Decimal)  # lots de cartes pas encore encaissés, par facture
+    for d in depots_clover:
+        for l in d.lignes:
+            if l.etat != APPLIQUE:
+                a_venir[l.facture] += l.montant
+    dispo = {n: dus.get(n, Decimal(0)) - a_venir[n] for n in factures}
+    resultat = []
+    for m in sorted(mouvements, key=lambda x: (x.date, x.rang)):
+        jour = date.fromisoformat(m.date)
+        depot = Depot(jour, origine=origine(m))
+        resultat.append(depot)
+        if m.etat == RAPPROCHE:
+            depot.etat = APPLIQUE
+            depot.lignes = [LigneEncaissement(jour, m.montant, "Sage n° " + ", ".join(map(str, m.sage)), True,
+                                              etat=APPLIQUE)]
+            continue
+        parts: list[tuple[str, Decimal]] = []
+        if est_interac(m):
+            numero = facture_du_jour(jour, factures)
+            if not numero:
+                depot.remarque = f"aucune facture de vente du {jour} dans Sage"
+            elif dispo[numero] < m.montant:
+                depot.remarque = f"{numero} : espèces restant à encaisser {dispo[numero]} $, virement {m.montant} $"
+            else:
+                parts = [(numero, m.montant)]
+        else:
+            reste = m.montant
+            for numero in sorted((n for n in factures if jours_couverts(n)[0] <= jour and dispo[n] > 0),
+                                 key=lambda n: (factures[n], n)):
+                part = min(reste, dispo[numero])
+                parts.append((numero, part))
+                reste -= part
+                if not reste:
+                    break
+            if reste:
+                parts = []
+                depot.remarque = f"les factures n'ont pas assez d'espèces à encaisser ({reste} $ de trop)"
+        if not parts:
+            depot.etat = A_VERIFIER
+            depot.lignes = [LigneEncaissement(jour, m.montant, "?", etat=A_VERIFIER)]
+            continue
+        for numero, part in parts:
+            dispo[numero] -= part
+            depot.lignes.append(LigneEncaissement(jours_couverts(numero)[0], part, numero, True,
+                                                  dus.get(numero), etat=A_SAISIR))
+        depot.date = max([jour] + [factures[n] for n, _ in parts])  # jamais avant la date de la facture
+        depot.etat = A_SAISIR
+    return resultat
 
 
 def ecrire_excel(depots: list[Depot], chemin, compte_depot: str) -> None:
@@ -227,7 +367,12 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict
     c = config_toml.get("encaissements", {})
     compte = str(c.get("compte_depot", "1055"))
     mode = str(c.get("mode", "Comptant"))
-    debut = date.fromisoformat(str(c.get("date_depart") or config_toml.get("automatique", {}).get("date_depart")))
+    # date de départ = premier jour de DÉPÔT à encaisser (aucun dépôt antérieur touché) ; les ventes commencent
+    # au premier jour dont le dépôt tombe ce jour-là ou après (lundi : ventes depuis le vendredi)
+    premier_depot = date.fromisoformat(str(c.get("date_depart") or config_toml.get("automatique", {}).get("date_depart")))
+    debut = premier_depot - timedelta(days=3)
+    while date_depot(debut) < premier_depot:
+        debut += timedelta(days=1)
     fin = date.today() - timedelta(days=1)
     if c.get("date_fin"):  # réglage d'essai : dernier jour de vente à encaisser
         fin = min(fin, date.fromisoformat(str(c["date_fin"])))
@@ -243,18 +388,21 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict
         utilisateur = str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin"))
         session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
         with ouvrir_base_sage(config_toml, fichier) as base:
-            depots = calculer(client, base, CLIENT, numero_compte_sage(compte), debut, fin)
+            depots = calculer(client, base, CLIENT, numero_compte_sage(compte), debut, fin, racine=racine)
+        depots = [d for d in depots if d.date >= premier_depot]
         a_saisir = [d for d in depots if d.etat == A_SAISIR]
         for d in depots:
             if d.etat == ECART:
                 bilan["a_verifier"].append(f"Dépôt du {d.date} ({d.montant:,.2f} $) : montant différent déjà saisi dans Sage.")
-        journal(f"{len(depots)} dépôt(s) du {debut} au {fin} ; {len(a_saisir)} à encaisser.")
+            elif d.etat == A_VERIFIER:
+                bilan["a_verifier"].append(f"{d.origine} du {d.date} ({d.montant:,.2f} $) : {d.remarque}.")
+        journal(f"{len(depots)} dépôt(s) depuis le {premier_depot} (ventes du {debut} au {fin}) ; "
+                f"{len(a_saisir)} à encaisser.")
         if a_saisir:
             session.ouvrir_encaissements()
-            factures = {d.date.isoformat(): ", ".join(l.facture for l in d.lignes) for d in a_saisir}
-            for r in appliquer(config_toml, a_saisir, CLIENT, compte, mode, journal):
-                texte = (f"Dépôt du {r.date} : {r.montant:,.2f} $ au compte {compte} "
-                         f"({factures.get(r.date, '')})")
+            for d, r in zip(a_saisir, appliquer(config_toml, a_saisir, CLIENT, compte, mode, journal)):
+                texte = (f"{d.origine or 'Dépôt'} du {r.date} : {r.montant:,.2f} $ au compte {compte} "
+                         f"({', '.join(l.facture for l in d.lignes)})")
                 (bilan["encaisses"] if r.traite else bilan["a_verifier"]).append(
                     texte + ("" if r.traite else " — NON encaissé : " + " ".join(r.messages)))
     except Exception as exc:

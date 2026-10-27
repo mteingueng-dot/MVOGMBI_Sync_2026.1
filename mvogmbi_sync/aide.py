@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.9.6"
+VERSION = "1.9.11"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -193,6 +193,37 @@ FAQ = {
         ("question", "Un mouvement reste « Absent de Sage » alors qu'il est dans Sage."),
         ("reponse", "Le montant ou la date diffère (plus de 7 jours avant ou 3 jours après) : corrigez l'écriture dans "
                     "Sage, ou cliquez sur « Ignorer » si elle est juste."),
+        ("question", "Un virement Interac reçu ou un dépôt au guichet est « À encaisser sur les ventes »."),
+        ("reponse", "C'est de l'argent des ventes (espèces) : il ne devient pas une écriture de journal. La page 7 "
+                    "l'encaisse sur la facture de vente (Interac : la vente du jour du virement ; dépôt d'espèces : les "
+                    "factures dont il reste des espèces à encaisser, de la plus ancienne à la plus récente)."),
+        ("question", "Un dépôt de salaire est « Paie absente de Sage »."),
+        ("reponse", "Les salaires sont reliés aux paies de Sage (source « PAY… ») du même montant, même versés plusieurs "
+                    "semaines plus tard. Aucune paie de ce montant : saisissez ou corrigez la paie dans le module Paie "
+                    "de Sage (un cent d'écart suffit à l'empêcher), puis « Actualiser »."),
+        ("question", "Comment exporter un tableau en Excel ou en CSV ?"),
+        ("reponse", "Bouton « ⬇ Exporter » au-dessus du tableau (pages Correspondance, Encaissements, Factures et "
+                    "Paiements fournisseurs, Rapprochement), ou clic droit sur n'importe quel tableau : « Exporter en "
+                    "Excel » ou « Exporter en CSV ». Ce qui est affiché est exporté (filtre et recherche compris) ; "
+                    "le CSV utilise le séparateur « ; » d'Excel en français."),
+
+        ("sous_titre", "Utilisateurs et accès"),
+        ("question", "Comment donner accès à l'application à un employé ?"),
+        ("reponse", "Connecté en administrateur, page « Utilisateurs » : nom, profil, mot de passe, puis « Ajouter ». "
+                    "Profils de départ : Administrateur (tout, y compris la configuration et les utilisateurs), "
+                    "Comptable (pages 5 à 10), Employé (Accueil et Tableau de bord). À droite, choisissez un profil, "
+                    "cochez ses pages puis « Enregistrer les accès » : une page non cochée disparaît du menu à la "
+                    "prochaine connexion. « ➕ » crée un nouveau profil."),
+        ("question", "Un utilisateur a oublié son mot de passe."),
+        ("reponse", "Un administrateur choisit le compte puis « Nouveau mot de passe ». Chacun peut changer le sien "
+                    "en bas du menu (« Changer mon mot de passe »). Si le seul administrateur a oublié le sien : "
+                    "fermez l'application et supprimez donnees\\utilisateurs.json ; au lancement suivant, le compte "
+                    "administrateur est recréé (la configuration et les données restent). Gardez donc la session "
+                    "Windows protégée par son propre mot de passe."),
+        ("question", "Le traitement de nuit a-t-il besoin d'une connexion ?"),
+        ("reponse", "Non : la tâche planifiée travaille sans ouvrir de session dans l'application. La connexion protège "
+                    "les pages de l'application ; les mots de passe ne sont jamais gardés, seulement une empreinte "
+                    "chiffrée, et chaque connexion est notée dans donnees\\journal_connexions.log."),
 
         ("sous_titre", "Courriel et installation"),
         ("question", "Je ne reçois pas les courriels."),
@@ -308,6 +339,36 @@ FAQ = {
         ("question", "A transaction stays “Missing from Sage” although it is in Sage."),
         ("reponse", "The amount or the date differs (more than 7 days before or 3 days after): fix the entry in Sage, "
                     "or click “Ignore” if it is correct."),
+        ("question", "An Interac transfer received or an ATM deposit is “To receive on the sales”."),
+        ("reponse", "It is sales money (cash): it does not become a journal entry. Page 7 records it on the sales "
+                    "invoice (Interac: the sale of the transfer day; cash deposit: the invoices with cash still to "
+                    "receive, oldest first)."),
+        ("question", "A salary deposit is “Payroll missing from Sage”."),
+        ("reponse", "Salaries are linked to the Sage payroll entries (source “PAY…”) of the same amount, even when "
+                    "paid several weeks later. No payroll of that amount: enter or correct it in the Sage Payroll "
+                    "module (one cent of difference is enough to prevent it), then “Refresh”."),
+        ("question", "How do I export a table to Excel or CSV?"),
+        ("reponse", "“⬇ Export” button above the table (Item mapping, Receipts, Supplier invoices and payments, "
+                    "Reconciliation pages), or right-click any table: “Export to Excel” or “Export to CSV”. What is "
+                    "shown is exported (filter and search included); the CSV uses the “;” separator of French Excel."),
+
+        ("sous_titre", "Users and access"),
+        ("question", "How do I give an employee access to the application?"),
+        ("reponse", "Signed in as administrator, “Users” page: name, profile, password, then “Add”. Starting "
+                    "profiles: Administrator (everything, including setup and users), Accountant (pages 5 to 10), "
+                    "Employee (Home and Dashboard). On the right, choose a profile, tick its pages, then “Save "
+                    "access”: an unticked page disappears from the menu at the next sign-in. “➕” creates a new "
+                    "profile."),
+        ("question", "A user forgot their password."),
+        ("reponse", "An administrator selects the account, then “New password”. Everyone can change their own at the "
+                    "bottom of the menu (“Change my password”). If the only administrator forgot theirs: close the "
+                    "application and delete donnees\\utilisateurs.json; at the next start, the administrator account "
+                    "is created again (setup and data are kept). So keep the Windows session protected by its own "
+                    "password."),
+        ("question", "Does the nightly run need a sign-in?"),
+        ("reponse", "No: the scheduled task works without signing in to the application. Signing in protects the "
+                    "application pages; passwords are never kept, only an encrypted fingerprint, and every sign-in is "
+                    "logged in donnees\\journal_connexions.log."),
 
         ("sous_titre", "Email and installation"),
         ("question", "I don't receive the emails."),
@@ -416,6 +477,10 @@ GUIDE = {
         ("etape", "2. Corrigez-les (articles à relier, comptes manquants), fermez Sage, puis « Lancer maintenant »."),
         ("etape", "3. Dans Sage, ouvrez une facture « Vente AAAA-MM-JJ » du client « Vente Hebdomadaire » et "
                   "comparez son total aux ventes nettes du jour dans Clover."),
+        ("note", "Rattrapage : « Charger une date ou une période » (du … au …) puis « Charger la période » importe les "
+                 "ventes de ces jours (Sage fermé). Les jours déjà facturés sont sautés ; vendredi, samedi et dimanche "
+                 "forment toujours une seule facture « Vente AAAA-MM-JJ/JJ », car le dépôt du lundi couvre les trois "
+                 "jours. Une fin de semaine déjà facturée en partie est signalée, jamais complétée par une 2e facture."),
 
         ("sous_titre", "Mise en production (vrai fichier d'entreprise)"),
         ("etape", "1. Dans le vrai fichier : créez l'utilisateur mvogmbi_sync, cochez la case du client "
@@ -436,6 +501,11 @@ GUIDE = {
                   "les encaissements."),
         ("note", "Un dépôt supérieur au solde dû de la facture n'est jamais saisi. Le solde restant sur une facture "
                  "correspond aux ventes en espèces."),
+        ("para", "Espèces des ventes : les virements Interac reçus et les dépôts d'espèces au guichet des relevés "
+                 "Desjardins chargés à la page 10 sont aussi vérifiés et encaissés (un encaissement par mouvement, "
+                 "« Comptant », compte 1055). Interac : sur la facture du jour du virement. Dépôt d'espèces : sur les "
+                 "factures dont il reste des espèces (solde dû moins les dépôts Clover à venir), de la plus ancienne à "
+                 "la plus récente. Un mouvement qui ne trouve pas sa place est marqué « Espèces à répartir à la main »."),
 
         ("sous_titre", "Factures fournisseurs (page 8)"),
         ("etape", "1. « Ajouter des factures… » copie les PDF ou photos dans le dossier des factures (vous pouvez "
@@ -447,8 +517,9 @@ GUIDE = {
                   "conditionnement. Qté Sage = Qté × Facteur ; Prix Sage = Montant / Qté Sage. Entrée applique et "
                   "passe à la ligne suivante ; après la dernière, une nouvelle ligne est créée."),
         ("etape", "4. « Enregistrer la facture » : elle passe à « Prête à importer » quand tout est relié et cohérent."),
-        ("etape", "5. Fermez Sage, puis « Importer dans Sage » : chaque facture est importée comme facture d'achat "
-                  "et vérifiée ; elle passe à « Importée ». Une facture déjà dans Sage est refusée."),
+        ("etape", "5. Fermez Sage, puis « Importer cette facture » (la facture ouverte seulement) ou « Importer "
+                  "toutes les factures prêtes » : chaque facture est importée comme facture d'achat et vérifiée ; "
+                  "elle passe à « Importée ». Une facture déjà dans Sage est refusée."),
         ("note", "« Écarter » met de côté une facture qui ne doit pas être traitée. Les choix d'articles et de "
                  "facteurs sont retenus pour chaque fournisseur."),
 
@@ -479,6 +550,12 @@ GUIDE = {
                   "banque ; l'« écart non expliqué » doit être 0,00 $."),
         ("note", "Les écritures corrigées dans Sage (original et contrepassation « CORR ») s'annulent : elles sont "
                  "ignorées. « Supprimer le relevé » met le fichier de côté (dossier « supprimes »)."),
+        ("note", "« Période du … au … » (📅 calendrier) : rapproche seulement les mouvements et les écritures de ces "
+                 "dates, avec les soldes du début et de la fin de la période ; « Toute la période des relevés » revient "
+                 "à l'ensemble des relevés chargés."),
+        ("note", "Virements Interac reçus et dépôts au guichet : « À encaisser sur les ventes », encaissés à la page 7. "
+                 "Dépôts de salaire : reliés aux paies de Sage, sinon « Paie absente de Sage » (à corriger dans le "
+                 "module Paie)."),
 
         ("sous_titre", "Mode opératoire — chaque matin"),
         ("etape", "1. Lisez le courriel de la nuit : « succès », ou la liste des points à corriger."),
@@ -604,6 +681,10 @@ GUIDE = {
         ("etape", "2. Fix them (items to link, missing accounts), close Sage, then “Run now”."),
         ("etape", "3. In Sage, open a “Vente YYYY-MM-DD” invoice of the “Vente Hebdomadaire” customer and compare "
                   "its total with the day's net sales in Clover."),
+        ("note", "Catching up: “Load a date or a period” (from … to …) then “Load the period” imports the sales of "
+                 "those days (Sage closed). Days already invoiced are skipped; Friday, Saturday and Sunday always make "
+                 "a single “Vente YYYY-MM-DD/DD” invoice, since Monday's deposit covers the three days. A weekend "
+                 "already partly invoiced is flagged, never completed with a 2nd invoice."),
 
         ("sous_titre", "Going live (real company file)"),
         ("etape", "1. In the real file: create the mvogmbi_sync user, check the “Vente Hebdomadaire” customer box "
@@ -623,6 +704,11 @@ GUIDE = {
         ("etape", "3. On demand: close Sage and click “Record in Sage”. An email summarizes the receipts."),
         ("note", "A deposit larger than the invoice balance is never entered. The balance left on an invoice is the "
                  "cash sales."),
+        ("para", "Sales cash: the Interac transfers received and the ATM cash deposits of the Desjardins statements "
+                 "loaded on page 10 are also checked and recorded (one receipt per transaction, “Cash”, account 1055). "
+                 "Interac: on the invoice of the transfer day. Cash deposit: on the invoices with cash left (balance "
+                 "due minus the upcoming Clover deposits), oldest first. A transaction that does not fit is marked "
+                 "“Cash to allocate manually”."),
 
         ("sous_titre", "Supplier invoices (page 8)"),
         ("etape", "1. “Add invoices…” copies the PDFs or photos into the invoice folder (you can also drop them "
@@ -633,8 +719,9 @@ GUIDE = {
                   "Qty × Factor; Sage price = Amount / Sage qty. Enter applies and moves to the next line; after the "
                   "last one, a new line is created."),
         ("etape", "4. “Save the invoice”: it becomes “Ready to import” once everything is linked and consistent."),
-        ("etape", "5. Close Sage, then “Import into Sage”: each invoice is imported as a purchase invoice and "
-                  "verified; it becomes “Imported”. An invoice already in Sage is refused."),
+        ("etape", "5. Close Sage, then “Import this invoice” (the open invoice only) or “Import all ready "
+                  "invoices”: each invoice is imported as a purchase invoice and verified; it becomes “Imported”. An "
+                  "invoice already in Sage is refused."),
         ("note", "“Set aside” puts aside an invoice that must not be processed. Item and factor choices are "
                  "remembered for each supplier."),
 
@@ -663,6 +750,12 @@ GUIDE = {
                   "the “unexplained difference” must be $0.00."),
         ("note", "Entries corrected in Sage (original and “CORR” reversal) cancel out: they are ignored. “Delete "
                  "statement” sets the file aside (“supprimes” folder)."),
+        ("note", "“Period from … to …” (📅 calendar): reconciles only the transactions and entries of those dates, "
+                 "with the balances at the start and end of the period; “Whole statement period” goes back to all the "
+                 "loaded statements."),
+        ("note", "Interac transfers received and ATM deposits: “To receive on the sales”, recorded on page 7. Salary "
+                 "deposits: linked to the Sage payroll, otherwise “Payroll missing from Sage” (to fix in the Payroll "
+                 "module)."),
 
         ("sous_titre", "Operating procedure — every morning"),
         ("etape", "1. Read the nightly email: “success”, or the list of points to fix."),

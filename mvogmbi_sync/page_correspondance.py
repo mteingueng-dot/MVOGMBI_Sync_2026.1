@@ -15,6 +15,7 @@ from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
 from .design import Bouton, cadre_tableau, entete_page, rayer
+from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
 from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, conflit_format, ecrire_correspondance,
                              lire_correspondances, normaliser)
@@ -71,6 +72,7 @@ class PageCorrespondance(ttk.Frame):
         self.tableau.pack(side="left", fill="both", expand=True)
         defilement.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.selectionner())
+        bouton_exporter(barre, self.tableau, t("Correspondance des articles")).pack(side="right")
 
         edition = ttk.LabelFrame(self, text=t("Article sélectionné"), padding=8)
         edition.pack(fill="x", pady=(8, 0))

@@ -1,4 +1,5 @@
-"""Page « Encaissements » : dépôts Clover à encaisser sur les factures journalières, et leur état dans Sage."""
+"""Page « Encaissements » : dépôts Clover, virements Interac et dépôts d'espèces à encaisser sur les factures de vente,
+et leur état dans Sage."""
 
 from __future__ import annotations
 
@@ -10,10 +11,12 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from .design import CARTE, TEXTE_DOUX, Bouton, ChampDate, cadre_tableau, entete_page
-from .encaissements import A_SAISIR, A_VENIR, APPLIQUE, ECART, SANS_FACTURE
+from .encaissements import A_SAISIR, A_VENIR, A_VERIFIER, APPLIQUE, ECART, SANS_FACTURE
+from .export_tableau import bouton_exporter
 from .langues import courante, jours_semaine, t
 
-COULEURS = {APPLIQUE: "#e6f4ea", A_SAISIR: "#fff4d6", ECART: "#fde2e4", SANS_FACTURE: None, A_VENIR: None}
+COULEURS = {APPLIQUE: "#e6f4ea", A_SAISIR: "#fff4d6", ECART: "#fde2e4", A_VERIFIER: "#fde2e4",
+            SANS_FACTURE: None, A_VENIR: None}
 
 
 def argent(montant: Decimal | None) -> str:
@@ -30,7 +33,7 @@ class PageEncaissements(ttk.Frame):
         self.depots = []
 
         entete_page(self, "💰", t("Encaissements des dépôts Clover"),
-                    t("dépôts Clover appliqués sur les factures de vente")).pack(fill="x")
+                    t("dépôts Clover, virements Interac et dépôts d'espèces appliqués sur les factures de vente")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         hier = date.today() - timedelta(days=1)
@@ -53,7 +56,7 @@ class PageEncaissements(ttk.Frame):
         self.tableau = ttk.Treeview(cadre, columns=[c[0] for c in colonnes], show="tree headings", height=12,
                                     selectmode="browse")
         self.tableau.heading("#0", text=t("Date du dépôt / facture"))
-        self.tableau.column("#0", width=260)
+        self.tableau.column("#0", width=420)
         for cle, titre_col, largeur in colonnes:
             self.tableau.heading(cle, text=titre_col)
             self.tableau.column(cle, width=largeur, anchor="e" if cle != "etat" else "w")
@@ -65,6 +68,7 @@ class PageEncaissements(ttk.Frame):
         self.tableau.pack(side="left", fill="both", expand=True)
         defilement.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.afficher_saisie())
+        bouton_exporter(barre, self.tableau, t("Encaissements")).pack(side="right")
 
         bas = tk.Frame(self, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
         bas.pack(fill="x", pady=(10, 0))
@@ -94,27 +98,21 @@ class PageEncaissements(ttk.Frame):
         except (ValueError, AssertionError):
             messagebox.showerror(self.titre, t("Vérifiez les dates (AAAA-MM-JJ)."))
             return
-        self.resume.configure(text=t("Calcul en cours : lots de cartes Clover, puis lecture de Sage…"))
+        self.resume.configure(text=t("Calcul en cours : lots de cartes Clover, relevés Desjardins, puis lecture de Sage…"))
 
         def travail():
             try:
                 from .__main__ import charger_config, lire_sage
                 from .api_clover import ClientClover
-                from .encaissements import (etat_factures_sage, evaluer, factures_fin_de_semaine, lots_par_jour,
-                                            noms_factures_sage, numero_compte_sage, regrouper)
+                from .encaissements import calculer, numero_compte_sage
                 from .facture import CLIENT
 
                 config = self._config()
-                depots = regrouper(lots_par_jour(ClientClover(charger_config(self.chemin_config)), debut, fin))
+                client = ClientClover(charger_config(self.chemin_config))
                 compte = numero_compte_sage(self.compte_depot())
-
-                def lecture(base):
-                    factures_fin_de_semaine(depots, noms_factures_sage(base, CLIENT))
-                    return etat_factures_sage(base, CLIENT, compte, [l.facture for d in depots for l in d.lignes])
-
-                etat = lire_sage(config, lecture, config.get("sage_import", {}).get("fichier_entreprise")) \
-                    if depots else {}
-                evaluer(depots, etat, date.today())
+                depots = lire_sage(config, lambda base: calculer(client, base, CLIENT, compte, debut, fin,
+                                                                 racine=self.racine),
+                                   config.get("sage_import", {}).get("fichier_entreprise"))
                 self.after(0, lambda: self.afficher(depots))
             except Exception as exc:
                 message = str(exc)
@@ -127,13 +125,16 @@ class PageEncaissements(ttk.Frame):
         self.tableau.delete(*self.tableau.get_children())
         jours = jours_semaine()
         for i, d in enumerate(depots):
-            parent = self.tableau.insert("", "end", iid=f"d{i}", text=f"{d.date.isoformat()} ({jours[d.date.weekday()]})",
+            texte = f"{d.date.isoformat()} ({jours[d.date.weekday()]})" + (f"  •  {d.origine}" if d.origine else "")
+            if d.remarque:
+                texte += f"  —  {d.remarque}"
+            parent = self.tableau.insert("", "end", iid=f"d{i}", text=texte,
                                          values=(argent(d.montant), "", t(d.etat)), tags=(d.etat, "depot"),
                                          open=d.etat != APPLIQUE)
             for j, l in enumerate(d.lignes):
                 self.tableau.insert(parent, "end", iid=f"d{i}l{j}", text=f"   {l.facture}",
                                     values=(argent(l.montant), argent(l.montant_du), t(l.etat)), tags=(l.etat,))
-        a_saisir = [d for d in depots if d.etat in (A_SAISIR, ECART)]
+        a_saisir = [d for d in depots if d.etat in (A_SAISIR, ECART, A_VERIFIER)]
         self.resume.configure(text=t("{n} dépôt(s), {total} au total — {a} à saisir dans Sage, {ok} déjà appliqué(s).",
                                      n=len(depots), total=argent(sum((d.montant for d in depots), Decimal(0))),
                                      a=len(a_saisir), ok=sum(1 for d in depots if d.etat == APPLIQUE)))

@@ -643,7 +643,7 @@ def commande_auto(args: argparse.Namespace) -> None:
     from .automatique import lancer
 
     cr = lancer(RACINE, lire_toml(args.config), date.fromisoformat(args.jusqua) if args.jusqua else None,
-                simulation=args.simulation)
+                simulation=args.simulation, depuis=date.fromisoformat(args.depuis) if args.depuis else None)
     for p in cr.problemes:
         print(f"PROBLÈME : {p}")
     if cr.erreur:
@@ -750,6 +750,8 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sous.add_parser("auto", help="Traitement automatique : de la dernière facture dans Sage jusqu'à hier")
     p.add_argument("--jusqua", help="Dernier jour à traiter (AAAA-MM-JJ) ; par défaut hier")
+    p.add_argument("--depuis", help="Premier jour à traiter (AAAA-MM-JJ) au lieu du lendemain de la dernière facture "
+                   "de Sage ; les jours déjà facturés sont sautés")
     p.add_argument("--simulation", action="store_true", help="Tout préparer et vérifier, sans importer")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_auto)

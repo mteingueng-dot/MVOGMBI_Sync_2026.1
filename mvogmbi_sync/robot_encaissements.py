@@ -320,16 +320,22 @@ def appliquer(config_toml: dict, depots, client: str, compte: str, mode: str = "
             continue
         with ouvrir_base_sage(config_toml, fichier) as base:
             ordre = ordre_grille(base, client)
+            avant = etat_factures_sage(base, client, numero_compte_sage(compte), [l.facture for l in depot.lignes])
         resultat = encaisser_depot(fenetre, depot, ordre, client, compte, mode)
         time.sleep(1.5)
         with ouvrir_base_sage(config_toml, fichier) as base:
             etat = etat_factures_sage(base, client, numero_compte_sage(compte), [l.facture for l in depot.lignes])
-        evaluer([depot], etat, _date.today())
+        if depot.origine:  # Interac / espèces : le solde de chaque facture doit avoir baissé de sa part
+            ecarts = [l.facture for l in depot.lignes
+                      if avant.get(l.facture, {}).get("du", 0) - etat.get(l.facture, {}).get("du", 0) != l.montant]
+            depot.etat = APPLIQUE if not ecarts else f"solde inchangé ou différent : {', '.join(ecarts)}"
+        else:
+            evaluer([depot], etat, _date.today())
         if resultat.traite and depot.etat != APPLIQUE:
             resultat.messages.append(f"Après « Traiter », état dans Sage : {depot.etat}.")
             resultat.traite = False
-        journal(f"{depot.date} : dépôt {depot.montant} $ -> {'encaissé' if resultat.traite else 'NON encaissé'} "
-                + " ".join(resultat.messages))
+        journal(f"{depot.date} : {depot.origine or 'dépôt'} {depot.montant} $ -> "
+                f"{'encaissé' if resultat.traite else 'NON encaissé'} " + " ".join(resultat.messages))
         resultats.append(resultat)
         if not resultat.traite:
             break  # on s'arrête au premier problème

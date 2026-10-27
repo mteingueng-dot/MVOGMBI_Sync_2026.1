@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.9.6"
+#define Version "1.9.11"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -61,6 +61,7 @@ en.ChoixLangue=Choose the application language (can be changed later in the appl
 [Files]
 Source: "..\dist\MVOGMBI_Sync\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\documentation\Manuel_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\User_Manual_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; La configuration et les données existantes ne sont jamais écrasées lors d'une mise à jour.
 
 [Dirs]
@@ -68,7 +69,8 @@ Name: "{app}\donnees"
 
 [Icons]
 Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"; AppUserModelID: "ConceptInformatique.MVOGMBI_Sync"
-Name: "{group}\{cm:Manuel}"; Filename: "{app}\Manuel_MVOGMBI_Sync.pdf"
+Name: "{group}\{cm:Manuel}"; Filename: "{app}\Manuel_MVOGMBI_Sync.pdf"; Languages: fr
+Name: "{group}\{cm:Manuel}"; Filename: "{app}\User_Manual_MVOGMBI_Sync.pdf"; Languages: en
 Name: "{group}\{cm:JournalTraitement}"; Filename: "{app}\donnees\journal_automatique.log"
 Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"
 

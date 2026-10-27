@@ -47,7 +47,10 @@ def numero_facture(type_periode: TypePeriode, debut: date, fin: date | None = No
 
 
 def numero_fin_de_semaine(debut: date, fin: date) -> str:
-    """« Vente 2026-10-23/25 » : du vendredi 23 au dimanche 25 (jour de fin seul : il suit toujours le début)."""
+    """« Vente 2026-10-23/25 » : du vendredi 23 au dimanche 25 (jour de fin seul : il suit toujours le début).
+    Un seul jour (vendredi et samedi déjà facturés) : « Vente 2026-10-25 », comme une facture journalière."""
+    if fin <= debut:
+        return f"Vente {debut.isoformat()}"
     return f"Vente {debut.isoformat()}/{fin.day:02d}"
 
 
