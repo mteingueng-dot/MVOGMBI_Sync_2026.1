@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.9.14"
+VERSION = "1.9.18"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -580,7 +580,23 @@ GUIDE = {
         ("puce", "Factures fournisseurs archivées : chaque facture importée est gardée (copie du PDF, détail des "
                  "lignes en Excel) dans donnees\\archives\\factures_fournisseurs ; recherche par fournisseur, n°, "
                  "date ou article."),
-        ("puce", "Statistiques Clover : pour la période choisie, résumé, ventes par jour, jour de la semaine, heure, "
+        ("puce", "Statistiques Clover, comme le tableau de bord de Clover : bouton « 📅 Aujourd'hui » (hier, cette "
+                 "semaine, semaine dernière, ce mois-ci, mois dernier, 30 derniers jours, cette année, période "
+                 "personnalisée), indicateurs avec leur variation (aujourd'hui par rapport au même jour la semaine "
+                 "dernière), graphiques des ventes par heure ou par jour, du montant perçu, des meilleurs articles et "
+                 "des employés. La journée en cours se met à jour toutes les 5 minutes. Le menu de gauche mène à "
+                 "chaque état, rangé comme dans Clover : Activités de vente (commandes, transactions, remboursements), "
+                 "Rapports, Finances, Articles (dont la péremption), Employés, Clients. Chaque état a une recherche "
+                 "et son graphique (courbe d'évolution, barres, anneau ou classement)."),
+        ("puce", "Prévisions : ventes des prochains jours (même jour de la semaine sur 4 semaines, corrigé de la "
+                 "tendance), achats à prévoir (rythme de vente des 28 derniers jours, stock et coût Clover) et articles "
+                 "à commander : stock restant − quantité vendue les N derniers jours ≤ 0 (N choisi dans la liste « Horizon », "
+                 "14 par défaut ; articles vendus dont Clover suit le stock ; un stock négatif compte pour 0 dans la "
+                 "quantité suggérée)."),
+        ("puce", "Péremption : la date saisie dans le champ SKU des articles Clover (JJ/MM/AAAA) ; triés de la plus "
+                 "proche à la plus lointaine ; fond rouge à un mois ou moins (ou périmé), jaune de 1 à 3 mois, neutre "
+                 "au-delà. Les SKU vides ou qui ne sont pas une date sont ignorés."),
+        ("puce", "Tableaux des statistiques : pour la période choisie, résumé, ventes par jour, jour de la semaine, heure, "
                  "employé, mode de paiement, type de carte, mode de saisie de la carte, appareil, client, article, "
                  "catégorie, ainsi que la liste des commandes, des paiements, des rabais et des remboursements. Chaque "
                  "jour lu dans Clover est gardé : une période déjà calculée s'affiche ensuite tout de suite."),
@@ -798,7 +814,22 @@ GUIDE = {
                  "with the running total), over any period."),
         ("puce", "Archived supplier invoices: each imported invoice is kept (PDF copy, line details in Excel) in "
                  "donnees\\archives\\factures_fournisseurs; search by supplier, number, date or item."),
-        ("puce", "Clover statistics: for the chosen period, summary, sales by day, weekday, hour, employee, payment "
+        ("puce", "Clover statistics, like the Clover dashboard: “📅 Today” button (yesterday, this week, last week, "
+                 "this month, last month, last 30 days, this year, custom period), indicators with their change "
+                 "(today compared with the same day last week), charts of sales by hour or by day, amount collected, "
+                 "top items and employees. The current day refreshes every 5 minutes. The left menu leads to each "
+                 "report, arranged as in Clover: Sales activity (orders, transactions, refunds), Reports, Finances, "
+                 "Items (including expiry), Employees, Customers. Each report has a search box and its chart (trend "
+                 "line, bars, ring or ranking)."),
+        ("puce", "Forecasts: sales of the coming days (same weekday over 4 weeks, adjusted for the trend), purchases "
+                 "to plan (sales pace of the last 28 days, Clover stock and cost) and items to order: remaining stock "
+                 "− quantity sold in the last N days ≤ 0 (N chosen in the “Horizon” list, 14 by default; "
+                 "items sold whose stock Clover tracks; a negative stock "
+                 "counts as 0 in the suggested quantity)."),
+        ("puce", "Expiry: the date typed in the SKU field of the Clover items (DD/MM/YYYY); sorted from the nearest; "
+                 "red background at one month or less (or expired), yellow from 1 to 3 months, neutral beyond. Empty "
+                 "or non-date SKUs are ignored."),
+        ("puce", "Statistics tables: for the chosen period, summary, sales by day, weekday, hour, employee, payment "
                  "method, card type, card entry mode, device, customer, item, category, plus the list of orders, "
                  "payments, discounts and refunds. Each day read from Clover is kept: a period already calculated "
                  "then shows right away."),

@@ -9,10 +9,12 @@ Ces règles sont à valider en comparant avec un export Clover de la même journ
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 import requests
@@ -23,6 +25,7 @@ from .periodes import en_millisecondes
 CENT = Decimal("100")
 SANS_CATEGORIE = "Non catégorisé(e)"
 ETATS_PAYES = {"PAID", "PARTIALLY_REFUNDED", "REFUNDED"}
+JOURS_FILTRE_COMMANDES = 85  # Clover ne filtre plus les commandes par date au-delà de 90 jours
 
 
 @dataclass
@@ -87,37 +90,64 @@ class ClientClover:
 
     EXPANSION_COMMANDE = "lineItems,lineItems.discounts,lineItems.modifications,lineItems.taxRates,discounts,payments"
 
-    def _get(self, chemin: str, params: dict | None = None) -> requests.Response:
+    def _get(self, chemin: str, params: dict | None = None, session: requests.Session | None = None) -> requests.Response:
         """GET avec quelques nouvelles tentatives si Clover limite le débit (429) ou a une erreur passagère."""
         for tentative in range(8):
-            reponse = self.session.get(self._url(chemin), params=params, timeout=60)
+            reponse = (session or self.session).get(self._url(chemin), params=params, timeout=60)
             if reponse.status_code not in (429, 500, 502, 503, 504):
                 return reponse
             time.sleep(min(2 ** tentative, 60))
         return reponse
 
-    def commandes(self, debut: date, fin: date) -> Iterator[dict]:
+    def commandes(self, debut: date, fin: date, expansion: str | None = None,
+                  paiements: list[dict] | None = None) -> Iterator[dict]:
         """Commandes payées pendant la période.
 
         Comme le rapport Clover, une vente est datée de son paiement, pas de la création de la commande
         (une commande ouverte le 17 et payée le 19 compte pour le 19). On part donc des paiements de la
         période — le filtre par date des paiements fonctionne aussi au-delà de 90 jours, contrairement à
-        celui des commandes — puis on charge chaque commande et on garde celles dont le premier paiement
+        celui des commandes — puis on charge les commandes et on garde celles dont le premier paiement
         réussi tombe dans la période.
+
+        Rapidité (mesurée : une journée en 0,8 s au lieu de 21 s, mêmes montants) : pour les 85 derniers jours,
+        les commandes sont lues par paquets de 1000 (liste filtrée par date de création, 7 jours de marge pour
+        les commandes ouvertes avant) ; les autres, une par une mais 6 à la fois. `paiements` : déjà lus.
         """
+        expansion = expansion or self.EXPANSION_COMMANDE
         t0, t1 = en_millisecondes(debut, fin, self.config.fuseau_horaire)
-        ids = []
-        for paiement in self._pages("payments", {"filter": [f"createdTime>={t0}", f"createdTime<{t1}"]}):
-            id_commande = (paiement.get("order") or {}).get("id")
-            if id_commande and id_commande not in ids:
-                ids.append(id_commande)
+        if paiements is None:
+            paiements = list(self._pages("payments", {"filter": [f"createdTime>={t0}", f"createdTime<{t1}"]}))
+        ids = list(dict.fromkeys(i for p in paiements if (i := (p.get("order") or {}).get("id"))))
+        trouvees: dict[str, dict] = {}
+        if debut >= date.today() - timedelta(days=JOURS_FILTRE_COMMANDES):
+            filtre = [f"createdTime>={t0 - 7 * 86_400_000}", f"createdTime<{t1}"]
+            for commande in self._pages("orders", {"filter": filtre, "expand": expansion}):
+                # liste : collections imbriquées limitées ; une commande très longue est relue seule
+                if len((commande.get("lineItems") or {}).get("elements") or []) < 100:
+                    trouvees[commande["id"]] = commande
+        trouvees.update(self.charger_commandes([i for i in ids if i not in trouvees], expansion))
         for id_commande in ids:
-            reponse = self._get(f"orders/{id_commande}", {"expand": self.EXPANSION_COMMANDE})
-            reponse.raise_for_status()
-            commande = reponse.json()
-            moment = moment_paiement(commande)
+            commande = trouvees.get(id_commande)
+            moment = moment_paiement(commande) if commande else None
             if moment is not None and t0 <= moment < t1:
                 yield commande
+
+    def charger_commandes(self, ids: list[str], expansion: str) -> dict[str, dict]:
+        """Commandes par identifiant, 6 requêtes à la fois (Clover accepte 16 requêtes par seconde)."""
+        if not ids:
+            return {}
+        local = threading.local()
+
+        def une(id_commande: str):
+            if not hasattr(local, "session"):
+                local.session = requests.Session()
+                local.session.headers.update(self.session.headers)
+            reponse = self._get(f"orders/{id_commande}", {"expand": expansion}, local.session)
+            reponse.raise_for_status()
+            return id_commande, reponse.json()
+
+        with ThreadPoolExecutor(max_workers=6) as groupe:
+            return dict(groupe.map(une, ids))
 
     def rapport(self, debut: date, fin: date) -> RapportVentes:
         categories = self.categories_par_article()

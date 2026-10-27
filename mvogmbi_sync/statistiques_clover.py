@@ -2,10 +2,11 @@
 2026-10-27 : toutes les déclinaisons (jour, semaine, heure, employé, client, mode de paiement, carte, appareil,
 article, catégorie, commande, rabais, remboursements).
 
-Lecture seule de Clover, jour par jour comme la facturation (une vente est datée de son premier paiement réussi) :
-paiements du jour (avec mode de paiement et transaction de carte), commandes de ces paiements (articles, rabais,
-client, employé, appareil), remboursements. Chaque jour terminé est gardé dans donnees/cache_clover/AAAA-MM-JJ.json :
-une période déjà lue s'affiche ensuite sans attendre Clover. Montants nets des articles calculés comme les factures
+Lecture seule de Clover, par blocs de jours (une vente est datée de son premier paiement réussi, comme la
+facturation) : paiements (avec mode de paiement et transaction de carte), commandes de ces paiements (articles,
+rabais, client, employé, appareil) lues par paquets, remboursements. Chaque jour terminé est gardé dans
+donnees/cache_clover/AAAA-MM-JJ.json : une période déjà lue s'affiche ensuite sans attendre Clover ; la journée en
+cours est toujours relue. Montants nets des articles calculés comme les factures
 (`api_clover.lignes_commande`). Les 4 derniers chiffres des cartes ne sont pas repris.
 """
 
@@ -48,48 +49,75 @@ class DonneesClover:
     fuseau: str = "America/Toronto"
 
 
-def lire_jour(client, jour: date, cache: Path | None) -> dict:
-    """Paiements, commandes et remboursements d'un jour (depuis le cache s'il s'agit d'un jour terminé déjà lu)."""
-    fichier = cache / f"{jour.isoformat()}.json" if cache else None
-    if fichier and fichier.exists():
-        return json.loads(fichier.read_text(encoding="utf-8"))
-    t0, t1 = en_millisecondes(jour, jour, client.config.fuseau_horaire)
-    filtre = {"filter": [f"createdTime>={t0}", f"createdTime<{t1}"]}
-    paiements = list(client._pages("payments", {**filtre, "expand": "tender,cardTransaction"}))
-    for p in paiements:  # pas de données de carte au-delà du type et du mode de saisie
+def _sans_carte(paiements: list[dict]) -> list[dict]:
+    """Seuls le type de carte et le mode de saisie sont gardés (jamais les chiffres de la carte)."""
+    for p in paiements:
         carte = p.get("cardTransaction") or {}
         p["cardTransaction"] = {"cardType": carte.get("cardType"), "entryType": carte.get("entryType")}
-    commandes, vus = [], set()
-    for p in paiements:
-        identifiant = (p.get("order") or {}).get("id")
-        if not identifiant or identifiant in vus:
-            continue
-        vus.add(identifiant)
-        reponse = client._get(f"orders/{identifiant}", {"expand": EXPANSION})
-        if not reponse.ok:
-            continue
-        commande = reponse.json()
-        moment = moment_paiement(commande)
-        if moment is not None and t0 <= moment < t1:
-            commandes.append(commande)
+    return paiements
+
+
+def lire_bloc(client, debut: date, fin: date) -> dict[date, dict]:
+    """Paiements, commandes et remboursements de plusieurs jours en une fois (lecture rapide par paquets de
+    `ClientClover.commandes`), rangés par jour : paiement et remboursement par leur date, commande par son premier
+    paiement réussi (comme la facturation)."""
+    fuseau = ZoneInfo(client.config.fuseau_horaire)
+    t0, t1 = en_millisecondes(debut, fin, client.config.fuseau_horaire)
+    filtre = {"filter": [f"createdTime>={t0}", f"createdTime<{t1}"]}
+    paiements = _sans_carte(list(client._pages("payments", {**filtre, "expand": "tender,cardTransaction"})))
+    commandes = list(client.commandes(debut, fin, EXPANSION, paiements=paiements))
     remboursements = list(client._pages("refunds", filtre))
-    donnees = {"commandes": commandes, "paiements": paiements, "remboursements": remboursements}
-    if fichier and jour < date.today():  # jour terminé : gardé
-        fichier.parent.mkdir(parents=True, exist_ok=True)
-        fichier.write_text(json.dumps(donnees, ensure_ascii=False), encoding="utf-8")
-    return donnees
+    jours = {debut + timedelta(days=i): {"commandes": [], "paiements": [], "remboursements": []}
+             for i in range((fin - debut).days + 1)}
+
+    def jour_de(ms: int) -> date:
+        return datetime.fromtimestamp(ms / 1000, fuseau).date()
+
+    for p in paiements:
+        jours.get(jour_de(p["createdTime"]), {"paiements": []})["paiements"].append(p)
+    for c in commandes:
+        jours.get(jour_de(moment_paiement(c)), {"commandes": []})["commandes"].append(c)
+    for r in remboursements:
+        jours.get(jour_de(r["createdTime"]), {"remboursements": []})["remboursements"].append(r)
+    return jours
 
 
 def lire(client, debut: date, fin: date, cache: Path | None = None, progression=None) -> DonneesClover:
+    """Données de la période : jours terminés déjà lus pris dans le cache, les autres lus dans Clover par blocs
+    de jours consécutifs (au plus 31) ; aujourd'hui est toujours relu (journée en cours) et jamais gardé."""
     d = DonneesClover(fuseau=client.config.fuseau_horaire)
+    aujourdhui = date.today()
     jours = [debut + timedelta(days=i) for i in range((fin - debut).days + 1)]
-    for i, jour in enumerate(jours, 1):
+    par_jour: dict[date, dict] = {}
+    a_lire = []
+    for jour in jours:
+        fichier = cache / f"{jour.isoformat()}.json" if cache else None
+        if fichier and jour < aujourdhui and fichier.exists():
+            par_jour[jour] = json.loads(fichier.read_text(encoding="utf-8"))
+        else:
+            a_lire.append(jour)
+    blocs: list[list[date]] = []
+    for jour in a_lire:  # suites de jours consécutifs, 31 jours au plus
+        if blocs and jour == blocs[-1][-1] + timedelta(days=1) and len(blocs[-1]) < 31:
+            blocs[-1].append(jour)
+        else:
+            blocs.append([jour])
+    lus = 0
+    for bloc in blocs:
         if progression:
-            progression(i, len(jours), jour)
-        donnees = lire_jour(client, jour, cache)
-        d.commandes += donnees["commandes"]
-        d.paiements += donnees["paiements"]
-        d.remboursements += donnees["remboursements"]
+            progression(lus + 1, len(a_lire), bloc[0], bloc[-1])
+        for jour, donnees in lire_bloc(client, bloc[0], bloc[-1]).items():
+            par_jour[jour] = donnees
+            if cache and jour < aujourdhui:  # jour terminé : gardé
+                cache.mkdir(parents=True, exist_ok=True)
+                (cache / f"{jour.isoformat()}.json").write_text(json.dumps(donnees, ensure_ascii=False),
+                                                                 encoding="utf-8")
+        lus += len(bloc)
+    for jour in jours:
+        donnees = par_jour.get(jour, {})
+        d.commandes += donnees.get("commandes", [])
+        d.paiements += donnees.get("paiements", [])
+        d.remboursements += donnees.get("remboursements", [])
     d.employes = {e["id"]: e.get("name") or e.get("nickname") or e["id"] for e in client._pages("employees", {})}
     d.clients = {c["id"]: " ".join(x for x in (c.get("firstName"), c.get("lastName")) if x).strip() or c["id"]
                  for c in client._pages("customers", {})}
@@ -308,6 +336,7 @@ def statistiques(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
     jours = {c.moment.date() for c in commandes}
     vues["Résumé"] = (["Indicateur", "Valeur"], [
         ["Commandes payées", len(commandes)],
+        ["Ventes brutes (articles)", sum((l.ventes_brutes for c in commandes for l in c.lignes), ZERO)],
         ["Ventes nettes (articles)", total],
         ["Taxes encaissées", sum((c.taxes for c in commandes), ZERO)],
         ["Montant encaissé (paiements)", montant_paye],
@@ -326,3 +355,83 @@ def statistiques(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
         ["Paiements", len(paiements)],
     ])
     return {nom: vues[nom] for nom in VUES}
+
+
+# --------------------------------------------------------------------------------------------- périodes (filtre)
+PERIODES = ["Aujourd'hui", "Hier", "Cette semaine", "Semaine dernière", "Ce mois-ci", "Mois dernier",
+            "30 derniers jours", "Cette année"]
+
+
+def _mois_precedent(jour: date) -> date:
+    premier = jour.replace(day=1) - timedelta(days=1)
+    return premier.replace(day=1)
+
+
+def periode(nom: str, aujourdhui: date | None = None) -> tuple[date, date]:
+    """Bornes d'une période du filtre (comme le filtre de date de Clover)."""
+    a = aujourdhui or date.today()
+    lundi = a - timedelta(days=a.weekday())
+    if nom == "Hier":
+        return a - timedelta(days=1), a - timedelta(days=1)
+    if nom == "Cette semaine":
+        return lundi, a
+    if nom == "Semaine dernière":
+        return lundi - timedelta(days=7), lundi - timedelta(days=1)
+    if nom == "Ce mois-ci":
+        return a.replace(day=1), a
+    if nom == "Mois dernier":
+        debut = _mois_precedent(a)
+        return debut, a.replace(day=1) - timedelta(days=1)
+    if nom == "30 derniers jours":
+        return a - timedelta(days=29), a
+    if nom == "Cette année":
+        return a.replace(month=1, day=1), a
+    return a, a
+
+
+def comparaison(du: date, au: date, nom: str = "") -> tuple[date, date, str]:
+    """Période de comparaison et son libellé : un jour -> le même jour la semaine dernière (« mardi dernier ») ;
+    semaine -> semaine d'avant ; mois -> mois d'avant ; année -> année d'avant ; sinon la période précédente."""
+    if du == au:
+        return du - timedelta(days=7), au - timedelta(days=7), f"{JOURS[du.weekday()]} dernier"
+    if nom in ("Cette semaine", "Semaine dernière"):
+        return du - timedelta(days=7), au - timedelta(days=7), "la semaine dernière"
+    if nom in ("Ce mois-ci", "Mois dernier"):
+        debut = _mois_precedent(du)
+        fin_mois = du - timedelta(days=1)
+        return debut, min(debut + (au - du), fin_mois), "le mois dernier"
+    if nom == "Cette année":
+        return du.replace(year=du.year - 1), au.replace(year=au.year - 1), "l'an dernier"
+    duree = au - du
+    return du - duree - timedelta(days=1), du - timedelta(days=1), "la période précédente"
+
+
+def series(d: DonneesClover, du: date, au: date) -> tuple[list[str], list[Decimal]]:
+    """Ventes nettes par heure (un seul jour) ou par jour (plusieurs jours), pour le graphique principal."""
+    commandes = preparer(d)
+    if du == au:
+        valeurs = [ZERO] * 24
+        for c in commandes:
+            valeurs[c.moment.hour] += c.nettes
+        return [f"{h:02d}h" for h in range(24)], valeurs
+    jours = [du + timedelta(days=i) for i in range((au - du).days + 1)]
+    index = {j: i for i, j in enumerate(jours)}
+    valeurs = [ZERO] * len(jours)
+    for c in commandes:
+        i = index.get(c.moment.date())
+        if i is not None:
+            valeurs[i] += c.nettes
+    return [f"{j.day:02d}/{j.month:02d}" for j in jours], valeurs
+
+
+def montants_par_moyen(d: DonneesClover) -> list[tuple[str, Decimal]]:
+    """Montant perçu : Carte / Espèces / Autre (comme Clover)."""
+    groupes = {"Carte": ZERO, "Espèces": ZERO, "Autre": ZERO}
+    for p in d.paiements:
+        if p.get("result") != "SUCCESS":
+            continue
+        libelle = ((p.get("tender") or {}).get("label") or "").lower()
+        cle = "Carte" if "carte" in libelle or "card" in libelle else ("Espèces" if "esp" in libelle
+                                                                         or "cash" in libelle else "Autre")
+        groupes[cle] += _cents(p.get("amount"))
+    return list(groupes.items())
