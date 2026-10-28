@@ -135,3 +135,28 @@ def test_numero_compte_sage():
     assert numero_compte(40230000) == "4023"
     assert numero_compte("40140000") == "4014"
     assert numero_compte(0) == "" and numero_compte(None) == ""
+
+
+def test_article_renomme_dans_clover_propose_le_nouveau_nom(tmp_path):
+    from mvogmbi_sync.correspondance import (PERSONNALISE, RENOMME, lire_a_relier, memoriser_a_relier,
+                                             proposer_renommes)
+
+    # ventes : l'ancien ID (supprimé de Clover) et un montant saisi sans article ; mémorisés une seule fois
+    a_relier = tmp_path / "articles_a_relier.csv"
+    assert memoriser_a_relier(a_relier, [("OLD1", "Arachide Frais Village kg"), ("", "Article personnalisé")]) == 2
+    assert memoriser_a_relier(a_relier, [("OLD1", "Arachide Frais Village kg")]) == 0
+    assert [r[0] for r in lire_a_relier(a_relier)] == ["OLD1", "nom:article personnalise"]
+
+    clover = [ArticleClover("NEW1", "Arachide Frais Du Village en kg"),        # nouveau nom (nouvel ID)
+              ArticleClover("OLD1", "Arachide Frais Village kg"),              # ancien nom, supprimé
+              ArticleClover("OLD2", "Milk Sere Ne 1kg 12"),                    # autre format : jamais relié
+              ArticleClover("nom:article personnalise", "Article personnalisé")]
+    resultat = rapprocher(clover, SAGE + [ArticleSage("C0001523", "Milk Sere Ne 1kg 12-36", "Inventory", "4013")])
+    assert proposer_renommes(resultat, {"OLD1", "OLD2", "nom:article personnalise"}) >= 1
+    par_id = {c.id_clover: c for c in resultat}
+    ancien = par_id["OLD1"]
+    assert (ancien.statut, ancien.numero_sage, ancien.methode) == (A_CONFIRMER, "B0000015", RENOMME)
+    assert "Arachide Frais Du Village en kg" in ancien.suggestions
+    assert par_id["nom:article personnalise"].methode == PERSONNALISE
+    assert par_id["OLD2"].numero_sage != "C0001522"
+

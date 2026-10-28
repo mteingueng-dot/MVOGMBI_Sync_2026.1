@@ -17,10 +17,12 @@ from .articles_sage import lire_copie
 from .design import Bouton, cadre_tableau, entete_page, rayer
 from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
-from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, conflit_format, ecrire_correspondance,
-                             lire_correspondances, normaliser)
+from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, PERSONNALISE, RENOMME, conflit_format,
+                             ecrire_correspondance, lire_correspondances, normaliser)
 
-FILTRES = ["À traiter (À confirmer + Aucun)", "Tous", CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN]  # valeurs internes
+SUPPRIMES = "Supprimés ou renommés dans Clover"
+FILTRES = ["À traiter (À confirmer + Aucun)", SUPPRIMES, "Tous", CONFIRME, AUTOMATIQUE, A_CONFIRMER,
+           AUCUN]  # valeurs internes
 COLONNES = [("statut", "Statut", 95), ("nom", "Article Clover", 290), ("categorie", "Catégorie", 130),
             ("ventes", "Ventes 30 j", 80), ("numero", "N° article Sage", 120), ("description", "Description Sage", 290)]
 COULEURS = {CONFIRME: "#e6f4ea", A_CONFIRMER: "#fff4cc", AUCUN: "#fbe0de"}  # « Automatique » : lignes rayées
@@ -118,10 +120,13 @@ class PageCorrespondance(ttk.Frame):
                 continue
             if filtre in (CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN) and c.statut != filtre:
                 continue
+            if filtre == SUPPRIMES and c.methode not in (RENOMME, PERSONNALISE):
+                continue
             if texte and texte not in normaliser(f"{c.nom_clover} {c.numero_sage} {c.description_sage}"):
                 continue
+            nom = c.nom_clover + (t("  (supprimé de Clover)") if c.methode == RENOMME else "")
             self.tableau.insert("", "end", iid=c.id_clover, tags=(c.statut,), values=(
-                t(c.statut), c.nom_clover, c.categorie_clover, f"{c.ventes_30j:,.2f}" if c.ventes_30j else "",
+                t(c.statut), nom, c.categorie_clover, f"{c.ventes_30j:,.2f}" if c.ventes_30j else "",
                 c.numero_sage, c.description_sage))
             visibles += 1
         rayer(self.tableau)
@@ -146,7 +151,10 @@ class PageCorrespondance(ttk.Frame):
               nom=c.nom_clover, cat=c.categorie_clover or "—", id=c.id_clover, num=c.numero_sage or "—",
               desc=c.description_sage, statut=t(c.statut), methode=c.methode or "—")
             + (t("\nAutres suggestions : {s}", s=c.suggestions) if c.suggestions else "")))
-        self.recherche_sage.set(c.nom_clover)
+        if c.methode == RENOMME and c.description_sage:  # ancien nom : chercher plutôt l'article Sage proposé
+            self.recherche_sage.set(c.description_sage)
+        else:
+            self.recherche_sage.set(c.nom_clover)
         self.chercher_sage()
 
     def chercher_sage(self) -> None:

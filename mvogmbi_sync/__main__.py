@@ -360,8 +360,10 @@ def commande_correspondance(args: argparse.Namespace) -> None:
         noms_vendus.setdefault(id_article, nom_article)
         if numero_sage:
             a_confirmer[id_article] = (nom_article, numero_sage)
-    for id_article in sorted(set(noms_vendus) - ids_catalogue):
-        a = client.article(id_article) or {"id": id_article}
+    from .correspondance import PREFIXE_SANS_ID
+    absents = set(noms_vendus) - ids_catalogue
+    for id_article in sorted(absents):
+        a = ({} if id_article.startswith(PREFIXE_SANS_ID) else client.article(id_article)) or {"id": id_article}
         a["name"] = a.get("name") or noms_vendus[id_article]
         catalogue.append(a)
         print(f"  Article vendu mais absent du catalogue : {a['name']}")
@@ -389,6 +391,10 @@ def commande_correspondance(args: argparse.Namespace) -> None:
         confirmes[id_article] = _C(CONFIRME, nom_article, "", Decimal("0"), numero_sage, "", "",
                                    "Manuel (articles_a_relier)", 100, "", "", id_article)
     resultat = rapprocher(clover, sage, confirmes)
+    from .correspondance import proposer_renommes
+    proposes = proposer_renommes(resultat, absents)
+    if proposes:
+        print(f"  {proposes} article(s) supprimé(s) ou renommé(s) dans Clover : nouveau nom proposé (à confirmer)")
     try:
         ecrire_correspondance(resultat, chemin)
     except PermissionError:
@@ -408,16 +414,9 @@ A_RELIER = RACINE / "donnees" / "articles_a_relier.csv"
 
 def memoriser_a_relier(articles: list[tuple[str, str]]) -> None:
     """Articles vendus sans numéro Sage : la prochaine « correspondance » les ajoutera (même supprimés de Clover)."""
-    import csv
+    from .correspondance import memoriser_a_relier as memoriser
 
-    from .correspondance import lire_a_relier
-
-    deja = {r[0] for r in lire_a_relier(A_RELIER)}
-    nouveaux = [(i, n) for i, n in dict(articles).items() if i and i not in deja]
-    if nouveaux:
-        A_RELIER.parent.mkdir(parents=True, exist_ok=True)
-        with A_RELIER.open("a", encoding="utf-8", newline="") as f:
-            csv.writer(f, delimiter=";").writerows(nouveaux)
+    memoriser(A_RELIER, articles)
 
 
 def config_import(config_toml: dict):

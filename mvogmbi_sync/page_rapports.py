@@ -428,6 +428,7 @@ class PageRapports(ttk.Frame):
         self.libelle_periode = ttk.Label(barre, text="", foreground=TEXTE_DOUX)
         self.libelle_periode.pack(side="left", padx=10)
         Bouton(barre, "🔄  " + t("Actualiser"), self.calculer_statistiques, petit=True).pack(side="left")
+        Bouton(barre, "📕  " + t("PDF de la page"), self.pdf_page, "secondaire", petit=True).pack(side="right")
         self.auto = tk.BooleanVar(value=True)
         ttk.Checkbutton(barre, text=t("Journée en cours : actualiser toutes les 5 minutes"),
                         variable=self.auto).pack(side="left", padx=12)
@@ -764,6 +765,35 @@ class PageRapports(ttk.Frame):
             self._minuterie = None
         if self.auto.get() and r["au"] >= date.today():
             self._minuterie = self.after(5 * 60 * 1000, self.calculer_statistiques)
+
+    def pdf_page(self) -> None:
+        """La page affichée en PDF : cartes et graphiques tels qu'à l'écran, puis le tableau complet (toutes ses
+        lignes, pas seulement celles visibles), avec la période et les filtres."""
+        from .export_tableau import contenu, demander_et_ecrire, ecrire_pdf, image_widget
+
+        cle = self.vue_courante
+        libelle = next((l for _, _, etats in NAVIGATION for l, c in etats if c == cle), cle)
+        images, entetes, lignes = [], [], []
+        if cle == "accueil":
+            images = [image_widget(self.page_accueil)]
+        elif cle == "apercu":
+            images = [image_widget(self.page_apercu)]
+        elif cle == "peremption":
+            entetes, lignes = contenu(self.tableau_peremption)
+        else:
+            if self.kpi_cadre.winfo_ismapped():
+                images.append(image_widget(self.kpi_cadre))
+            if self.g_etat.winfo_ismapped():
+                self.g_etat.delete("bulle")
+                images.append(image_widget(self.g_etat))
+            if self.tableau_stats.winfo_ismapped():
+                entetes, lignes = contenu(self.tableau_stats)
+        f = self._filtres_actifs()
+        sous_titre = (f"{self.stat_du.get()} → {self.stat_au.get()}"
+                      + (t("   •   filtres : {f}", f=", ".join(f"{t(k)} = {v}" for k, v in f.items())) if f else ""))
+        nom = f"{t('Statistiques Clover')} — {t(libelle)}"
+        demander_et_ecrire(self, nom, "pdf",
+                           lambda chemin: ecrire_pdf(chemin, nom, entetes, lignes, images, sous_titre))
 
     # ---------------------------------------------------------------- navigation des états
     def _construire_nav(self) -> None:

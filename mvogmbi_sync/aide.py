@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.9.25"
+VERSION = "1.9.27"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -55,7 +55,8 @@ ACCUEIL = {
         ("para", "Suivez la liste « Mise en route » ci-dessus : chaque étape passe au vert quand elle est faite. "
                  "Le « Guide de configuration » décrit chaque étape et le mode opératoire au quotidien ; « Aide / FAQ » "
                  "répond aux questions courantes. Le manuel d'utilisation illustré (PDF) est dans le menu Démarrer, "
-                 "dossier MVOGMBI_Sync."),
+                 "dossier MVOGMBI_Sync, avec le document d'architecture (composants, données et diagrammes de "
+                 "flux)."),
         ("sous_titre", "À propos"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, épicerie africaine & caribéenne."),
         ("para", "Logiciels reliés : Clover (point de vente) et Sage 50 Comptabilité, Édition canadienne."),
@@ -102,7 +103,8 @@ ACCUEIL = {
         ("sous_titre", "Getting started"),
         ("para", "Follow the “Getting started” checklist above: each step turns green once done. The “Setup guide” "
                  "describes every step and the daily operating procedure; “Help / FAQ” answers common questions. "
-                 "The illustrated user manual (PDF) is in the Start menu, MVOGMBI_Sync folder."),
+                 "The illustrated user manual (PDF) is in the Start menu, MVOGMBI_Sync folder, with the architecture "
+                 "document (components, data and flow diagrams)."),
         ("sous_titre", "About"),
         ("para", f"MVOGMBI_Sync version {VERSION} — Marché MVOG-MBI Sherbrooke, African & Caribbean grocery."),
         ("para", "Connected software: Clover (point of sale) and Sage 50 Accounting, Canadian Edition."),
@@ -138,6 +140,14 @@ FAQ = {
         ("reponse", "Le courriel indique la raison (ex. article Clover non relié à Sage, article Sage sans compte "
                     "de produits). Corrigez-la ; le traitement reprendra automatiquement ce jour-là la nuit "
                     "suivante. Vous pouvez aussi cliquer sur « Lancer maintenant » dans le Tableau de bord."),
+        ("question", "Un article renommé ou supprimé dans Clover bloque d'anciennes ventes."),
+        ("reponse", "Dans Clover, renommer un article en crée souvent un nouveau : les ventes d'avant gardent l'ancien "
+                    "article et l'ancien nom. Page « 5. Correspondance » : « Mettre à jour depuis Clover et Sage », "
+                    "puis le filtre « Supprimés ou renommés dans Clover ». Chaque ancien article y figure avec, quand "
+                    "il est trouvé, le nouveau nom Clover et son article Sage proposés (« Autres suggestions ») : "
+                    "« Accepter la proposition » s'ils sont bons, sinon choisissez l'article Sage, puis « Enregistrer "
+                    "les modifications ». Les jours bloqués sont repris au traitement suivant. Les montants saisis à "
+                    "la caisse sans article (« Article personnalisé ») se relient de la même façon."),
         ("question", "Un nouvel article a été créé dans Clover : que faire ?"),
         ("reponse", "S'il porte exactement le même nom qu'un article Sage, il est relié automatiquement. Sinon, "
                     "ouvrez la page « 5. Correspondance », filtre « À traiter », choisissez l'article Sage et cliquez "
@@ -216,6 +226,11 @@ FAQ = {
                     "« Exporter en Excel », « Exporter en CSV » ou « Exporter en PDF ». Ce qui est affiché est exporté "
                     "(filtre et recherche compris) ; le CSV utilise le séparateur « ; » d'Excel en français ; le PDF "
                     "(fait par Microsoft Edge) est prêt à imprimer, à l'horizontale pour les tableaux larges."),
+        ("question", "Comment exporter un graphique ou toute une page de statistiques en PDF ?"),
+        ("reponse", "Clic droit sur le graphique : « Exporter le graphique en PDF… » ou « Enregistrer le graphique en "
+                    "image (PNG)… ». Bouton « 📕 PDF de la page » en haut des statistiques Clover : la page affichée "
+                    "(Accueil, Aperçu des ventes, Aperçu financier ou un état) avec ses indicateurs, ses graphiques et "
+                    "son tableau complet, la période et les filtres en sous-titre."),
 
         ("sous_titre", "Utilisateurs et accès"),
         ("question", "Comment donner accès à l'application à un employé ?"),
@@ -289,6 +304,13 @@ FAQ = {
         ("reponse", "The email gives the reason (e.g. Clover item not linked to Sage, Sage item without a revenue "
                     "account). Fix it; the run will resume that day automatically the following night. You can "
                     "also click “Run now” in the Dashboard."),
+        ("question", "An item renamed or deleted in Clover blocks older sales."),
+        ("reponse", "In Clover, renaming an item often creates a new one: earlier sales keep the old item and old "
+                    "name. Item mapping page (5): “Update from Clover and Sage”, then the “Deleted or renamed in "
+                    "Clover” filter. Each old item is listed with, when found, the new Clover name and its Sage item "
+                    "proposed (“Other suggestions”): “Accept the suggestion” if they are right, otherwise choose the "
+                    "Sage item, then “Save changes”. Blocked days are resumed by the next run. Amounts keyed at the "
+                    "register without an item (“Article personnalisé”) are linked the same way."),
         ("question", "A new item was created in Clover: what should I do?"),
         ("reponse", "If it has exactly the same name as a Sage item, it is linked automatically. Otherwise open the "
                     "“5. Item mapping” page, filter “To handle”, choose the Sage item and click “Confirm the chosen "
@@ -367,6 +389,11 @@ FAQ = {
                     "“Export to PDF”. What is shown is exported (filter and search included); the CSV uses the “;” "
                     "separator of French Excel; the PDF (made by Microsoft Edge) is ready to print, in landscape for "
                     "wide tables."),
+        ("question", "How do I export a chart or a whole statistics page to PDF?"),
+        ("reponse", "Right-click the chart: “Export the chart to PDF…” or “Save the chart as an image (PNG)…”. The "
+                    "“📕 Page PDF” button at the top of the Clover statistics: the page shown (Home, Sales overview, "
+                    "Financial overview or a report) with its indicators, charts and full table, the period and filters "
+                    "as subtitle."),
 
         ("sous_titre", "Users and access"),
         ("question", "How do I give an employee access to the application?"),
@@ -608,7 +635,11 @@ GUIDE = {
                  "la courbe, ligne de la moyenne, point le plus haut, valeurs sur les barres ; au survol d'une courbe, "
                  "d'une barre, d'une part d'anneau, d'une ligne de classement ou d'une case, une infobulle donne le "
                  "détail. Chaque tableau a son titre. Chaque état a une recherche "
-                 "et son graphique (courbe d'évolution, barres, anneau ou classement)."),
+                 "et son graphique (courbe d'évolution, barres, anneau ou classement). L'axe vertical s'arrête juste "
+                 "au-dessus de la plus grande valeur. Les tableaux datés montrent la date la plus récente en haut "
+                 "(sauf les prévisions et la péremption, tournées vers l'avenir). Export PDF : « 📕 PDF de la page » "
+                 "(cartes d'indicateurs, graphiques et tableau complet, avec la période et les filtres) ; clic droit "
+                 "sur un graphique : « Exporter le graphique en PDF » ou « Enregistrer le graphique en image (PNG) »."),
         ("puce", "Prévisions : ventes des prochains jours (même jour de la semaine sur 4 semaines, corrigé de la "
                  "tendance), achats à prévoir (rythme de vente des 28 derniers jours, stock et coût Clover) et articles "
                  "à commander : stock restant − quantité vendue les N derniers jours ≤ 0 (N choisi dans la liste « Horizon », "
@@ -849,7 +880,10 @@ GUIDE = {
                  "average line, highest point, values on bars) with tooltips on curves, bars, ring slices, ranking "
                  "rows and heat map cells, a title on every table, "
                  "Items (including expiry), Employees, Customers. Each report has a search box and its chart (trend "
-                 "line, bars, ring or ranking)."),
+                 "line, bars, ring or ranking). The vertical axis stops just above the largest value. Dated tables "
+                 "show the most recent date first (except forecasts and expiry, which look ahead). PDF export: "
+                 "“📕 Page PDF” (indicator cards, charts and full table, with the period and filters); right-click a "
+                 "chart: “Export the chart to PDF” or “Save the chart as an image (PNG)”."),
         ("puce", "Forecasts: sales of the coming days (same weekday over 4 weeks, adjusted for the trend), purchases "
                  "to plan (sales pace of the last 28 days, Clover stock and cost) and items to order: remaining stock "
                  "− quantity sold in the last N days ≤ 0 (N chosen in the “Horizon” list, 14 by default; "

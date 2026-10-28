@@ -107,10 +107,12 @@ EDGE = [Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
         Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")]
 
 
-def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[str]]) -> None:
+def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[str]], images=None,
+               sous_titre: str = "") -> None:
     """PDF du tableau (page HTML imprimée par Microsoft Edge sans fenêtre, comme le manuel : aucune bibliothèque
     de plus) : en-tête du marché, titre, date, en-têtes verts, une ligne sur deux teintée, montants à droite,
-    page à l'horizontale au-delà de 7 colonnes."""
+    page à l'horizontale au-delà de 7 colonnes (ou s'il y a des graphiques). `images` : images PIL (graphiques,
+    cartes d'indicateurs) placées avant le tableau ; sans en-têtes, le PDF ne contient que les images."""
     import html
     import subprocess
     import tempfile
@@ -120,6 +122,15 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
     if not edge:
         raise RuntimeError(t("Microsoft Edge introuvable : l'export PDF en a besoin."))
     e = html.escape
+    import base64
+    import io
+
+    blocs_images = []
+    for image in images or []:
+        tampon = io.BytesIO()
+        image.save(tampon, format="PNG")
+        blocs_images.append("<img class='graphique' src='data:image/png;base64,"
+                            + base64.b64encode(tampon.getvalue()).decode("ascii") + "'>")
     entier = re.compile(r"^-?\d[\d\s ]*([.,]\d+)?( %)?$")  # nombres, quantités, pourcentages : à droite
     nombres = [any(nombre(l[i]) is not None or entier.match(str(l[i]).strip()) for l in lignes[:50] if i < len(l))
                for i in range(len(entetes))]
@@ -127,7 +138,9 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
         "<tr>" + "".join(f"<td class='{'n' if nombres[i] else ''}'>{e(str(v).strip())}</td>"
                          for i, v in enumerate(l)) + "</tr>" for l in lignes)
     page = f"""<!doctype html><html lang='fr'><head><meta charset='utf-8'><style>
-@page {{ size: Letter {'landscape' if len(entetes) > 7 else 'portrait'}; margin: 12mm 10mm; }}
+@page {{ size: Letter {'landscape' if len(entetes) > 7 or images else 'portrait'}; margin: 12mm 10mm; }}
+img.graphique {{ display: block; max-width: 100%; max-height: 165mm; margin: 6px auto 10px; border: 1px solid #e2e8e4;
+                 page-break-inside: avoid; }}
 body {{ font-family: 'Segoe UI', Arial, sans-serif; font-size: 8.5pt; color: #1f2d24; margin: 0; }}
 .bandeau {{ border-top: 6px solid #1a9b3c; padding-top: 6px; display: flex; justify-content: space-between; }}
 .marche {{ color: #13772d; font-weight: 600; font-size: 10pt; }}
@@ -144,8 +157,10 @@ tr {{ page-break-inside: avoid; }}
 </style></head><body>
 <div class='bandeau'><span class='marche'>Marché MVOG-MBI Sherbrooke — MVOGMBI_Sync</span>
 <span class='date'>{datetime.now():%Y-%m-%d %H:%M}</span></div>
-<h1>{e(titre)}</h1><div class='sous'>{e(t("{n} ligne(s)", n=len(lignes)))}</div>
-<table><thead><tr>{"".join(f"<th>{e(str(x))}</th>" for x in entetes)}</tr></thead><tbody>{corps}</tbody></table>
+<h1>{e(titre)}</h1><div class='sous'>{e(sous_titre or (t("{n} ligne(s)", n=len(lignes)) if entetes else ""))}</div>
+{"".join(blocs_images)}
+{f'<table><thead><tr>{"".join(f"<th>{e(str(x))}</th>" for x in entetes)}</tr></thead><tbody>{corps}</tbody></table>'
+ if entetes else ""}
 </body></html>"""
     with tempfile.TemporaryDirectory() as dossier:
         source = Path(dossier) / "tableau.html"
@@ -219,3 +234,34 @@ def bouton_exporter(parent, tableau: ttk.Treeview, nom: str, **options):
 
     bouton = Bouton(parent, "⬇  " + t("Exporter"), ouvrir, "secondaire", **options)
     return bouton
+
+
+def image_widget(widget):
+    """Image (PIL) de ce que montre un élément de la fenêtre : graphique, cartes d'indicateurs…"""
+    from PIL import ImageGrab
+
+    widget.update()
+    x, y = widget.winfo_rootx(), widget.winfo_rooty()
+    return ImageGrab.grab((x, y, x + widget.winfo_width(), y + widget.winfo_height()), all_screens=True)
+
+
+def demander_et_ecrire(parent, nom: str, format_: str, ecrire) -> None:
+    """Demande où enregistrer (PDF ou PNG), écrit avec `ecrire(chemin)`, propose d'ouvrir le fichier."""
+    types = {"pdf": ("PDF", "*.pdf"), "png": (t("Image PNG"), "*.png")}
+    chemin = filedialog.asksaveasfilename(parent=parent, defaultextension="." + format_,
+                                          initialfile=f"{nom} {date.today().isoformat()}.{format_}",
+                                          filetypes=[types[format_]])
+    if not chemin:
+        return
+    parent.configure(cursor="watch")
+    parent.update_idletasks()
+    try:
+        ecrire(Path(chemin))
+    except Exception as exc:
+        messagebox.showerror(nom, str(exc), parent=parent)
+        return
+    finally:
+        parent.configure(cursor="")
+    if messagebox.askyesno(nom, t("Fichier enregistré : {fichier}.\n\nOuvrir le fichier ?", fichier=Path(chemin).name),
+                           parent=parent):
+        os.startfile(chemin)

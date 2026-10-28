@@ -153,6 +153,23 @@ def main(origine: Path, langue: str = "fr") -> None:
     page(i.UTILISATEURS, "13_utilisateurs")
     page(i.RAPPORTS, "14_rapports", lambda: app.page_rapports.actualiser(), delai=30000)
     page(i.RAPPORTS, "15_statistiques", lambda: app.page_rapports.onglets.select(3), delai=30000)
+
+    def etat(cle, section):
+        """Un état des statistiques Clover (les ventes sont déjà lues par la capture précédente)."""
+        def montrer():
+            p = app.page_rapports
+            p._ouvrir_section(section, next(e for _i, s, es in NAVIGATION if s == section for e in es))
+            p._montrer(cle, section)
+        return montrer
+
+    from mvogmbi_sync.page_rapports import NAVIGATION
+    for nom, cle, section, delai in (("16_apercu_ventes", "apercu", "Rapports", 4000),
+                                     ("17_apercu_financier", "Résumé", "Finances", 4000),
+                                     ("18_carte_chaleur", "Jour × heure", "Rapports", 4000),
+                                     ("19_benefices", "Bénéfices", "Rapports", 15000),
+                                     ("20_liste_articles", "liste_articles", "Articles", 25000),
+                                     ("21_previsions", "prev_ventes", "Prévisions", 25000)):
+        page(i.RAPPORTS, nom, etat(cle, section), delai=delai)
     app.after(2500, suivant)
     app.mainloop()
     shutil.rmtree(copie, ignore_errors=True)

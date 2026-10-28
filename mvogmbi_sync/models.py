@@ -55,6 +55,8 @@ class RapportVentes:
     lignes: list[LigneVente] = field(default_factory=list)
     # Articles payés mais marqués « non-recette » dans Clover : exclus des ventes, signalés pour vérification
     hors_recettes: list[LigneVente] = field(default_factory=list)
+    # id des articles comptés aujourd'hui comme recettes dans Clover (article corrigé depuis la vente)
+    recettes_actuelles: set[str] = field(default_factory=set)
 
     @property
     def total_brut(self) -> Decimal:

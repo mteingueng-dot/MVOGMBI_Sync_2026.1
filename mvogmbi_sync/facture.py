@@ -140,6 +140,14 @@ def preparer_facture(rapport: RapportVentes, type_periode: TypePeriode) -> Factu
             CODE_TAXE_TAXABLE if ligne.taxable else "", ligne.id_article,
         ))
     for l in rapport.hors_recettes:
+        if l.id_article and l.id_article in rapport.recettes_actuelles:
+            # Clover fige le réglage dans chaque vente : la correction de l'article ne vaut que pour les ventes
+            # suivantes ; règle du propriétaire du 2026-10-27 : la vente reste non facturée, message plus clair
+            facture.avertissements.append(
+                f"« {l.nom} » ({l.quantite_vendue} x, {l.ventes_brutes} $) : article corrigé depuis dans Clover, mais "
+                "cette vente garde l'ancien réglage « non-recette » : non facturée (rien à faire)."
+            )
+            continue
         facture.avertissements.append(
             f"« {l.nom} » ({l.quantite_vendue} x, {l.ventes_brutes} $) a été payé mais est marqué « non-recette » "
             "dans Clover : il n'est pas facturé. Vérifiez la configuration de cet article dans Clover."

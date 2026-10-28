@@ -54,6 +54,27 @@ class Graphique(tk.Canvas):
         self.bind("<Configure>", lambda _e: self.redessiner())
         self.bind("<Motion>", self._bulle)
         self.bind("<Leave>", lambda _e: self.delete("bulle"))
+        self.bind("<Button-3>", self._menu_export)
+
+    def _menu_export(self, evenement) -> None:
+        """Clic droit : le graphique en PDF ou en image."""
+        from .langues import t
+
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="📕  " + t("Exporter le graphique en PDF…"), command=lambda: self.exporter("pdf"))
+        menu.add_command(label="🖼  " + t("Enregistrer le graphique en image (PNG)…"),
+                         command=lambda: self.exporter("png"))
+        menu.tk_popup(evenement.x_root, evenement.y_root)
+
+    def exporter(self, format_: str = "pdf") -> None:
+        from .export_tableau import demander_et_ecrire, ecrire_pdf, image_widget
+        from .langues import t
+
+        self.delete("bulle")
+        nom = self.titre or t("Graphique")
+        image = image_widget(self)
+        demander_et_ecrire(self, nom, format_, lambda chemin: image.save(chemin) if format_ == "png"
+                           else ecrire_pdf(chemin, nom, [], [], [image]))
 
     def _bulle(self, evenement) -> None:
         """Infobulle au survol : repère vertical, étiquette du point (date, heure…) et valeur de chaque série."""

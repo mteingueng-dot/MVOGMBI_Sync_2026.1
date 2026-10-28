@@ -244,3 +244,23 @@ def test_article_non_recette_signale():
     facture = preparer_facture(RapportVentes(j, j, "api", hors_recettes=hors), TypePeriode.JOUR)
     # Avertissement seulement : Clover exclut lui-même cet article de ses ventes, la facture reste exacte.
     assert facture.anomalies == [] and "non-recette" in facture.avertissements[0]
+
+
+def test_non_recette_article_corrige_depuis():
+    from mvogmbi_sync.api_clover import lignes_hors_recettes
+    from mvogmbi_sync.facture import preparer_facture
+    from mvogmbi_sync.models import RapportVentes
+
+    commande = {
+        "payments": {"elements": [{"result": "SUCCESS"}]},
+        "lineItems": {"elements": [
+            {"name": "Colombina Bon Bon Bum Fresa 408g", "price": 399, "isRevenue": False, "item": {"id": "T1"}},
+        ]},
+    }
+    # règle gardée : toujours non facturé, même si l'article est aujourd'hui une recette dans Clover
+    assert lignes_commande(commande, {}) == []
+    hors = lignes_hors_recettes(commande, {})
+    j = date(2026, 5, 31)
+    facture = preparer_facture(RapportVentes(j, j, "api", hors_recettes=hors, recettes_actuelles={"T1"}),
+                               TypePeriode.JOUR)
+    assert facture.lignes == [] and "corrigé depuis dans Clover" in facture.avertissements[0]

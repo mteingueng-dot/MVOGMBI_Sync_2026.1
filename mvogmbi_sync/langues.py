@@ -996,4 +996,12 @@ EN: dict[str, str] = {
     "{n} ligne(s)": "{n} row(s)",
     "Le PDF n'a pas pu être créé.": "The PDF could not be created.",
     "Exporter en PDF (.pdf)…": "Export to PDF (.pdf)…",
+    "Enregistrer le graphique en image (PNG)…": "Save the chart as an image (PNG)…",
+    "Exporter le graphique en PDF…": "Export the chart to PDF…",
+    "Fichier enregistré : {fichier}.\n\nOuvrir le fichier ?": "File saved: {fichier}.\n\nOpen the file?",
+    "Graphique": "Chart",
+    "Image PNG": "PNG image",
+    "PDF de la page": "Page PDF",
+    "Supprimés ou renommés dans Clover": "Deleted or renamed in Clover",
+    "  (supprimé de Clover)": "  (deleted from Clover)",
 }

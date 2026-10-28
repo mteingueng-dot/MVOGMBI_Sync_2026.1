@@ -34,6 +34,12 @@ STATUTS = [CONFIRME, AUTOMATIQUE, A_CONFIRMER, AUCUN]
 VALIDATIONS = {CONFIRME.lower(), "confirme", "ok", "oui"}  # saisies acceptées comme « Confirmé »
 
 SEUIL_SUGGESTION = 60  # en dessous, aucune proposition
+# Articles vendus puis supprimés du catalogue Clover : un article renommé dans Clover est en fait recréé sous un
+# autre ID ; les ventes d'avant gardent l'ancien ID et l'ancien nom (constat du 2026-10-27 : « pondu », « Bobolo
+# Camauto »… bloquaient 34 factures). Valeurs enregistrées dans la colonne « Méthode » (non traduites).
+RENOMME = "Supprimé ou renommé dans Clover"
+PERSONNALISE = "Montant saisi à la caisse (sans article Clover)"
+PREFIXE_SANS_ID = "nom:"  # ligne vendue sans article Clover (« Article personnalisé ») : reliée par son nom
 
 ENTETES = [
     "Statut", "Nom Clover", "Catégorie Clover", "Ventes 30 j ($)", "N° article Sage",
@@ -184,6 +190,60 @@ def _signaler_formats_regroupes(resultat: list[Correspondance]) -> None:
                 if c.statut in (CONFIRME, AUTOMATIQUE):
                     c.statut = A_CONFIRMER
                 c.methode = "Plusieurs formats Clover sur un seul article Sage : créer un article par format"
+
+
+def cle_a_relier(id_article: str, nom: str) -> str:
+    """Clé d'un article vendu non relié : son ID Clover, ou « nom:<nom> » pour un montant saisi sans article."""
+    return id_article or PREFIXE_SANS_ID + normaliser(nom)
+
+
+def memoriser_a_relier(chemin: Path, articles: list[tuple[str, str]]) -> int:
+    """Articles vendus sans numéro Sage (ID Clover, nom vendu) : la prochaine mise à jour de la correspondance les
+    ajoute, même supprimés du catalogue Clover. Renvoie le nombre d'articles ajoutés à la liste."""
+    import csv
+
+    deja = {r[0] for r in lire_a_relier(chemin)}
+    nouveaux = {}
+    for id_article, nom in articles:
+        cle = cle_a_relier(id_article, nom)
+        if cle not in deja and nom:
+            nouveaux.setdefault(cle, nom)
+    if nouveaux:
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        with chemin.open("a", encoding="utf-8", newline="") as f:
+            csv.writer(f, delimiter=";").writerows(nouveaux.items())
+    return len(nouveaux)
+
+
+def proposer_renommes(resultat: list[Correspondance], absents: set[str]) -> int:
+    """Articles vendus puis supprimés de Clover (`absents` : leurs ID) : propose l'article Clover ACTUEL le plus
+    ressemblant (le nouveau nom) et son numéro Sage, « À confirmer » par le propriétaire (page Correspondance,
+    « Accepter la proposition »). Jamais entre deux formats différents. Renvoie le nombre de propositions."""
+    actuels = [c for c in resultat if c.id_clover not in absents and c.statut in (CONFIRME, AUTOMATIQUE)
+               and c.numero_sage]
+    noms = [normaliser(c.nom_clover) for c in actuels]
+    proposes = 0
+    for c in resultat:
+        if c.id_clover not in absents or c.statut == CONFIRME:
+            continue
+        if c.id_clover.startswith(PREFIXE_SANS_ID):
+            c.methode = PERSONNALISE
+            continue
+        c.methode = RENOMME
+        if c.statut == AUTOMATIQUE or not noms:  # nom identique à un article Sage : déjà relié
+            continue
+        candidats = process.extract(normaliser(c.nom_clover), noms, scorer=_score, limit=5)
+        compatibles = [x for x in candidats if x[1] >= SEUIL_SUGGESTION
+                       and not conflit_format(c.nom_clover, actuels[x[2]].nom_clover)]
+        if not compatibles:
+            continue
+        a = actuels[compatibles[0][2]]
+        autres = " | ".join(f"« {actuels[x[2]].nom_clover} » -> {actuels[x[2]].numero_sage}" for x in compatibles[1:3])
+        c.statut, c.confiance = A_CONFIRMER, round(compatibles[0][1])
+        c.numero_sage, c.description_sage, c.compte_revenus = a.numero_sage, a.description_sage, a.compte_revenus
+        c.suggestions = f"Nom actuel dans Clover : « {a.nom_clover} »" + (f" | Autres : {autres}" if autres else "")
+        proposes += 1
+    return proposes
 
 
 def lire_a_relier(chemin: Path) -> list[tuple[str, str, str]]:

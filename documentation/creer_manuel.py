@@ -531,7 +531,24 @@ other.</td></tr></table>"""))
                                                  "états, comme le tableau de bord de Clover",
                                                  "Page 11 — Clover statistics: cards, curves, rings and the report "
                                                  "menu, like the Clover dashboard"))
-                   + blocs("Rapports (page 11)"))
+                   + blocs("Rapports (page 11)")
+                   + figure("16_apercu_ventes", x("Aperçu des ventes : courbes, anneaux et classements, infobulle au "
+                                                  "survol", "Sales overview: curves, rings and rankings, tooltip on "
+                                                  "hover"))
+                   + figure("17_apercu_financier", x("Aperçu financier : les indicateurs (KPI) de la période",
+                                                     "Financial overview: the period's indicators (KPI)"))
+                   + figure("18_carte_chaleur", x("Carte de chaleur : ventes par jour de la semaine et par heure",
+                                                  "Heat map: sales by weekday and hour"))
+                   + figure("19_benefices", x("Bénéfices : ventes nettes Clover moins quantité × CUMP Sage",
+                                              "Profits: Clover net sales minus quantity × Sage average cost"))
+                   + figure("20_liste_articles", x("Liste d'articles : caractéristiques Clover, n° et CUMP Sage, marge",
+                                                   "Item list: Clover details, Sage number and average cost, margin"))
+                   + figure("21_previsions", x("Prévisions : ventes des prochains jours",
+                                               "Forecasts: sales of the coming days"))
+                   + "<div class='note'>💡 " + x("Clic droit sur un graphique : PDF ou image PNG. Bouton « 📕 PDF de "
+                                                   "la page » : la page entière (indicateurs, graphiques, tableau).",
+                                                   "Right-click a chart: PDF or PNG image. “📕 Page PDF” button: the "
+                                                   "whole page (indicators, charts, table).") + "</div>")
 
     parties.append(titre(12) + "<p>" + x("Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.",
                                          "What to do, and when, to keep everything up to date in Sage.") + "</p>"

@@ -28,6 +28,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from . import coffre
+from .correspondance import memoriser_a_relier
 from .periodes import jours as jours_periode
 
 MOTIF_FACTURE = re.compile(r"^Vente (\d{4}-\d{2}-\d{2})(/\d{2})?$")
@@ -227,6 +228,8 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
         facture = preparer_facture(rapport, type_facture)
         jour_etat = fin_bloc  # état repris par la date de la facture (le dimanche pour la fin de semaine)
         imp = preparer_import(facture, table)
+        if imp.ids_non_relies:  # proposés à la page Correspondance dès la prochaine mise à jour (même supprimés)
+            memoriser_a_relier(donnees / "articles_a_relier.csv", imp.ids_non_relies)
         blocages = [f"article Clover non relié à Sage : {n}" for n in imp.non_reliees] + list(facture.anomalies)
         if imp.sous_total != rapport.total_net:
             blocages.append(f"écart de {rapport.total_net - imp.sous_total:.2f} $ avec les ventes Clover")
@@ -421,8 +424,8 @@ def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr:
     article est vendu, le traitement s'arrête et l'alerte demande de le confirmer dans le fichier).
     """
     from .api_clover import SANS_CATEGORIE
-    from .correspondance import (AUTOMATIQUE, CONFIRME, ArticleClover, Correspondance, ecrire_correspondance,
-                                 lire_a_relier, lire_confirmes, rapprocher)
+    from .correspondance import (AUTOMATIQUE, CONFIRME, PREFIXE_SANS_ID, ArticleClover, Correspondance,
+                                 ecrire_correspondance, lire_a_relier, lire_confirmes, proposer_renommes, rapprocher)
     from .import_sage import TableCorrespondance, cle_nom
 
     import openpyxl
@@ -443,15 +446,17 @@ def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr:
 
     catalogue = client.articles()
     ids = {a["id"] for a in catalogue}
+    absents: set[str] = set()
     for id_article, nom, numero_sage in lire_a_relier(donnees / "articles_a_relier.csv"):
         if numero_sage:  # numéro Sage inscrit par le propriétaire : correspondance confirmée
             confirmes[id_article] = Correspondance(CONFIRME, nom, "", Decimal("0"), numero_sage, "", "",
                                                    "Manuel (articles_a_relier)", 100, "", "", id_article)
-        if id_article not in ids:
-                a = client.article(id_article) or {"id": id_article}
-                a["name"] = a.get("name") or nom
-                catalogue.append(a)
-                ids.add(id_article)
+        if id_article not in ids:  # vendu puis supprimé (ou renommé) dans Clover
+            a = ({} if id_article.startswith(PREFIXE_SANS_ID) else client.article(id_article)) or {"id": id_article}
+            a["name"] = a.get("name") or nom
+            catalogue.append(a)
+            ids.add(id_article)
+            absents.add(id_article)
     clover = [
         ArticleClover(
             id=a["id"], nom=(a.get("name") or "").strip(),
@@ -461,6 +466,9 @@ def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr:
         for a in catalogue
     ]
     resultat = rapprocher(clover, articles_sage, confirmes)
+    if proposes := proposer_renommes(resultat, absents):
+        cr.note(f"{proposes} article(s) vendu(s) puis supprimé(s) ou renommé(s) dans Clover : nouveau nom proposé, "
+                "à confirmer à la page Correspondance (filtre « Supprimés ou renommés dans Clover »).")
     nouveaux = [c for c in resultat if c.id_clover not in anciens_statuts]
     changes = [c for c in resultat if anciens_statuts.get(c.id_clover, c.statut) != c.statut]
     if nouveaux or changes or not chemin.exists():

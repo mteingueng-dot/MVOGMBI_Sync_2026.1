@@ -68,12 +68,20 @@ class ClientClover:
         if getattr(self, "_categories", None) is not None:
             return self._categories
         resultat: dict[str, str] = {}
+        recettes: set[str] = set()
         for article in self._pages("items", {"expand": "categories"}):
             cats = (article.get("categories") or {}).get("elements") or []
             if cats:
                 resultat[article["id"]] = cats[0].get("name", SANS_CATEGORIE)
-        self._categories = resultat
+            if article.get("isRevenue") is not False:
+                recettes.add(article["id"])
+        self._categories, self._recettes = resultat, recettes
         return resultat
+
+    def recettes_actuelles(self) -> set[str]:
+        """id des articles comptés aujourd'hui comme recettes dans le catalogue Clover."""
+        self.categories_par_article()
+        return self._recettes
 
     def article(self, id_article: str) -> dict | None:
         """Un article Clover par son identifiant, même s'il a été supprimé du catalogue depuis."""
@@ -155,7 +163,8 @@ class ClientClover:
         lignes = [l for c in commandes for l in lignes_commande(c, categories)]
         hors = [l for c in commandes for l in lignes_hors_recettes(c, categories)]
         return RapportVentes(debut=debut, fin=fin, source="API Clover",
-                             lignes=cumuler(lignes), hors_recettes=cumuler(hors))
+                             lignes=cumuler(lignes), hors_recettes=cumuler(hors),
+                             recettes_actuelles=self.recettes_actuelles())
 
 
 def _cents(valeur) -> Decimal:
@@ -210,6 +219,7 @@ def lignes_hors_recettes(commande: dict, categories: dict[str, str]) -> list[Lig
                 nom=(a.get("name") or "").strip(),
                 quantite_vendue=quantite,
                 ventes_brutes=_arrondi(_cents(a.get("price")) * quantite),
+                id_article=(a.get("item") or {}).get("id") or "",
             ))
     return resultat
 
