@@ -11,7 +11,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau,
-                     entete_page, fond_de, rayer)
+                     defilement, entete_page, fond_de, rayer)
 from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
 from .rapprochement import (A_ENCAISSER, A_PAIE, A_SAISIR, CONFIRME, DELAI_PAIE, EN_CIRCULATION, IGNORE, RAPPROCHE,
@@ -70,13 +70,17 @@ class PageRapprochement(ttk.Frame):
         haut.pack(fill="x")
         colonnes = (("fichier", "Relevé", 260), ("periode", "Période", 190), ("ouverture", "Solde d'ouverture", 130),
                     ("fermeture", "Solde de fermeture", 130), ("controle", "Contrôle", 320))
-        self.liste = ttk.Treeview(haut, columns=[c[0] for c in colonnes], show="headings", height=3, selectmode="browse")
+        cadre_liste = tk.Frame(haut, background=fond_de(haut))
+        cadre_liste.pack(fill="x")
+        self.liste = ttk.Treeview(cadre_liste, columns=[c[0] for c in colonnes], show="headings", height=3,
+                                  selectmode="browse")
         for cle, titre_col, largeur in colonnes:
             self.liste.heading(cle, text=t(titre_col))
             self.liste.column(cle, width=largeur, anchor="e" if cle in ("ouverture", "fermeture") else "w",
                               stretch=cle in ("fichier", "controle"))
         self.liste.tag_configure("erreur", background="#fde2e4")
-        self.liste.pack(fill="x")
+        self.liste.pack(side="left", fill="x", expand=True)
+        defilement(self.liste)
         self.liste.bind("<Delete>", lambda _e: self.supprimer())
 
         # chiffres du rapprochement
@@ -117,8 +121,8 @@ class PageRapprochement(ttk.Frame):
         self.tableau.tag_configure(EN_CIRCULATION, background="#eaf2fb")
         defil = ttk.Scrollbar(cadre, orient="vertical", command=self.tableau.yview)
         self.tableau.configure(yscrollcommand=defil.set)
+        defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.tableau.pack(side="left", fill="both", expand=True)
-        defil.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
         bouton_exporter(barre, self.tableau, t("Rapprochement bancaire")).pack(side="right")
         rendre_exportable(self.liste, t("Relevés Desjardins"))

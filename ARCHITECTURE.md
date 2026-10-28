@@ -129,6 +129,9 @@ flowchart TB
 | | `correspondance.py`, `verification_comptes.py` | Articles Clover → Sage ; comptes 15xx → 40xx / 50xx. |
 | | `encaissements.py` | Dépôts Clover (lots), espèces (Interac, dépôts au guichet) → encaissements sur les factures. |
 | | `factures_fournisseurs.py`, `fournisseurs.py`, `import_achats.py` | Lecture des factures fournisseurs, registre, import `<PurInvoice>`. |
+| | `creation_articles.py`, `stock_clover.py` | Nouvel article dans Clover et Sage (comptes par catégorie) ; stock et coût Clover après l'import d'une facture fournisseur. |
+| | `inventaire.py` | Inventaire Clover + Sage en un fichier ; saisie de l'inventaire compté dans les deux ; rapport du coût de l'ajustement. |
+| | `couts_clover.py`, `fenetre_couts.py`, `fenetre_cocher.py` | Coûts Clover remplacés par le coût moyen Sage (lignes cochées, sans valeur aberrante) ; comptes des articles Sage corrigés d'après la table catégorie -> comptes. |
 | | `paiements_fournisseurs.py` | Avis Interac → factures fournisseurs → paiements. |
 | | `rapprochement.py` | Relevé Desjardins ↔ écritures du compte 1055. |
 | | `rapports.py` | Suivi des ventes et recherches dans l'historique Sage. |
@@ -260,6 +263,18 @@ flowchart TD
     P3 & P4 --> P5["Contrôle des totaux<br/>doublon : n° avec ou sans préfixe"]
     P5 --> P6["Articles Sage + facteur<br/>mémoire par fournisseur<br/>Qté Sage = Qté × Facteur"]
     P6 --> P7["import_achats : PurInvoice<br/>→ Sage_SA_import.exe → vérification"]
+    P7 --> P8["Clover : stock + Qté Sage reçue<br/>coût = nouveau prix d'achat"]
+    N1["Article absent<br/>« Créer l'article »"] --> N2["Sage : fiche de stock<br/>comptes de la catégorie"]
+    N2 --> N3["Clover : article, catégorie,<br/>taxes, UGS = péremption"]
+    N3 --> N4["Correspondance « Confirmé »"]
+    N4 -.-> P6
+    I1["Inventaire exporté<br/>Clover + Sage, un fichier"] --> I2["Quantités comptées<br/>colonne jaune"]
+    I2 --> I3["Clover : stock = compté<br/>Sage : ajustement d'inventaire"]
+    I3 --> I4["Rapport : coût de l'ajustement<br/>variation de la valeur Sage"]
+    K1["Coût moyen Sage<br/>et coût Clover"] --> K2["Lignes cochées<br/>sans valeur aberrante"]
+    K2 --> K3["Clover : coût = coût moyen Sage"]
+    T1["Table catégorie -> comptes<br/>écart = CMV"] --> T2["Articles Sage à corriger<br/>lignes cochées"]
+    T2 --> T3["Sage : comptes changés<br/>dans la fiche, vérifiés"]
     M1["Avis Interac<br/>boîte IMAP, lecture seule"] --> M2["Rapprochement proposé<br/>fournisseur, montant, n° cités"]
     M2 --> M3["Confirmé par le propriétaire<br/>page 9"]
     M3 --> M4["Répartition : plus ancienne d'abord,<br/>jamais plus que le solde"]

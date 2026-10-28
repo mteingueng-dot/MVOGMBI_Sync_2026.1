@@ -223,6 +223,16 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
         else:
             resultats[f.fichier] = "ÉCHEC : absente de Sage après l'import" + (
                 " — " + " ; ".join(resultat.erreurs) if resultat.erreurs else "")
+    importees = [f for f in a_importer if f.etat == IMPORTEE]
+    if importees:  # Clover suit : stock + quantité reçue, coût = nouveau prix d'achat (règle du 2026-10-28)
+        try:
+            from .stock_clover import mettre_a_jour_factures
+            for fichier, messages in mettre_a_jour_factures(racine, Path(racine) / "config.toml", importees).items():
+                if messages:
+                    resultats[fichier] += "\n   Clover : " + "\n   ".join(messages)
+        except Exception as exc:
+            for f in importees:
+                resultats[f.fichier] += f"\n   Clover non mis à jour : {exc}"
     for f in factures:
         journal(f"{f.fichier} : {resultats[f.fichier]}")
     return resultats

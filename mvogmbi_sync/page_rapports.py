@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .design import (CARTE, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton,
-                     ChampDate, ChampRecherche, cadre_tableau, entete_page, fond_de, rayer)
+                     ChampDate, ChampRecherche, Rangee, cadre_tableau, entete_page, fond_de, rayer)
 from .export_tableau import bouton_exporter
 from .statistiques_clover import SEUIL_CUMP_DOUTEUX
 from .langues import t
@@ -70,6 +70,7 @@ FILTRES_PEREMPTION = ["Bientôt périmés (3 mois ou moins)", "Périmés", "Un m
                       "Plus de 3 mois", "Tous"]
 COULEURS_PEREMPTION = {"rouge": "#f8c9cf", "orange": "#ffe3a8", "neutre": "#eef1ef"}
 FILTRES_SUIVI = ["Toutes", "Bloquées ou en échec", "Non encaissées", "Non rapprochées"]
+FILTRES_GLOBAUX = ("Article", "Client", "Employé", "Catégorie", "Mode de paiement")
 TYPES_RECHERCHE = ["Client", "Fournisseur", "Vente", "Encaissement", "Paiement", "Article"]
 EXTENSIBLES = {"Commentaire", "Description", "Client / fournisseur", "Fournisseur", "Client", "Article Sage", "Article",
                "Indicateur", "Appareil", "Employé", "Mode(s) de paiement"}
@@ -108,8 +109,8 @@ def tableau_simple(parent, hauteur: int = 12) -> ttk.Treeview:
     horizontal = ttk.Scrollbar(cadre, orient="horizontal", command=tableau.xview)  # tableaux larges
     tableau.configure(yscrollcommand=defil.set, xscrollcommand=horizontal.set)
     horizontal.pack(side="bottom", fill="x")
+    defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
     tableau.pack(side="left", fill="both", expand=True)
-    defil.pack(side="right", fill="y")
     return tableau
 
 
@@ -416,35 +417,34 @@ class PageRapports(ttk.Frame):
 
         cadre = ttk.Frame(self.onglets, padding=(0, 8, 0, 0))
         self.onglets.add(cadre, text="  " + t("Statistiques Clover") + "  ")
-        barre = ttk.Frame(cadre)
+        barre = Rangee(cadre)  # passe à la ligne si la fenêtre est étroite
         barre.pack(fill="x")
         # filtre de date comme Clover : un bouton « 📅 Aujourd'hui ⌄ » qui ouvre la liste des périodes
         self.nom_periode = "Aujourd'hui"
         self.stat_du = tk.StringVar(value=date.today().isoformat())
         self.stat_au = tk.StringVar(value=date.today().isoformat())
-        self.bouton_periode = Bouton(barre, "📅  " + t("Aujourd'hui") + "  ⌄", self._menu_periodes, "secondaire",
-                                     largeur=250)
-        self.bouton_periode.pack(side="left")
-        self.libelle_periode = ttk.Label(barre, text="", foreground=TEXTE_DOUX)
-        self.libelle_periode.pack(side="left", padx=10)
-        Bouton(barre, "🔄  " + t("Actualiser"), self.calculer_statistiques, petit=True).pack(side="left")
-        Bouton(barre, "📕  " + t("PDF de la page"), self.pdf_page, "secondaire", petit=True).pack(side="right")
+        self.bouton_periode = barre.ajouter(Bouton(barre, "📅  " + t("Aujourd'hui") + "  ⌄", self._menu_periodes,
+                                                   "secondaire", largeur=250), 10)
+        self.libelle_periode = barre.ajouter(ttk.Label(barre, text="", foreground=TEXTE_DOUX), 10)
+        barre.ajouter(Bouton(barre, "🔄  " + t("Actualiser"), self.calculer_statistiques, petit=True), 12)
         self.auto = tk.BooleanVar(value=True)
-        ttk.Checkbutton(barre, text=t("Journée en cours : actualiser toutes les 5 minutes"),
-                        variable=self.auto).pack(side="left", padx=12)
-        filtres = ttk.Frame(cadre)  # filtres globaux : tous les états de la période
+        barre.ajouter(ttk.Checkbutton(barre, text=t("Journée en cours : actualiser toutes les 5 minutes"),
+                                      variable=self.auto), 12)
+        barre.ajouter(Bouton(barre, "📕  " + t("PDF de la page"), self.pdf_page, "secondaire", petit=True))
+        filtres = Rangee(cadre)  # filtres globaux : tous les états de la période ; passent à la ligne si étroit
         filtres.pack(fill="x", pady=(6, 0))
-        ttk.Label(filtres, text=t("Filtrer :")).pack(side="left", padx=(0, 6))
+        filtres.ajouter(ttk.Label(filtres, text=t("Filtrer :")), 6)
         self.filtres = {}
         self.champs_filtres = {}
-        for nom in ("Article", "Client", "Employé", "Catégorie"):
-            ttk.Label(filtres, text=t(nom)).pack(side="left", padx=(6, 3))
+        for nom in FILTRES_GLOBAUX:
+            groupe = filtres.ajouter(filtres.groupe(), 10)
+            ttk.Label(groupe, text=t(nom)).pack(side="left", padx=(0, 3))
             variable = tk.StringVar()
-            champ = ChampRecherche(filtres, variable, [], largeur=12, au_choix=lambda _v=None: self.recalculer())
+            champ = ChampRecherche(groupe, variable, [], largeur=16, au_choix=lambda _v=None: self.recalculer())
             champ.pack(side="left")
             self.filtres[nom], self.champs_filtres[nom] = variable, champ
-        Bouton(filtres, "✔  " + t("Appliquer"), self.recalculer, petit=True).pack(side="left", padx=(8, 4))
-        Bouton(filtres, "✖  " + t("Effacer"), self.effacer_filtres, "secondaire", petit=True).pack(side="left")
+        filtres.ajouter(Bouton(filtres, "✔  " + t("Appliquer"), self.recalculer, petit=True), 4)
+        filtres.ajouter(Bouton(filtres, "✖  " + t("Effacer"), self.effacer_filtres, "secondaire", petit=True))
         self.etat_stats = ttk.Label(cadre, text="", foreground=TEXTE_DOUX, padding=(0, 4))
         self.etat_stats.pack(fill="x")
 
@@ -713,7 +713,8 @@ class PageRapports(ttk.Frame):
         self.moyens_stats = r["moyens"]
         completes = self.brut_stats["completes"]  # choix des filtres : toutes les valeurs de la période
         for nom, vue, colonne in (("Article", "Par article", 0), ("Client", "Par client", 0),
-                                  ("Employé", "Par employé", 0), ("Catégorie", "Par catégorie", 0)):
+                                  ("Employé", "Par employé", 0), ("Catégorie", "Par catégorie", 0),
+                                  ("Mode de paiement", "Par mode de paiement", 0)):
             self.champs_filtres[nom].configurer_valeurs(sorted({str(l[colonne]) for l in completes[vue][1]}
                                                                - {"Sans client"}, key=str.casefold))
         self.vues_annees.clear()

@@ -70,3 +70,16 @@ def test_filtres_globaux():
     assert len(filtrer(d, {"Catégorie": "Fruits & Légumes", "Article": "Plantain"}).commandes) == 2
     assert filtrer(d, {"Article": "Riz"}).commandes == [] and filtrer(d, {}) is d
     assert len(filtrer(d, {"Employé": "Bruno"}).paiements) == 1  # les paiements suivent les commandes
+
+
+def test_filtre_mode_de_paiement():
+    from mvogmbi_sync.statistiques_clover import filtrer
+
+    d = DonneesClover(commandes=[commande("A", 1000), commande("B", 2000)],
+                      paiements=[paiement("A", 900, mode="Espèces"), paiement("B", 1000, mode="Espèces"),
+                                 paiement("B", 800)],
+                      employes={"E1": "Alice"}, clients={}, categories={})
+    f = filtrer(d, {"Mode de paiement": "espèces"})
+    assert [c["id"] for c in f.commandes] == ["A", "B"] and sum(p["amount"] for p in f.paiements) == 1900
+    f = filtrer(d, {"Mode de paiement": "Carte de crédit"})
+    assert [c["id"] for c in f.commandes] == ["B"] and [p["amount"] for p in f.paiements] == [800]

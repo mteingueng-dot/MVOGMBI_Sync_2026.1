@@ -106,6 +106,62 @@ class ClientClover:
             time.sleep(min(2 ** tentative, 60))
         return reponse
 
+    # ------------------------------------------------------------ écriture (jeton avec « Inventaire : écriture »)
+    def _ecrire(self, methode: str, chemin: str, donnees: dict | None = None) -> dict:
+        """POST/DELETE avec nouvelles tentatives si Clover limite le débit (429) ; erreur claire sinon."""
+        for tentative in range(8):
+            reponse = self.session.request(methode, self._url(chemin), json=donnees, timeout=60)
+            if reponse.status_code not in (429, 500, 502, 503, 504):
+                break
+            time.sleep(min(2 ** tentative, 60))
+        if reponse.status_code == 401:
+            raise PermissionError("Clover refuse l'écriture : le jeton doit avoir le droit « Inventaire » en écriture.")
+        reponse.raise_for_status()
+        return reponse.json() if reponse.content else {}
+
+    def categories(self) -> list[dict]:
+        """Catégories Clover {id, name}, dans l'ordre de Clover."""
+        return [c for c in self._pages("categories", {}) if not c.get("deleted")]
+
+    def taux_taxes(self) -> list[dict]:
+        """Taux de taxe Clover {id, name, rate (en cent-millièmes de %), isDefault}."""
+        return list(self._pages("tax_rates", {}))
+
+    def creer_article(self, donnees: dict, categorie: str = "", taxes: list[str] | None = None,
+                      stock: Decimal | None = None) -> dict:
+        """Crée l'article, puis le relie à sa catégorie et à ses taxes, puis règle son stock."""
+        article = self._ecrire("POST", "items", donnees)
+        if categorie:
+            self._ecrire("POST", "category_items", {"elements": [{"category": {"id": categorie},
+                                                                  "item": {"id": article["id"]}}]})
+        if taxes:
+            self._ecrire("POST", "tax_rate_items", {"elements": [{"taxRate": {"id": t}, "item": {"id": article["id"]}}
+                                                                 for t in taxes]})
+        if stock is not None:
+            self.regler_stock(article["id"], stock)
+        return article
+
+    def inventaire(self) -> list[dict]:
+        """Articles Clover non supprimés avec leur stock (itemStock), leur code et leur UGS."""
+        return [a for a in self._pages("items", {"expand": "itemStock,categories"}) if not a.get("deleted")]
+
+    def stock(self, id_article: str) -> Decimal:
+        reponse = self._get(f"item_stocks/{id_article}")
+        if reponse.status_code == 404:
+            return Decimal(0)
+        reponse.raise_for_status()
+        donnees = reponse.json()
+        return Decimal(str(donnees.get("quantity", donnees.get("stockCount", 0)) or 0))
+
+    def regler_stock(self, id_article: str, quantite: Decimal) -> None:
+        self._ecrire("POST", f"item_stocks/{id_article}", {"quantity": float(quantite)})
+
+    def regler_cout(self, id_article: str, cout: Decimal) -> None:
+        self._ecrire("POST", f"items/{id_article}", {"cost": int((cout * CENT).quantize(Decimal(1), ROUND_HALF_UP))})
+
+    def supprimer_article(self, id_article: str) -> None:
+        self._ecrire("DELETE", f"items/{id_article}")
+
     def commandes(self, debut: date, fin: date, expansion: str | None = None,
                   paiements: list[dict] | None = None) -> Iterator[dict]:
         """Commandes payées pendant la période.

@@ -6,7 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
-from .design import CARTE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton, cadre_tableau, entete_page, rayer
+from .design import CARTE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton, cadre_tableau, defilement, entete_page, rayer
 from .export_tableau import bouton_exporter
 from .langues import t
 from .utilisateurs import ADMIN, LONGUEUR_MIN, PAGES, ErreurUtilisateur, Registre
@@ -43,7 +43,8 @@ class PageUtilisateurs(ttk.Frame):
             self.tableau.heading(cle, text=texte)
             self.tableau.column(cle, width=largeur, stretch=cle == "nom")
         self.tableau.tag_configure("inactif", foreground=TEXTE_DOUX)
-        self.tableau.pack(fill="both", expand=True)
+        self.tableau.pack(side="left", fill="both", expand=True)
+        defilement(self.tableau)
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
         bouton_exporter(barre, self.tableau, t("Utilisateurs")).pack(side="right")
 

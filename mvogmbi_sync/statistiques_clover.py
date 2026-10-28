@@ -606,7 +606,8 @@ FILTRES = ("Article", "Client", "Employé", "Catégorie")
 
 
 def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
-    """Données réduites aux filtres de la page Rapports : client et employé gardent les commandes concernées ;
+    """Données réduites aux filtres de la page Rapports : client, employé et mode de paiement gardent les commandes
+    concernées (mode de paiement : commandes payées au moins en partie ainsi, seuls ces paiements sont gardés) ;
     article et catégorie ne gardent que leurs lignes (et les commandes qui en ont). Paiements et remboursements
     suivent les commandes gardées ; avec un filtre d'article ou de catégorie, un paiement ne compte que pour la part
     des lignes gardées dans sa commande."""
@@ -615,7 +616,13 @@ def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
         return d
     article, client = filtres.get("Article", "").casefold(), filtres.get("Client", "").casefold()
     employe, categorie = filtres.get("Employé", "").casefold(), filtres.get("Catégorie", "").casefold()
+    mode = filtres.get("Mode de paiement", "").casefold()
     gardees, parts = [], {}
+
+    def mode_de(p: dict) -> str:
+        return ((p.get("tender") or {}).get("label") or "?").casefold()
+
+    commandes_du_mode = {(p.get("order") or {}).get("id") for p in d.paiements if mode_de(p) == mode} if mode else set()
 
     def valeur(lignes) -> Decimal:
         return sum((_cents(l.get("price")) * (Decimal(l["unitQty"]) / 1000 if l.get("unitQty") else 1)
@@ -627,6 +634,8 @@ def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
         if employe and nom_employe.casefold() != employe:
             continue
         if client and client not in {c.casefold() for c in clients}:
+            continue
+        if mode and o["id"] not in commandes_du_mode:
             continue
         if article or categorie:
             lignes = [l for l in (o.get("lineItems") or {}).get("elements") or []
@@ -649,7 +658,8 @@ def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
         return {**p, **{c: int(Decimal(int(p.get(c) or 0)) * k) for c in ("amount", "taxAmount", "tipAmount")}}
 
     return DonneesClover(commandes=gardees,
-                         paiements=[part(p) for p in d.paiements if (p.get("order") or {}).get("id") in ids],
+                         paiements=[part(p) for p in d.paiements if (p.get("order") or {}).get("id") in ids
+                                    and (not mode or mode_de(p) == mode)],
                          remboursements=[r for r in d.remboursements if (r.get("orderRef") or {}).get("id") in ids],
                          employes=d.employes, clients=d.clients, appareils=d.appareils, categories=d.categories,
                          fuseau=d.fuseau)

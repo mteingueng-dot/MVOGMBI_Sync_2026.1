@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
-from .design import Bouton, cadre_tableau, entete_page, rayer
+from .design import Bouton, Rangee, cadre_tableau, entete_page, rayer
 from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
 from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, PERSONNALISE, RENOMME, conflit_format,
@@ -42,7 +42,7 @@ class PageCorrespondance(ttk.Frame):
 
         entete_page(self, "🔗", t("Correspondance des articles"),
                     t("chaque article Clover relié à son article Sage")).pack(fill="x")
-        barre = ttk.Frame(self)
+        barre = Rangee(self)  # passe à la ligne si la fenêtre est étroite : tous les boutons restent visibles
         barre.pack(fill="x")
         self.choix_pdv = None
         if points_vente is not None:
@@ -51,20 +51,26 @@ class PageCorrespondance(ttk.Frame):
             self.choix_pdv = ChoixPointVente(self, points_vente, self._changer_point_vente)
             self.choix_pdv.pack(anchor="w", pady=(0, 8), before=barre)
             self._chemin_du_point_vente()
-        ttk.Label(barre, text=t("Afficher :")).pack(side="left")
+        groupe = barre.ajouter(barre.groupe(), 10)
+        ttk.Label(groupe, text=t("Afficher :")).pack(side="left")
         self.libelles_filtres = {t(f): f for f in FILTRES}  # libellé affiché -> valeur interne
         self.filtre_affiche = tk.StringVar(value=t(FILTRES[0]))
-        liste = ttk.Combobox(barre, textvariable=self.filtre_affiche, values=list(self.libelles_filtres),
+        liste = ttk.Combobox(groupe, textvariable=self.filtre_affiche, values=list(self.libelles_filtres),
                              state="readonly", width=24)
-        liste.pack(side="left", padx=(4, 10))
+        liste.pack(side="left", padx=(4, 0))
         liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher())
-        ttk.Label(barre, text=t("Rechercher :")).pack(side="left")
+        groupe = barre.ajouter(barre.groupe(), 12)
+        ttk.Label(groupe, text=t("Rechercher :")).pack(side="left")
         self.recherche = tk.StringVar()
-        champ = ttk.Entry(barre, textvariable=self.recherche, width=20)
-        champ.pack(side="left", padx=4)
+        champ = ttk.Entry(groupe, textvariable=self.recherche, width=20)
+        champ.pack(side="left", padx=(4, 0))
         champ.bind("<KeyRelease>", lambda _e: self.afficher())
-        Bouton(barre, "⟳  " + t("Mettre à jour depuis Clover et Sage"), self.mettre_a_jour).pack(side="right")
-        Bouton(barre, t("Recharger"), self.charger, "secondaire").pack(side="right", padx=8)
+        barre.ajouter(Bouton(barre, "⟳  " + t("Mettre à jour depuis Clover et Sage"), self.mettre_a_jour))
+        barre.ajouter(Bouton(barre, t("Recharger"), self.charger, "secondaire"))
+        barre.ajouter(Bouton(barre, "🆕  " + t("Créer un article"), self.creer_article, "secondaire"))
+        barre.ajouter(Bouton(barre, "📦  " + t("Inventaire"), self.inventaire, "secondaire"))
+        barre.ajouter(Bouton(barre, "💲  " + t("Coûts Clover depuis Sage"), self.couts_clover, "secondaire"))
+        barre.ajouter(Bouton(barre, "🧾  " + t("Comptes Sage par catégorie"), self.comptes_sage, "secondaire"))
         self.compteurs = ttk.Label(self, text="", foreground="#444", padding=(0, 6))
         self.compteurs.pack(fill="x")
 
@@ -79,10 +85,10 @@ class PageCorrespondance(ttk.Frame):
             self.tableau.tag_configure(statut, background=couleur)
         defilement = ttk.Scrollbar(cadre, orient="vertical", command=self.tableau.yview)
         self.tableau.configure(yscrollcommand=defilement.set)
+        defilement.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.tableau.pack(side="left", fill="both", expand=True)
-        defilement.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.selectionner())
-        bouton_exporter(barre, self.tableau, t("Correspondance des articles")).pack(side="right")
+        barre.ajouter(bouton_exporter(barre, self.tableau, t("Correspondance des articles")))
 
         edition = ttk.LabelFrame(self, text=t("Article sélectionné"), padding=8)
         edition.pack(fill="x", pady=(8, 0))
@@ -102,6 +108,8 @@ class PageCorrespondance(ttk.Frame):
         Bouton(boutons, "✔  " + t("Confirmer l'article choisi"), self.confirmer, largeur=largeur).pack()
         Bouton(boutons, t("Accepter la proposition"), self.accepter, "secondaire", largeur=largeur).pack(pady=4)
         Bouton(boutons, t("Retirer la confirmation"), self.retirer, "danger", largeur=largeur).pack()
+        Bouton(boutons, "🆕  " + t("Créer l'article dans Sage"), self.creer_dans_sage, "secondaire",
+               largeur=largeur).pack(pady=(4, 0))
         Bouton(edition, "💾  " + t("Enregistrer les modifications"), self.enregistrer, "accent").grid(
             row=2, column=3, sticky="s")
         edition.columnconfigure(1, weight=1)
@@ -239,6 +247,48 @@ class PageCorrespondance(ttk.Frame):
         c = self.courant()
         if c:
             self._appliquer(c, A_CONFIRMER)
+
+    def comptes_sage(self) -> None:
+        from .fenetre_article import FenetreCategories
+        FenetreCategories(self, self.racine)
+
+    def couts_clover(self) -> None:
+        from .fenetre_couts import FenetreCoutsClover
+        FenetreCoutsClover(self, self.racine)
+
+    def inventaire(self) -> None:
+        from .page_inventaire import FenetreInventaire
+        FenetreInventaire(self, self.racine)
+
+    def creer_article(self) -> None:
+        """Nouvel article dans Clover et Sage (relié dans la correspondance, puis rechargée)."""
+        from .fenetre_article import FenetreCreationArticle
+
+        if self.modifie:
+            messagebox.showinfo(self.titre, t("Enregistrez d'abord les modifications en cours."))
+            return
+        FenetreCreationArticle(self, self.racine, numeros_sage=[a.numero for a in self.articles_sage],
+                               au_succes=lambda _a: self.charger())
+
+    def creer_dans_sage(self) -> None:
+        """L'article Clover choisi n'existe pas dans Sage : création de sa fiche Sage, puis liaison « Confirmé »."""
+        from .fenetre_article import FenetreCreationArticle
+
+        c = self.courant()
+        if not c or c.id_clover.startswith("nom:"):
+            messagebox.showinfo(self.titre, t("Sélectionnez dans le tableau l'article Clover à créer dans Sage."))
+            return
+
+        def cree(a) -> None:
+            from .articles_sage import ArticleSage
+            self.articles_sage.append(ArticleSage(a.numero_sage, a.description_sage, "Stock", a.comptes.produits))
+            self.normalises.append(normaliser(f"{a.description_sage} {a.numero_sage}"))
+            self._appliquer(c, CONFIRME, a.numero_sage, a.description_sage, a.comptes.produits)
+            self.enregistrer()
+
+        FenetreCreationArticle(self, self.racine, nom=c.nom_clover, categorie=c.categorie_clover,
+                               numeros_sage=[a.numero for a in self.articles_sage], au_succes=cree,
+                               id_clover=c.id_clover, relier=False)
 
     def enregistrer(self) -> None:
         if not self.modifie:

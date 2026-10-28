@@ -72,8 +72,8 @@ class PageEncaissements(ttk.Frame):
         self.tableau.tag_configure("depot", font=("Segoe UI Semibold", 10))
         defilement = ttk.Scrollbar(cadre, orient="vertical", command=self.tableau.yview)
         self.tableau.configure(yscrollcommand=defilement.set)
+        defilement.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.tableau.pack(side="left", fill="both", expand=True)
-        defilement.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.afficher_saisie())
         bouton_exporter(barre, self.tableau, t("Encaissements")).pack(side="right")
 

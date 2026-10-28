@@ -74,8 +74,8 @@ class PagePaiements(ttk.Frame):
             self.tableau.tag_configure(etat, **({"background": couleur} if couleur else {"foreground": TEXTE_DOUX}))
         defil = ttk.Scrollbar(cadre, orient="vertical", command=self.tableau.yview)
         self.tableau.configure(yscrollcommand=defil.set)
+        defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.tableau.pack(side="left", fill="both", expand=True)
-        defil.pack(side="right", fill="y")
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
         bouton_exporter(barre, self.tableau, t("Paiements fournisseurs")).pack(side="right", padx=8)
 

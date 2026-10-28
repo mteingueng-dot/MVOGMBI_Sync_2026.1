@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.12.2"
+VERSION = "1.15.1"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -182,6 +182,44 @@ FAQ = {
                     "lit ; le traitement de nuit le fait aussi. La boîte est celle des avis Interac, en lecture "
                     "seule ; chaque pièce jointe n'est prise qu'une fois. Une pièce jointe qui n'est pas une facture "
                     "de marchandises s'écarte (« Écarter »)."),
+        ("question", "Comment créer un nouvel article dans Clover et dans Sage ?"),
+        ("reponse", "Page 8, ligne de la facture : « 🆕 Créer l'article » (prix d'achat = prix Sage de la ligne), ou "
+                    "page 5 : « 🆕 Créer un article » (les deux) et « Créer l'article dans Sage » (article Clover "
+                    "existant). Clover : nom, prix = prix d'achat + 40 % (modifiable), type de prix, taxes, catégorie, "
+                    "coût, code du produit facultatif, UGS = date de péremption (obligatoire), stock. Sage : n° "
+                    "proposé (préfixe de la catégorie + numéro suivant), description et comptes de la table « Comptes "
+                    "par catégorie… » (proposée à partir des articles déjà reliés). L'application crée la fiche dans "
+                    "Sage (Sage ouvert sur le bon fichier, sinon elle l'ouvre elle-même), puis l'article dans Clover, "
+                    "et les relie (« Confirmé »). Le jeton Clover doit avoir le droit « Inventaire » en écriture."),
+        ("question", "Comment faire l'inventaire dans Clover et Sage en même temps ?"),
+        ("reponse", "Page 5, « 📦 Inventaire » : « Exporter l'inventaire » écrit un fichier Excel (code et description "
+                    "Clover et Sage, quantité Clover, quantité Sage, écart, coût unitaire). Inscrivez les quantités "
+                    "comptées dans la colonne jaune, puis « Saisir l'inventaire compté » : le stock Clover et le stock "
+                    "Sage deviennent la quantité comptée (ajustement d'inventaire dans Sage, vérifié dans la base). Le "
+                    "rapport de saisie (sortie/inventaire) donne, par article, le stock avant et après et le coût de "
+                    "l'ajustement (variation de la valeur du stock dans Sage), avec le total des plus, des moins et le "
+                    "coût net. Les stocks sont relus juste avant la saisie : un article qui a bougé depuis l'export "
+                    "est quand même ramené à la quantité comptée."),
+        ("question", "Comment mettre les coûts Clover au coût moyen de Sage ?"),
+        ("reponse", "Page 5, « 💲 Coûts Clover depuis Sage » : pour chaque article Clover relié, la fenêtre montre le "
+                    "prix de vente, le coût Clover et le coût moyen (CUMP) de Sage. Cochez les lignes à mettre à jour, "
+                    "puis « Mettre à jour les coûts Clover » : le coût Sage remplace le coût Clover. Jamais de valeur "
+                    "aberrante : un CUMP absent, plus de 5 fois le prix de vente ou sous 5 % du prix ne peut pas être "
+                    "coché ; un CUMP égal ou supérieur au prix, très loin du coût Clover ou partagé par plusieurs "
+                    "articles Clover est proposé décoché (à vérifier)."),
+        ("question", "Comment corriger les comptes des articles dans Sage ?"),
+        ("reponse", "Page 5, « 🧾 Comptes Sage par catégorie » : la table donne, pour chaque catégorie Clover, les "
+                    "comptes d'actif, de produits, de CMV et d'écart (écart = CMV). « Articles Sage à corriger… » "
+                    "liste les articles de Sage dont un compte diffère de la table (catégorie des articles Clover "
+                    "reliés, sinon celle du compte d'actif). Cochez les lignes puis « Corriger dans Sage » : "
+                    "l'application change les comptes dans la fiche de chaque article et vérifie le résultat dans "
+                    "Sage. Un changement du compte d'actif est proposé décoché : à décider."),
+        ("question", "Que fait « Importer » dans Clover ?"),
+        ("reponse", "Après l'import vérifié dans Sage, pour chaque article de la facture : stock Clover = stock "
+                    "actuel + Qté Sage reçue, et coût Clover = nouveau prix d'achat (Prix Sage). L'article Clover est "
+                    "celui relié à la page 5 ; un n° Sage relié à plusieurs articles Clover reçoit le coût, mais son "
+                    "stock est à répartir à la main. Une facture n'est jamais ajoutée deux fois au stock "
+                    "(journal_stock_clover.csv)."),
         ("question", "Une facture prête à importer a déjà été saisie dans Sage à la main."),
         ("reponse", "Elle est archivée (page « 11. Rapports », archives des factures) et retirée de la liste de la "
                     "page 8, sans import : même fournisseur et même n°, avec ou sans préfixe (« FA-2581353 »). "
@@ -379,6 +417,43 @@ FAQ = {
                     "“📧 Read email” copies the attached PDFs and photos, then reads them; the night run does it too. "
                     "The mailbox is the one of the Interac notices, read only; each attachment is taken only once. An "
                     "attachment that is not a goods invoice is set aside (“Set aside”)."),
+        ("question", "How do I create a new item in Clover and in Sage?"),
+        ("reponse", "Page 8, invoice line: “🆕 Create the item” (purchase price = Sage price of the line), or page 5: "
+                    "“🆕 Create an item” (both) and “Create the item in Sage” (existing Clover item). Clover: name, "
+                    "price = purchase price + 40% (can be changed), price type, taxes, category, cost, optional "
+                    "product code, SKU = expiry date (required), stock. Sage: suggested number (category prefix + "
+                    "next number), description and accounts from the “Accounts by category…” table (suggested from "
+                    "the items already linked). The application creates the record in Sage (Sage open on the right "
+                    "file, otherwise it opens Sage itself), then the item in Clover, and links them (“Confirmed”). "
+                    "The Clover token needs the “Inventory” write permission."),
+        ("question", "How do I take the inventory in Clover and Sage at the same time?"),
+        ("reponse", "Page 5, “📦 Inventory”: “Export the inventory” writes an Excel file (Clover and Sage code and "
+                    "description, Clover quantity, Sage quantity, difference, unit cost). Enter the counted quantities "
+                    "in the yellow column, then “Enter the counted inventory”: the Clover stock and the Sage stock "
+                    "become the counted quantity (inventory adjustment in Sage, checked in the database). The entry "
+                    "report (sortie/inventaire) gives, for each item, the stock before and after and the adjustment "
+                    "cost (change of the stock value in Sage), with the total gains, losses and net cost. Stocks are "
+                    "read again just before the entry: an item that changed since the export is still brought to the "
+                    "counted quantity."),
+        ("question", "How do I set the Clover costs to the Sage average cost?"),
+        ("reponse", "Page 5, “💲 Clover costs from Sage”: for each linked Clover item, the window shows the selling "
+                    "price, the Clover cost and the Sage average cost. Check the rows to update, then “Update the "
+                    "Clover costs”: the Sage cost replaces the Clover cost. Never an outlier value: no average cost, "
+                    "more than 5 times the selling price or under 5% of the price cannot be checked; an average cost "
+                    "equal to or above the price, very far from the Clover cost or shared by several Clover items is "
+                    "offered unchecked (to check)."),
+        ("question", "How do I correct the item accounts in Sage?"),
+        ("reponse", "Page 5, “🧾 Sage accounts by category”: the table gives, for each Clover category, the asset, "
+                    "revenue, COGS and variance accounts (variance = COGS). “Sage items to correct…” lists the Sage "
+                    "items with an account that differs from the table (category of the linked Clover items, "
+                    "otherwise that of the asset account). Check the rows then “Correct in Sage”: the application "
+                    "changes the accounts in each item record and checks the result in Sage. A change of the asset "
+                    "account is offered unchecked: your decision."),
+        ("question", "What does “Import” do in Clover?"),
+        ("reponse", "After the import is verified in Sage, for each item of the invoice: Clover stock = current stock + "
+                    "Sage quantity received, and Clover cost = new purchase price (Sage price). The Clover item is the "
+                    "one linked on page 5; a Sage number linked to several Clover items gets the cost, but its stock "
+                    "must be split by hand. An invoice is never added twice to the stock (journal_stock_clover.csv)."),
         ("question", "An invoice ready to import was already entered in Sage by hand."),
         ("reponse", "It is archived (“11. Reports” page, invoice archives) and removed from the page 8 list, without "
                     "import: same supplier and same number, with or without prefix (“FA-2581353”). The check is made "

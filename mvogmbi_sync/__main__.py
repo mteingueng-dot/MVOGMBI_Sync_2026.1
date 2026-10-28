@@ -141,6 +141,59 @@ def commande_payer_bureau(args: argparse.Namespace) -> None:
     sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
 
 
+def commande_creer_articles_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : crée dans Sage les articles décrits dans `--articles` (avec
+    `--comptes` : corrige les comptes de ces articles existants)."""
+    import json
+    from dataclasses import asdict
+
+    from .robot_articles import ArticleACreer, corriger_comptes, creer_articles
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    articles = [ArticleACreer(**d) for d in json.loads(Path(args.articles).read_text(encoding="utf-8"))]
+    notes, bilan = [], {"resultats": [], "erreur": ""}
+    try:
+        robot = corriger_comptes if args.comptes else creer_articles
+        bilan["resultats"] = [asdict(r) for r in robot(config_toml, articles, journal=notes.append)]
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or not all(r["cree"] for r in bilan["resultats"]) else 0)
+
+
+def commande_inventaire(args: argparse.Namespace) -> None:
+    """Export de l'inventaire Clover + Sage en un fichier, ou saisie d'un inventaire compté dans les deux."""
+    from .inventaire import ecrire, lire, nom_fichier, saisir
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    if args.saisir:
+        saisie, rapport = saisir(RACINE, config_toml, Path(args.saisir))
+        print(f"Clover : {len(saisie.clover)} stock(s), Sage : {len(saisie.sage)} ajustement(s). Rapport : {rapport}")
+        return
+    chemin = Path(args.export) if args.export else RACINE / "sortie" / "inventaire" / nom_fichier("Inventaire")
+    print(f"Inventaire écrit : {ecrire(lire(RACINE, config_toml), chemin)}")
+
+
+def commande_inventaire_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : ajustements d'inventaire dans Sage."""
+    import json
+
+    from .inventaire import ajuster_dans_sage, resume
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    entree = json.loads(Path(args.ajustements).read_text(encoding="utf-8"))
+    notes, bilan = [], {"resultats": {}, "erreur": ""}
+    try:
+        lignes = ajuster_dans_sage(config_toml, entree["lignes"], entree["jour"], journal=notes.append)
+        bilan["resultats"] = {l.numero: resume(l) for l in lignes}
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] else 0)
+
+
 def commande_journal_bureau(args: argparse.Namespace) -> None:
     """Commande interne, lancée sur le bureau caché : écritures de journal des mouvements de banque confirmés."""
     import json
@@ -849,6 +902,25 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_payer_bureau)
+
+    p = sous.add_parser("inventaire", help="Inventaire Clover + Sage en un fichier, ou saisie d'un inventaire compté")
+    p.add_argument("--export", help="Fichier Excel à écrire (défaut : sortie/inventaire/Inventaire_….xlsx)")
+    p.add_argument("--saisir", help="Fichier d'inventaire rempli (colonne « Quantité comptée ») à saisir")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_inventaire)
+
+    p = sous.add_parser("inventaire-bureau", help="(interne) Ajustements d'inventaire dans Sage sur le bureau caché")
+    p.add_argument("--ajustements", required=True)
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_inventaire_bureau)
+
+    p = sous.add_parser("creer-articles-bureau", help="(interne) Créer des articles dans Sage sur le bureau caché")
+    p.add_argument("--articles", required=True, help="Fichier JSON des articles à créer")
+    p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
+    p.add_argument("--comptes", action="store_true", help="Corriger les comptes d'articles existants")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_creer_articles_bureau)
 
     p = sous.add_parser("journal-bureau", help="(interne) Écritures de journal des mouvements de banque confirmés")
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")

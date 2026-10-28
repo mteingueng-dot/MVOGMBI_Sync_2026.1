@@ -85,8 +85,8 @@ class PageFournisseurs(ttk.Frame):
             self.liste.tag_configure(etat, **({"background": couleur} if couleur else {"foreground": TEXTE_DOUX}))
         defil = ttk.Scrollbar(haut, orient="vertical", command=self.liste.yview)
         self.liste.configure(yscrollcommand=defil.set)
+        defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.liste.pack(side="left", fill="both", expand=True)
-        defil.pack(side="right", fill="y")
         self.liste.bind("<<TreeviewSelect>>", lambda _e: self.choisir_facture())
         bouton_exporter(barre, self.liste, t("Factures fournisseurs")).pack(side="right")
         self.liste.bind("<Delete>", lambda _e: self.ecarter())
@@ -145,8 +145,8 @@ class PageFournisseurs(ttk.Frame):
         self.lignes.tag_configure("ok", foreground="#1f2d24")
         defil = ttk.Scrollbar(tableau, orient="vertical", command=self.lignes.yview)
         self.lignes.configure(yscrollcommand=defil.set)
+        defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.lignes.pack(side="left", fill="both", expand=True)
-        defil.pack(side="right", fill="y")
         self.lignes.bind("<<TreeviewSelect>>", lambda _e: self.choisir_ligne())
         rendre_exportable(self.lignes, t("Lignes de la facture"))
         self.lignes.bind("<Double-Button-1>", lambda _e: self.chercher_article())
@@ -217,6 +217,8 @@ class PageFournisseurs(ttk.Frame):
         Bouton(boutons, "✔  " + t("Relier et confirmer"), self.relier, fond=CARTE, largeur=190).pack()
         Bouton(boutons, t("Confirmer la proposition"), self.confirmer_proposition, "secondaire", fond=CARTE,
                largeur=190).pack(pady=4)
+        Bouton(boutons, "🆕  " + t("Créer l'article"), self.creer_article, "secondaire", fond=CARTE,
+               largeur=190).pack()
         self.qte_sage = tk.Label(boutons, text="", background=CARTE, foreground=VERT_FONCE, font=("Segoe UI", 9),
                                  wraplength=190, justify="left")
         self.qte_sage.pack(anchor="w")
@@ -782,6 +784,31 @@ class PageFournisseurs(ttk.Frame):
         self.sauvegarder_auto()
         self.champs_ligne["quantite"].focus_set()  # au clavier : Qté, Tab, Prix, Tab, Facteur, Entrée
         self.champs_ligne["quantite"].select_range(0, "end")
+
+    def creer_article(self) -> None:
+        """Article absent de Sage et de Clover : création dans les deux (prix d'achat = prix Sage de la ligne,
+        stock Clover 0 : l'import de la facture ajoutera la quantité), puis la ligne est reliée."""
+        from .fenetre_article import FenetreCreationArticle
+
+        i, l = self.ligne_choisie()
+        if l is None:
+            messagebox.showinfo(self.titre, t("Choisissez d'abord la ligne de la facture."))
+            return
+        self.appliquer_ligne()
+
+        def cree(a) -> None:
+            from .articles_sage import ArticleSage
+            if a.numero_sage:
+                self.articles_sage.append(ArticleSage(a.numero_sage, a.description_sage, "Stock",
+                                                      a.comptes.produits if a.comptes else ""))
+                self.normalises.append(normaliser(f"{a.description_sage} {a.numero_sage}"))
+                if self.facture and i < len(self.facture.lignes) and self.facture.lignes[i] is l:
+                    l.numero_sage, l.description_sage, l.confirme = a.numero_sage, a.description_sage, True
+                    self.afficher_lignes(i)
+                    self.sauvegarder_auto()
+
+        FenetreCreationArticle(self, self.racine, nom=l.description, cout=l.en_sage()[1],
+                               numeros_sage=[a.numero for a in self.articles_sage], au_succes=cree)
 
     def confirmer_proposition(self) -> None:
         i, l = self.ligne_choisie()

@@ -377,6 +377,69 @@ def rayer(tableau: ttk.Treeview) -> None:
         tableau.item(ligne, tags=tags)
 
 
+class Rangee(tk.Frame):
+    """Rangée de boutons et de champs qui passe à la ligne quand la fenêtre est trop étroite : tout reste visible,
+    quelle que soit la largeur (demande du propriétaire du 2026-10-28). Les éléments sont créés avec la rangée pour
+    parent puis ajoutés dans l'ordre par `ajouter` ; `groupe()` garde ensemble un libellé et son champ."""
+
+    def __init__(self, parent, ecart_lignes: int = 6):
+        super().__init__(parent, background=fond_de(parent), height=1)
+        self.ecart_lignes = ecart_lignes
+        self.elements: list[tuple[tk.Widget, int]] = []
+        self._largeur = 0
+        self.bind("<Configure>", lambda _e: self._disposer())
+
+    def groupe(self) -> tk.Frame:
+        return tk.Frame(self, background=fond_de(self))
+
+    def ajouter(self, widget, espace: int = 8):
+        self.elements.append((widget, espace))
+        widget.bind("<Configure>", lambda _e: self._plus_tard(), add="+")  # texte changé : largeur changée
+        self._plus_tard()
+        return widget
+
+    def _plus_tard(self) -> None:
+        if not getattr(self, "_prevu", False):
+            self._prevu = True
+            self.after_idle(self._disposer)
+
+    def _disposer(self) -> None:
+        self._prevu = False
+        largeur = self.winfo_width()
+        if largeur <= 1:
+            return
+        lignes, ligne, x = [], [], 0
+        for w, espace in self.elements:
+            if not w.winfo_exists():
+                continue
+            l = w.winfo_reqwidth()
+            if ligne and x + l > largeur:
+                lignes.append(ligne)
+                ligne, x = [], 0
+            ligne.append((w, x))
+            x += l + espace
+        if ligne:
+            lignes.append(ligne)
+        y = 0
+        for ligne in lignes:
+            hauteur = max(w.winfo_reqheight() for w, _ in ligne)
+            for w, x in ligne:
+                w.place(x=x, y=y + (hauteur - w.winfo_reqheight()) // 2)
+            y += hauteur + self.ecart_lignes
+        total = max(1, y - self.ecart_lignes)
+        if int(self.cget("height")) != total:
+            self.configure(height=total)
+
+
+def defilement(tableau: ttk.Treeview) -> ttk.Scrollbar:
+    """Barre de défilement verticale à droite d'un tableau déjà placé seul (pack) dans son cadre ; placée avant
+    lui pour rester visible même si ses colonnes sont plus larges que le cadre."""
+    barre = ttk.Scrollbar(tableau.master, orient="vertical", command=tableau.yview)
+    tableau.configure(yscrollcommand=barre.set)
+    barre.pack(side="right", fill="y", before=tableau)
+    return barre
+
+
 def cadre_tableau(parent) -> tk.Frame:
     """Cadre blanc à bordure fine qui accueille un tableau et sa barre de défilement."""
     return tk.Frame(parent, background=CARTE, highlightthickness=1, highlightbackground=BORDURE)

@@ -11,7 +11,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from . import coffre
-from .design import Bouton, cadre_tableau, rayer
+from .design import Bouton, cadre_tableau, defilement, rayer
 from .langues import t
 from .points_vente import (DEPOT_DEFAUT, LONGUEUR_PREFIXE, PRINCIPAL, PointDeVente, points_de_vente,
                            problemes_configuration)
@@ -34,7 +34,8 @@ class CartePointsVente:
             self.tableau.heading(cle, text=t(titre))
             self.tableau.column(cle, width=largeur, stretch=cle in ("nom", "client", "depot"),
                                 anchor="center" if cle in ("code", "jeton", "actif", "prefixe") else "w")
-        self.tableau.pack(fill="x", padx=1, pady=1)
+        self.tableau.pack(side="left", fill="x", expand=True, padx=1, pady=1)
+        defilement(self.tableau)
         self.tableau.bind("<Double-Button-1>", lambda _e: self.modifier())
         boutons = ttk.Frame(zone, style="Carte.TFrame")
         boutons.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
