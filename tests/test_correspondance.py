@@ -138,7 +138,7 @@ def test_numero_compte_sage():
 
 
 def test_article_renomme_dans_clover_propose_le_nouveau_nom(tmp_path):
-    from mvogmbi_sync.correspondance import (PERSONNALISE, RENOMME, lire_a_relier, memoriser_a_relier,
+    from mvogmbi_sync.correspondance import (PERSONNALISE, RENOMME, Correspondance, lire_a_relier, memoriser_a_relier,
                                              proposer_renommes)
 
     # ventes : l'ancien ID (supprimé de Clover) et un montant saisi sans article ; mémorisés une seule fois
@@ -159,4 +159,12 @@ def test_article_renomme_dans_clover_propose_le_nouveau_nom(tmp_path):
     assert "Arachide Frais Du Village en kg" in ancien.suggestions
     assert par_id["nom:article personnalise"].methode == PERSONNALISE
     assert par_id["OLD2"].numero_sage != "C0001522"
+
+    # ancien nom mal écrit (« 12 » pour « 12-36 ») : la confirmation du propriétaire est gardée
+    confirme = Correspondance(CONFIRME, "Milk Sere Ne 1kg 12", "", 0, "C0001523", "", "", "Manuel", 100, "", "", "OLD2")
+    sage = SAGE + [ArticleSage("C0001523", "Milk Sere Ne 1kg 12-36", "Inventory", "4013")]
+    garde = rapprocher([ArticleClover("OLD2", "Milk Sere Ne 1kg 12")], sage, {"OLD2": confirme}, {"OLD2"})[0]
+    assert (garde.statut, garde.numero_sage) == (CONFIRME, "C0001523")
+    annule = rapprocher([ArticleClover("OLD2", "Milk Sere Ne 1kg 12")], sage, {"OLD2": confirme})[0]
+    assert annule.statut != CONFIRME
 

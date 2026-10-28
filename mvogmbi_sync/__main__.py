@@ -390,7 +390,7 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     for id_article, (nom_article, numero_sage) in a_confirmer.items():
         confirmes[id_article] = _C(CONFIRME, nom_article, "", Decimal("0"), numero_sage, "", "",
                                    "Manuel (articles_a_relier)", 100, "", "", id_article)
-    resultat = rapprocher(clover, sage, confirmes)
+    resultat = rapprocher(clover, sage, confirmes, absents)
     from .correspondance import proposer_renommes
     proposes = proposer_renommes(resultat, absents)
     if proposes:

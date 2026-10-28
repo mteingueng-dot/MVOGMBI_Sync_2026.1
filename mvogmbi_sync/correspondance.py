@@ -105,8 +105,11 @@ def conflit_format(nom_clover: str, description_sage: str) -> bool:
 
 
 def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
-               confirmes: dict[str, Correspondance] | None = None) -> list[Correspondance]:
-    confirmes = confirmes or {}
+               confirmes: dict[str, Correspondance] | None = None,
+               absents: set[str] | None = None) -> list[Correspondance]:
+    """absents : articles vendus puis supprimés ou renommés dans Clover ; leur ancien nom est parfois mal écrit
+    (« 500l » pour « 500ml ») : la confirmation du propriétaire est gardée même si les formats diffèrent."""
+    confirmes, absents = confirmes or {}, absents or set()
     par_numero = {a.numero.lower(): a for a in sage}
     par_nom: dict[str, list[ArticleSage]] = defaultdict(list)
     for a in sage:
@@ -147,7 +150,7 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
             if choisi is None:
                 resultat.append(ligne(A_CONFIRMER, None, "Numéro absent de la liste Sage (réexporter la liste)", 0,
                                       numero=deja.numero_sage))
-            elif conflit_format(article.nom, choisi.description):
+            elif conflit_format(article.nom, choisi.description) and article.id not in absents:
                 statut, sage_choisi, methode, confiance, autres = rechercher(article.nom)
                 resultat.append(ligne(statut, sage_choisi, methode, confiance,
                                       f"Confirmation annulée ({choisi.numero} — {choisi.description} : autre format). "

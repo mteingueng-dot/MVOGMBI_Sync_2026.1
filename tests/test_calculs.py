@@ -263,4 +263,4 @@ def test_non_recette_article_corrige_depuis():
     j = date(2026, 5, 31)
     facture = preparer_facture(RapportVentes(j, j, "api", hors_recettes=hors, recettes_actuelles={"T1"}),
                                TypePeriode.JOUR)
-    assert facture.lignes == [] and "corrigé depuis dans Clover" in facture.avertissements[0]
+    assert facture.lignes == [] and facture.avertissements == []

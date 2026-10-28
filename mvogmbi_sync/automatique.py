@@ -465,7 +465,7 @@ def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr:
         )
         for a in catalogue
     ]
-    resultat = rapprocher(clover, articles_sage, confirmes)
+    resultat = rapprocher(clover, articles_sage, confirmes, absents)
     if proposes := proposer_renommes(resultat, absents):
         cr.note(f"{proposes} article(s) vendu(s) puis supprimé(s) ou renommé(s) dans Clover : nouveau nom proposé, "
                 "à confirmer à la page Correspondance (filtre « Supprimés ou renommés dans Clover »).")
