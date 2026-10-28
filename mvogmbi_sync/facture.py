@@ -8,7 +8,8 @@ Règles fixées par le propriétaire :
 - articles taxés dans Clover (TPS 5 % + TVQ 9,975 %) : code de taxe Sage « GQ », Sage calcule les taxes ;
 - numéro : « Vente 2026-10-23 » (jour), « Vente 2026-10-23/25 » (vendredi au dimanche, une seule facture
   encaissée par le dépôt du lundi ; 19 caractères, le n° de facture Sage en accepte 20), « Vente S43-2026 »
-  (semaine), « Vente Octobre 2026 » (mois).
+  (semaine), « Vente Octobre 2026 » (mois) ; autres points de vente : leur préfixe (« V2 2026-10-23/25 ») et leur
+  client Sage (points_vente.py).
 """
 
 from __future__ import annotations
@@ -35,31 +36,31 @@ MOIS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet",
         "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
 
 
-def numero_facture(type_periode: TypePeriode, debut: date, fin: date | None = None) -> str:
+def numero_facture(type_periode: TypePeriode, debut: date, fin: date | None = None, prefixe: str = "Vente") -> str:
     if type_periode is TypePeriode.JOUR:
-        return f"Vente {debut.isoformat()}"
+        return f"{prefixe} {debut.isoformat()}"
     if type_periode is TypePeriode.FIN_DE_SEMAINE:
-        return numero_fin_de_semaine(debut, fin or debut)
+        return numero_fin_de_semaine(debut, fin or debut, prefixe)
     if type_periode is TypePeriode.SEMAINE:
         annee, semaine, _ = debut.isocalendar()
-        return f"Vente S{semaine:02d}-{annee}"
-    return f"Vente {MOIS[debut.month - 1]} {debut.year}"
+        return f"{prefixe} S{semaine:02d}-{annee}"
+    return f"{prefixe} {MOIS[debut.month - 1]} {debut.year}"
 
 
-def numero_fin_de_semaine(debut: date, fin: date) -> str:
+def numero_fin_de_semaine(debut: date, fin: date, prefixe: str = "Vente") -> str:
     """« Vente 2026-10-23/25 » : du vendredi 23 au dimanche 25 (jour de fin seul : il suit toujours le début).
     Un seul jour (vendredi et samedi déjà facturés) : « Vente 2026-10-25 », comme une facture journalière."""
     if fin <= debut:
-        return f"Vente {debut.isoformat()}"
-    return f"Vente {debut.isoformat()}/{fin.day:02d}"
+        return f"{prefixe} {debut.isoformat()}"
+    return f"{prefixe} {debut.isoformat()}/{fin.day:02d}"
 
 
-def jours_facture(numero: str) -> list[date]:
+def jours_facture(numero: str, prefixe: str = "Vente") -> list[date]:
     """Jours de vente couverts par une facture « Vente AAAA-MM-JJ » ou « Vente AAAA-MM-JJ/JJ » ; [] sinon."""
     import re
     from datetime import timedelta
 
-    m = re.fullmatch(r"Vente (\d{4}-\d{2}-\d{2})(?:/(\d{2}))?", numero.strip())
+    m = re.fullmatch(re.escape(prefixe) + r" (\d{4}-\d{2}-\d{2})(?:/(\d{2}))?", numero.strip())
     if not m:
         return []
     debut = date.fromisoformat(m.group(1))
@@ -93,6 +94,7 @@ class Facture:
     date_facture: date
     client: str = CLIENT
     mode_paiement: str = MODE_PAIEMENT
+    depot: str = "Emplacement par défaut"  # emplacement d'inventaire Sage du point de vente
     lignes: list[LigneFacture] = field(default_factory=list)
     anomalies: list[str] = field(default_factory=list)  # bloquantes pour l'import
     avertissements: list[str] = field(default_factory=list)  # informatives : la facture reste exacte
@@ -119,9 +121,13 @@ class Facture:
         return self.sous_total + self.tps + self.tvq
 
 
-def preparer_facture(rapport: RapportVentes, type_periode: TypePeriode) -> Facture:
-    """La facture est datée du dernier jour de la période."""
-    facture = Facture(numero=numero_facture(type_periode, rapport.debut, rapport.fin), date_facture=rapport.fin)
+def preparer_facture(rapport: RapportVentes, type_periode: TypePeriode, point_vente=None) -> Facture:
+    """La facture est datée du dernier jour de la période ; `point_vente` : son préfixe, son client et son dépôt
+    Sage (par défaut, le point de vente n° 1)."""
+    prefixe = point_vente.prefixe if point_vente else "Vente"
+    facture = Facture(numero=numero_facture(type_periode, rapport.debut, rapport.fin, prefixe), date_facture=rapport.fin)
+    if point_vente:
+        facture.client, facture.depot = point_vente.client_sage, point_vente.depot_sage
     taxes_inconnues = 0
     for ligne in rapport.lignes:
         quantite = ligne.quantite_nette.quantize(DECIMALES_QUANTITE, rounding=ROUND_HALF_UP)

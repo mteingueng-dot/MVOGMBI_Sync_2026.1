@@ -29,7 +29,8 @@ COULEURS = {CONFIRME: "#e6f4ea", A_CONFIRMER: "#fff4cc", AUCUN: "#fbe0de"}  # «
 
 
 class PageCorrespondance(ttk.Frame):
-    def __init__(self, parent, racine: Path, titre: str):
+    def __init__(self, parent, racine: Path, titre: str, points_vente=None):
+        """`points_vente` : fonction -> points de vente visibles (chacun a sa correspondance) ; None = le n° 1."""
         super().__init__(parent, padding=10)
         self.racine, self.titre = racine, titre
         self.chemin = racine / "donnees" / "correspondance_articles.xlsx"
@@ -43,6 +44,13 @@ class PageCorrespondance(ttk.Frame):
                     t("chaque article Clover relié à son article Sage")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
+        self.choix_pdv = None
+        if points_vente is not None:
+            from .page_points_vente import ChoixPointVente
+
+            self.choix_pdv = ChoixPointVente(self, points_vente, self._changer_point_vente)
+            self.choix_pdv.pack(anchor="w", pady=(0, 8), before=barre)
+            self._chemin_du_point_vente()
         ttk.Label(barre, text=t("Afficher :")).pack(side="left")
         self.libelles_filtres = {t(f): f for f in FILTRES}  # libellé affiché -> valeur interne
         self.filtre_affiche = tk.StringVar(value=t(FILTRES[0]))
@@ -100,6 +108,22 @@ class PageCorrespondance(ttk.Frame):
         self.charger()
 
     # ---------------------------------------------------------------- données
+    def _chemin_du_point_vente(self) -> None:
+        p = self.choix_pdv.courant if self.choix_pdv else None
+        if p is not None:
+            self.chemin = p.fichier(self.racine / "donnees", "correspondance_articles.xlsx")
+
+    def _changer_point_vente(self) -> None:
+        ancien = self.chemin
+        self._chemin_du_point_vente()
+        if self.chemin != ancien:
+            if self.modifie and not messagebox.askyesno(self.titre, t("Abandonner les modifications non "
+                                                                      "enregistrées ?")):
+                self.chemin = ancien
+                return
+            self.modifie = False
+            self.charger()
+
     def charger(self) -> None:
         if self.modifie and not messagebox.askyesno(self.titre, t("Abandonner les modifications non enregistrées ?")):
             return
@@ -242,7 +266,9 @@ class PageCorrespondance(ttk.Frame):
         self.compteurs.config(text=t("Mise à jour en cours (lecture de Clover et de Sage, quelques minutes)…"))
 
         def travail():
-            r = subprocess.run(commande_moteur() + ["correspondance"], cwd=self.racine, capture_output=True,
+            p = self.choix_pdv.courant if self.choix_pdv else None
+            r = subprocess.run(commande_moteur() + ["correspondance"] + (["--point-de-vente", p.code] if p else []),
+                               cwd=self.racine, capture_output=True,
                                text=True, encoding="utf-8", errors="replace",
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.after(0, lambda: self._fin_mise_a_jour(r.returncode, (r.stdout + r.stderr).strip()))

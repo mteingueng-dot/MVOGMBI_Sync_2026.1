@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import tkinter as tk
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -46,12 +47,16 @@ class PageFournisseurs(ttk.Frame):
         self.normalises = [normaliser(f"{a.description} {a.numero}") for a in self.articles_sage]
         self.facture = None
         self.choix_sage = []
+        self._ligne_editee = None  # rang de la ligne affichée dans la carte d'édition
+        self._minuterie = None  # enregistrement automatique en attente
+        self._chargement = False
 
         entete_page(self, "🧾", t("Factures fournisseurs"),
                     t("lecture des factures, articles Sage et import dans Sage")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         Bouton(barre, "➕  " + t("Ajouter des factures…"), self.ajouter_factures).pack(side="left")
+        Bouton(barre, "📧  " + t("Lire le courriel"), self.lire_courriel, "secondaire").pack(side="left", padx=(8, 0))
         Bouton(barre, "⟳  " + t("Actualiser"), self.actualiser, "secondaire").pack(side="left", padx=(8, 0))
         Bouton(barre, "📂  " + t("Dossier des factures"), self.ouvrir_dossier, "secondaire").pack(side="left", padx=8)
         Bouton(barre, "📒  " + t("Fournisseurs et articles Sage"), self.mettre_a_jour_sage, "secondaire").pack(side="left")
@@ -86,6 +91,9 @@ class PageFournisseurs(ttk.Frame):
         bouton_exporter(barre, self.liste, t("Factures fournisseurs")).pack(side="right")
         self.liste.bind("<Delete>", lambda _e: self.ecarter())
         self.bind("<Map>", lambda _e: self.actualiser(silencieux=True))  # retour sur la page : liste à jour
+        # départ de la page ou fermeture : la saisie en cours est gardée
+        self.bind("<Unmap>", lambda e: self.sauvegarder_auto() if e.widget is self else None)
+        self.bind("<Destroy>", lambda e: self.sauvegarder_auto() if e.widget is self else None)
 
         bas = ttk.Frame(volets)
         volets.add(bas, weight=3)
@@ -121,6 +129,8 @@ class PageFournisseurs(ttk.Frame):
         self.controle = tk.Label(parent, text="", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=900,
                                  background=fond_de(parent))
         self.controle.pack(fill="x", pady=(4, 0))
+        for variable in self.v.values():  # chaque saisie de l'en-tête est enregistrée au fur et à mesure
+            variable.trace_add("write", self._planifier_sauvegarde)
 
         tableau = cadre_tableau(parent)
         tableau.pack(fill="both", expand=True, pady=(4, 0))
@@ -177,9 +187,11 @@ class PageFournisseurs(ttk.Frame):
         # Entrée dans un champ de la ligne : appliquer, puis ouvrir aussitôt une nouvelle ligne
         for champ in self.champs_ligne.values():
             champ.bind("<Return>", lambda _e: self.appliquer_et_suivante())
-        self._chargement = False
         for cle in ("quantite", "prix", "facteur"):
             self.l[cle].trace_add("write", lambda *_: self._recalculer())
+        for cle in ("code", "description", "quantite", "prix", "facteur"):
+            self.l[cle].trace_add("write", self._planifier_sauvegarde)
+        self.l_taxable.trace_add("write", self._planifier_sauvegarde)
         Bouton(rang2, t("Appliquer"), self.appliquer_ligne, "secondaire", fond=CARTE, petit=True).pack(side="left")
         Bouton(rang2, "➕", self.ajouter_ligne, "secondaire", fond=CARTE, petit=True, largeur=34).pack(side="left", padx=4)
         Bouton(rang2, "🗑", self.supprimer_ligne, "danger", fond=CARTE, petit=True, largeur=34).pack(side="left")
@@ -217,16 +229,23 @@ class PageFournisseurs(ttk.Frame):
                            reverse=True):  # la plus récente en haut
             if choix != t("Toutes") and t(f.etat) != choix:
                 continue
-            self.liste.insert("", "end", iid=str(i), tags=(f.etat,), values=(
-                f.fichier, f.fournisseur_sage or f"({f.fournisseur_lu or '?'})", f.numero, f.date_facture,
-                f"{f.total:,.2f}" if f.total is not None else "", t(f.etat)))
+            self.liste.insert("", "end", iid=str(i), tags=(f.etat,), values=self._valeurs_liste(f))
         rayer(self.liste)
+        self._afficher_resume()
+
+    @staticmethod
+    def _valeurs_liste(f) -> tuple:
+        return (f.fichier, f.fournisseur_sage or f"({f.fournisseur_lu or '?'})", f.numero, f.date_facture,
+                f"{f.total:,.2f}" if f.total is not None else "", t(f.etat))
+
+    def _afficher_resume(self, suite: str = "") -> None:
         compte = {e: sum(1 for f in self.registre.factures if f.etat == e) for e in ETATS}
         self.resume.configure(text=t("{n} facture(s) — à saisir : {s}, à vérifier : {v}, prêtes : {p}, importées : {i}",
                                      n=len(self.registre.factures), s=compte[A_SAISIR], v=compte[A_VERIFIER],
                                      p=compte[PRETE], i=compte[IMPORTEE])
                               + ("" if self.fournisseurs_sage else
-                                 t("   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »")))
+                                 t("   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »"))
+                              + suite)
 
     def ajouter_factures(self) -> None:
         """Copie dans le dossier des factures les PDF ou photos choisis n'importe où sur le poste, puis les lit."""
@@ -258,10 +277,44 @@ class PageFournisseurs(ttk.Frame):
             messagebox.showwarning(self.titre, t("Fichiers ignorés (format non accepté) : {f}", f=", ".join(ignores)))
         self.lire_nouvelles()
 
+    def lire_courriel(self) -> None:
+        """Copie les factures jointes aux courriels de la boîte configurée (page Courriel), puis les lit."""
+        import tomllib
+
+        from .factures_courriel import configuree, recuperer
+
+        config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8")) \
+            if (self.racine / "config.toml").exists() else {}
+        if not configuree(config):
+            messagebox.showinfo(self.titre, t("Configurez d'abord la boîte de courriel (page « 3. Courriel », carte "
+                                              "« Avis de paiement »)."))
+            return
+        self.resume.configure(text=t("Lecture du courriel (pièces jointes des factures)…"))
+
+        def travail():
+            try:
+                crees = recuperer(self.racine, config)
+                self.after(0, lambda: self._fin_courriel(crees))
+            except Exception as exc:
+                message = str(exc)
+                self.after(0, lambda: (self.afficher_liste(),
+                                       messagebox.showerror(self.titre, t("Lecture du courriel impossible : {e}",
+                                                                          e=message))))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _fin_courriel(self, crees: list) -> None:
+        if not crees:
+            self.afficher_liste()
+            self.resume.configure(text=self.resume.cget("text") + "   •   " + t("aucune nouvelle facture dans le courriel"))
+            return
+        self.lire_nouvelles()
+
     def actualiser(self, silencieux: bool = False) -> None:
         """Relit la liste enregistrée et lit les nouvelles factures déposées dans le dossier."""
         if getattr(self, "_lecture_en_cours", False):
             return
+        self.sauvegarder_auto()  # la relecture du registre ne doit pas perdre la saisie en cours
         selection = self.liste.selection()
         self.registre.charger()
         self.facture = None
@@ -322,6 +375,10 @@ class PageFournisseurs(ttk.Frame):
         threading.Thread(target=travail, daemon=True).start()
 
     def _fin_import(self, message: str) -> None:
+        from .fournisseurs import DEJA_DANS_SAGE
+
+        if self.facture is not None and self.facture.etat == DEJA_DANS_SAGE:  # archivée, retirée de la liste
+            self.facture = None
         self.registre.enregistrer()
         self.afficher_liste()
         messagebox.showinfo(self.titre, message)
@@ -390,19 +447,36 @@ class PageFournisseurs(ttk.Frame):
                 from .articles_sage import ecrire_copie
                 from .fournisseurs import ecrire_copie_fournisseurs, fournisseurs_actifs
 
+                from .fournisseurs import PRETE, deja_dans_sage_fichiers
+
                 config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
-                noms, articles = lire_sage(config, lambda base: (fournisseurs_actifs(base), base.articles()),
-                                           config.get("sage_import", {}).get("fichier_entreprise"))
+                pretes = [f for f in self.registre.factures if f.etat == PRETE]
+                noms, articles, deja = lire_sage(
+                    config, lambda base: (fournisseurs_actifs(base), base.articles(), deja_dans_sage_fichiers(base, pretes)),
+                    config.get("sage_import", {}).get("fichier_entreprise"))
                 ecrire_copie_fournisseurs(self.racine, noms)
                 ecrire_copie(articles, self.racine / "donnees" / "articles_sage.csv")
-                self.after(0, lambda: self._fin_sage(noms, articles))
+                self.after(0, lambda: self._fin_sage(noms, articles, deja))
             except Exception as exc:
                 message = str(exc)
                 self.after(0, lambda: self.resume.configure(text="✘ " + message))
 
         threading.Thread(target=travail, daemon=True).start()
 
-    def _fin_sage(self, noms, articles) -> None:
+    def _fin_sage(self, noms, articles, deja: dict | None = None) -> None:
+        from .fournisseurs import DEJA_DANS_SAGE, archiver_deja_dans_sage
+
+        archivees = []
+        for f in list(self.registre.factures):
+            if deja and f.fichier in deja:  # prête à importer mais saisie à la main entre-temps
+                archiver_deja_dans_sage(self.racine, f, deja[f.fichier])
+                archivees.append(f"{f.fournisseur_sage} n° {f.numero}")
+        if archivees:
+            if self.facture is not None and self.facture.etat == DEJA_DANS_SAGE:
+                self.facture = None
+            self.registre.enregistrer()
+            messagebox.showinfo(self.titre, t("Déjà dans Sage, archivée(s) et retirée(s) de la liste :\n{liste}",
+                                              liste="\n".join(archivees)))
         self.fournisseurs_sage, self.articles_sage = noms, articles
         self.normalises = [normaliser(f"{a.description} {a.numero}") for a in articles]
         self.liste_fournisseurs.configurer_valeurs(noms)
@@ -413,13 +487,18 @@ class PageFournisseurs(ttk.Frame):
         choix = self.liste.selection()
         if not choix:
             return
+        if self.facture is not self.registre.factures[int(choix[0])]:
+            self.sauvegarder_auto()  # la facture quittée est gardée telle que saisie
         self.facture = self.registre.factures[int(choix[0])]
+        self._ligne_editee = None
         f = self.facture
         valeurs = {"fournisseur": f.fournisseur_sage, "numero": f.numero, "date": f.date_facture,
                    "sous_total": "" if f.sous_total is None else f"{f.sous_total:.2f}", "tps": f"{f.tps:.2f}",
                    "tvq": f"{f.tvq:.2f}", "total": "" if f.total is None else f"{f.total:.2f}"}
+        self._chargement = True  # affichage seulement : rien à enregistrer
         for cle, valeur in valeurs.items():
             self.v[cle].set(valeur)
+        self._chargement = False
         self.lu.configure(text=t("Lu sur la facture : {f}   •   lecture : {m}", f=f.fournisseur_lu or "?", m=f.modele)
                           + (f"   •   {' ; '.join(f.remarques)}" if f.remarques else ""))
         self.afficher_lignes()
@@ -432,18 +511,21 @@ class PageFournisseurs(ttk.Frame):
         if not self.facture:
             return
         for i, l in enumerate(self.facture.lignes):
-            quantite, prix_sage = l.en_sage()
-            etat = t("Confirmée") if l.confirme else (t("Proposée") if l.numero_sage else t("À relier"))
-            if l.nature != "article":
-                etat = t("Frais")
-            self.lignes.insert("", "end", iid=str(i), tags=("ok" if l.confirme or l.nature != "article" else "a_faire",),
-                               values=(l.code, l.description, f"{l.quantite:g}", f"{l.prix:.2f}", f"{l.montant:.2f}",
-                                       l.numero_sage, l.description_sage, f"{quantite:g}", f"{prix_sage:.4f}",
-                                       f"{l.facteur:g}", etat))
+            self.lignes.insert("", "end", iid=str(i), **self._valeurs_ligne(l))
         rayer(self.lignes)
         if selection is not None and self.lignes.exists(str(selection)):
             self.lignes.selection_set(str(selection))
             self.lignes.see(str(selection))
+
+    @staticmethod
+    def _valeurs_ligne(l: Ligne) -> dict:
+        quantite, prix_sage = l.en_sage()
+        etat = t("Confirmée") if l.confirme else (t("Proposée") if l.numero_sage else t("À relier"))
+        if l.nature != "article":
+            etat = t("Frais")
+        return {"tags": ("ok" if l.confirme or l.nature != "article" else "a_faire",),
+                "values": (l.code, l.description, f"{l.quantite:g}", f"{l.prix:.2f}", f"{l.montant:.2f}", l.numero_sage,
+                           l.description_sage, f"{quantite:g}", f"{prix_sage:.4f}", f"{l.facteur:g}", etat)}
 
     def lire_entete(self) -> None:
         f = self.facture
@@ -493,6 +575,71 @@ class PageFournisseurs(ttk.Frame):
         if self.liste.exists(str(index)):
             self.liste.selection_set(str(index))
 
+    # ---------------------------------------------------------------- enregistrement automatique
+    def _planifier_sauvegarde(self, *_) -> None:
+        """Une saisie vient d'être faite : enregistrement peu après la dernière frappe."""
+        if self._chargement or not self.facture:
+            return
+        if self._minuterie:
+            self.after_cancel(self._minuterie)
+        self._minuterie = self.after(700, self.sauvegarder_auto)
+
+    def _appliquer_silencieux(self) -> None:
+        """Reporte sur la ligne affichée les valeurs de la carte d'édition (sans message : une valeur en cours de
+        frappe, par exemple « 12, », attend la frappe suivante)."""
+        i = self._ligne_editee
+        if i is None or not self.facture or i >= len(self.facture.lignes):
+            return
+        l = self.facture.lignes[i]
+        try:
+            quantite, prix = decimal(self.l["quantite"].get()), decimal(self.l["prix"].get())
+            facteur = decimal(self.l["facteur"].get() or "1")
+        except (ValueError, tk.TclError):
+            return
+        if facteur <= 0:
+            return
+        l.code, l.description = self.l["code"].get().strip(), self.l["description"].get().strip()
+        l.quantite, l.prix, l.facteur = quantite, prix, facteur
+        l.montant = (quantite * prix).quantize(Decimal("0.01"))
+        l.taxable = self.l_taxable.get()
+        if self.lignes.exists(str(i)):
+            self.lignes.item(str(i), **self._valeurs_ligne(l))
+            rayer(self.lignes)
+        self.montrer_conversion(l)
+
+    def sauvegarder_auto(self) -> None:
+        """Enregistre sans question la facture ouverte : chaque saisie est gardée au fur et à mesure (demande du
+        propriétaire du 2026-10-28)."""
+        if self._minuterie:
+            self.after_cancel(self._minuterie)
+            self._minuterie = None
+        f = self.facture
+        if f is None or f not in self.registre.factures:
+            return
+        try:
+            self._appliquer_silencieux()
+            try:
+                self.lire_entete()
+            except ValueError:
+                pass  # montant en cours de frappe : le reste est gardé
+            if f.fournisseur_sage and f.fournisseur_lu and (not self.fournisseurs_sage
+                                                            or f.fournisseur_sage in self.fournisseurs_sage):
+                self.memoire.retenir_fournisseur(f.fournisseur_lu, f.fournisseur_sage)
+            for l in f.lignes:
+                if l.confirme and l.numero_sage and f.fournisseur_sage:
+                    self.memoire.retenir_article(f.fournisseur_sage, l)
+            f.etat = etat_apres_controle(f, self.verifier())
+            self.memoire.enregistrer()
+            self.registre.enregistrer()
+        except tk.TclError:
+            return  # page en cours de fermeture
+        index = str(self.registre.factures.index(f))
+        if self.liste.exists(index):
+            self.liste.item(index, values=self._valeurs_liste(f), tags=(f.etat,))
+            rayer(self.liste)
+        self._afficher_resume("   •   " + t("enregistré automatiquement à {h}",
+                                            h=datetime.now().strftime("%H:%M:%S")))
+
     # ---------------------------------------------------------------- lignes
     def ligne_choisie(self) -> tuple[int, Ligne] | tuple[None, None]:
         choix = self.lignes.selection()
@@ -514,16 +661,19 @@ class PageFournisseurs(ttk.Frame):
         self.l["qte_sage"].set(f"{(quantite * facteur).quantize(Decimal('0.001')):g}")
 
     def choisir_ligne(self) -> None:
-        _, l = self.ligne_choisie()
+        i, l = self.ligne_choisie()
         if not l:
             return
+        if self._ligne_editee is not None and self._ligne_editee != i:
+            self.sauvegarder_auto()  # la ligne quittée garde ce qui a été tapé
+        self._ligne_editee = i
         self._chargement = True  # les valeurs de la ligne s'affichent telles quelles
         for cle, valeur in (("code", l.code), ("description", l.description), ("quantite", f"{l.quantite:g}"),
                             ("prix", f"{l.prix}"), ("montant", f"{l.montant}"), ("facteur", f"{l.facteur:g}"),
                             ("qte_sage", f"{l.en_sage()[0]:g}")):
             self.l[cle].set(valeur)
-        self._chargement = False
         self.l_taxable.set(l.taxable)
+        self._chargement = False
         self.l["recherche"].set(l.description)
         self.chercher_sage()
         self.montrer_conversion(l)
@@ -553,7 +703,7 @@ class PageFournisseurs(ttk.Frame):
         self.l["qte_sage"].set(f"{l.en_sage()[0]:g}")
         self.afficher_lignes(i)
         self.montrer_conversion(l)
-        self.verifier()
+        self.sauvegarder_auto()
 
     def appliquer_et_suivante(self) -> str:
         """Entrée : applique la ligne, puis passe à la ligne suivante ; après la dernière, ouvre une nouvelle ligne."""
@@ -578,6 +728,7 @@ class PageFournisseurs(ttk.Frame):
             self.facture.etat = A_VERIFIER
         self.afficher_lignes(len(self.facture.lignes) - 1)
         self.choisir_ligne()
+        self.sauvegarder_auto()
         self.chercher_article()
 
     def chercher_article(self) -> None:
@@ -592,9 +743,10 @@ class PageFournisseurs(ttk.Frame):
     def supprimer_ligne(self) -> None:
         i, l = self.ligne_choisie()
         if l is not None and messagebox.askyesno(self.titre, t("Supprimer la ligne « {d} » ?", d=l.description)):
+            self._ligne_editee = None
             del self.facture.lignes[i]
             self.afficher_lignes()
-            self.verifier()
+            self.sauvegarder_auto()
 
     def chercher_sage(self) -> None:
         self.resultats.delete(0, "end")
@@ -627,7 +779,7 @@ class PageFournisseurs(ttk.Frame):
         l.numero_sage, l.description_sage, l.confirme = a.numero, a.description, True
         self.afficher_lignes(i)
         self.montrer_conversion(l)
-        self.verifier()
+        self.sauvegarder_auto()
         self.champs_ligne["quantite"].focus_set()  # au clavier : Qté, Tab, Prix, Tab, Facteur, Entrée
         self.champs_ligne["quantite"].select_range(0, "end")
 
@@ -638,4 +790,4 @@ class PageFournisseurs(ttk.Frame):
         self.appliquer_ligne()
         l.confirme = True
         self.afficher_lignes(i)
-        self.verifier()
+        self.sauvegarder_auto()

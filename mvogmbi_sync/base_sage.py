@@ -153,6 +153,11 @@ class BaseSage:
                 resultat[propre] = reparer_texte(str(r["sName"] or ""))
         return resultat
 
+    def depots(self) -> list[str]:
+        """Dépôts (emplacements d'inventaire) actifs de Sage, table tinvloc (« Emplacement par défaut »)."""
+        return [reparer_texte(str(r["sGrpCode"] or "")).strip()
+                for r in self.requete("SELECT sGrpCode FROM tinvloc WHERE bActive = 1 ORDER BY lId")]
+
     def facture_existe(self, numero: str, client: str) -> bool:
         """Une facture de ce numéro existe-t-elle déjà pour ce client (table des transactions clients) ?"""
         lignes = self.requete(

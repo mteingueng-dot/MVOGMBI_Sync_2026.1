@@ -27,16 +27,23 @@ def argent(montant: Decimal | None) -> str:
 
 
 class PageEncaissements(ttk.Frame):
-    def __init__(self, parent, racine: Path, titre: str, chemin_config: Path):
+    def __init__(self, parent, racine: Path, titre: str, chemin_config: Path, points_vente=None):
+        """`points_vente` : fonction -> points de vente visibles ; chacun a ses lots Clover et ses factures."""
         super().__init__(parent, padding=10)
         self.racine, self.titre, self.chemin_config = racine, titre, chemin_config
         self.depots = []
+        self.choix_pdv = None
 
         entete_page(self, "💰", t("Encaissements des dépôts Clover"),
                     t("dépôts Clover, virements Interac et dépôts d'espèces appliqués sur les factures de vente")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         hier = date.today() - timedelta(days=1)
+        if points_vente is not None:
+            from .page_points_vente import ChoixPointVente
+
+            self.choix_pdv = ChoixPointVente(self, points_vente, self._changer_point_vente)
+            self.choix_pdv.pack(anchor="w", pady=(0, 8), before=barre)
         ttk.Label(barre, text=t("Ventes du")).pack(side="left")
         self.debut = tk.StringVar(value=(hier - timedelta(days=30)).isoformat())
         ChampDate(barre, self.debut).pack(side="left", padx=4)
@@ -100,18 +107,26 @@ class PageEncaissements(ttk.Frame):
             return
         self.resume.configure(text=t("Calcul en cours : lots de cartes Clover, relevés Desjardins, puis lecture de Sage…"))
 
+        pdv = self.point_vente()
+        if pdv is None:
+            self.resume.configure(text="✘ " + t("Aucun point de vente actif n'est permis à votre profil."))
+            return
+
         def travail():
             try:
                 from .__main__ import charger_config, lire_sage
                 from .api_clover import ClientClover
                 from .encaissements import calculer, numero_compte_sage
-                from .facture import CLIENT
 
                 config = self._config()
-                client = ClientClover(charger_config(self.chemin_config))
+                try:
+                    client = ClientClover(charger_config(self.chemin_config, pdv))
+                except SystemExit as exc:
+                    raise RuntimeError(str(exc)) from None
                 compte = numero_compte_sage(self.compte_depot())
-                depots = lire_sage(config, lambda base: calculer(client, base, CLIENT, compte, debut, fin,
-                                                                 racine=self.racine),
+                depots = lire_sage(config, lambda base: calculer(client, base, pdv.client_sage, compte, debut, fin,
+                                                                 racine=self.racine if pdv.principal else None,
+                                                                 prefixe=pdv.prefixe),
                                    config.get("sage_import", {}).get("fichier_entreprise"))
                 self.after(0, lambda: self.afficher(depots))
             except Exception as exc:
@@ -160,6 +175,7 @@ class PageEncaissements(ttk.Frame):
                                                  n=len(a_saisir), total=total)):
             return
         self.resume.configure(text=t("Saisie des encaissements dans Sage en cours…"))
+        code = self.point_vente().code
 
         def travail():
             import json
@@ -171,8 +187,8 @@ class PageEncaissements(ttk.Frame):
             try:
                 with tempfile.TemporaryDirectory() as dossier:
                     fichier = Path(dossier) / "bilan.json"
-                    executer_sur_bureau_cache(commande_moteur() + ["encaisser-bureau", "--resultat", str(fichier)],
-                                              self.racine)
+                    executer_sur_bureau_cache(commande_moteur() + ["encaisser-bureau", "--resultat", str(fichier),
+                                                                   "--point-de-vente", code], self.racine)
                     resultat = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
                 bilan = t("{ok} dépôt(s) encaissé(s) sur {n}.", ok=len(resultat.get("encaisses", [])), n=len(a_saisir))
                 if resultat:
@@ -196,10 +212,23 @@ class PageEncaissements(ttk.Frame):
             return None
         return self.depots[int(choix[0][1:].split("l")[0])]
 
-    def texte_saisie(self, d) -> str:
-        from .facture import CLIENT
+    def point_vente(self):
+        """Point de vente choisi (le n° 1 si la page n'a pas de choix)."""
+        if self.choix_pdv is not None:
+            return self.choix_pdv.courant
+        from .points_vente import point_de_vente
 
-        lignes = [t("Encaissements > Payé par : Comptant ; Reçu de : {client}", client=CLIENT),
+        return point_de_vente(self._config())
+
+    def _changer_point_vente(self) -> None:
+        self.depots = []
+        self.tableau.delete(*self.tableau.get_children())
+        self.resume.configure(text=t("Cliquez sur « Calculer les dépôts » : lots de cartes Clover et état dans Sage."))
+
+    def texte_saisie(self, d) -> str:
+        pdv = self.point_vente()
+        client = pdv.client_sage if pdv else "Vente Hebdomadaire"
+        lignes = [t("Encaissements > Payé par : Comptant ; Reçu de : {client}", client=client),
                   t("Dépôt : {compte} (compte Desjardins)", compte=self.compte_depot()),
                   t("Date : {date}", date=d.date.isoformat()), "",
                   t("Montant reçu, facture par facture :")]

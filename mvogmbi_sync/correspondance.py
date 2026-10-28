@@ -107,8 +107,9 @@ def conflit_format(nom_clover: str, description_sage: str) -> bool:
 def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
                confirmes: dict[str, Correspondance] | None = None,
                absents: set[str] | None = None) -> list[Correspondance]:
-    """absents : articles vendus puis supprimés ou renommés dans Clover ; leur ancien nom est parfois mal écrit
-    (« 500l » pour « 500ml ») : la confirmation du propriétaire est gardée même si les formats diffèrent."""
+    """Règle du propriétaire (2026-10-28) : une liaison confirmée est valide et appliquée, même si les formats
+    diffèrent (ancien nom mal écrit dans Clover, « 500l » pour « 500ml ») ; la règle des formats ne vaut que pour
+    les propositions. absents : articles vendus puis supprimés ou renommés dans Clover."""
     confirmes, absents = confirmes or {}, absents or set()
     par_numero = {a.numero.lower(): a for a in sage}
     par_nom: dict[str, list[ArticleSage]] = defaultdict(list)
@@ -150,11 +151,6 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
             if choisi is None:
                 resultat.append(ligne(A_CONFIRMER, None, "Numéro absent de la liste Sage (réexporter la liste)", 0,
                                       numero=deja.numero_sage))
-            elif conflit_format(article.nom, choisi.description) and article.id not in absents:
-                statut, sage_choisi, methode, confiance, autres = rechercher(article.nom)
-                resultat.append(ligne(statut, sage_choisi, methode, confiance,
-                                      f"Confirmation annulée ({choisi.numero} — {choisi.description} : autre format). "
-                                      + autres))
             else:
                 resultat.append(ligne(CONFIRME, choisi, deja.methode or "Manuel", 100))
             continue
@@ -173,18 +169,19 @@ def rapprocher(clover: list[ArticleClover], sage: list[ArticleSage],
 
         resultat.append(ligne(*rechercher(article.nom)))
 
-    _signaler_formats_regroupes(resultat)
+    _signaler_formats_regroupes(resultat, absents)
     ordre = {CONFIRME: 3, AUTOMATIQUE: 2, A_CONFIRMER: 0, AUCUN: 1}
     resultat.sort(key=lambda c: (ordre[c.statut], -c.ventes_30j, c.nom_clover.lower()))
     return resultat
 
 
-def _signaler_formats_regroupes(resultat: list[Correspondance]) -> None:
+def _signaler_formats_regroupes(resultat: list[Correspondance], absents: set[str] = frozenset()) -> None:
     """Plusieurs formats Clover (« Matembele 500g », « Matembele 1kg ») sur un même article Sage sans format :
-    ce sont des articles différents, à séparer dans Sage."""
+    ce sont des articles différents, à séparer dans Sage. Les liaisons confirmées par le propriétaire et les
+    anciens articles supprimés ou renommés dans Clover ne comptent pas."""
     par_numero: dict[str, list[Correspondance]] = defaultdict(list)
     for c in resultat:
-        if c.numero_sage and c.description_sage:
+        if c.numero_sage and c.description_sage and c.statut != CONFIRME and c.id_clover not in absents:
             par_numero[c.numero_sage.lower()].append(c)
     for groupe in par_numero.values():
         formats = {frozenset(_formats(normaliser(c.nom_clover))) for c in groupe}

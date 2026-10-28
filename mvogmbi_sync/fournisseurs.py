@@ -35,6 +35,7 @@ A_VERIFIER = "À vérifier"
 A_SAISIR = "À saisir (photo)"
 PRETE = "Prête à importer"
 IMPORTEE = "Importée dans Sage"
+DEJA_DANS_SAGE = "Déjà dans Sage"  # saisie à la main entre-temps : archivée et retirée de la liste (2026-10-28)
 ETATS = [A_SAISIR, A_VERIFIER, PRETE, IMPORTEE]
 
 
@@ -182,6 +183,7 @@ class Registre:
             self.factures = [Facture.depuis_dict(d) for d in json.loads(self.chemin.read_text(encoding="utf-8"))]
 
     def enregistrer(self) -> None:
+        self.factures = [f for f in self.factures if f.etat != DEJA_DANS_SAGE]  # archivées : plus à traiter
         self.donnees.mkdir(parents=True, exist_ok=True)
         provisoire = self.chemin.with_suffix(".tmp")
         provisoire.write_text(json.dumps([f.en_dict() for f in self.factures], ensure_ascii=False, indent=1),
@@ -355,6 +357,43 @@ def archiver(racine: Path, facture: Facture) -> Path:
                ["Fichier d'origine", facture.fichier]]
     ecrire_excel(base.with_name(base.name + ".xlsx"), "Facture", entetes, lignes)
     return chemin
+
+
+def archiver_deja_dans_sage(racine: Path, facture: Facture, numero_sage: str) -> Path:
+    """Règle du propriétaire (2026-10-28) : une facture prête à importer qui est déjà dans Sage (saisie à la main)
+    est archivée et retirée de la liste des factures à traiter. Le fichier d'origine passe dans l'archive (copie
+    gardée) ; la facture disparaît du registre au prochain enregistrement."""
+    facture.etat = DEJA_DANS_SAGE
+    facture.remarques = list(dict.fromkeys(facture.remarques + [f"déjà dans Sage (n° « {numero_sage} ») : archivée "
+                                                                 f"le {date.today()} sans import"]))
+    chemin = archiver(racine, facture)
+    source = Path(racine) / "donnees" / "factures_fournisseurs" / facture.fichier
+    if source.exists():
+        source.unlink()  # copie gardée dans l'archive
+    return chemin
+
+
+def deja_dans_sage_fichiers(base, factures: list[Facture]) -> dict[str, str]:
+    from .import_achats import deja_dans_sage
+
+    return deja_dans_sage(base, factures)
+
+
+def archiver_pretes_deja_dans_sage(racine: Path, base, registre: "Registre | None" = None) -> list[Facture]:
+    """Archive les factures « Prête à importer » déjà présentes dans Sage ; renvoie les factures archivées."""
+    from .import_achats import deja_dans_sage
+
+    registre = registre or Registre(racine)
+    pretes = [f for f in registre.factures if f.etat == PRETE]
+    trouvees = deja_dans_sage(base, pretes)
+    archivees = []
+    for f in pretes:
+        if f.fichier in trouvees:
+            archiver_deja_dans_sage(racine, f, trouvees[f.fichier])
+            archivees.append(f)
+    if archivees:
+        registre.enregistrer()
+    return archivees
 
 
 def archives(racine: Path) -> list[dict]:

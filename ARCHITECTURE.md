@@ -87,13 +87,13 @@ flowchart TB
     subgraph Présentation
         interface["interface.py<br/>fenêtre, menu, verrouillage"]
         connexion["connexion.py<br/>connexion, Verrou"]
-        pages["page_correspondance · page_encaissements<br/>page_fournisseurs · page_paiements<br/>page_rapprochement · page_rapports<br/>page_utilisateurs"]
+        pages["page_correspondance · page_encaissements<br/>page_fournisseurs · page_paiements<br/>page_rapprochement · page_rapports<br/>page_utilisateurs · page_points_vente"]
         design["design.py · graphiques.py<br/>export_tableau.py · aide.py · langues.py"]
     end
     subgraph Métier
-        ventes["models · periodes · facture<br/>correspondance · verification_comptes"]
+        ventes["models · periodes · facture<br/>correspondance · verification_comptes<br/>points_vente"]
         enc["encaissements"]
-        four["factures_fournisseurs · fournisseurs<br/>import_achats · paiements_fournisseurs"]
+        four["factures_fournisseurs · fournisseurs<br/>factures_courriel · import_achats<br/>paiements_fournisseurs"]
         rap["rapprochement"]
         stats["rapports · statistiques_clover<br/>couts_sage · previsions · peremption"]
         nuit["automatique · courriel · planification"]
@@ -150,7 +150,7 @@ flowchart LR
     subgraph Racine["Dossier de l'application (RACINE)"]
         CFG["config.toml<br/>réglages, sans secret"]
         subgraph donnees["donnees/ (jamais publié)"]
-            CORR["correspondance_articles.xlsx"]
+            CORR["correspondance_articles.xlsx<br/>points_vente/&lt;code&gt;/ (autres points de vente)"]
             REGF["factures_fournisseurs.json<br/>+ dossier des PDF"]
             REGP["paiements_fournisseurs.json"]
             REL["releves_desjardins/releves.json"]
@@ -180,6 +180,7 @@ Tables Sage lues :
 | `tcustr`, `tcustrdt` | Factures et encaissements clients |
 | `tvendor`, `tventr`, `tventrdt` | Fournisseurs, factures et paiements |
 | `tinvent`, `tinvlot` | Articles, coûts et stock |
+| `tinvloc` | Dépôts (emplacements d'inventaire) |
 | `tjentact`, `tjourent`, `taccount` | Écritures et comptes |
 | `ttaxauth` | Taxes |
 
@@ -193,8 +194,8 @@ Tables Sage lues :
 flowchart TD
     A(["Tâche planifiée Windows, ex. 1 h"]) --> B{"Verrou<br/>traitement.verrou<br/>de moins de 6 h ?"}
     B -- oui --> Z1["Exécution annulée,<br/>notée au journal"]
-    B -- non --> C["1. Lecture de Sage<br/>dernières factures « Vente … »,<br/>articles, comptes, client"]
-    C --> D["2. Correspondance<br/>nouveaux articles Clover"]
+    B -- non --> C["1. Lecture de Sage (une fois)<br/>factures de chaque point de vente,<br/>articles, comptes, clients, dépôts"]
+    C --> D["2. Pour chaque point de vente :<br/>correspondance de ses articles Clover"]
     D --> E["3. Préparation des jours manquants<br/>lun.–jeu. : 1 facture par jour<br/>ven.–dim. : 1 facture"]
     E --> F{"Jour bloqué ?<br/>article non relié,<br/>compte manquant"}
     F -- oui --> G["Jour ou fin de semaine mis de côté,<br/>repris la nuit suivante"]
@@ -203,7 +204,8 @@ flowchart TD
     I --> J["5. Encaissements<br/>ventes importées cette nuit seulement"]
     J --> K["6. Paiements fournisseurs<br/>« Confirmé » seulement"]
     G --> K
-    K --> L["Préchauffage du cache<br/>statistiques des 7 derniers jours"]
+    K --> K2["Factures fournisseurs du courriel<br/>copiées et lues pour la page 8"]
+    K2 --> L["Préchauffage du cache<br/>statistiques des 7 derniers jours"]
     L --> M["Journal<br/>+ courriel avec pièces jointes Excel"]
 ```
 
@@ -251,6 +253,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    P0["Pièce jointe d'un courriel<br/>boîte IMAP, lecture seule,<br/>une seule fois"] --> P1
     P1["PDF ou photo déposé<br/>page 8"] --> P2{"PDF numérique ?"}
     P2 -- oui --> P3["pdfplumber<br/>+ modèle du fournisseur"]
     P2 -- non --> P4["OCR intégré à Windows"]
@@ -306,10 +309,41 @@ stateDiagram-v2
     Verrouillée --> Connexion: changer d'utilisateur
     Ouverte --> [*]: fermeture
     note right of Ouverte
-        Pages visibles selon le profil
+        Pages et points de vente visibles selon le profil
         Administrateur, Comptable, Employé
         Les traitements en cours continuent
     end note
+```
+
+### 4.8 Plusieurs points de vente
+
+Chaque point de vente Clover (identifiant marchand et jeton) est un dépôt Sage, avec son client et ses factures. Le n° 1 garde ses réglages d'origine.
+
+```mermaid
+flowchart LR
+    subgraph Clover
+        M1["Point de vente n° 1<br/>section [clover]"]
+        M2["Point de vente n° 2<br/>[[points_vente]] code 2"]
+    end
+    subgraph Application
+        CH{"Point de vente choisi<br/>un, plusieurs (profil) ou tous"}
+        F1["Factures « Vente 2026-10-23/25 »<br/>correspondance donnees/"]
+        F2["Factures « V2 2026-10-23/25 »<br/>correspondance donnees/points_vente/2/"]
+        BL{"Dépôt autre que<br/>« Emplacement par défaut »<br/>et import non validé ?"}
+    end
+    subgraph Sage
+        C1["Client « Vente Hebdomadaire »<br/>Emplacement par défaut"]
+        C2["Client « Vente Magasin 2 »<br/>dépôt « Magasin 2 »"]
+        B["Compte 1055<br/>mêmes comptes de produits"]
+    end
+    M1 --> CH
+    M2 --> CH
+    CH --> F1 --> C1
+    CH --> F2 --> BL
+    BL -- non --> C2
+    BL -- oui --> X["Bloqué, signalé<br/>au compte rendu"]
+    C1 --> B
+    C2 --> B
 ```
 
 ---

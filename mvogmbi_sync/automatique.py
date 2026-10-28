@@ -68,6 +68,7 @@ class EtatJour:
     total: Decimal = Decimal("0")
     debut: date | None = None   # premier jour de la facture (vendredi pour la fin de semaine)
     numero: str = ""            # n° de la facture (historique des ventes, page Rapports)
+    point_vente: str = "1"      # code du point de vente Clover (points_vente.py)
 
 
 @dataclass
@@ -100,16 +101,18 @@ class CompteRendu:
         return not self.erreur and not self.problemes
 
 
-def lire_etat_sage(base, client: str) -> EtatSage:
+def lire_etat_sage(base, client: str, prefixe: str = "Vente", articles: list | None = None,
+                   invisibles: dict | None = None) -> EtatSage:
     lignes = base.requete(
         "SELECT TRIM(t.sSource) s, t.dtDate d FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
-        "WHERE c.sName = %s AND TRIM(t.sSource) REGEXP %s", (client, r"^Vente [0-9]{4}-[0-9]{2}-[0-9]{2}(/[0-9]{2})?$"))
-    dates, incoherentes = jours_couverts_sage(lignes)
-    return EtatSage(dates, base.client_utilise_mes_articles(client), base.articles(),
-                    base.numeros_avec_caracteres_invisibles(), incoherentes)
+        "WHERE c.sName = %s AND TRIM(t.sSource) REGEXP %s",
+        (client, "^" + re.escape(prefixe) + r" [0-9]{4}-[0-9]{2}-[0-9]{2}(/[0-9]{2})?$"))
+    dates, incoherentes = jours_couverts_sage(lignes, prefixe)
+    return EtatSage(dates, base.client_utilise_mes_articles(client), base.articles() if articles is None else articles,
+                    base.numeros_avec_caracteres_invisibles() if invisibles is None else invisibles, incoherentes)
 
 
-def jours_couverts_sage(lignes: list[dict]) -> tuple[set[date], list[str]]:
+def jours_couverts_sage(lignes: list[dict], prefixe: str = "Vente") -> tuple[set[date], list[str]]:
     """Jours couverts par les factures {"s": n°, "d": date dans Sage} : factures journalières et de fin de semaine
     (vendredi au dimanche). Une facture dont la date dans Sage n'est pas le dernier jour de son numéro (faute de
     frappe, ex. « Vente 2026-06-07 » datée du 2025-06-07) ne couvre rien : elle est renvoyée à part."""
@@ -117,7 +120,7 @@ def jours_couverts_sage(lignes: list[dict]) -> tuple[set[date], list[str]]:
 
     dates, incoherentes = set(), []
     for l in lignes:
-        jours = jours_facture(l["s"])
+        jours = jours_facture(l["s"], prefixe)
         jour_sage = l["d"].date() if hasattr(l["d"], "date") else l["d"]
         if not jours:
             continue
@@ -128,19 +131,34 @@ def jours_couverts_sage(lignes: list[dict]) -> tuple[set[date], list[str]]:
     return dates, sorted(incoherentes)
 
 
+def blocage_depot(point_vente, depots_sage: list[str] | None, config_toml: dict) -> str:
+    """Raison qui empêche d'importer les factures d'un point de vente dans son dépôt Sage ; « » si rien.
+
+    Le fichier d'import de Sage n'a pas de champ d'emplacement connu : les lignes vont dans l'emplacement par défaut.
+    Un autre dépôt reste bloqué tant que [sage_import] depots_valides n'est pas vrai (essai sur la copie d'abord)."""
+    depot = point_vente.depot_sage.strip()
+    if depots_sage is not None and depot.lower() not in {d.lower() for d in depots_sage}:
+        return (f"dépôt Sage « {depot} » introuvable (Sage : Configuration > Paramètres > Stocks et services > "
+                "Emplacements)")
+    if not point_vente.depot_par_defaut and not config_toml.get("sage_import", {}).get("depots_valides", False):
+        return (f"dépôt Sage « {depot} » : l'import dans un autre emplacement que « Emplacement par défaut » doit "
+                "d'abord être validé sur la copie d'essai")
+    return ""
+
+
 def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = None,
-                         simulation: bool = False, depuis: date | None = None) -> CompteRendu:
+                         simulation: bool = False, depuis: date | None = None,
+                         point_vente: str | None = None) -> CompteRendu:
     """`depuis` : période choisie par le propriétaire (bouton « Charger la période ») au lieu de « dernière facture de
-    Sage + 1 jour » ; les jours déjà facturés sont sautés."""
-    from .__main__ import charger_config, config_import, executable_import, ouvrir_base_sage
-    from .api_clover import ClientClover
-    from .facture import CLIENT, numero_fin_de_semaine, preparer_facture
-    from .import_sage import ecrire_imp, preparer_import
-    from .periodes import TypePeriode, dimanche, est_fin_de_semaine
+    Sage + 1 jour » ; les jours déjà facturés sont sautés. `point_vente` : code d'un point de vente, ou « tous »
+    (défaut) : chacun est traité à la suite avec son client, son préfixe et son dépôt Sage."""
+    from .__main__ import config_import, executable_import, ouvrir_base_sage
+    from .articles_sage import ecrire_copie
+    from .import_sage import ecrire_imp
+    from .points_vente import choisir, problemes_configuration
     from .sage_auto import lire_pendant_connexion
 
     cr = CompteRendu(simulation=simulation)
-    donnees = racine / "donnees"
     c_import = config_toml.get("sage_import", {})
     c_auto = config_toml.get("automatique", {})
     fichier_sai = Path(c_import.get("fichier_entreprise", ""))
@@ -150,110 +168,37 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
     if not exe or not exe.is_file():
         raise RuntimeError("Outil d'import de Sage (Sage_SA_import.exe) introuvable.")
     mot_de_passe = coffre.lire(coffre.SAGE_IMPORT)
-    hier = date.today() - timedelta(days=1)
-    fin = min(jusqua or hier, hier)
-    date_depart = date.fromisoformat(str(c_auto.get("date_depart", fin.isoformat())))
+    points = choisir(config_toml, point_vente)
+    if erreurs := problemes_configuration(points):
+        cr.problemes += erreurs
+        return cr
 
-    # 1. Lecture de Sage -------------------------------------------------------------------------------
+    # 1. Lecture de Sage (une seule fois pour tous les points de vente) --------------------------------------
     cr.note(f"Lecture de Sage ({fichier_sai.name})…")
 
     def lecture():
         with ouvrir_base_sage(config_toml, fichier_sai) as base:
-            return lire_etat_sage(base, CLIENT)
+            articles, invisibles = base.articles(), base.numeros_avec_caracteres_invisibles()
+            try:
+                depots = base.depots()
+            except Exception:  # droit de lecture absent sur tinvloc : seul le nom du dépôt n'est pas contrôlé
+                depots = None
+            return {p.code: lire_etat_sage(base, p.client_sage, p.prefixe, articles, invisibles) for p in points}, depots
 
     try:
-        etat = lecture()  # Sage déjà ouvert sur ce fichier
+        etats, depots_sage = lecture()  # Sage déjà ouvert sur ce fichier
         sage_ouvert = True
     except Exception:
-        etat = lire_pendant_connexion(exe, fichier_sai, lecture)
+        etats, depots_sage = lire_pendant_connexion(exe, fichier_sai, lecture)
         sage_ouvert = False
-    from .articles_sage import ecrire_copie
+    ecrire_copie(etats[points[0].code].articles, racine / "donnees" / "articles_sage.csv")
+    cr.fichier = fichier_sai.name
 
-    ecrire_copie(etat.articles, donnees / "articles_sage.csv")
-    # tous les jours sans facture depuis la date de départ (les trous d'abord, puisque du plus ancien au plus récent)
-    debut = plancher = date_depart
-    if depuis:  # un samedi ou un dimanche choisi : la facture de fin de semaine commence le vendredi
-        debut = plancher = depuis - timedelta(days=max(0, depuis.weekday() - 4))
-    cr.fichier, cr.derniere_avant = fichier_sai.name, etat.derniere_date
-    for texte in etat.incoherentes:
-        cr.note(f"Facture ignorée : {texte} ; son numéro ne correspond pas à sa date (à corriger dans Sage).")
-    manquants = [j for j in jours_periode(debut, fin) if j not in etat.dates_factures] if debut <= fin else []
-    if manquants:
-        cr.periode = (manquants[0], fin)
-    cr.note(f"Dernière facture journalière dans Sage : {etat.derniere_date or 'aucune'} ; "
-            f"{len(manquants)} jour(s) sans facture du {debut} au {fin} : {resumer_jours(manquants)}" if manquants else
-            ("Période choisie : rien à importer." if depuis else "Sage est à jour : rien à importer."))
-    if not manquants:
-        return cr
-    if not etat.client_configure:
-        cr.problemes.append(f"Fiche client « {CLIENT} » : cocher « Ce client utilise mes n° articles » "
-                            "(onglet Importer/Exporter), sinon Sage ne reconnaît aucun article.")
-        return cr
-
-    # 2. Correspondance des articles ----------------------------------------------------------------------
-    client = ClientClover(charger_config(racine / "config.toml"))
-    table = mettre_a_jour_correspondance(client, etat.articles, donnees, cr)
-    comptes = {a.numero: a.compte_revenus for a in etat.articles}
-
-    # 3. Préparation : une facture par jour du lundi au jeudi, une seule du vendredi au dimanche ----------------
     pretes = []
-    jour = manquants[0]
-    while jour <= fin:
-        if jour in etat.dates_factures:  # déjà facturé : on passe au jour suivant
-            jour += timedelta(days=1)
-            continue
-        fin_bloc, type_facture = jour, TypePeriode.JOUR
-        if est_fin_de_semaine(jour):
-            # une seule facture du vendredi au dimanche (le dépôt du lundi couvre les trois jours)
-            vendredi = jour - timedelta(days=jour.weekday() - 4)
-            jour = max(vendredi, plancher)
-            fin_bloc, type_facture = dimanche(jour), TypePeriode.FIN_DE_SEMAINE
-            if fin_bloc > fin:  # la fin de semaine n'est pas terminée : facture préparée après le dimanche
-                cr.note(f"{jour} : ventes de fin de semaine, facturées ensemble après le dimanche {fin_bloc}.")
-                cr.jours.append(EtatJour(jour, REPORTEE, f"facture du vendredi au dimanche après le {fin_bloc}"))
-                break
-            if any(j in etat.dates_factures for j in jours_periode(vendredi, fin_bloc)):
-                cr.problemes.append(f"{jour} : une partie de la fin de semaine est déjà facturée dans Sage ; "
-                                    "facturer le reste à la main ou supprimer la facture partielle.")
-                cr.jours.append(EtatJour(fin_bloc, BLOQUEE, "fin de semaine en partie déjà facturée", debut=jour,
-                                         numero=numero_fin_de_semaine(jour, fin_bloc)))
-                jour = fin_bloc + timedelta(days=1)  # seule cette fin de semaine est bloquée
-                continue
-        rapport = client.rapport(jour, fin_bloc)
-        if not rapport.lignes:
-            cr.note(f"{jour} : aucune vente." if fin_bloc == jour else f"du {jour} au {fin_bloc} : aucune vente.")
-            cr.jours.append(EtatJour(fin_bloc, AUCUNE_VENTE, debut=jour))
-            jour = fin_bloc + timedelta(days=1)
-            continue
-        facture = preparer_facture(rapport, type_facture)
-        jour_etat = fin_bloc  # état repris par la date de la facture (le dimanche pour la fin de semaine)
-        imp = preparer_import(facture, table)
-        if imp.ids_non_relies:  # proposés à la page Correspondance dès la prochaine mise à jour (même supprimés)
-            memoriser_a_relier(donnees / "articles_a_relier.csv", imp.ids_non_relies)
-        blocages = [f"article Clover non relié à Sage : {n}" for n in imp.non_reliees] + list(facture.anomalies)
-        if imp.sous_total != rapport.total_net:
-            blocages.append(f"écart de {rapport.total_net - imp.sous_total:.2f} $ avec les ventes Clover")
-        numeros = {l.numero_sage for l in imp.lignes}
-        blocages += [f"article Sage sans compte de produits : {n}" for n in sorted(numeros) if not comptes.get(n)]
-        blocages += [f"numéro d'article Sage avec caractères invisibles (à retaper) : {n}"
-                     for n in sorted(numeros & set(etat.invisibles))]
-        for texte in facture.avertissements:
-            cr.note(f"{jour} : (info) {texte}")
-        if blocages:  # seul ce jour (ou cette fin de semaine) est bloqué ; les autres continuent
-            cr.problemes += [f"{facture.numero} : {b}" for b in blocages]
-            cr.note(f"{facture.numero} : facture NON préparée ({len(blocages)} problème(s)) ; elle sera reprise à la "
-                    "prochaine exécution, les autres jours continuent.")
-            cr.jours.append(EtatJour(jour_etat, BLOQUEE, " ; ".join(blocages), len(imp.lignes), imp.sous_total,
-                                     imp.total_taxes, imp.total, debut=jour, numero=facture.numero))
-            jour = fin_bloc + timedelta(days=1)
-            continue
-        pretes.append(imp)
-        detail = "" if fin_bloc == jour else f"ventes du {jour} au {fin_bloc}"
-        cr.jours.append(EtatJour(jour_etat, PRETE, detail, len(imp.lignes), imp.sous_total, imp.total_taxes, imp.total,
-                                 debut=jour, numero=facture.numero))
-        cr.note(f"{facture.numero} : {len(imp.lignes)} lignes, sous-total {imp.sous_total:,.2f} $, "
-                f"total {imp.total:,.2f} $")
-        jour = fin_bloc + timedelta(days=1)
+    for pdv in points:
+        if len(points) > 1:
+            cr.note(f"——— Point de vente {pdv.libelle} (client « {pdv.client_sage} », dépôt « {pdv.depot_sage} ») ———")
+        pretes += _preparer_point_vente(racine, config_toml, pdv, etats[pdv.code], depots_sage, cr, jusqua, depuis)
 
     if not pretes:
         cr.note("Aucune facture prête à importer.")
@@ -280,6 +225,117 @@ def executer_automatique(racine: Path, config_toml: dict, jusqua: date | None = 
     return cr
 
 
+def _preparer_point_vente(racine: Path, config_toml: dict, pdv, etat: EtatSage, depots_sage: list[str] | None,
+                          cr: CompteRendu, jusqua: date | None, depuis: date | None) -> list:
+    """Étapes 2 et 3 pour un point de vente : correspondance de ses articles, puis ses factures des jours manquants.
+    Renvoie les factures prêtes à importer."""
+    from .__main__ import charger_config
+    from .api_clover import ClientClover
+    from .facture import numero_fin_de_semaine, preparer_facture
+    from .import_sage import preparer_import
+    from .periodes import TypePeriode, dimanche, est_fin_de_semaine
+
+    donnees = pdv.dossier(racine / "donnees")
+    donnees.mkdir(parents=True, exist_ok=True)
+    hier = date.today() - timedelta(days=1)
+    fin = min(jusqua or hier, hier)
+    date_depart = date.fromisoformat(str(config_toml.get("automatique", {}).get("date_depart", fin.isoformat())))
+    # tous les jours sans facture depuis la date de départ (les trous d'abord, puisque du plus ancien au plus récent)
+    debut = plancher = date_depart
+    if depuis:  # un samedi ou un dimanche choisi : la facture de fin de semaine commence le vendredi
+        debut = plancher = depuis - timedelta(days=max(0, depuis.weekday() - 4))
+    if pdv.principal:
+        cr.derniere_avant = etat.derniere_date
+    for texte in etat.incoherentes:
+        cr.note(f"Facture ignorée : {texte} ; son numéro ne correspond pas à sa date (à corriger dans Sage).")
+    manquants = [j for j in jours_periode(debut, fin) if j not in etat.dates_factures] if debut <= fin else []
+    if manquants and (cr.periode is None or manquants[0] < cr.periode[0]):
+        cr.periode = (manquants[0], fin)
+    cr.note(f"Dernière facture journalière dans Sage : {etat.derniere_date or 'aucune'} ; "
+            f"{len(manquants)} jour(s) sans facture du {debut} au {fin} : {resumer_jours(manquants)}" if manquants else
+            ("Période choisie : rien à importer." if depuis else "Sage est à jour : rien à importer."))
+    if not manquants:
+        return []
+    if not etat.client_configure:
+        cr.problemes.append(f"Fiche client « {pdv.client_sage} » : "
+                            + ("client absent de Sage (à créer)." if etat.client_configure is None else
+                               "cocher « Ce client utilise mes n° articles » (onglet Importer/Exporter), sinon Sage "
+                               "ne reconnaît aucun article."))
+        return []
+    if raison := blocage_depot(pdv, depots_sage, config_toml):
+        cr.problemes.append(f"Point de vente {pdv.libelle} : {raison}.")
+        return []
+
+    # 2. Correspondance des articles ----------------------------------------------------------------------
+    client = ClientClover(charger_config(racine / "config.toml", pdv))
+    table = mettre_a_jour_correspondance(client, etat.articles, donnees, cr)
+    comptes = {a.numero: a.compte_revenus for a in etat.articles}
+
+    # 3. Préparation : une facture par jour du lundi au jeudi, une seule du vendredi au dimanche ----------------
+    pretes = []
+    jour = manquants[0]
+    while jour <= fin:
+        if jour in etat.dates_factures:  # déjà facturé : on passe au jour suivant
+            jour += timedelta(days=1)
+            continue
+        fin_bloc, type_facture = jour, TypePeriode.JOUR
+        if est_fin_de_semaine(jour):
+            # une seule facture du vendredi au dimanche (le dépôt du lundi couvre les trois jours)
+            vendredi = jour - timedelta(days=jour.weekday() - 4)
+            jour = max(vendredi, plancher)
+            fin_bloc, type_facture = dimanche(jour), TypePeriode.FIN_DE_SEMAINE
+            if fin_bloc > fin:  # la fin de semaine n'est pas terminée : facture préparée après le dimanche
+                cr.note(f"{jour} : ventes de fin de semaine, facturées ensemble après le dimanche {fin_bloc}.")
+                cr.jours.append(EtatJour(jour, REPORTEE, f"facture du vendredi au dimanche après le {fin_bloc}",
+                                         point_vente=pdv.code))
+                break
+            if any(j in etat.dates_factures for j in jours_periode(vendredi, fin_bloc)):
+                cr.problemes.append(f"{jour} : une partie de la fin de semaine est déjà facturée dans Sage ; "
+                                    "facturer le reste à la main ou supprimer la facture partielle.")
+                cr.jours.append(EtatJour(fin_bloc, BLOQUEE, "fin de semaine en partie déjà facturée", debut=jour,
+                                         numero=numero_fin_de_semaine(jour, fin_bloc, pdv.prefixe),
+                                         point_vente=pdv.code))
+                jour = fin_bloc + timedelta(days=1)  # seule cette fin de semaine est bloquée
+                continue
+        rapport = client.rapport(jour, fin_bloc)
+        if not rapport.lignes:
+            cr.note(f"{jour} : aucune vente." if fin_bloc == jour else f"du {jour} au {fin_bloc} : aucune vente.")
+            cr.jours.append(EtatJour(fin_bloc, AUCUNE_VENTE, debut=jour, point_vente=pdv.code))
+            jour = fin_bloc + timedelta(days=1)
+            continue
+        facture = preparer_facture(rapport, type_facture, pdv)
+        jour_etat = fin_bloc  # état repris par la date de la facture (le dimanche pour la fin de semaine)
+        imp = preparer_import(facture, table)
+        if imp.ids_non_relies:  # proposés à la page Correspondance dès la prochaine mise à jour (même supprimés)
+            memoriser_a_relier(donnees / "articles_a_relier.csv", imp.ids_non_relies)
+        blocages = [f"article Clover non relié à Sage : {n}" for n in imp.non_reliees] + list(facture.anomalies)
+        if imp.sous_total != rapport.total_net:
+            blocages.append(f"écart de {rapport.total_net - imp.sous_total:.2f} $ avec les ventes Clover")
+        numeros = {l.numero_sage for l in imp.lignes}
+        blocages += [f"article Sage sans compte de produits : {n}" for n in sorted(numeros) if not comptes.get(n)]
+        blocages += [f"numéro d'article Sage avec caractères invisibles (à retaper) : {n}"
+                     for n in sorted(numeros & set(etat.invisibles))]
+        for texte in facture.avertissements:
+            cr.note(f"{jour} : (info) {texte}")
+        if blocages:  # seul ce jour (ou cette fin de semaine) est bloqué ; les autres continuent
+            cr.problemes += [f"{facture.numero} : {b}" for b in blocages]
+            cr.note(f"{facture.numero} : facture NON préparée ({len(blocages)} problème(s)) ; elle sera reprise à la "
+                    "prochaine exécution, les autres jours continuent.")
+            cr.jours.append(EtatJour(jour_etat, BLOQUEE, " ; ".join(blocages), len(imp.lignes), imp.sous_total,
+                                     imp.total_taxes, imp.total, debut=jour, numero=facture.numero,
+                                     point_vente=pdv.code))
+            jour = fin_bloc + timedelta(days=1)
+            continue
+        pretes.append(imp)
+        detail = "" if fin_bloc == jour else f"ventes du {jour} au {fin_bloc}"
+        cr.jours.append(EtatJour(jour_etat, PRETE, detail, len(imp.lignes), imp.sous_total, imp.total_taxes, imp.total,
+                                 debut=jour, numero=facture.numero, point_vente=pdv.code))
+        cr.note(f"{facture.numero} : {len(imp.lignes)} lignes, sous-total {imp.sous_total:,.2f} $, "
+                f"total {imp.total:,.2f} $")
+        jour = fin_bloc + timedelta(days=1)
+    return pretes
+
+
 def resumer_jours(jours: list[date]) -> str:
     """« 2026-02-01 → 2026-02-28, 2026-03-05 » : suites de jours consécutifs regroupées."""
     morceaux, i = [], 0
@@ -300,7 +356,6 @@ def importer_lot(racine: Path, lot: list, chemin_imp: Path, exe: Path, fichier_s
                  config_toml: dict, sage_ouvert: bool, cr: CompteRendu) -> None:
     """Un lot de factures : import, vérification de chaque facture dans Sage, journal des imports."""
     from .__main__ import ouvrir_base_sage
-    from .facture import CLIENT
     from .sage_auto import executer
 
     presentes: dict[str, bool] = {}
@@ -310,7 +365,7 @@ def importer_lot(racine: Path, lot: list, chemin_imp: Path, exe: Path, fichier_s
             try:
                 with ouvrir_base_sage(config_toml, fichier_sai) as base:
                     for imp in lot:
-                        presentes[imp.facture.numero] = base.facture_existe(imp.facture.numero, CLIENT)
+                        presentes[imp.facture.numero] = base.facture_existe(imp.facture.numero, imp.facture.client)
                 return
             except Exception:
                 import time
@@ -329,11 +384,11 @@ def importer_lot(racine: Path, lot: list, chemin_imp: Path, exe: Path, fichier_s
         if nouveau:
             w.writerow(["Date et heure", "Facture", "Fichier d'entreprise", "Lignes", "Sous-total", "Total",
                         "Code de retour", "Résultat"])
-        etats = {e.jour: e for e in cr.jours}
+        etats = {e.numero: e for e in cr.jours if e.numero}  # n° unique, même avec plusieurs points de vente
         for imp in lot:
             ok = presentes.get(imp.facture.numero)
             statut = "importée" if ok else ("non vérifiable" if ok is None else "ÉCHEC")
-            e = etats[imp.facture.date_facture]
+            e = etats[imp.facture.numero]
             e.etat = IMPORTEE if ok else ECHEC
             if not ok:
                 e.detail = f"{statut} après l'import ; " + " ; ".join(resultat.erreurs)
@@ -518,6 +573,42 @@ def ecrire_journal(racine: Path, cr: CompteRendu) -> Path:
     return chemin
 
 
+def recevoir_factures_fournisseurs(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Factures fournisseurs jointes aux courriels de la boîte configurée : copiées et lues pour la page 8 (rien
+    n'est importé sans le propriétaire). Une erreur ici ne touche pas le traitement."""
+    from .factures_courriel import configuree, lire_nouvelles, recuperer
+
+    if not configuree(config_toml) or not config_toml.get("factures_courriel", {}).get("automatique", True):
+        return
+    try:
+        crees = recuperer(racine, config_toml)
+        lues = lire_nouvelles(racine) if crees else []
+        if lues:
+            cr.note(f"{len(lues)} facture(s) fournisseur(s) reçue(s) par courriel, à vérifier à la page "
+                    "« 8. Factures fournisseurs » : " + ", ".join(f.fichier for f in lues))
+    except Exception as exc:
+        cr.note(f"Factures fournisseurs du courriel non relevées : {exc}")
+
+
+def archiver_factures_deja_dans_sage(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Factures fournisseurs « Prête à importer » déjà saisies dans Sage : archivées et retirées de la liste
+    (règle du propriétaire du 2026-10-28)."""
+    from .fournisseurs import PRETE, Registre, archiver_pretes_deja_dans_sage
+
+    if not any(f.etat == PRETE for f in Registre(racine).factures):
+        return
+    try:
+        from .__main__ import lire_sage
+
+        archivees = lire_sage(config_toml, lambda base: archiver_pretes_deja_dans_sage(racine, base),
+                              config_toml.get("sage_import", {}).get("fichier_entreprise"))
+        if archivees:
+            cr.note(f"{len(archivees)} facture(s) fournisseur(s) déjà dans Sage, archivée(s) et retirée(s) de la "
+                    "page 8 : " + ", ".join(f"{f.fournisseur_sage} n° {f.numero}" for f in archivees))
+    except Exception as exc:
+        cr.note(f"Factures fournisseurs déjà dans Sage non vérifiées : {exc}")
+
+
 def prechauffer_statistiques(racine: Path, cr: CompteRendu) -> None:
     """Statistiques Clover (page Rapports) : les 7 derniers jours sont gardés dans le cache chaque nuit, pour que
     les statistiques s'ouvrent sans attendre Clover. Une erreur ici ne touche pas le traitement."""
@@ -534,7 +625,7 @@ def prechauffer_statistiques(racine: Path, cr: CompteRendu) -> None:
 
 
 def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,
-           depuis: date | None = None) -> CompteRendu:
+           depuis: date | None = None, point_vente: str | None = None) -> CompteRendu:
     """Point d'entrée de la tâche planifiée : n'échoue jamais sans journal ni alerte."""
     from .courriel import envoyer_compte_rendu
 
@@ -548,13 +639,15 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
     verrou.write_text(f"{datetime.now():%Y-%m-%d %H:%M:%S}", encoding="utf-8")
     cr = CompteRendu(simulation=simulation)
     try:
-        cr = executer_automatique(racine, config_toml, jusqua, simulation, depuis)
+        cr = executer_automatique(racine, config_toml, jusqua, simulation, depuis, point_vente)
     except Exception as exc:
         cr.erreur = f"{exc}\n{traceback.format_exc()}"
         print(cr.erreur, flush=True)
     finally:
         verrou.unlink(missing_ok=True)
     if not simulation:
+        recevoir_factures_fournisseurs(racine, config_toml, cr)
+        archiver_factures_deja_dans_sage(racine, config_toml, cr)
         prechauffer_statistiques(racine, cr)
     ecrire_journal(racine, cr)
     if not simulation or config_toml.get("courriel", {}).get("envoyer_si_simulation", False):

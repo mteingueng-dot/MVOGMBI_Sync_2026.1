@@ -54,11 +54,20 @@ def _valeur_toml(v) -> str:
 def ecrire_config(chemin: Path, config: dict) -> None:
     lignes = ["# Configuration de MVOGMBI_Sync (modifiée par l'application de configuration).",
               "# Les secrets sont dans le coffre-fort de Windows, pas dans ce fichier.", ""]
+    tableaux = {s: v for s, v in config.items() if isinstance(v, list)}  # [[points_vente]] : à la fin
     for section, valeurs in config.items():
+        if section in tableaux:
+            continue
         lignes.append(f"[{section}]")
         for cle, valeur in valeurs.items():
             lignes.append(f"{cle} = {_valeur_toml(valeur)}")
         lignes.append("")
+    for section, elements in tableaux.items():
+        for valeurs in elements:
+            lignes.append(f"[[{section}]]")
+            for cle, valeur in valeurs.items():
+                lignes.append(f"{cle} = {_valeur_toml(valeur)}")
+            lignes.append("")
     chemin.write_text("\n".join(lignes), encoding="utf-8")
 
 
@@ -75,8 +84,10 @@ class Application(tk.Tk):
             from .utilisateurs import Registre
 
             self._permises = Registre(racine).pages(session)
+            self.points_permis = Registre(racine).points_vente_permis(session)
         else:
             self._permises = None
+            self.points_permis = None  # None = tous les points de vente
         self.chemin_config = racine / "config.toml"
         self.config_toml = lire_config(self.chemin_config)
         langues.depuis_config(self.config_toml)
@@ -712,6 +723,13 @@ class Application(tk.Tk):
             row=4, column=1, sticky="w", pady=(6, 8))
         self.sortie_clover = self._sortie(carte, 4)
         self.sortie_clover.grid(row=5, column=0, columnspan=3, sticky="we")
+        from .page_points_vente import CartePointsVente
+
+        zone = self._carte(f, 2, t("Points de vente"), "2",
+                           t("Chaque point de vente Clover est un dépôt (emplacement d'inventaire) dans Sage, avec son "
+                             "client Sage et ses factures (« Vente 2026-10-23 » pour le n° 1, « V2 2026-10-23 » pour "
+                             "le n° 2…). Le n° 1 utilise les identifiants ci-dessus."))
+        self.points_vente = CartePointsVente(self, zone)
 
     def _onglet_sage(self) -> None:
         b, i, a = (self.config_toml.get(s, {}) for s in ("sage_base", "sage_import", "automatique"))
@@ -780,6 +798,20 @@ class Application(tk.Tk):
         self._champ(boite, 2, t("Mot de passe"), "secret.boite", secret=coffre.BOITE_PAIEMENTS)
         self._champ(boite, 3, t("Lire les avis à partir du"), "boite.depuis", b.get("depuis", "2026-08-01"),
                     calendrier=True)
+        fc = self.config_toml.get("factures_courriel", {})
+        factures = self._carte(f, 4, t("Factures fournisseurs reçues par courriel"), "4",
+                               t("Les factures (PDF ou photos) jointes aux courriels de cette même boîte sont copiées "
+                                 "à la page « 8. Factures fournisseurs », puis lues. Lecture seule : aucun courriel "
+                                 "n'est marqué comme lu, déplacé ni supprimé ; chaque pièce jointe n'est prise "
+                                 "qu'une fois."))
+        self._champ(factures, 0, t("Expéditeurs des factures"), "fc.expediteurs", fc.get("expediteurs", ""),
+                    aide=t("Adresses ou domaines séparés par des virgules (ex. factures@fournisseur.com, "
+                           "grossiste.ca). Vide : tout courriel dont le sujet ou la pièce jointe parle de facture."))
+        self._champ(factures, 2, t("Lire les factures à partir du"), "fc.depuis",
+                    fc.get("depuis", b.get("depuis", "2026-08-01")), calendrier=True)
+        ttk.Checkbutton(factures, text=t("Les relever aussi pendant le traitement de nuit"), style="Carte.TCheckbutton",
+                        variable=self._var("fc.automatique", bool(fc.get("automatique", True)), tk.BooleanVar)).grid(
+            row=3, column=1, sticky="w", pady=6)
 
     def _onglet_automatisation(self) -> None:
         a = self.config_toml.get("automatique", {})
@@ -809,14 +841,15 @@ class Application(tk.Tk):
     def _onglet_correspondance(self) -> None:
         from .page_correspondance import PageCorrespondance
 
-        self.page_correspondance = PageCorrespondance(self.onglets, self.racine, TITRE)
+        self.page_correspondance = PageCorrespondance(self.onglets, self.racine, TITRE, self.points_visibles)
         self.onglets.add(self.page_correspondance, text=t("5. Correspondance des articles"))
         self._pages.append(("🔗", t("5. Correspondance")))
 
     def _onglet_encaissements(self) -> None:
         from .page_encaissements import PageEncaissements
 
-        self.page_encaissements = PageEncaissements(self.onglets, self.racine, TITRE, self.chemin_config)
+        self.page_encaissements = PageEncaissements(self.onglets, self.racine, TITRE, self.chemin_config,
+                                                    self.points_visibles)
         self.onglets.add(self.page_encaissements, text=t("7. Encaissements"))
         self._pages.append(("💰", t("7. Encaissements")))
 
@@ -877,8 +910,17 @@ class Application(tk.Tk):
         self._titre(f, t("6. Tableau de bord")[3:])
         self.cartes = tk.Frame(f, background=fond_de(f))
         self.cartes.grid(row=1, column=0, columnspan=3, sticky="we", pady=(0, 14))
+        # point de vente à traiter : un seul, ou tous ceux du profil à la suite (chacun dans son dépôt Sage)
+        ligne_pdv = ttk.Frame(f)
+        ligne_pdv.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        ttk.Label(ligne_pdv, text=t("Point de vente :")).pack(side="left")
+        self.point_vente = tk.StringVar(value=t("Tous les points de vente"))
+        choix = ttk.Combobox(ligne_pdv, textvariable=self.point_vente, state="readonly", width=30,
+                             postcommand=lambda: choix.configure(values=self._choix_points_vente()))
+        choix.configure(values=self._choix_points_vente())
+        choix.pack(side="left", padx=(6, 0))
         haut = ttk.Frame(f)
-        haut.grid(row=2, column=0, columnspan=3, sticky="we")
+        haut.grid(row=3, column=0, columnspan=3, sticky="we")
         Bouton(haut, "▶  " + t("Lancer maintenant"), lambda: self.lancer(False)).pack(side="left")
         Bouton(haut, "🧪  " + t("Simulation (sans import)"), lambda: self.lancer(True), "accent").pack(side="left", padx=8)
         Bouton(haut, "📗  Excel", lambda: self.ouvrir(self.racine / "donnees" / "correspondance_articles.xlsx"),
@@ -886,9 +928,10 @@ class Application(tk.Tk):
         Bouton(haut, "📁  " + t("Dossier des données"), lambda: self.ouvrir(self.racine / "donnees"),
                "secondaire").pack(side="left", padx=8)
         Bouton(haut, "⟳", self.actualiser_tableau, "secondaire", largeur=40).pack(side="right")
+        # point de vente à traiter : un seul, ou tous à la suite (chacun dans son dépôt Sage)
         # une date ou une période choisie (rattrapage) au lieu de « dernière facture de Sage jusqu'à hier »
         periode = ttk.Frame(f)
-        periode.grid(row=3, column=0, columnspan=3, sticky="we", pady=(12, 0))
+        periode.grid(row=4, column=0, columnspan=3, sticky="we", pady=(12, 0))
         hier = (date.today() - timedelta(days=1)).isoformat()
         self.periode_du, self.periode_au = tk.StringVar(value=hier), tk.StringVar(value=hier)
         ttk.Label(periode, text=t("Charger une date ou une période : du")).pack(side="left")
@@ -897,7 +940,7 @@ class Application(tk.Tk):
         ChampDate(periode, self.periode_au).pack(side="left", padx=4)
         Bouton(periode, "📥  " + t("Charger la période"), self.charger_periode, "secondaire").pack(side="left", padx=8)
         self.sortie_tableau = self._sortie(f, 18)
-        self.sortie_tableau.grid(row=4, column=0, columnspan=3, sticky="we", pady=(14, 0))
+        self.sortie_tableau.grid(row=5, column=0, columnspan=3, sticky="we", pady=(14, 0))
 
     # ---------------------------------------------------------------- actions
     def enregistrer(self) -> bool:
@@ -906,6 +949,7 @@ class Application(tk.Tk):
         try:
             date.fromisoformat(str(v["auto.date_depart"]).strip())
             date.fromisoformat(str(v["enc.depart"]).strip())
+            date.fromisoformat(str(v["fc.depuis"]).strip())
             h, m = heure.split(":")
             assert 0 <= int(h) < 24 and 0 <= int(m) < 60
             int(str(v["courriel.port"]).strip() or 587)
@@ -946,6 +990,10 @@ class Application(tk.Tk):
         c.setdefault("boite_paiements", {}).update(
             serveur=str(v["boite.serveur"]).strip(), utilisateur=str(v["boite.utilisateur"]).strip(),
             depuis=str(v["boite.depuis"]).strip() or "2026-08-01")
+        c.setdefault("factures_courriel", {}).update(
+            expediteurs=", ".join(e.strip() for e in str(v["fc.expediteurs"]).replace(";", ",").split(",") if e.strip()),
+            depuis=str(v["fc.depuis"]).strip() or str(v["boite.depuis"]).strip() or "2026-08-01",
+            automatique=bool(v["fc.automatique"]))
         c["boite_paiements"].setdefault("port", 993)
         for cle_var, cle_coffre in (("secret.clover", coffre.CLOVER_JETON), ("secret.sage_lecture", coffre.SAGE_LECTURE),
                                     ("secret.sage_import", coffre.SAGE_IMPORT), ("secret.courriel", coffre.COURRIEL),
@@ -1102,6 +1150,25 @@ class Application(tk.Tk):
             return
         self.lancer(False, depuis=du, jusqua=au, confirme=True)
 
+    def points_visibles(self) -> list:
+        """Points de vente actifs que le profil de la personne connectée peut traiter."""
+        from .points_vente import permis
+
+        return permis(self.config_toml, self.points_permis)
+
+    def _choix_points_vente(self) -> list[str]:
+        return [t("Tous les points de vente")] + [p.libelle for p in self.points_visibles()]
+
+    def _code_point_vente(self) -> str:
+        """Point de vente choisi au Tableau de bord ; « Tous » = tous ceux du profil (« tous » s'il n'a pas de
+        restriction, sinon leurs codes « 1,3 »)."""
+        from .points_vente import TOUS
+
+        choix = self.point_vente.get() if hasattr(self, "point_vente") else ""
+        if " — " in choix:
+            return choix.split(" — ")[0]
+        return TOUS if self.points_permis is None else ",".join(p.code for p in self.points_visibles())
+
     def lancer(self, simulation: bool, depuis: date | None = None, jusqua: date | None = None,
                confirme: bool = False) -> None:
         if not self.enregistrer():
@@ -1111,11 +1178,15 @@ class Application(tk.Tk):
             return
         zone = self.sortie_tableau
         zone.delete("1.0", "end")
+        code = self._code_point_vente()
+        if not code:
+            messagebox.showwarning(TITRE, t("Aucun point de vente actif n'est permis à votre profil."))
+            return
 
         def traitement():
             from .__main__ import commande_moteur
 
-            commande = commande_moteur() + ["auto"]
+            commande = commande_moteur() + ["auto", "--point-de-vente", code]
             if simulation:
                 commande.append("--simulation")
             if depuis:

@@ -42,7 +42,8 @@ def commande_moteur() -> list[str]:
     return [sys.executable, "-m", "mvogmbi_sync"]
 
 
-def charger_config(chemin: Path):
+def charger_config(chemin: Path, point_vente=None):
+    """Connexion Clover du point de vente (par défaut le n° 1, section [clover])."""
     from .api_clover import ConfigClover
 
     if not chemin.exists():
@@ -52,12 +53,16 @@ def charger_config(chemin: Path):
 
     donnees = tomllib.loads(chemin.read_text(encoding="utf-8"))
     clover = donnees.get("clover", {})
-    jeton = coffre.lire(coffre.CLOVER_JETON, clover.get("api_token"))
-    if not clover.get("merchant_id") or not jeton:
-        sys.exit("Identifiant marchand ou jeton Clover manquant : complétez la configuration "
+    if point_vente is not None and not point_vente.principal:
+        merchant_id, jeton = point_vente.merchant_id, coffre.lire(point_vente.cle_jeton)
+    else:
+        merchant_id, jeton = clover.get("merchant_id", ""), coffre.lire(coffre.CLOVER_JETON, clover.get("api_token"))
+    if not merchant_id or not jeton:
+        nom = f" du point de vente {point_vente.libelle}" if point_vente is not None else ""
+        sys.exit(f"Identifiant marchand ou jeton Clover{nom} manquant : complétez la configuration "
                  "(application MVOGMBI_Sync, onglet Clover).")
     return ConfigClover(
-        merchant_id=clover.get("merchant_id", ""),
+        merchant_id=merchant_id,
         api_token=jeton,
         base_url=clover.get("base_url", "https://api.clover.com"),
         fuseau_horaire=donnees.get("general", {}).get("fuseau_horaire", "America/Toronto"),
@@ -77,13 +82,17 @@ def commande_encaissements(args: argparse.Namespace) -> None:
     """Dépôts Clover (lots de cartes) à encaisser sur les factures journalières, et leur état dans Sage."""
     from .api_clover import ClientClover
     from .encaissements import calculer, ecrire_excel, numero_compte_sage
-    from .facture import CLIENT
 
     config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
     compte = str(config_toml.get("encaissements", {}).get("compte_depot", "1055"))
-    client = ClientClover(charger_config(Path(args.config)))
-    depots = lire_sage(config_toml, lambda base: calculer(client, base, CLIENT, numero_compte_sage(compte),
-                                                          date.fromisoformat(args.du), date.fromisoformat(args.au)),
+    pdv = points_choisis(config_toml, args)[0]
+    if len(points_choisis(config_toml, args)) > 1:
+        sys.exit("Encaissements : choisissez un point de vente (--point-de-vente CODE).")
+    client = ClientClover(charger_config(Path(args.config), pdv))
+    depots = lire_sage(config_toml, lambda base: calculer(client, base, pdv.client_sage, numero_compte_sage(compte),
+                                                          date.fromisoformat(args.du), date.fromisoformat(args.au),
+                                                          racine=RACINE if pdv.principal else None,
+                                                          prefixe=pdv.prefixe),
                        config_toml.get("sage_import", {}).get("fichier_entreprise"))
     for d in depots:
         print(f"{d.date} ({d.date:%a})  dépôt {d.montant:>10,.2f} $  au compte {compte}  : {d.etat}")
@@ -97,7 +106,7 @@ def commande_encaissements(args: argparse.Namespace) -> None:
         from .robot_encaissements import appliquer
 
         mode = str(config_toml.get("encaissements", {}).get("mode", "Comptant"))
-        resultats = appliquer(config_toml, depots, CLIENT, compte, mode)
+        resultats = appliquer(config_toml, depots, pdv.client_sage, compte, mode)
         if any(not r.traite for r in resultats):
             sys.exit(1)
 
@@ -111,7 +120,8 @@ def commande_encaisser_bureau(args: argparse.Namespace) -> None:
     config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
     notes = []
     factures = json.loads(Path(args.factures).read_text(encoding="utf-8")) if args.factures else None
-    bilan = encaisser_sur_bureau_cache(RACINE, config_toml, journal=lambda t: notes.append(t), factures=factures)
+    bilan = encaisser_sur_bureau_cache(RACINE, config_toml, journal=lambda t: notes.append(t), factures=factures,
+                                       point_vente=args.point_de_vente)
     bilan["notes"] = notes
     Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
     sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
@@ -338,8 +348,12 @@ def commande_correspondance(args: argparse.Namespace) -> None:
             sys.exit(f"La liste Sage {chemin_sage} ne contient aucun accent : l'export semble abîmé "
                      "(« Coupé » devient « Coup »). Réexportez la liste depuis Sage, puis relancez la commande.")
 
-    client = ClientClover(charger_config(Path(args.config)))
-    print("Lecture du catalogue Clover…")
+    pdv = points_choisis(config_toml, args)[0]
+    if len(points_choisis(config_toml, args)) > 1:
+        sys.exit("Correspondance : choisissez un point de vente (--point-de-vente CODE).")
+    a_relier = pdv.fichier(RACINE / "donnees", "articles_a_relier.csv")
+    client = ClientClover(charger_config(Path(args.config), pdv))
+    print(f"Lecture du catalogue Clover ({pdv.libelle})…")
     catalogue = client.articles()
     fin = date.today() - timedelta(days=1)
     depuis = date.fromisoformat(args.depuis) if args.depuis else fin - timedelta(days=29)
@@ -356,7 +370,7 @@ def commande_correspondance(args: argparse.Namespace) -> None:
     ids_catalogue = {a["id"] for a in catalogue}
     from .correspondance import lire_a_relier
     a_confirmer = {}
-    for id_article, nom_article, numero_sage in lire_a_relier(A_RELIER):  # articles trouvés en préparant des factures
+    for id_article, nom_article, numero_sage in lire_a_relier(a_relier):  # articles trouvés en préparant des factures
         noms_vendus.setdefault(id_article, nom_article)
         if numero_sage:
             a_confirmer[id_article] = (nom_article, numero_sage)
@@ -377,7 +391,8 @@ def commande_correspondance(args: argparse.Namespace) -> None:
         )
         for a in catalogue
     ]
-    chemin = Path(args.fichier)
+    chemin = Path(args.fichier) if args.fichier else pdv.fichier(RACINE / "donnees", "correspondance_articles.xlsx")
+    chemin.parent.mkdir(parents=True, exist_ok=True)
     confirmes = lire_confirmes(chemin)
     if chemin.exists():  # copie de sécurité du fichier validé avant de le régénérer
         import shutil
@@ -412,11 +427,23 @@ def commande_correspondance(args: argparse.Namespace) -> None:
 A_RELIER = RACINE / "donnees" / "articles_a_relier.csv"
 
 
-def memoriser_a_relier(articles: list[tuple[str, str]]) -> None:
+def memoriser_a_relier(articles: list[tuple[str, str]], point_vente=None) -> None:
     """Articles vendus sans numéro Sage : la prochaine « correspondance » les ajoutera (même supprimés de Clover)."""
     from .correspondance import memoriser_a_relier as memoriser
 
-    memoriser(A_RELIER, articles)
+    chemin = point_vente.fichier(RACINE / "donnees", "articles_a_relier.csv") if point_vente else A_RELIER
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    memoriser(chemin, articles)
+
+
+def points_choisis(config_toml: dict, args: argparse.Namespace) -> list:
+    """Points de vente de --point-de-vente (code ou « tous ») ; par défaut le n° 1."""
+    from .points_vente import PRINCIPAL, choisir
+
+    try:
+        return choisir(config_toml, getattr(args, "point_de_vente", None) or PRINCIPAL)
+    except ValueError as exc:
+        sys.exit(str(exc))
 
 
 def config_import(config_toml: dict):
@@ -438,46 +465,56 @@ def produire_factures(args: argparse.Namespace):
 
     from .facture import preparer_facture
     from .import_sage import ecrire_imp, lire_correspondance, nom_fichier, preparer_import
+    from .points_vente import problemes_configuration
 
     type_periode = TypePeriode(args.periode)
+    config_toml = lire_toml(args.config)
+    points = points_choisis(config_toml, args)
+    if erreurs := problemes_configuration(points):
+        sys.exit("\n".join(erreurs))
+    if getattr(args, "export", None) and (len(points) > 1 or not points[0].principal):
+        sys.exit("L'export Excel Clover ne vaut que pour le point de vente n° 1.")
     debut, fin = bornes(type_periode, date.fromisoformat(args.date))
     par_jour = getattr(args, "par_jour", False) and debut != fin
     # --par-jour : une facture par jour du lundi au jeudi, une seule du vendredi au dimanche
     periodes = blocs_facturation(debut, fin) if par_jour else [(debut, fin, type_periode)]
 
-    chemin_corresp = Path(args.correspondance)
-    if not chemin_corresp.exists():
-        sys.exit(f"Fichier de correspondance introuvable : {chemin_corresp} (lancez « correspondance »).")
-    table = lire_correspondance(chemin_corresp)
-    client = None
-    if not getattr(args, "export", None):
-        from .api_clover import ClientClover
-        client = ClientClover(charger_config(Path(args.config)))
-
     resultats = []
-    for d, f, type_facture in periodes:
-        if client is None:
-            from .export_clover import lire_export
-            rapport = lire_export(Path(args.export), d, f)
-        else:
-            rapport = client.rapport(d, f)
-        if not rapport.lignes:
-            print(f"{d} : aucune vente, pas de facture.")
-            continue
-        facture = preparer_facture(rapport, type_facture)
-        imp = preparer_import(facture, table)
-        problemes = [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies
-        if imp.sous_total != rapport.total_net:
-            problemes.insert(0, f"Écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
-        resultats.append((imp, problemes, rapport))
-        memoriser_a_relier(imp.ids_non_relies)
-        print(f"{facture.numero:<22} {len(imp.lignes):>4} lignes  ventes nettes {rapport.total_net:>10,.2f} $  "
-              f"sous-total {imp.sous_total:>10,.2f} $  taxes {imp.total_taxes:>7,.2f} $  total {imp.total:>10,.2f} $"
-              + (f"  ! {len(problemes)} point(s) à vérifier" if problemes else ""))
-        for texte in problemes:
-            print(f"    ! {texte}")
-        for texte in facture.avertissements:
-            print(f"    (info) {texte}")
+    for pdv in points:
+        chemin_corresp = Path(args.correspondance) if pdv.principal and args.correspondance else \
+            pdv.fichier(RACINE / "donnees", "correspondance_articles.xlsx")
+        if not chemin_corresp.exists():
+            sys.exit(f"Fichier de correspondance introuvable : {chemin_corresp} (lancez « correspondance »).")
+        table = lire_correspondance(chemin_corresp)
+        client = None
+        if not getattr(args, "export", None):
+            from .api_clover import ClientClover
+            client = ClientClover(charger_config(Path(args.config), pdv))
+        if len(points) > 1:
+            print(f"——— Point de vente {pdv.libelle} ———")
+        for d, f, type_facture in periodes:
+            if client is None:
+                from .export_clover import lire_export
+                rapport = lire_export(Path(args.export), d, f)
+            else:
+                rapport = client.rapport(d, f)
+            if not rapport.lignes:
+                print(f"{d} : aucune vente, pas de facture.")
+                continue
+            facture = preparer_facture(rapport, type_facture, pdv)
+            imp = preparer_import(facture, table)
+            problemes = [f"Non relié à Sage (non importé) : {n}" for n in imp.non_reliees] + facture.anomalies
+            if imp.sous_total != rapport.total_net:
+                problemes.insert(0, f"Écart de {rapport.total_net - imp.sous_total:,.2f} $ avec les ventes nettes Clover")
+            resultats.append((imp, problemes, rapport))
+            memoriser_a_relier(imp.ids_non_relies, pdv)
+            print(f"{facture.numero:<22} {len(imp.lignes):>4} lignes  ventes nettes {rapport.total_net:>10,.2f} $  "
+                  f"sous-total {imp.sous_total:>10,.2f} $  taxes {imp.total_taxes:>7,.2f} $  total {imp.total:>10,.2f} $"
+                  + (f"  ! {len(problemes)} point(s) à vérifier" if problemes else ""))
+            for texte in problemes:
+                print(f"    ! {texte}")
+            for texte in facture.avertissements:
+                print(f"    (info) {texte}")
     if not resultats:
         sys.exit("Aucune vente sur la période : aucune facture à préparer.")
 
@@ -503,7 +540,10 @@ def produire_factures(args: argparse.Namespace):
     for colonne, largeur in zip("ABCDEFGH", (22, 12, 8, 18, 14, 10, 14, 80)):
         resume.column_dimensions[colonne].width = largeur
     for imp, _, _ in resultats:
-        feuille = classeur.create_sheet(imp.facture.date_facture.isoformat() if par_jour else "Facture")
+        nom_feuille = imp.facture.date_facture.isoformat() if par_jour else "Facture"
+        if len(points) > 1:
+            nom_feuille = imp.facture.numero.replace("/", "-")[:31]
+        feuille = classeur.create_sheet(nom_feuille)
         feuille.append(["N° article Sage", "Articles Clover", "Quantité", "Prix", "Montant", "Taxe", "TPS/TVH", "TVQ"])
         for cellule in feuille[1]:
             cellule.font = Font(bold=True)
@@ -551,7 +591,7 @@ def commande_importer(args: argparse.Namespace) -> None:
         sys.exit("Sage_SA_import.exe introuvable : indiquez-le dans config.toml ([sage_import] executable).")
 
     factures, chemin_imp, _ = produire_factures(args)
-    client = factures[0][0].facture.client
+    clients = list(dict.fromkeys(imp.facture.client for imp, _ in factures))
     journal = RACINE / "donnees" / "journal_imports.csv"
 
     def noter(imp, code_retour, statut):
@@ -567,22 +607,33 @@ def commande_importer(args: argparse.Namespace) -> None:
     # Contrôles dans le fichier d'entreprise visé
     try:
         with ouvrir_base_sage(config_toml, fichier_sai) as base:
-            mes_articles = base.client_utilise_mes_articles(client)
+            reglages = {c: base.client_utilise_mes_articles(c) for c in clients}
             numeros = sorted({l.numero_sage for imp, _ in factures for l in imp.lignes})
             sans_compte = base.articles_sans_compte_revenus(numeros)
             invisibles = {n: d for n, d in base.numeros_avec_caracteres_invisibles().items() if n in set(numeros)}
-            existantes = {imp.facture.numero for imp, _ in factures if base.facture_existe(imp.facture.numero, client)}
+            existantes = {imp.facture.numero for imp, _ in factures
+                          if base.facture_existe(imp.facture.numero, imp.facture.client)}
+            try:
+                depots_sage = base.depots()
+            except Exception:
+                depots_sage = None
     except Exception as exc:
         if not args.forcer:
             sys.exit(f"\nImport annulé : vérifications impossibles dans Sage ({exc}). "
                      "Ouvrez le fichier d'entreprise dans Sage ou relancez avec --forcer.")
-        mes_articles, sans_compte, existantes, invisibles = True, [], set(), {}
-    if mes_articles is None:
-        sys.exit(f"\nImport annulé : le client « {client} » n'existe pas dans {fichier_sai.name}.")
-    if not mes_articles:
-        sys.exit(f"\nImport annulé : dans {fichier_sai.name}, la fiche du client « {client} » (onglet "
-                 "Importer/Exporter) doit indiquer que le client utilise vos numéros d'articles. "
-                 "Sinon Sage ne reconnaît aucun article de la facture.")
+        reglages, sans_compte, existantes, invisibles, depots_sage = {c: True for c in clients}, [], set(), {}, None
+    for client, mes_articles in reglages.items():
+        if mes_articles is None:
+            sys.exit(f"\nImport annulé : le client « {client} » n'existe pas dans {fichier_sai.name}.")
+        if not mes_articles:
+            sys.exit(f"\nImport annulé : dans {fichier_sai.name}, la fiche du client « {client} » (onglet "
+                     "Importer/Exporter) doit indiquer que le client utilise vos numéros d'articles. "
+                     "Sinon Sage ne reconnaît aucun article de la facture.")
+    from .automatique import blocage_depot
+
+    for pdv in points_choisis(config_toml, args):
+        if raison := blocage_depot(pdv, depots_sage, config_toml):
+            sys.exit(f"\nImport annulé : point de vente {pdv.libelle} : {raison}.")
     if invisibles:
         details = "\n".join(f"   {numero}  {nom}" for numero, nom in invisibles.items())
         sys.exit(f"\nImport annulé : dans {fichier_sai.name}, le numéro de ces articles contient des caractères "
@@ -624,7 +675,8 @@ def commande_importer(args: argparse.Namespace) -> None:
     echecs = 0
     try:
         with ouvrir_base_sage(config_toml, fichier_sai) as base:
-            presentes = {imp.facture.numero: base.facture_existe(imp.facture.numero, client) for imp in a_importer}
+            presentes = {imp.facture.numero: base.facture_existe(imp.facture.numero, imp.facture.client)
+                         for imp in a_importer}
     except Exception as exc:
         print(f"  (vérification dans Sage impossible : {exc})")
         presentes = {imp.facture.numero: None for imp in a_importer}
@@ -643,7 +695,8 @@ def commande_auto(args: argparse.Namespace) -> None:
     from .automatique import lancer
 
     cr = lancer(RACINE, lire_toml(args.config), date.fromisoformat(args.jusqua) if args.jusqua else None,
-                simulation=args.simulation, depuis=date.fromisoformat(args.depuis) if args.depuis else None)
+                simulation=args.simulation, depuis=date.fromisoformat(args.depuis) if args.depuis else None,
+                point_vente=args.point_de_vente)
     for p in cr.problemes:
         print(f"PROBLÈME : {p}")
     if cr.erreur:
@@ -716,6 +769,8 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fonction=commande_comparer)
 
     p = sous.add_parser("facture", help="Préparer le fichier d'import Sage (.IMP) de la facture de vente")
+    p.add_argument("--point-de-vente", dest="point_de_vente", default=None,
+                   help="Code du point de vente Clover, ou « tous » ; par défaut le n° 1")
     p.add_argument("--periode", choices=[t.value for t in TypePeriode], default="jour")
     p.add_argument("--date", default=(date.today() - timedelta(days=1)).isoformat(),
                    help="Un jour compris dans la période (AAAA-MM-JJ). Par défaut : hier.")
@@ -728,6 +783,8 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fonction=commande_facture)
 
     p = sous.add_parser("importer", help="Préparer la facture et l'importer automatiquement dans Sage")
+    p.add_argument("--point-de-vente", dest="point_de_vente", default=None,
+                   help="Code du point de vente Clover, ou « tous » ; par défaut le n° 1")
     p.add_argument("--periode", choices=[t.value for t in TypePeriode], default="jour")
     p.add_argument("--date", default=(date.today() - timedelta(days=1)).isoformat(),
                    help="Un jour compris dans la période (AAAA-MM-JJ). Par défaut : hier.")
@@ -749,6 +806,8 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fonction=commande_interface)
 
     p = sous.add_parser("auto", help="Traitement automatique : de la dernière facture dans Sage jusqu'à hier")
+    p.add_argument("--point-de-vente", dest="point_de_vente", default=None,
+                   help="Code du point de vente Clover, ou « tous » ; par défaut tous")
     p.add_argument("--jusqua", help="Dernier jour à traiter (AAAA-MM-JJ) ; par défaut hier")
     p.add_argument("--depuis", help="Premier jour à traiter (AAAA-MM-JJ) au lieu du lendemain de la dernière facture "
                    "de Sage ; les jours déjà facturés sont sautés")
@@ -768,6 +827,8 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fonction=commande_verifier_comptes)
 
     p = sous.add_parser("encaissements", help="Dépôts Clover à encaisser sur les factures et leur état dans Sage")
+    p.add_argument("--point-de-vente", dest="point_de_vente", default=None,
+                   help="Code du point de vente Clover, ou « tous » ; par défaut le n° 1")
     p.add_argument("--du", default=(date.today() - timedelta(days=31)).isoformat(), help="Premier jour de vente")
     p.add_argument("--au", default=(date.today() - timedelta(days=1)).isoformat(), help="Dernier jour de vente")
     p.add_argument("--export", help="Fichier Excel à créer (liste des encaissements)")
@@ -777,6 +838,8 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fonction=commande_encaissements)
 
     p = sous.add_parser("encaisser-bureau", help="(interne) Encaisser les dépôts dans Sage sur le bureau caché")
+    p.add_argument("--point-de-vente", dest="point_de_vente", default=None,
+                   help="Code du point de vente, plusieurs codes « 1,3 », ou « tous » (défaut)")
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
     p.add_argument("--factures", help="Fichier JSON : seules ces factures (ventes importées pendant la nuit)")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
@@ -797,8 +860,10 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fonction=commande_verifier_sage)
 
     p = sous.add_parser("correspondance", help="Créer ou mettre à jour la correspondance articles Clover -> Sage")
+    p.add_argument("--point-de-vente", dest="point_de_vente", default=None,
+                   help="Code du point de vente Clover, ou « tous » ; par défaut le n° 1")
     p.add_argument("--sage", help="Liste des articles exportée de Sage (ex. E:\\Article.txt)")
-    p.add_argument("--fichier", default=str(RACINE / "donnees" / "correspondance_articles.xlsx"))
+    p.add_argument("--fichier", help="Fichier de correspondance ; par défaut celui du point de vente")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.add_argument("--depuis", help="Prendre en compte les articles vendus depuis cette date (AAAA-MM-JJ) ; "
                    "par défaut les 30 derniers jours")

@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from .facture import TAUX_TPS, TAUX_TVQ
-from .fournisseurs import IMPORTEE, Facture, archiver
+from .fournisseurs import IMPORTEE, Facture, archiver, archiver_deja_dans_sage
 
 CENT = Decimal("0.01")
 
@@ -132,6 +132,23 @@ def verifier_dans_sage(base, factures: list[Facture]) -> dict[str, EtatAchat]:
     return resultat
 
 
+def deja_dans_sage(base, factures: list[Facture]) -> dict[str, str]:
+    """Factures déjà saisies dans Sage pour leur fournisseur (même n°, avec ou sans préfixe) : {fichier : n° Sage}."""
+    ids = {l["sName"].strip(): l["lId"] for l in base.requete("SELECT lId, sName FROM tvendor")}
+    resultat, sources = {}, {}
+    for f in factures:
+        v = ids.get(f.fournisseur_sage)
+        if v is None or not f.numero:
+            continue
+        if v not in sources:
+            sources[v] = [(x["sSource"] or "").strip() for x in base.requete("SELECT sSource FROM tventr WHERE lVenId = %s",
+                                                                               (v,))]
+        pareille = next((s for s in sources[v] if meme_numero(s, f.numero)), "")
+        if pareille:
+            resultat[f.fichier] = pareille
+    return resultat
+
+
 def facture_presente(base, fournisseur_sage: str, numero: str) -> bool:
     lignes = base.requete("SELECT COUNT(*) n FROM tventr t JOIN tvendor v ON v.lId = t.lVenId "
                           "WHERE v.sName = %s AND TRIM(t.sSource) = %s", (fournisseur_sage, numero.strip()))
@@ -165,6 +182,11 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
     resultats = {f.fichier: "à importer" for f in factures}
     a_importer = []
     for f in factures:
+        if etats[f.fichier].deja_present and not f.controles():  # saisie à la main entre-temps
+            archiver_deja_dans_sage(racine, f, etats[f.fichier].deja_present)
+            resultats[f.fichier] = (f"déjà dans Sage (n° « {etats[f.fichier].deja_present} ») : archivée et retirée de "
+                                    "la liste, sans import")
+            continue
         problemes = f.controles() + etats[f.fichier].problemes
         if problemes:
             resultats[f.fichier] = "non importée : " + " ; ".join(problemes)

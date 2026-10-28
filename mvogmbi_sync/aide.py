@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.9.29"
+VERSION = "1.12.2"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -175,6 +175,18 @@ FAQ = {
                     "(déjà encaissé autrement). Vérifiez la facture, puis recalculez ; un jour férié peut aussi "
                     "décaler un dépôt d'un jour."),
         ("sous_titre", "Factures fournisseurs"),
+        ("question", "Les factures arrivent par courriel : faut-il les enregistrer à la main ?"),
+        ("reponse", "Non. Page « 3. Courriel », carte « Factures fournisseurs reçues par courriel » : indiquez les "
+                    "expéditeurs (ou laissez vide : tout courriel dont le sujet ou la pièce jointe parle de facture) "
+                    "et la date de départ. Page 8, « 📧 Lire le courriel » copie les PDF et photos joints puis les "
+                    "lit ; le traitement de nuit le fait aussi. La boîte est celle des avis Interac, en lecture "
+                    "seule ; chaque pièce jointe n'est prise qu'une fois. Une pièce jointe qui n'est pas une facture "
+                    "de marchandises s'écarte (« Écarter »)."),
+        ("question", "Une facture prête à importer a déjà été saisie dans Sage à la main."),
+        ("reponse", "Elle est archivée (page « 11. Rapports », archives des factures) et retirée de la liste de la "
+                    "page 8, sans import : même fournisseur et même n°, avec ou sans préfixe (« FA-2581353 »). "
+                    "Le contrôle se fait à l'import, avec « Fournisseurs et articles Sage » et pendant le traitement "
+                    "de nuit."),
         ("question", "La facture n'est pas lue (photo, scan, écriture à la main) : que faire ?"),
         ("reponse", "Les PDF numériques sont lus directement ; les scans et photos passent par la reconnaissance de "
                     "texte de Windows. Si la lecture est incomplète, complétez l'en-tête et les lignes à la main "
@@ -232,6 +244,24 @@ FAQ = {
                     "(Accueil, Aperçu des ventes, Aperçu financier ou un état) avec ses indicateurs, ses graphiques et "
                     "son tableau complet, la période et les filtres en sous-titre."),
 
+        ("sous_titre", "Plusieurs points de vente"),
+        ("question", "Comment ajouter un autre point de vente Clover ?"),
+        ("reponse", "Page « 1. Clover », carte « Points de vente » : « Ajouter un point de vente », puis son nom, son "
+                    "identifiant marchand Clover, son jeton API, son client Sage, son dépôt Sage (emplacement "
+                    "d'inventaire) et le préfixe de ses factures (ex. « V2 » : « V2 2026-10-23/25 »). Chaque point de "
+                    "vente a ses factures, son client et sa correspondance d'articles (page 5, liste « Point de "
+                    "vente »). Le point de vente n° 1 garde ses réglages : factures « Vente … », client « Vente "
+                    "Hebdomadaire ». Les ventes vont dans les mêmes comptes de produits et les dépôts bancaires dans "
+                    "le même compte 1055. Dans Sage, créez d'abord le client (« Ce client utilise mes n° articles » "
+                    "coché) et le dépôt."),
+        ("question", "Comment traiter un seul point de vente, ou tous ?"),
+        ("reponse", "Tableau de bord, liste « Point de vente » : « Tous les points de vente » les traite à la suite, "
+                    "chacun dans son dépôt Sage ; sinon, seul celui choisi. Le traitement de nuit les traite tous. "
+                    "Pages 5 et 7 : choisissez le point de vente en haut de la page."),
+        ("note", "Tant que l'import dans un autre dépôt que « Emplacement par défaut » n'a pas été validé par un essai "
+                 "sur la copie du fichier d'entreprise, les factures d'un point de vente rangé dans un autre dépôt "
+                 "restent bloquées (message au compte rendu)."),
+
         ("sous_titre", "Utilisateurs et accès"),
         ("question", "Comment donner accès à l'application à un employé ?"),
         ("reponse", "Connecté en administrateur, page « Utilisateurs » : nom, profil, mot de passe, puis « Ajouter ». "
@@ -239,6 +269,11 @@ FAQ = {
                     "Comptable (pages 5 à 10), Employé (Accueil et Tableau de bord). À droite, choisissez un profil, "
                     "cochez ses pages puis « Enregistrer les accès » : une page non cochée disparaît du menu à la "
                     "prochaine connexion. « ➕ » crée un nouveau profil."),
+        ("question", "Comment limiter un profil à certains points de vente ?"),
+        ("reponse", "Page « Utilisateurs », à droite, « Points de vente permis » : décochez « Tous les points de "
+                    "vente », cochez un ou plusieurs points de vente, puis « Enregistrer les accès ». Les personnes "
+                    "de ce profil ne voient et ne traitent que ceux-là (Tableau de bord, pages 5 et 7). "
+                    "L'administrateur les voit toujours tous."),
         ("question", "Un utilisateur a oublié son mot de passe."),
         ("reponse", "Un administrateur choisit le compte puis « Nouveau mot de passe ». Chacun peut changer le sien "
                     "en bas du menu (« Changer mon mot de passe »). Si le seul administrateur a oublié le sien : "
@@ -338,6 +373,16 @@ FAQ = {
                     "received another way). Check the invoice, then recalculate; a public holiday may also shift a "
                     "deposit by one day."),
         ("sous_titre", "Supplier invoices"),
+        ("question", "Invoices arrive by email: do I have to save them by hand?"),
+        ("reponse", "No. “3. Email” page, “Supplier invoices received by email” card: enter the senders (or leave "
+                    "empty: any email whose subject or attachment mentions an invoice) and the start date. Page 8, "
+                    "“📧 Read email” copies the attached PDFs and photos, then reads them; the night run does it too. "
+                    "The mailbox is the one of the Interac notices, read only; each attachment is taken only once. An "
+                    "attachment that is not a goods invoice is set aside (“Set aside”)."),
+        ("question", "An invoice ready to import was already entered in Sage by hand."),
+        ("reponse", "It is archived (“11. Reports” page, invoice archives) and removed from the page 8 list, without "
+                    "import: same supplier and same number, with or without prefix (“FA-2581353”). The check is made "
+                    "at import, with “Sage suppliers and items” and during the night run."),
         ("question", "The invoice is not read (photo, scan, handwriting): what should I do?"),
         ("reponse", "Digital PDFs are read directly; scans and photos go through Windows text recognition. If the "
                     "reading is incomplete, complete the header and lines by hand (➕ button to add a line): the "
@@ -395,6 +440,23 @@ FAQ = {
                     "Financial overview or a report) with its indicators, charts and full table, the period and filters "
                     "as subtitle."),
 
+        ("sous_titre", "Several points of sale"),
+        ("question", "How do I add another Clover point of sale?"),
+        ("reponse", "“1. Clover” page, “Points of sale” card: “Add a point of sale”, then its name, Clover merchant "
+                    "ID, API token, Sage customer, Sage warehouse (inventory location) and invoice prefix (e.g. "
+                    "“V2”: “V2 2026-10-23/25”). Each point of sale has its own invoices, customer and item mapping "
+                    "(page 5, “Point of sale” list). Point of sale no. 1 keeps its settings: “Vente …” invoices, "
+                    "“Vente Hebdomadaire” customer. Sales go to the same revenue accounts and bank deposits to the "
+                    "same 1055 account. In Sage, first create the customer (“This customer uses my item numbers” "
+                    "ticked) and the warehouse."),
+        ("question", "How do I process a single point of sale, or all of them?"),
+        ("reponse", "Dashboard, “Point of sale” list: “All points of sale” processes them one after the other, each "
+                    "in its Sage warehouse; otherwise only the one chosen. The night run processes them all. Pages 5 "
+                    "and 7: choose the point of sale at the top of the page."),
+        ("note", "Until importing into a warehouse other than “Emplacement par défaut” has been validated by a test "
+                 "on the copy of the company file, the invoices of a point of sale stored in another warehouse stay "
+                 "blocked (message in the report)."),
+
         ("sous_titre", "Users and access"),
         ("question", "How do I give an employee access to the application?"),
         ("reponse", "Signed in as administrator, “Users” page: name, profile, password, then “Add”. Starting "
@@ -402,6 +464,10 @@ FAQ = {
                     "Employee (Home and Dashboard). On the right, choose a profile, tick its pages, then “Save "
                     "access”: an unticked page disappears from the menu at the next sign-in. “➕” creates a new "
                     "profile."),
+        ("question", "How do I limit a profile to some points of sale?"),
+        ("reponse", "“Users” page, on the right, “Allowed points of sale”: untick “All points of sale”, tick one or "
+                    "more points of sale, then “Save access”. People with this profile only see and process those "
+                    "(Dashboard, pages 5 and 7). The administrator always sees them all."),
         ("question", "A user forgot their password."),
         ("reponse", "An administrator selects the account, then “New password”. Everyone can change their own at the "
                     "bottom of the menu (“Change my password”). If the only administrator forgot theirs: close the "
@@ -516,7 +582,9 @@ GUIDE = {
         ("etape", "Pour relier : sélectionnez l'article, cherchez l'article Sage, « Confirmer l'article choisi », "
                   "puis « Enregistrer les modifications »."),
         ("note", "Règle du marché : deux formats différents (500 g / 1 kg, 6-36 / 7-36) sont deux articles "
-                 "différents ; l'application refuse de les relier."),
+                 "différents ; l'application ne les propose jamais. Une liaison que vous confirmez vous-même "
+                 "(« Confirmer quand même ? », par exemple un ancien nom mal écrit dans Clover) est toujours "
+                 "appliquée."),
 
         ("sous_titre", "Étape 6 — Premier traitement"),
         ("etape", "1. Tableau de bord > « Simulation (sans import) » : les factures sont préparées mais pas "
@@ -556,14 +624,17 @@ GUIDE = {
 
         ("sous_titre", "Factures fournisseurs (page 8)"),
         ("etape", "1. « Ajouter des factures… » copie les PDF ou photos dans le dossier des factures (vous pouvez "
-                  "aussi les y déposer, puis « Actualiser »). Chaque facture est lue : fournisseur, n°, date, lignes "
-                  "et totaux."),
+                  "aussi les y déposer, puis « Actualiser »), et « 📧 Lire le courriel » y copie les factures jointes "
+                  "aux courriels (page 3, carte 4). Chaque facture est lue : fournisseur, n°, date, lignes et "
+                  "totaux."),
         ("etape", "2. Vérifiez le fournisseur Sage (recherche rapide), le n° et la date ; les totaux sont contrôlés "
                   "(sous-total + TPS + TVQ = total)."),
         ("etape", "3. Pour chaque ligne : choisissez l'article Sage (« Relier et confirmer ») et le facteur de "
                   "conditionnement. Qté Sage = Qté × Facteur ; Prix Sage = Montant / Qté Sage. Entrée applique et "
                   "passe à la ligne suivante ; après la dernière, une nouvelle ligne est créée."),
-        ("etape", "4. « Enregistrer la facture » : elle passe à « Prête à importer » quand tout est relié et cohérent."),
+        ("etape", "4. Chaque saisie est enregistrée automatiquement, au fur et à mesure (en-tête, lignes, articles "
+                  "reliés ; aussi en changeant de facture ou de page) : la facture passe à « Prête à importer » quand "
+                  "tout est relié et cohérent. « Enregistrer la facture » reste disponible."),
         ("etape", "5. Fermez Sage, puis « Importer cette facture » (la facture ouverte seulement) ou « Importer "
                   "toutes les factures prêtes » : chaque facture est importée comme facture d'achat et vérifiée ; "
                   "elle passe à « Importée ». Une facture déjà dans Sage est refusée."),
@@ -573,7 +644,9 @@ GUIDE = {
         ("sous_titre", "Paiements fournisseurs (page 9)"),
         ("etape", "1. Choisissez la date « Lire depuis le », puis « Actualiser » : les avis de virement Interac "
                   "reçus depuis cette date sont lus, ainsi que les factures impayées de Sage. Tous les virements non "
-                  "encore traités s'affichent."),
+                  "encore traités s'affichent. La date « au » limite l'affichage entre deux dates. Seuls les avis "
+                  "présents dans la boîte de courriel peuvent être lus : un avis supprimé ou envoyé à une autre "
+                  "adresse n'apparaît pas."),
         ("etape", "2. Pour chaque virement : vérifiez le fournisseur Sage proposé (retenu pour les prochains "
                   "virements du même bénéficiaire), sélectionnez la ou les factures payées (Ctrl+clic pour "
                   "plusieurs), puis « Confirmer le paiement »."),
@@ -769,7 +842,8 @@ GUIDE = {
         ("etape", "To link: select the item, search the Sage item, “Confirm the chosen item”, then “Save "
                   "changes”."),
         ("note", "Market rule: two different sizes (500 g / 1 kg, 6-36 / 7-36) are two different items; the "
-                 "application refuses to link them."),
+                 "application never suggests them. A link you confirm yourself (“Confirm anyway?”, for example "
+                 "an old misspelled name in Clover) is always applied."),
 
         ("sous_titre", "Step 6 — First run"),
         ("etape", "1. Dashboard > “Simulation (no import)”: invoices are prepared but not imported; read the "
@@ -808,13 +882,16 @@ GUIDE = {
 
         ("sous_titre", "Supplier invoices (page 8)"),
         ("etape", "1. “Add invoices…” copies the PDFs or photos into the invoice folder (you can also drop them "
-                  "there, then “Refresh”). Each invoice is read: supplier, number, date, lines and totals."),
+                  "there, then “Refresh”), and “📧 Read email” copies there the invoices attached to emails (page 3, "
+                  "card 4). Each invoice is read: supplier, number, date, lines and totals."),
         ("etape", "2. Check the Sage supplier (quick search), the number and the date; totals are checked "
                   "(subtotal + GST + QST = total)."),
         ("etape", "3. For each line: choose the Sage item (“Link and confirm”) and the packaging factor. Sage qty = "
                   "Qty × Factor; Sage price = Amount / Sage qty. Enter applies and moves to the next line; after the "
                   "last one, a new line is created."),
-        ("etape", "4. “Save the invoice”: it becomes “Ready to import” once everything is linked and consistent."),
+        ("etape", "4. Every entry is saved automatically as you go (header, lines, linked items; also when you "
+                  "change invoice or page): the invoice becomes “Ready to import” once everything is linked and "
+                  "consistent. “Save the invoice” is still available."),
         ("etape", "5. Close Sage, then “Import this invoice” (the open invoice only) or “Import all ready "
                   "invoices”: each invoice is imported as a purchase invoice and verified; it becomes “Imported”. An "
                   "invoice already in Sage is refused."),
@@ -823,7 +900,9 @@ GUIDE = {
 
         ("sous_titre", "Supplier payments (page 9)"),
         ("etape", "1. Choose the “Read since” date, then “Refresh”: the Interac transfer notices received since that "
-                  "date are read, along with the unpaid invoices in Sage. All transfers not yet processed are shown."),
+                  "date are read, along with the unpaid invoices in Sage. All transfers not yet processed are shown. "
+                  "The “to” date limits the display between two dates. Only notices still in the mailbox can be "
+                  "read: a deleted notice, or one sent to another address, does not appear."),
         ("etape", "2. For each transfer: check the suggested Sage supplier (remembered for the next transfers to the "
                   "same payee), select the paid invoice(s) (Ctrl+click for several), then “Confirm payment”."),
         ("etape", "3. Confirmed payments are entered in Sage at night (account 1055, “Cash”, at the transfer date), "

@@ -92,6 +92,22 @@ class PageUtilisateurs(ttk.Frame):
                                     style="Carte.TCheckbutton")
             boite.pack(anchor="w", pady=1)
             self.boites[page] = boite
+        from .interface import lire_config
+        from .points_vente import points_de_vente
+
+        tk.Label(droite, text=t("Points de vente permis"), font=("Segoe UI Semibold", 10), foreground=TEXTE,
+                 background=CARTE).pack(anchor="w", pady=(10, 2))
+        self.pdv_tous = tk.BooleanVar(value=True)
+        self.boite_pdv_tous = ttk.Checkbutton(droite, text=t("Tous les points de vente"), variable=self.pdv_tous,
+                                              style="Carte.TCheckbutton", command=self._etat_cases_pdv)
+        self.boite_pdv_tous.pack(anchor="w", pady=1)
+        self.cases_pdv: dict[str, tk.BooleanVar] = {}
+        self.boites_pdv: dict[str, ttk.Checkbutton] = {}
+        for p in points_de_vente(lire_config(self.racine / "config.toml")):
+            self.cases_pdv[p.code] = tk.BooleanVar()
+            boite = ttk.Checkbutton(droite, text=p.libelle, variable=self.cases_pdv[p.code], style="Carte.TCheckbutton")
+            boite.pack(anchor="w", padx=(18, 0), pady=1)
+            self.boites_pdv[p.code] = boite
         self.note = tk.Label(droite, text="", font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=CARTE,
                              wraplength=330, justify="left")
         self.note.pack(anchor="w", pady=(8, 4))
@@ -127,11 +143,25 @@ class PageUtilisateurs(ttk.Frame):
         for page, variable in self.cases.items():
             variable.set(page in pages or page == "accueil")
             self.boites[page].state(["disabled"] if admin or page == "accueil" else ["!disabled"])
+        codes = None if admin else self.registre.points_vente.get(profil)
+        self.pdv_tous.set(codes is None)
+        for code, variable in self.cases_pdv.items():
+            variable.set(codes is None or code in codes)
+        self.boite_pdv_tous.state(["disabled"] if admin else ["!disabled"])
+        self._etat_cases_pdv()
         n = sum(1 for u in self.registre.utilisateurs if u.profil == profil)
         self.note.configure(text=(t("L'administrateur voit toutes les pages et gère les utilisateurs.") if admin
                                   else t("Accueil toujours visible. Une page non cochée disparaît du menu.")) + "\n"
                             + t("{n} compte(s) avec ce profil ; les changements s'appliquent à leur prochaine "
                                 "connexion.", n=n))
+
+    def _etat_cases_pdv(self) -> None:
+        """« Tous les points de vente » coché : les cases une à une sont grisées (tous, y compris les futurs)."""
+        admin = self._interne(self.profil_choisi.get()) == ADMIN
+        for code, boite in self.boites_pdv.items():
+            if self.pdv_tous.get():
+                self.cases_pdv[code].set(True)
+            boite.state(["disabled"] if admin or self.pdv_tous.get() else ["!disabled"])
 
     def choisir(self) -> None:
         selection = self.tableau.selection()
@@ -228,5 +258,10 @@ class PageUtilisateurs(ttk.Frame):
             messagebox.showinfo(self.titre, t("Le profil Administrateur a toujours accès à tout."), parent=self)
             return
         pages = [p for p, v in self.cases.items() if v.get()]
-        self._faire(lambda: self.registre.definir_profil(profil, pages),
-                    t("Accès du profil {nom} enregistrés.", nom=t(profil)))
+        codes = None if self.pdv_tous.get() else [c for c, v in self.cases_pdv.items() if v.get()]
+
+        def enregistrer():
+            self.registre.definir_points_vente(profil, codes)
+            self.registre.definir_profil(profil, pages)
+
+        self._faire(enregistrer, t("Accès du profil {nom} enregistrés.", nom=t(profil)))

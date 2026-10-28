@@ -7,6 +7,22 @@ merchant_id = ""
 api_token = ""
 # Amérique du Nord (Canada et États-Unis)
 base_url = "https://api.clover.com"
+# Point de vente n° 1 (facultatif) : nom affiché, client et dépôt Sage ; ses factures s'appellent « Vente … »
+# nom = "Sherbrooke"
+# client_sage = "Vente Hebdomadaire"
+# depot_sage = "Emplacement par défaut"
+
+# Autres points de vente Clover : un bloc par point de vente (page « 1. Clover », carte « Points de vente »).
+# Chacun est un dépôt (emplacement d'inventaire) dans Sage, avec son client et ses factures « <préfixe> AAAA-MM-JJ ».
+# Jeton API dans le coffre-fort Windows (« clover_jeton_<code> »), jamais ici.
+# [[points_vente]]
+# code = "2"
+# nom = "Magasin 2"
+# merchant_id = ""
+# client_sage = "Vente Magasin 2"
+# depot_sage = "Magasin 2"
+# prefixe = "V2"      # 5 caractères au plus
+# actif = true
 
 [general]
 fuseau_horaire = "America/Toronto"
@@ -31,6 +47,14 @@ fichier_entreprise = ''
 version = "12001"  # 33101 refusé par Sage 2026.2
 pays = "1"
 position_numero = 3  # n° de facture en 3e champ (en 2e, Sage l ignore et numérote lui-même)
+# Import dans un autre dépôt que « Emplacement par défaut » : à mettre à true après un essai réussi sur la copie
+depots_valides = false
+
+[factures_courriel]
+# Factures fournisseurs jointes aux courriels de la boîte [boite_paiements] (lecture seule) -> page 8
+expediteurs = ""   # adresses ou domaines, séparés par des virgules ; vide = sujet ou fichier qui parle de facture
+depuis = "2026-10-01"
+automatique = true  # aussi pendant le traitement de nuit
 
 [automatique]
 # Premier jour à importer si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ »

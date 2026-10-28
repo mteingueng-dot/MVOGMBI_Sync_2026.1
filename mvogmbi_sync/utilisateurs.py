@@ -6,7 +6,9 @@ Règles du propriétaire (2026-10-26) :
 - un profil = la liste des pages visibles ; une page non cochée disparaît du menu ;
 - profils de départ : Administrateur (toutes les pages et la gestion des utilisateurs, non modifiable), Comptable
   (pages 5 à 10), Employé (Accueil, Tableau de bord) ; l'administrateur ajuste les accès et crée d'autres profils ;
-- il reste toujours au moins un administrateur actif.
+- il reste toujours au moins un administrateur actif ;
+- points de vente (2026-10-28) : chaque profil a accès à un, plusieurs ou tous les points de vente Clover ; un
+  profil sans réglage les voit tous ; l'administrateur les voit toujours tous.
 
 Le traitement de nuit (tâche planifiée) et les commandes en ligne ne passent pas par cette connexion : elle protège
 l'interface, pas les fichiers de l'ordinateur.
@@ -71,11 +73,14 @@ class Registre:
         self.chemin = Path(racine) / "donnees" / "utilisateurs.json"
         self.journal = Path(racine) / "donnees" / "journal_connexions.log"
         self.profils: dict[str, list[str]] = {k: list(v) for k, v in PROFILS_DEFAUT.items()}
+        self.points_vente: dict[str, list[str]] = {}  # profil -> codes permis ; absent = tous
         self.utilisateurs: list[Utilisateur] = []
         if self.chemin.exists():
             donnees = json.loads(self.chemin.read_text(encoding="utf-8"))
             self.profils.update({k: [p for p in v if p in PAGES] for k, v in donnees.get("profils", {}).items()})
             self.profils[ADMIN] = list(PAGES)
+            self.points_vente = {k: [str(c) for c in v] for k, v in donnees.get("points_vente", {}).items()
+                                 if k in self.profils and k != ADMIN}
             self.utilisateurs = [Utilisateur(**u) for u in donnees.get("utilisateurs", [])]
 
     # ------------------------------------------------------------------ lecture
@@ -90,6 +95,12 @@ class Registre:
         """Pages visibles ; un profil supprimé entre-temps ne donne que l'accueil."""
         visibles = set(self.profils.get(utilisateur.profil, ["accueil"])) | {"accueil"}
         return visibles | ({UTILISATEURS} if utilisateur.est_admin else set())
+
+    def points_vente_permis(self, utilisateur: Utilisateur) -> set[str] | None:
+        """Codes des points de vente permis ; None = tous (administrateur, ou profil sans restriction)."""
+        if utilisateur.est_admin or utilisateur.profil not in self.points_vente:
+            return None
+        return set(self.points_vente[utilisateur.profil])
 
     def admins_actifs(self) -> list[Utilisateur]:
         return [u for u in self.utilisateurs if u.est_admin and u.actif]
@@ -174,18 +185,30 @@ class Registre:
             raise ErreurUtilisateur("Le profil Administrateur a toujours accès à tout.")
         self.profils[profil] = [p for p in PAGES if p in set(pages) | {"accueil"}]
 
+    def definir_points_vente(self, profil: str, codes: list[str] | None) -> None:
+        """Points de vente permis au profil : None = tous ; sinon au moins un."""
+        if profil == ADMIN:
+            raise ErreurUtilisateur("Le profil Administrateur a toujours accès à tout.")
+        if codes is None:
+            self.points_vente.pop(profil, None)
+        elif not codes:
+            raise ErreurUtilisateur("Cochez au moins un point de vente.")
+        else:
+            self.points_vente[profil] = [str(c) for c in codes]
+
     def supprimer_profil(self, profil: str) -> None:
         if profil == ADMIN:
             raise ErreurUtilisateur("Le profil Administrateur ne peut pas être supprimé.")
         if any(u.profil == profil for u in self.utilisateurs):
             raise ErreurUtilisateur("Ce profil est encore attribué à des utilisateurs.")
         self.profils.pop(profil, None)
+        self.points_vente.pop(profil, None)
 
     # ------------------------------------------------------------------ fichier
     def enregistrer(self) -> None:
         self.chemin.parent.mkdir(parents=True, exist_ok=True)
         temporaire = self.chemin.with_suffix(".tmp")
-        temporaire.write_text(json.dumps({"profils": self.profils,
+        temporaire.write_text(json.dumps({"profils": self.profils, "points_vente": self.points_vente,
                                           "utilisateurs": [asdict(u) for u in self.utilisateurs]},
                                          ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(temporaire, self.chemin)

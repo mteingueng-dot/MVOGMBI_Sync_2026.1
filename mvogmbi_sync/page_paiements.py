@@ -42,6 +42,12 @@ class PagePaiements(ttk.Frame):
         barre.pack(fill="x")
         ttk.Label(barre, text=t("Lire depuis le")).pack(side="left", padx=(0, 4))
         ChampDate(barre, self.depuis).pack(side="left")
+        # date de fin : filtre l'affichage entre deux dates (la lecture du courriel part toujours de « depuis »)
+        self.au = tk.StringVar(value=date.today().isoformat())
+        ttk.Label(barre, text=t("au")).pack(side="left", padx=(6, 4))
+        ChampDate(barre, self.au).pack(side="left")
+        for variable in (self.depuis, self.au):
+            variable.trace_add("write", lambda *_: self._dates_changees())
         Bouton(barre, "🔄  " + t("Actualiser"), self.lire).pack(side="left", padx=(8, 0))
         ttk.Label(barre, text=t("Afficher :")).pack(side="left", padx=(16, 4))
         self.filtre = tk.StringVar(value=t("À traiter"))
@@ -121,6 +127,17 @@ class PagePaiements(ttk.Frame):
         except ValueError:
             return None
 
+    def _date_au(self) -> date:
+        try:
+            return date.fromisoformat(self.au.get().strip())
+        except (ValueError, AttributeError):
+            return date.max
+
+    def _dates_changees(self) -> None:
+        """Une date valide choisie : la liste est refiltrée tout de suite (sans relire le courriel)."""
+        if hasattr(self, "tableau") and self._date_depuis() and self._date_au() != date.max:
+            self.afficher()
+
     # ---------------------------------------------------------------- lecture
     def _config(self) -> dict:
         import tomllib
@@ -184,11 +201,11 @@ class PagePaiements(ttk.Frame):
     # ---------------------------------------------------------------- liste
     def afficher(self) -> None:
         choix = self.filtre.get()
-        depuis = (self._date_depuis() or date.min).isoformat()
+        depuis, au = (self._date_depuis() or date.min).isoformat(), self._date_au().isoformat()
         self.tableau.delete(*self.tableau.get_children())
         for i, p in sorted(enumerate(self.registre.paiements), key=lambda x: (x[1].avis.date_virement, x[0]),
                            reverse=True):  # le plus récent en haut
-            if p.avis.date_virement < depuis:
+            if not depuis <= p.avis.date_virement <= au:
                 continue
             if choix == t("À traiter") and p.etat not in (A_RELIER, PROPOSE, CONFIRME):
                 continue
@@ -199,7 +216,7 @@ class PagePaiements(ttk.Frame):
                 a.date_virement, a.beneficiaire, f"{a.montant:,.2f}", a.message, p.fournisseur_sage, p.facture,
                 "" if p.solde_facture is None else f"{p.solde_facture:,.2f}", t(p.etat)))
         rayer(self.tableau)
-        visibles = [p for p in self.registre.paiements if p.avis.date_virement >= depuis]
+        visibles = [p for p in self.registre.paiements if depuis <= p.avis.date_virement <= au]
         compte = {e: sum(1 for p in visibles if p.etat == e) for e in ETATS}
         self.resume.configure(text=t("{n} virement(s) — à relier : {r}, proposés : {p}, confirmés : {c}, déjà dans "
                                      "Sage : {d}, ignorés : {i}, annulés/expirés : {x}", n=len(visibles),

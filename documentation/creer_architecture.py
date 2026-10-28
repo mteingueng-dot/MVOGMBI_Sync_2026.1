@@ -147,9 +147,19 @@ document.querySelector("script[type=module]").remove();
         if "<pre class=\"mermaid\"" in page_figee:
             raise RuntimeError("Diagrammes non dessinés (Mermaid inaccessible ?)")
         sortie_html.write_text("<!doctype html>" + page_figee, encoding="utf-8")
-        # 2e passage : impression
-        subprocess.run(base + ["--no-pdf-header-footer", f"--print-to-pdf={sortie}", sortie_html.as_uri()],
+        # 2e passage : impression dans un fichier à côté, puis remplacement (Edge échoue sans rien dire si le PDF
+        # est ouvert dans un lecteur)
+        provisoire = sortie.with_name(sortie.stem + "_nouveau.pdf")
+        provisoire.unlink(missing_ok=True)
+        subprocess.run(base + ["--no-pdf-header-footer", f"--print-to-pdf={provisoire}", sortie_html.as_uri()],
                        check=True, timeout=180, capture_output=True)
+    if not provisoire.exists():
+        raise RuntimeError("PDF non créé par Edge.")
+    try:
+        provisoire.replace(sortie)
+    except PermissionError:
+        raise SystemExit(f"{sortie.name} est ouvert dans un autre programme : fermez-le, puis relancez. "
+                         f"Le nouveau document est dans {provisoire.name}.") from None
     return sortie
 
 

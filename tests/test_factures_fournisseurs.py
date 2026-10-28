@@ -99,3 +99,34 @@ def test_bloc_achat_conditionnement_et_taxes():
     assert lignes[4] == ('"C0000001","24.0000","1.1583","27.80","TPS/TVH","0","1","5.00","1.39",'
                          '"TVQ","0","1","9.975","2.77"')
 
+
+
+def test_facture_prete_deja_dans_sage_archivee_et_retiree(tmp_path):
+    from mvogmbi_sync.fournisseurs import (A_VERIFIER, PRETE, Facture, Registre, archiver_pretes_deja_dans_sage,
+                                           archives, empreinte)
+
+    class Base:  # Sage : la facture « FA-104202 » a été saisie à la main pour ce fournisseur
+        def requete(self, sql, parametres=()):
+            if "FROM tvendor" in sql:
+                return [{"lId": 7, "sName": "Nourriture D'afrique"}]
+            return [{"sSource": "FA-104202 "}] if parametres == (7,) else []
+
+    registre = Registre(tmp_path)
+    registre.dossier.mkdir(parents=True)
+    (registre.dossier / "a.pdf").write_bytes(b"%PDF a")
+    (registre.dossier / "b.pdf").write_bytes(b"%PDF b")
+    registre.factures = [
+        Facture("a.pdf", "e1", fournisseur_sage="Nourriture D'afrique", numero="104202", date_facture="2026-10-20",
+                total=D("50"), etat=PRETE),
+        Facture("b.pdf", empreinte(registre.dossier / "b.pdf"), fournisseur_sage="Nourriture D'afrique", numero="104202", date_facture="2026-10-20",
+                etat=A_VERIFIER),  # pas encore prête : laissée à vérifier
+    ]
+    registre.enregistrer()
+    (archivee,) = archiver_pretes_deja_dans_sage(tmp_path, Base())
+    assert archivee.fichier == "a.pdf"
+    relu = Registre(tmp_path)
+    assert [f.fichier for f in relu.factures] == ["b.pdf"]
+    assert not (registre.dossier / "a.pdf").exists() and (registre.dossier / "b.pdf").exists()
+    assert relu.nouveaux_fichiers() == []  # le fichier archivé n'est pas relu comme nouveau
+    (a,) = archives(tmp_path)
+    assert a["etat"] == "Déjà dans Sage" and a["fichier_archive"].endswith(".pdf")

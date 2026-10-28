@@ -51,8 +51,8 @@ def date_depot(jour_vente: date) -> date:
     return jour_vente + timedelta(days=7 - jour_vente.weekday())
 
 
-def numero_facture(jour_vente: date) -> str:
-    return f"Vente {jour_vente.isoformat()}"
+def numero_facture(jour_vente: date, prefixe: str = "Vente") -> str:
+    return f"{prefixe} {jour_vente.isoformat()}"
 
 
 def numero_compte_sage(compte: str | int) -> int:
@@ -70,10 +70,11 @@ class LigneEncaissement:
     montant_du: Decimal | None = None    # solde de la facture dans Sage
     deja_encaisse: Decimal = Decimal(0)  # encaissements déjà saisis au compte de dépôt à la date du dépôt
     etat: str = ""
+    prefixe: str = "Vente"               # préfixe des factures du point de vente
 
     @property
     def facture(self) -> str:
-        return self.numero or numero_facture(self.jour_vente)
+        return self.numero or numero_facture(self.jour_vente, self.prefixe)
 
 
 @dataclass
@@ -100,18 +101,18 @@ def lots_par_jour(client, debut: date, fin: date) -> dict[date, Decimal]:
     return dict(totaux)
 
 
-def regrouper(lots: dict[date, Decimal]) -> list[Depot]:
+def regrouper(lots: dict[date, Decimal], prefixe: str = "Vente") -> list[Depot]:
     """Dépôts (date de dépôt -> jours de vente) à partir des lots de chaque jour."""
     depots: dict[date, Depot] = {}
     for jour in sorted(lots):
         if lots[jour] == 0:
             continue
         d = date_depot(jour)
-        depots.setdefault(d, Depot(d)).lignes.append(LigneEncaissement(jour, lots[jour]))
+        depots.setdefault(d, Depot(d)).lignes.append(LigneEncaissement(jour, lots[jour], prefixe=prefixe))
     return [depots[d] for d in sorted(depots)]
 
 
-def factures_fin_de_semaine(depots: list[Depot], factures_sage: set[str]) -> None:
+def factures_fin_de_semaine(depots: list[Depot], factures_sage: set[str], prefixe: str = "Vente") -> None:
     """Range les lignes vendredi-samedi-dimanche d'un dépôt du lundi sur la facture de Sage qui couvre chaque jour.
 
     Règle du propriétaire depuis octobre 2026 : une seule facture « Vente AAAA-MM-JJ/JJ » pour la fin de semaine (une
@@ -122,8 +123,8 @@ def factures_fin_de_semaine(depots: list[Depot], factures_sage: set[str]) -> Non
     from .facture import jours_facture, numero_fin_de_semaine
 
     couverture: dict[date, str] = {}
-    for numero in sorted(factures_sage, key=lambda n: -len(jours_facture(n))):  # la plus précise l'emporte
-        for jour in jours_facture(numero):
+    for numero in sorted(factures_sage, key=lambda n: -len(jours_facture(n, prefixe))):  # la plus précise l'emporte
+        for jour in jours_facture(numero, prefixe):
             couverture[jour] = numero
     for depot in depots:
         groupes: dict[str, list[LigneEncaissement]] = {}
@@ -135,23 +136,24 @@ def factures_fin_de_semaine(depots: list[Depot], factures_sage: set[str]) -> Non
             vendredi = l.jour_vente - timedelta(days=l.jour_vente.weekday() - 4)
             fin_de_semaine = [vendredi + timedelta(days=i) for i in range(3)]
             numero = couverture.get(l.jour_vente) or (
-                numero_facture(l.jour_vente) if any(j in couverture for j in fin_de_semaine)  # facturée jour par jour
-                else numero_fin_de_semaine(vendredi, fin_de_semaine[-1]))
+                numero_facture(l.jour_vente, prefixe) if any(j in couverture for j in fin_de_semaine)  # jour par jour
+                else numero_fin_de_semaine(vendredi, fin_de_semaine[-1], prefixe))
             if numero not in groupes:
                 groupes[numero] = []
                 lignes.append(numero)  # place de la ligne regroupée
             groupes[numero].append(l)
         depot.lignes = [
             l if isinstance(l, LigneEncaissement) else
-            (groupes[l][0] if l == numero_facture(groupes[l][0].jour_vente) else
-             LigneEncaissement(groupes[l][0].jour_vente, sum((x.montant for x in groupes[l]), Decimal(0)), l))
+            (groupes[l][0] if l == numero_facture(groupes[l][0].jour_vente, prefixe) else
+             LigneEncaissement(groupes[l][0].jour_vente, sum((x.montant for x in groupes[l]), Decimal(0)), l,
+                               prefixe=prefixe))
             for l in lignes]
 
 
-def noms_factures_sage(base, client_sage: str) -> set[str]:
+def noms_factures_sage(base, client_sage: str, prefixe: str = "Vente") -> set[str]:
     return {l["s"] for l in base.requete(
         "SELECT TRIM(t.sSource) s FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
-        "WHERE c.sName = %s AND t.sSource LIKE 'Vente %%'", (client_sage,))}
+        "WHERE c.sName = %s AND t.sSource LIKE %s", (client_sage, prefixe + " %"))}
 
 
 def etat_factures_sage(base, client_sage: str, compte_depot: int, factures: list[str]) -> dict[str, dict]:
@@ -210,12 +212,14 @@ def evaluer(depots: list[Depot], etat_sage: dict[str, dict], aujourdhui: date,
 
 
 def calculer(client, base, client_sage: str, compte_depot: int, debut: date, fin: date,
-             aujourdhui: date | None = None, racine=None) -> list[Depot]:
+             aujourdhui: date | None = None, racine=None, prefixe: str = "Vente") -> list[Depot]:
     """Dépôts des ventes du `debut` au `fin` inclus, avec leur état dans Sage ; avec `racine`, aussi les virements
-    Interac et dépôts d'espèces des relevés Desjardins chargés (page Rapprochement)."""
-    depots = regrouper(lots_par_jour(client, debut, fin))
+    Interac et dépôts d'espèces des relevés Desjardins chargés (page Rapprochement). `client`, `client_sage` et
+    `prefixe` : ceux du point de vente ; les espèces du relevé ne vont que sur le point de vente n° 1 (racine=None
+    pour les autres)."""
+    depots = regrouper(lots_par_jour(client, debut, fin), prefixe)
     if base:
-        factures_fin_de_semaine(depots, noms_factures_sage(base, client_sage))
+        factures_fin_de_semaine(depots, noms_factures_sage(base, client_sage, prefixe), prefixe)
     banque, dates_especes = mouvements_especes(racine, base, debut, fin) if base and racine else ([], set())
     factures = [l.facture for d in depots for l in d.lignes]
     evaluer(depots, etat_factures_sage(base, client_sage, compte_depot, factures) if base else {},
@@ -412,7 +416,8 @@ def ecrire_excel(depots: list[Depot], chemin, compte_depot: str) -> None:
     classeur.save(chemin)
 
 
-def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, factures: list[str] | None = None) -> dict:
+def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, factures: list[str] | None = None,
+                               point_vente: str | None = None) -> dict:
     """Exécuté sur le bureau caché : ouvre Sage (fermé au départ), encaisse chaque dépôt « À saisir », referme Sage.
 
     `factures` (traitement de nuit) : seulement les dépôts dont toutes les lignes vont sur ces factures, c'est-à-dire
@@ -424,7 +429,7 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, facture
     from . import coffre
     from .__main__ import charger_config, executable_import, ouvrir_base_sage
     from .api_clover import ClientClover
-    from .facture import CLIENT
+    from .points_vente import choisir
     from .robot_encaissements import appliquer
     from .sage_bureau import SessionSage, executable_sage
 
@@ -440,10 +445,12 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, facture
     fin = date.today() - timedelta(days=1)
     if c.get("date_fin"):  # réglage d'essai : dernier jour de vente à encaisser
         fin = min(fin, date.fromisoformat(str(c["date_fin"])))
-    if factures:  # ventes de la session : leurs jours seulement
-        from .facture import jours_facture
+    from .facture import jours_facture
 
-        jours = [j for n in factures for j in jours_facture(n)]
+    points = [p for p in choisir(config_toml, point_vente) if p.actif]  # « tous », un code ou « 1,3 »
+    if factures is not None:  # ventes de la session : seulement les points de vente et les jours de ces factures
+        points = [p for p in points if any(jours_facture(n, p.prefixe) for n in factures)]
+        jours = [j for n in factures for p in points for j in jours_facture(n, p.prefixe)]
         if jours:
             debut, fin = max(debut, min(jours)), min(fin, max(jours))
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
@@ -452,30 +459,40 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, facture
     if not exe:
         bilan["erreur"] = "Sage50Accounting.exe introuvable."
         return bilan
-    client = ClientClover(charger_config(racine / "config.toml"))
+    if not points:
+        return bilan
     session = SessionSage(exe, journal)
     try:
         utilisateur = str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin"))
         session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
-        with ouvrir_base_sage(config_toml, fichier) as base:
-            depots = calculer(client, base, CLIENT, numero_compte_sage(compte), debut, fin, racine=racine)
-        depots = [d for d in depots if d.date >= premier_depot]
-        if factures is not None:
-            importees = set(factures)
-            depots = [d for d in depots if d.lignes and all(l.facture in importees for l in d.lignes)]
-        a_saisir = [d for d in depots if d.etat == A_SAISIR]
-        for d in depots:
-            if d.etat == ECART:
-                bilan["a_verifier"].append(f"Dépôt du {d.date} ({d.montant:,.2f} $) : montant différent déjà saisi dans Sage.")
-            elif d.etat == A_VERIFIER:
-                bilan["a_verifier"].append(f"{d.origine} du {d.date} ({d.montant:,.2f} $) : {d.remarque}.")
-        journal(f"{len(depots)} dépôt(s) " + (f"des {len(factures)} vente(s) importée(s) " if factures else
-                                               f"depuis le {premier_depot} ") +
-                f"(ventes du {debut} au {fin}) ; {len(a_saisir)} à encaisser.")
-        if a_saisir:
-            session.ouvrir_encaissements()
-            for d, r in zip(a_saisir, appliquer(config_toml, a_saisir, CLIENT, compte, mode, journal)):
-                texte = (f"{d.origine or 'Dépôt'} du {r.date} : {r.montant:,.2f} $ au compte {compte} "
+        ouverte = False
+        for pdv in points:  # un point de vente après l'autre : ses lots Clover sur les factures de son client
+            client = ClientClover(charger_config(racine / "config.toml", pdv))
+            with ouvrir_base_sage(config_toml, fichier) as base:
+                depots = calculer(client, base, pdv.client_sage, numero_compte_sage(compte), debut, fin,
+                                  racine=racine if pdv.principal else None, prefixe=pdv.prefixe)
+            depots = [d for d in depots if d.date >= premier_depot]
+            if factures is not None:
+                importees = set(factures)
+                depots = [d for d in depots if d.lignes and all(l.facture in importees for l in d.lignes)]
+            a_saisir = [d for d in depots if d.etat == A_SAISIR]
+            nom = f"{pdv.libelle} : " if len(points) > 1 else ""
+            for d in depots:
+                if d.etat == ECART:
+                    bilan["a_verifier"].append(f"{nom}Dépôt du {d.date} ({d.montant:,.2f} $) : montant différent "
+                                               "déjà saisi dans Sage.")
+                elif d.etat == A_VERIFIER:
+                    bilan["a_verifier"].append(f"{nom}{d.origine} du {d.date} ({d.montant:,.2f} $) : {d.remarque}.")
+            journal(f"{nom}{len(depots)} dépôt(s) " + (f"des {len(factures)} vente(s) importée(s) " if factures else
+                                                         f"depuis le {premier_depot} ") +
+                    f"(ventes du {debut} au {fin}) ; {len(a_saisir)} à encaisser.")
+            if not a_saisir:
+                continue
+            if not ouverte:
+                session.ouvrir_encaissements()
+                ouverte = True
+            for d, r in zip(a_saisir, appliquer(config_toml, a_saisir, pdv.client_sage, compte, mode, journal)):
+                texte = (f"{nom}{d.origine or 'Dépôt'} du {r.date} : {r.montant:,.2f} $ au compte {compte} "
                          f"({', '.join(l.facture for l in d.lignes)})")
                 (bilan["encaisses"] if r.traite else bilan["a_verifier"]).append(
                     texte + ("" if r.traite else " — NON encaissé : " + " ".join(r.messages)))

@@ -60,14 +60,14 @@ def test_formats_differents_penalises():
     assert "créer" in res.methode and "C0001522" in res.suggestions
 
 
-def test_confirmation_avec_autre_format_annulee(tmp_path):
+def test_confirmation_avec_autre_format_gardee(tmp_path):
     chemin = tmp_path / "correspondance.xlsx"
     clover = [ArticleClover("c", "Milk Sere Ne 1kg 7-36")]
     ligne = rapprocher(clover, SAGE)[0]
-    ligne.statut, ligne.numero_sage = CONFIRME, "C0001522"  # confirmé par erreur sur 6-36
+    ligne.statut, ligne.numero_sage = CONFIRME, "C0001522"  # le propriétaire a confirmé « quand même »
     ecrire_correspondance([ligne], chemin)
     (res,) = rapprocher(clover, SAGE, lire_confirmes(chemin))
-    assert res.statut == AUCUN and "Confirmation annulée" in res.suggestions
+    assert (res.statut, res.numero_sage) == (CONFIRME, "C0001522")
 
 
 def test_plusieurs_formats_sur_un_article_sans_format():
@@ -96,16 +96,6 @@ def test_lignes_confirmees_conservees(tmp_path):
     (res,) = rapprocher(clover, SAGE, lire_confirmes(chemin))
     assert (res.statut, res.numero_sage, res.description_sage) == (CONFIRME, "C0001522", "Milk Sere Ne 1kg 6-36")
 
-
-def test_confirmation_annulee_puis_article_cree_au_bon_format(tmp_path):
-    chemin = tmp_path / "correspondance.xlsx"
-    clover = [ArticleClover("c", "Milk Sere Ne 1kg 7-36")]
-    ligne = rapprocher(clover, SAGE)[0]
-    ligne.statut, ligne.numero_sage = CONFIRME, "C0001522"  # 6-36 : autre format
-    ecrire_correspondance([ligne], chemin)
-    sage = SAGE + [ArticleSage("C0001679", "Milk Sere Ne 1kg 7-36", "Inventory", "4013")]  # créé dans Sage
-    (res,) = rapprocher(clover, sage, lire_confirmes(chemin))
-    assert (res.statut, res.numero_sage) == (AUTOMATIQUE, "C0001679")
 
 
 def test_lire_articles_sage_guillemets_et_retours_a_la_ligne(tmp_path):
@@ -163,8 +153,9 @@ def test_article_renomme_dans_clover_propose_le_nouveau_nom(tmp_path):
     # ancien nom mal écrit (« 12 » pour « 12-36 ») : la confirmation du propriétaire est gardée
     confirme = Correspondance(CONFIRME, "Milk Sere Ne 1kg 12", "", 0, "C0001523", "", "", "Manuel", 100, "", "", "OLD2")
     sage = SAGE + [ArticleSage("C0001523", "Milk Sere Ne 1kg 12-36", "Inventory", "4013")]
-    garde = rapprocher([ArticleClover("OLD2", "Milk Sere Ne 1kg 12")], sage, {"OLD2": confirme}, {"OLD2"})[0]
-    assert (garde.statut, garde.numero_sage) == (CONFIRME, "C0001523")
-    annule = rapprocher([ArticleClover("OLD2", "Milk Sere Ne 1kg 12")], sage, {"OLD2": confirme})[0]
-    assert annule.statut != CONFIRME
+    # l'article actuel au bon nom reste relié automatiquement : pas de « plusieurs formats sur un article »
+    res = rapprocher([ArticleClover("OLD2", "Milk Sere Ne 1kg 12"), ArticleClover("NEW2", "Milk Sere Ne 1kg 12-36")],
+                     sage, {"OLD2": confirme}, {"OLD2"})
+    assert {c.id_clover: (c.statut, c.numero_sage) for c in res} == {
+        "OLD2": (CONFIRME, "C0001523"), "NEW2": (AUTOMATIQUE, "C0001523")}
 
