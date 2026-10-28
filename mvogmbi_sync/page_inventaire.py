@@ -72,6 +72,10 @@ class FenetreInventaire(tk.Toplevel):
         os.startfile(fichier)
 
     def exporter(self) -> None:
+        from .export_tableau import autorise
+
+        if not autorise(self):
+            return
         from .inventaire import ecrire, lire, nom_fichier
 
         def travail():

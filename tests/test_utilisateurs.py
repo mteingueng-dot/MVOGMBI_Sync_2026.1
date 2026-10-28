@@ -55,3 +55,16 @@ def test_profil_libre_enregistre(tmp_path):
     donnees = json.loads((tmp_path / "donnees" / "utilisateurs.json").read_text(encoding="utf-8"))
     assert donnees["profils"]["Livreur"] == ["accueil", "fournisseurs"]
     assert len(Registre(tmp_path).profils[ADMIN]) == 14
+
+
+def test_droit_d_exporter_par_profil(tmp_path):
+    from mvogmbi_sync.utilisateurs import ADMIN, Registre, Utilisateur
+
+    r = Registre(tmp_path)
+    assert r.peut_exporter(Utilisateur("a", ADMIN)) and r.peut_exporter(Utilisateur("c", "Comptable"))
+    assert not r.peut_exporter(Utilisateur("e", "Employé"))  # par défaut : l'employé n'exporte pas
+    r.definir_export("Employé", True)
+    r.definir_export("Comptable", False)
+    r.enregistrer()
+    r = Registre(tmp_path)
+    assert r.peut_exporter(Utilisateur("e", "Employé")) and not r.peut_exporter(Utilisateur("c", "Comptable"))

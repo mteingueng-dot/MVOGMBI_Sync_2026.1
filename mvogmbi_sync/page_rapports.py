@@ -13,8 +13,8 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .design import (CARTE, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton,
-                     ChampDate, ChampRecherche, Rangee, cadre_tableau, entete_page, fond_de, rayer)
-from .export_tableau import bouton_exporter
+                     ChampDate, ChampRecherche, Rangee, apres_frappe, cadre_tableau, entete_page, fond_de, rayer)
+from .export_tableau import bouton_exporter, export_permis
 from .statistiques_clover import SEUIL_CUMP_DOUTEUX
 from .langues import t
 
@@ -71,7 +71,12 @@ FILTRES_PEREMPTION = ["Bientôt périmés (3 mois ou moins)", "Périmés", "Un m
 COULEURS_PEREMPTION = {"rouge": "#f8c9cf", "orange": "#ffe3a8", "neutre": "#eef1ef"}
 FILTRES_SUIVI = ["Toutes", "Bloquées ou en échec", "Non encaissées", "Non rapprochées"]
 FILTRES_GLOBAUX = ("Article", "Client", "Employé", "Catégorie", "Mode de paiement")
-TYPES_RECHERCHE = ["Client", "Fournisseur", "Vente", "Encaissement", "Paiement", "Article"]
+TYPES_RECHERCHE = ["Client", "Fournisseur", "Vente", "Encaissement", "Paiement", "Article", "Statistiques client",
+                   "Statistiques fournisseur", "Statistiques employé"]
+# statistiques (demande du propriétaire du 2026-10-28) : liste à choisir pour chaque type
+STATISTIQUES = {"Statistiques client": "Client", "Statistiques fournisseur": "Fournisseur",
+                "Statistiques employé": "Employé"}
+REGROUPEMENTS = ["Article", "Catégorie", "Article par jour", "Catégorie par jour"]
 EXTENSIBLES = {"Commentaire", "Description", "Client / fournisseur", "Fournisseur", "Client", "Article Sage", "Article",
                "Indicateur", "Appareil", "Employé", "Mode(s) de paiement"}
 COLONNES_ARCHIVES = (("date", "Date", 90), ("fournisseur", "Fournisseur", 260), ("numero", "N°", 110),
@@ -211,7 +216,7 @@ class PageRapports(ttk.Frame):
         self.texte_suivi = tk.StringVar()
         champ = ttk.Entry(barre, textvariable=self.texte_suivi, width=22)
         champ.pack(side="left")
-        champ.bind("<KeyRelease>", lambda _e: self.afficher_suivi())
+        champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher_suivi))
         self.etat = ttk.Label(cadre, text=t("Cliquez sur « Actualiser » : historique des traitements, Sage et relevés."),
                               foreground=TEXTE_DOUX, padding=(0, 6))
         self.etat.pack(fill="x")
@@ -283,71 +288,195 @@ class PageRapports(ttk.Frame):
     def _onglet_recherche(self) -> None:
         cadre = ttk.Frame(self.onglets, padding=(0, 8, 0, 0))
         self.onglets.add(cadre, text="  " + t("Recherche dans l'historique") + "  ")
-        barre = ttk.Frame(cadre)
+        barre = Rangee(cadre)
         barre.pack(fill="x")
-        ttk.Label(barre, text=t("Rechercher :")).pack(side="left", padx=(0, 4))
+        groupe = barre.ajouter(barre.groupe(), 6)
+        ttk.Label(groupe, text=t("Rechercher :")).pack(side="left", padx=(0, 4))
         self.type_recherche = tk.StringVar(value=t(TYPES_RECHERCHE[0]))
-        choix = ttk.Combobox(barre, textvariable=self.type_recherche, values=[t(x) for x in TYPES_RECHERCHE],
-                             state="readonly", width=14)
+        choix = ttk.Combobox(groupe, textvariable=self.type_recherche, values=[t(x) for x in TYPES_RECHERCHE],
+                             state="readonly", width=22)
         choix.pack(side="left")
         choix.bind("<<ComboboxSelected>>", lambda _e: self._preparer_recherche())
         self.valeur = tk.StringVar()
-        self.champ_valeur = ChampRecherche(barre, self.valeur, [], largeur=46)
-        self.champ_valeur.pack(side="left", padx=6)
-        periode = ttk.Frame(cadre)  # deuxième ligne : période et bouton
-        periode.pack(fill="x", pady=(6, 0))
+        self.champ_valeur = barre.ajouter(ChampRecherche(barre, self.valeur, [], largeur=46,
+                                                         au_choix=lambda _v=None: self._choix_fait()), 12)
+        self.barre_recherche = barre
+        # deuxième ligne : plage d'articles, regroupement, période et bouton
+        ligne = Rangee(cadre)
+        ligne.pack(fill="x", pady=(6, 0))
+        self.ligne_recherche = ligne
+        self.groupe_plage = ligne.ajouter(ligne.groupe(), 14)
+        self.libelle_plage = ttk.Label(self.groupe_plage, text=t("Articles du"))
+        self.libelle_plage.pack(side="left", padx=(0, 4))
+        self.art_du, self.art_au = tk.StringVar(), tk.StringVar()
+        self.champ_art_du = ChampRecherche(self.groupe_plage, self.art_du, [], largeur=30,
+                                           au_choix=lambda _v=None: self._choix_fait(article=True))
+        self.champ_art_du.pack(side="left")
+        ttk.Label(self.groupe_plage, text=t("au")).pack(side="left", padx=4)
+        self.champ_art_au = ChampRecherche(self.groupe_plage, self.art_au, [], largeur=30,
+                                           au_choix=lambda _v=None: self._choix_fait(article=True))
+        self.champ_art_au.pack(side="left")
+        self.groupe_categorie = ligne.ajouter(ligne.groupe(), 14)
+        ttk.Label(self.groupe_categorie, text=t("Catégorie")).pack(side="left", padx=(0, 4))
+        self.categorie = tk.StringVar()
+        self.champ_categorie = ChampRecherche(self.groupe_categorie, self.categorie, [], largeur=22,
+                                              au_choix=lambda _v=None: self._choix_fait(article=True))
+        self.champ_categorie.pack(side="left")
+        self.groupe_par = ligne.ajouter(ligne.groupe(), 14)
+        ttk.Label(self.groupe_par, text=t("Par :")).pack(side="left", padx=(0, 4))
+        self.par = tk.StringVar(value=t(REGROUPEMENTS[0]))
+        par = ttk.Combobox(self.groupe_par, textvariable=self.par, values=[t(x) for x in REGROUPEMENTS],
+                           state="readonly", width=20)
+        par.pack(side="left")
+        par.bind("<<ComboboxSelected>>", lambda _e: self._choix_fait())
+        periode = ligne.ajouter(ligne.groupe(), 8)
         ttk.Label(periode, text=t("Période du")).pack(side="left", padx=(0, 4))
         self.du = tk.StringVar()
         ChampDate(periode, self.du).pack(side="left")
         ttk.Label(periode, text=t("au")).pack(side="left", padx=4)
         self.au = tk.StringVar()
         ChampDate(periode, self.au).pack(side="left")
-        Bouton(periode, "🔍  " + t("Rechercher"), self.rechercher, petit=True).pack(side="left", padx=8)
+        ligne.ajouter(Bouton(ligne, "🔍  " + t("Rechercher"), self.rechercher, petit=True), 6)
+        ligne.ajouter(Bouton(ligne, "✖  " + t("Réinitialiser les filtres"), self.reinitialiser, "secondaire",
+                             petit=True))
         self.aide_recherche = ttk.Label(cadre, text="", foreground=TEXTE_DOUX, padding=(0, 6))
         self.aide_recherche.pack(fill="x")
         self.titre_recherche = tk.Label(cadre, text="", font=("Segoe UI Semibold", 10), foreground=TEXTE,
                                         background=fond_de(cadre), anchor="w")
         self.titre_recherche.pack(fill="x")
         self.tableau_recherche = tableau_simple(cadre)
-        bouton_exporter(barre, self.tableau_recherche, t("Recherche")).pack(side="right")
+        self.tableau_recherche.tag_configure("total", font=("Segoe UI Semibold", 9), background="#e8f3ea")
+        barre.ajouter(bouton_exporter(barre, self.tableau_recherche, t("Recherche")))
         self._preparer_recherche(lire=False)
 
     def _type(self) -> str:
         return next(x for x in TYPES_RECHERCHE if t(x) == self.type_recherche.get())
 
+    def _choix_fait(self, article: bool = False) -> None:
+        """Un choix dans une liste lance la recherche (pas de clic de plus) ; texte libre : bouton Rechercher."""
+        type_ = self._type()
+        if type_ == "Article" and article and (self.art_du.get().strip() or self.categorie.get().strip()):
+            self.rechercher()
+        elif type_ in ("Client", "Fournisseur") or (type_ in STATISTIQUES and self.valeur.get().strip()):
+            self.rechercher()
+
     def _preparer_recherche(self, lire: bool = True) -> None:
-        """Client, fournisseur, article : liste tirée de Sage (lue une fois) ; sinon texte libre (facultatif)."""
+        """Client, fournisseur, article, employé : liste tirée de Sage ou de Clover (lue une fois) ; sinon texte libre
+        (facultatif). Les résultats de la recherche précédente sont effacés."""
         from . import rapports
 
         type_ = self._type()
-        self.valeur.set("")
+        # chaque sorte de choix garde sa valeur d'un type à l'autre (client de « Client » et de « Statistiques
+        # client »…) ; plage d'articles, catégorie, regroupement et période restent tels quels
+        memoire = self.__dict__.setdefault("_valeurs_par_sorte", {})
+        precedent = getattr(self, "_sorte_precedente", None)
+        if precedent is not None:
+            memoire[precedent] = self.valeur.get()
+        self._sorte_precedente = STATISTIQUES.get(type_, type_)
+        self.valeur.set(memoire.get(self._sorte_precedente, ""))
+        remplir(self.tableau_recherche, [], [])
+        self.titre_recherche.configure(text="")
         aides = {"Client": "Choisissez le client : ses factures et encaissements, avec le solde.",
                  "Fournisseur": "Choisissez le fournisseur : factures, paiements et notes de crédit, avec le solde dû.",
-                 "Article": "Choisissez l'article (n° ou nom) : ventes, achats, retours et ajustements, avec le cumul.",
+                 "Article": "Choisissez l'article (n° ou nom) : ventes, achats, retours et ajustements, avec le cumul. "
+                            "« au » (facultatif) : une plage d'articles, chacun à la suite de l'autre avec son total.",
                  "Vente": "Texte facultatif (n° de facture, client, montant) et période.",
                  "Encaissement": "Texte facultatif (client, facture, n° d'encaissement, montant) et période.",
-                 "Paiement": "Texte facultatif (fournisseur, facture, pièce, montant) et période."}
-        self.aide_recherche.configure(text=t(aides[type_]))
-        sources = {"Client": lambda b: rapports.noms(b, "tcustomr"),
-                   "Fournisseur": lambda b: rapports.noms(b, "tvendor"), "Article": rapports.articles}
-        if type_ not in sources:
+                 "Paiement": "Texte facultatif (fournisseur, facture, pièce, montant) et période.",
+                 "Statistiques client": "Choisissez le client : ses achats par article ou par catégorie (Sage), sur "
+                                        "la période et la plage d'articles (facultatives).",
+                 "Statistiques fournisseur": "Choisissez le fournisseur : achats moins retours par article ou par "
+                                             "catégorie (Sage), sur la période et la plage d'articles (facultatives).",
+                 "Statistiques employé": "Choisissez l'employé : ses ventes par article ou par catégorie (Clover), "
+                                         "sur la période (30 derniers jours si elle est vide)."}
+        self.aide_recherche.configure(text=self._aide(aides[type_], type_))
+        plage = type_ in ("Article", "Statistiques client", "Statistiques fournisseur")
+        self.barre_recherche.montrer(self.champ_valeur, type_ != "Article")
+        self.ligne_recherche.montrer(self.groupe_plage, plage)
+        self.ligne_recherche.montrer(self.groupe_par, type_ in STATISTIQUES)
+        self.ligne_recherche.montrer(self.groupe_categorie, type_ == "Article" or type_ in STATISTIQUES)
+        self.champ_categorie.configurer_valeurs(self._categories())
+        self.libelle_plage.configure(text=t("Article") if type_ == "Article" else t("Articles du"))
+        if plage and "Article" not in self.listes and lire:
+            def fin_articles(valeurs):
+                self.listes["Article"] = valeurs
+                self.champ_art_du.configurer_valeurs(valeurs)
+                self.champ_art_au.configurer_valeurs(valeurs)
+                self.aide_recherche.configure(text=self._aide(aides[type_], type_))
+
+            self._lire_sage(rapports.articles, fin_articles, t("Lecture de la liste dans Sage…"), self.aide_recherche)
+        elif plage and "Article" in self.listes:
+            self.champ_art_du.configurer_valeurs(self.listes["Article"])
+            self.champ_art_au.configurer_valeurs(self.listes["Article"])
+        liste = STATISTIQUES.get(type_, type_)
+        if liste == "Employé":
+            if "Employé" in self.listes:
+                self.champ_valeur.configurer_valeurs(self.listes["Employé"])
+            elif lire:
+                self._lire_employes(lambda: self.aide_recherche.configure(text=self._aide(aides[type_], type_)))
+            return
+        if liste not in ("Client", "Fournisseur"):
             self.champ_valeur.configurer_valeurs([])
             return
-        if type_ in self.listes:
-            self.champ_valeur.configurer_valeurs(self.listes[type_])
-        elif lire and type_ in ("Client", "Fournisseur"):  # listes tirées de l'historique (une seule lecture)
-            self._avec_historique(lambda _h: self.aide_recherche.configure(text=t(aides[type_])))
-        elif lire:
-            def fin(valeurs):
-                self.listes[type_] = valeurs
-                self.champ_valeur.configurer_valeurs(valeurs)
-                self.aide_recherche.configure(text=t(aides[type_]))
+        if liste in self.listes:
+            self.champ_valeur.configurer_valeurs(self.listes[liste])
+        elif lire:  # listes tirées de l'historique (une seule lecture)
+            self._avec_historique(lambda _h: self.aide_recherche.configure(text=self._aide(aides[type_], type_)))
 
-            self._lire_sage(sources[type_], fin, t("Lecture de la liste dans Sage…"), self.aide_recherche)
+    @staticmethod
+    def _aide(texte: str, type_: str) -> str:
+        if type_ in ("Client", "Fournisseur", "Article") or type_ in STATISTIQUES:
+            return t(texte) + " " + t("Sans choix : tout est affiché.")
+        return t(texte)
+
+    def reinitialiser(self) -> None:
+        """Vide tous les filtres (nom, plage d'articles, regroupement, période) et les résultats."""
+        self.__dict__.get("_valeurs_par_sorte", {}).clear()
+        for variable in (self.valeur, self.art_du, self.art_au, self.du, self.au, self.categorie):
+            variable.set("")
+        self.par.set(t(REGROUPEMENTS[0]))
+        remplir(self.tableau_recherche, [], [])
+        self.titre_recherche.configure(text="")
+        self.aide_recherche.configure(text=t("Filtres réinitialisés : « Rechercher » sans filtre affiche tout."))
+
+    def _categories(self) -> list[str]:
+        """Catégories de la table « Comptes Sage par catégorie Clover » (les mêmes noms que dans Clover)."""
+        from .creation_articles import TableCategories
+
+        return sorted(TableCategories(self.racine).lignes, key=str.casefold)
+
+    def _lire_employes(self, suite) -> None:
+        """Noms des employés de Clover (lus une fois)."""
+        self.aide_recherche.configure(text=t("Lecture des employés dans Clover…"))
+
+        def travail():
+            try:
+                from .__main__ import charger_config
+                from .api_clover import ClientClover
+                from .statistiques_clover import referentiels
+
+                employes = referentiels(ClientClover(charger_config(self.racine / "config.toml")))[0]
+                noms = sorted(set(employes.values()), key=str.casefold)
+
+                def fin():
+                    self.listes["Employé"] = noms
+                    if self._type() == "Statistiques employé":
+                        self.champ_valeur.configurer_valeurs(noms)
+                    suite()
+
+                self.after(0, fin)
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: self.aide_recherche.configure(text="✘ " + texte))
+
+        threading.Thread(target=travail, daemon=True).start()
 
     def _date(self, variable: tk.StringVar) -> date | None:
         texte = variable.get().strip()
         return date.fromisoformat(texte) if texte else None
+
+    def _par(self) -> str:
+        return next(x for x in REGROUPEMENTS if t(x) == self.par.get())
 
     def rechercher(self) -> None:
         from . import rapports
@@ -358,30 +487,88 @@ class PageRapports(ttk.Frame):
         except ValueError:
             messagebox.showwarning(self.titre, t("Date invalide : utilisez le format AAAA-MM-JJ (ou le calendrier 📅)."))
             return
-        if type_ in ("Client", "Fournisseur", "Article") and not valeur:
-            messagebox.showinfo(self.titre, t("Choisissez d'abord dans la liste : {quoi}.", quoi=t(type_).lower()))
-            return
-        fonctions = {
-            "Client": lambda b: rapports.mouvements_client(b, valeur, du, au),
-            "Fournisseur": lambda b: rapports.mouvements_fournisseur(b, valeur, du, au),
-            "Article": lambda b: rapports.mouvements_article(b, valeur.split(" — ")[0].strip(), du, au),
-            "Vente": lambda b: rapports.recherche_ventes(b, valeur, du, au),
-            "Encaissement": lambda b: rapports.recherche_encaissements(b, valeur, du, au),
-            "Paiement": lambda b: rapports.recherche_paiements(b, valeur, du, au)}
+        categorie = self.categorie.get().strip() if type_ == "Article" or type_ in STATISTIQUES else ""
+        de = self.art_du.get().split(" — ")[0].strip()
+        a = self.art_au.get().split(" — ")[0].strip()
+        if type_ == "Article":  # aucun article choisi : tous les articles (chacun à la suite de l'autre)
+            valeur = (self.art_du.get().strip() or t("tous")) + (f"  →  {self.art_au.get().strip()}" if a else "")
+        elif not valeur and (type_ in ("Client", "Fournisseur") or type_ in STATISTIQUES):
+            valeur = ""  # aucun filtre : tout est affiché
+        par = self._par()
+        tous = {"Client": "tous les clients", "Fournisseur": "tous les fournisseurs",
+                "Statistiques client": "tous les clients", "Statistiques fournisseur": "tous les fournisseurs",
+                "Statistiques employé": "tous les employés"}
+        titre = t("Résultats : {type}", type=t(type_)) + (
+            f" — {valeur}" if valeur else (f" — {t(tous[type_])}" if type_ in tous else "")) + (
+            f" — {t('par')} {t(par).lower()}" if type_ in STATISTIQUES else "") + (
+            f" — {t('articles')} {de} → {a or '…'}" if type_ in ("Statistiques client", "Statistiques fournisseur") and (de or a) else "") + (
+            f" — {t('Catégorie').lower()} {categorie}" if categorie else "")
 
         def fin(resultat):
             entetes, lignes = resultat
-            remplir(self.tableau_recherche, entetes, lignes, {"Client / fournisseur": 220, "Facture": 170})
-            self.titre_recherche.configure(text=t("Résultats : {type}", type=t(type_)) + (f" — {valeur}" if valeur else ""))
-            self.aide_recherche.configure(text=t("{n} résultat(s).", n=len(lignes)))
+            totaux = [i for i, l in enumerate(lignes) if any(str(v).startswith(("Total", "… plus de")) for v in l[:4])]
+            remplir(self.tableau_recherche, entetes, lignes, {"Client / fournisseur": 220, "Facture": 170,
+                                                              "Article": 260, "Catégorie": 170, "Type et pièce": 190},
+                    lambda i: ("total",) if i in totaux else ())
+            self.titre_recherche.configure(text=titre)
+            self.aide_recherche.configure(text=t("{n} résultat(s).", n=len(lignes) - len(totaux)))
 
-        if type_ == "Article":  # trop de mouvements pour la mémoire : requête dans Sage
+        if type_ == "Statistiques employé":
+            self._statistiques_employe(valeur, par, du, au, fin, categorie)
+            return
+        categories = rapports.categories_par_compte(self.racine) if type_ in STATISTIQUES or categorie else {}
+        fonctions = {
+            "Article": lambda b: (rapports.mouvements_article(b, de, du, au) if de and (not a or a == de) and not categorie
+                                  else rapports.mouvements_articles(b, de, a, du, au, categorie, categories)),
+            "Vente": lambda b: rapports.recherche_ventes(b, valeur, du, au),
+            "Encaissement": lambda b: rapports.recherche_encaissements(b, valeur, du, au),
+            "Paiement": lambda b: rapports.recherche_paiements(b, valeur, du, au),
+            "Statistiques client": lambda b: rapports.statistiques_tiers(b, "client", valeur, par, du, au, de, a,
+                                                                         categories, categorie),
+            "Statistiques fournisseur": lambda b: rapports.statistiques_tiers(b, "fournisseur", valeur, par, du, au,
+                                                                              de, a, categories, categorie)}
+        if type_ in fonctions:  # requête dans Sage (trop de lignes pour la mémoire)
             self._lire_sage(fonctions[type_], fin, t("Recherche dans Sage…"), self.aide_recherche)
             return
-        en_memoire = {"Client": rapports.h_mouvements_client, "Fournisseur": rapports.h_mouvements_fournisseur,
-                      "Vente": rapports.h_ventes, "Encaissement": rapports.h_encaissements,
-                      "Paiement": rapports.h_paiements}[type_]
+        en_memoire = {"Client": rapports.h_mouvements_client, "Fournisseur": rapports.h_mouvements_fournisseur}[type_]
         self._avec_historique(lambda h: fin(en_memoire(h, valeur, du, au)))
+
+    def _statistiques_employe(self, employe: str, par: str, du, au, fin, categorie: str = "") -> None:
+        """Ventes Clover de l'employé (vide : tous) par article ou par catégorie (jours terminés gardés en
+        cache)."""
+        from datetime import timedelta
+
+        au = au or date.today()
+        du = du or au - timedelta(days=29)
+        self.aide_recherche.configure(text=t("Lecture de Clover…"))
+
+        def progression(i, n, _debut, _fin):
+            self.after(0, lambda: self.aide_recherche.configure(
+                text=t("Lecture de Clover : {i} jour(s) lu(s) sur {n}…", i=i, n=n)))
+
+        def travail():
+            try:
+                from .__main__ import charger_config
+                from .api_clover import ClientClover
+                from .statistiques_clover import filtrer, lire, statistiques
+
+                client = ClientClover(charger_config(self.racine / "config.toml"))
+                donnees = lire(client, du, au, self.racine / "donnees" / "cache_clover", progression)
+                from .statistiques_clover import detail_par_jour
+
+                filtres = {k: v for k, v in (("Employé", employe), ("Catégorie", categorie)) if v}
+                nom_vue = "Par catégorie" if par.startswith("Catégorie") else "Par article"
+                donnees = filtrer(donnees, filtres)
+                vue = (detail_par_jour(donnees, nom_vue) if par.endswith("par jour")
+                       else statistiques(donnees)[nom_vue])
+                self.after(0, lambda: fin(vue))
+                self.after(0, lambda: self.titre_recherche.configure(
+                    text=self.titre_recherche.cget("text") + f" — {du.isoformat()} → {au.isoformat()}"))
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: self.aide_recherche.configure(text="✘ " + texte))
+
+        threading.Thread(target=travail, daemon=True).start()
 
     def _avec_historique(self, suite) -> None:
         """Historique Sage des clients et fournisseurs : lu une fois (10 minutes), puis recherches instantanées."""
@@ -398,8 +585,9 @@ class PageRapports(ttk.Frame):
             h["_lu"] = time.time()
             self.historique_sage = h
             self.listes["Client"], self.listes["Fournisseur"] = h["noms_clients"], h["noms_fournisseurs"]
-            if self._type() in ("Client", "Fournisseur"):
-                self.champ_valeur.configurer_valeurs(self.listes[self._type()])
+            liste = STATISTIQUES.get(self._type(), self._type())
+            if liste in ("Client", "Fournisseur"):
+                self.champ_valeur.configurer_valeurs(self.listes[liste])
             suite(h)
 
         self._lire_sage(rapports.historique, garder, t("Lecture de l'historique de Sage (une fois)…"),
@@ -428,9 +616,10 @@ class PageRapports(ttk.Frame):
         self.libelle_periode = barre.ajouter(ttk.Label(barre, text="", foreground=TEXTE_DOUX), 10)
         barre.ajouter(Bouton(barre, "🔄  " + t("Actualiser"), self.calculer_statistiques, petit=True), 12)
         self.auto = tk.BooleanVar(value=True)
-        barre.ajouter(ttk.Checkbutton(barre, text=t("Journée en cours : actualiser toutes les 5 minutes"),
+        barre.ajouter(ttk.Checkbutton(barre, text=t("Journée en cours : actualiser chaque minute"),
                                       variable=self.auto), 12)
-        barre.ajouter(Bouton(barre, "📕  " + t("PDF de la page"), self.pdf_page, "secondaire", petit=True))
+        if export_permis():
+            barre.ajouter(Bouton(barre, "📕  " + t("PDF de la page"), self.pdf_page, "secondaire", petit=True))
         filtres = Rangee(cadre)  # filtres globaux : tous les états de la période ; passent à la ligne si étroit
         filtres.pack(fill="x", pady=(6, 0))
         filtres.ajouter(ttk.Label(filtres, text=t("Filtrer :")), 6)
@@ -522,7 +711,10 @@ class PageRapports(ttk.Frame):
         self.recherche_etat = tk.StringVar()
         champ = ttk.Entry(filtres, textvariable=self.recherche_etat, width=28)
         champ.pack(side="left")
-        champ.bind("<KeyRelease>", lambda _e: self.afficher_statistiques())
+        champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher_statistiques))
+        self.par_jour = tk.BooleanVar(value=False)  # vues regroupées : une ligne par jour, colonne Date en premier
+        self.case_par_jour = ttk.Checkbutton(filtres, text=t("Détail par jour"), variable=self.par_jour,
+                                             command=self.afficher_statistiques)
         self.cadre_horizon = tk.Frame(filtres, background=fond_de(cadre))
         ttk.Label(self.cadre_horizon, text=t("Horizon :")).pack(side="left", padx=(16, 4))
         self.horizon = tk.StringVar(value=t("{n} jours", n=14))
@@ -674,14 +866,25 @@ class PageRapports(ttk.Frame):
 
     def recalculer(self) -> None:
         """Un filtre a changé : nouveau calcul sur les données déjà lues (pas de nouvelle lecture de Clover)."""
-        if not getattr(self, "brut_stats", None) or self._calcul_en_cours:
+        if not getattr(self, "brut_stats", None):
+            return
+        if self._calcul_en_cours:
+            self._recalcul_attendu = True  # refait avec les derniers filtres dès la fin du calcul en cours
+            return
+        brut = self.brut_stats
+        cle = tuple(sorted(self._filtres_actifs().items()))
+        memoire = brut.setdefault("_par_filtres", {})
+        if cle in memoire:  # combinaison déjà calculée : affichage immédiat
+            self._calcul_en_cours = True
+            self._fin_statistiques(memoire[cle])
             return
         self._calcul_en_cours = True
         self.etat_stats.configure(text=t("Calcul avec les filtres…"))
 
         def travail():
             try:
-                resultat = self._calculer(self.brut_stats)
+                resultat = self._calculer(brut)
+                memoire[cle] = resultat
                 self.after(0, lambda: self._fin_statistiques(resultat))
             except Exception as exc:
                 texte = str(exc)
@@ -709,6 +912,9 @@ class PageRapports(ttk.Frame):
         from .graphiques import BLEU, BLEU_PALE
 
         self._calcul_en_cours = False
+        if getattr(self, "_recalcul_attendu", False):
+            self._recalcul_attendu = False
+            self.after(10, self.recalculer)
         self.vues_stats = r["vues"]
         self.moyens_stats = r["moyens"]
         completes = self.brut_stats["completes"]  # choix des filtres : toutes les valeurs de la période
@@ -760,12 +966,12 @@ class PageRapports(ttk.Frame):
                                   + (t("   •   filtres : {f}", f=", ".join(f"{t(k)} = {v}" for k, v in r["filtres"].items()))
                                      if r["filtres"] else ""))
         self.afficher_statistiques()
-        # journée en cours : nouvelle lecture dans 5 minutes
+        # journée en cours : nouvelle lecture dans 1 minute (seule la journée est relue ; les autres jours sont en cache)
         if self._minuterie:
             self.after_cancel(self._minuterie)
             self._minuterie = None
         if self.auto.get() and r["au"] >= date.today():
-            self._minuterie = self.after(5 * 60 * 1000, self.calculer_statistiques)
+            self._minuterie = self.after(60 * 1000, self.calculer_statistiques)
 
     def pdf_page(self) -> None:
         """La page affichée en PDF : cartes et graphiques tels qu'à l'écran, puis le tableau complet (toutes ses
@@ -898,6 +1104,18 @@ class PageRapports(ttk.Frame):
         self.g_ap_heure.barres([l[0].replace(" h", "h") for l in heures],
                                [(t("Ventes nettes"), [l[2] for l in heures], BLEU)], t("Aucune vente"))
 
+    def _vue_par_jour(self, nom: str) -> tuple[list[str], list[list]]:
+        """Vue `nom` jour par jour, filtres globaux appliqués ; calculée une fois par jeu de données et filtres."""
+        from .statistiques_clover import detail_par_jour, filtrer
+
+        brut = self.brut_stats
+        f = self._filtres_actifs()
+        cle = (nom, tuple(sorted(f.items())))
+        memoire = brut.setdefault("_par_jour", {})
+        if cle not in memoire:
+            memoire[cle] = detail_par_jour(filtrer(brut["donnees"], f), nom, brut.get("couts"))
+        return memoire[cle]
+
     def afficher_statistiques(self) -> None:
         nom = self.vue_courante
         if nom == "apercu":
@@ -915,6 +1133,14 @@ class PageRapports(ttk.Frame):
             self.lire_annees()
         source = (self.vues_prev if nom in PREVISIONS else self.vues_articles if nom == "liste_articles"
                   else self.vues_annees if nom == "evolution_annees" else self.vues_stats)
+        from .statistiques_clover import VUES_PAR_JOUR
+
+        if nom in VUES_PAR_JOUR:
+            self.case_par_jour.pack(side="left", padx=(12, 0))
+        else:
+            self.case_par_jour.pack_forget()
+        if nom in VUES_PAR_JOUR and self.par_jour.get() and source is self.vues_stats and nom in source:
+            source = {nom: self._vue_par_jour(nom)}
         self._afficher_kpi(nom == "Résumé")
         if nom not in source:
             self.tableau_stats.delete(*self.tableau_stats.get_children())
@@ -923,7 +1149,9 @@ class PageRapports(ttk.Frame):
             return
         entetes, lignes = source[nom]
         self.note_etat.configure(text=t(NOTES_ETATS.get(nom, "")) if NOTES_ETATS.get(nom) else "")
-        self._graphique_etat(nom, lignes)
+        # graphique : totaux de la période, même avec le détail par jour (colonne Date en plus dans le tableau)
+        self._graphique_etat(nom, self.vues_stats[nom][1] if source is not self.vues_stats and nom in self.vues_stats
+                             and nom in VUES_PAR_JOUR else lignes)
         texte = self.recherche_etat.get().strip().casefold()
         if texte:
             lignes = [l for l in lignes if any(texte in str(v).casefold() for v in l)]
@@ -1250,7 +1478,7 @@ class PageRapports(ttk.Frame):
         self.texte_peremption = tk.StringVar()
         champ = ttk.Entry(legende, textvariable=self.texte_peremption, width=20)
         champ.pack(side="right")
-        champ.bind("<KeyRelease>", lambda _e: self.afficher_peremption())
+        champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher_peremption))
         ttk.Label(legende, text=t("Rechercher :")).pack(side="right", padx=(12, 4))
         self.en_stock = tk.BooleanVar(value=False)
         ttk.Checkbutton(legende, text=t("Seulement les articles en stock"), variable=self.en_stock,
@@ -1332,10 +1560,11 @@ class PageRapports(ttk.Frame):
         self.texte_archives = tk.StringVar()
         champ = ttk.Entry(barre, textvariable=self.texte_archives, width=28)
         champ.pack(side="left")
-        champ.bind("<KeyRelease>", lambda _e: self.afficher_archives())
+        champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher_archives))
         Bouton(barre, "📄  " + t("Voir la facture"), self.ouvrir_piece, "secondaire", petit=True).pack(
             side="left", padx=(12, 6))
-        Bouton(barre, "📗  " + t("Détail (Excel)"), self.ouvrir_detail, "secondaire", petit=True).pack(side="left")
+        if export_permis():
+            Bouton(barre, "📗  " + t("Détail (Excel)"), self.ouvrir_detail, "secondaire", petit=True).pack(side="left")
         Bouton(barre, "📂  " + t("Dossier des archives"), self.ouvrir_dossier, "secondaire", petit=True).pack(
             side="left", padx=6)
         self.resume_archives = ttk.Label(cadre, text="", foreground=TEXTE_DOUX, padding=(0, 6))

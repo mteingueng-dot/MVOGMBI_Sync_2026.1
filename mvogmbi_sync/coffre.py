@@ -27,17 +27,24 @@ LIBELLES = {
 }
 
 
+_LUS: dict[str, str | None] = {}  # secrets déjà lus pendant cette exécution (le coffre de Windows est lent)
+
+
 def lire(cle: str, secours: str | None = None) -> str:
-    valeur = keyring.get_password(SERVICE, cle)
+    if cle not in _LUS:
+        _LUS[cle] = keyring.get_password(SERVICE, cle)
+    valeur = _LUS[cle]
     return valeur if valeur else (secours or "")
 
 
 def ecrire(cle: str, valeur: str) -> None:
     if valeur:
         keyring.set_password(SERVICE, cle, valeur)
+        _LUS[cle] = valeur
 
 
 def supprimer(cle: str) -> None:
+    _LUS.pop(cle, None)
     try:
         keyring.delete_password(SERVICE, cle)
     except PasswordDeleteError:

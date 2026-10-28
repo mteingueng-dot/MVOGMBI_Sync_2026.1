@@ -49,7 +49,7 @@ def source(m: MouvementBanque) -> str:
 def ecriture_presente(base, m: MouvementBanque) -> int | None:
     """N° de l'écriture déjà dans Sage pour ce mouvement (même source, date et montant au compte de banque)."""
     lignes = base.requete(
-        "SELECT e.lId FROM tjourent e JOIN tjentact a ON a.lJEntId = e.lId WHERE TRIM(e.sSource) = %s AND "
+        "SELECT e.lId FROM tjourent e JOIN tjentact a ON a.lJEntId = e.lId WHERE e.sSource = %s AND "
         "e.dtJourDate = %s AND a.lAcctId = %s AND ROUND(a.dAmount, 2) = %s AND e.nType NOT IN (32, 33, 64, 65) "
         "ORDER BY e.lId DESC LIMIT 1", (source(m), m.date, COMPTE_BANQUE, str(m.montant)))
     return lignes[0]["lId"] if lignes else None

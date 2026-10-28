@@ -12,7 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau,
                      defilement, entete_page, fond_de, rayer)
-from .export_tableau import bouton_exporter, rendre_exportable
+from .export_tableau import bouton_exporter, export_permis, rendre_exportable
 from .langues import t
 from .rapprochement import (A_ENCAISSER, A_PAIE, A_SAISIR, CONFIRME, DELAI_PAIE, EN_CIRCULATION, IGNORE, RAPPROCHE,
                             MouvementBanque,
@@ -23,7 +23,7 @@ ETATS = [A_SAISIR, A_ENCAISSER, A_PAIE, CONFIRME, RAPPROCHE, SAISI, IGNORE]
 A_TRAITER = (A_SAISIR, A_ENCAISSER, A_PAIE, CONFIRME)
 COULEURS = {A_SAISIR: "#fff4d6", A_ENCAISSER: "#efe8fb", A_PAIE: "#fde2e4", CONFIRME: "#e6f4ea", RAPPROCHE: None,
             SAISI: None, IGNORE: None}
-RENVOIS = {A_ENCAISSER: "→ page 7 Encaissements", A_PAIE: "→ module Paie de Sage"}
+RENVOIS = {A_ENCAISSER: "→ Comptabilité > Encaissements", A_PAIE: "→ module Paie de Sage"}
 
 
 def argent(valeur) -> str:
@@ -49,7 +49,8 @@ class PageRapprochement(ttk.Frame):
         Bouton(barre, "📂  " + t("Charger des relevés…"), self.charger).pack(side="left")
         Bouton(barre, "🔄  " + t("Actualiser"), self.actualiser, "secondaire").pack(side="left", padx=8)
         Bouton(barre, "🗑  " + t("Supprimer le relevé"), self.supprimer, "danger").pack(side="left")
-        Bouton(barre, "📗  " + t("Rapport Excel"), self.rapport, "secondaire").pack(side="right")
+        if export_permis():
+            Bouton(barre, "📗  " + t("Rapport Excel"), self.rapport, "secondaire").pack(side="right")
         Bouton(barre, "📤  " + t("Saisir dans Sage"), self.saisir, "accent").pack(side="right", padx=8)
         periode = ttk.Frame(self)
         periode.pack(fill="x", pady=(8, 0))
@@ -329,7 +330,7 @@ class PageRapprochement(ttk.Frame):
                                    r=m.releve))
         self.compte.set(m.compte)
         conseil = {A_ENCAISSER: t("Argent des ventes (Interac ou espèces) : il s'encaisse sur les factures de vente à la "
-                                  "page 7 « Encaissements », pas en écriture de journal."),
+                                  "« Comptabilité > Encaissements », pas en écriture de journal."),
                    A_PAIE: t("Dépôt de salaire : aucune paie du même montant dans Sage (source PAY…). Saisissez ou "
                              "corrigez la paie dans le module Paie de Sage, puis « Actualiser ».")}.get(m.etat, "")
         self.remarque.configure(text=m.remarque or conseil)
@@ -371,11 +372,11 @@ class PageRapprochement(ttk.Frame):
         from .encaissements import RegistreEncaissementsManuels
         from .paiements_fournisseurs import RegistrePaiements
 
-        prevus = {e["cle"]: t("→ page 7 : encaissement manuel sur {f}", f=e["facture"])
+        prevus = {e["cle"]: t("→ Encaissements : encaissement manuel sur {f}", f=e["facture"])
                   for e in RegistreEncaissementsManuels(self.racine).liste}
         for p in RegistrePaiements(self.racine).paiements:
             if p.avis.identifiant.startswith("releve:"):
-                prevus[p.avis.identifiant[len("releve:"):]] = t("→ page 9 : paiement fournisseur manuel")
+                prevus[p.avis.identifiant[len("releve:"):]] = t("→ Paiements fournisseur : paiement manuel")
         return prevus
 
     def _mouvement_libre(self, entree: bool) -> MouvementBanque | None:
@@ -401,11 +402,11 @@ class PageRapprochement(ttk.Frame):
                             reference=m.releve, message=m.description, source="Relevé Desjardins")
         registre = RegistrePaiements(self.racine)
         if not registre.ajouter([avis]):
-            messagebox.showinfo(self.titre, t("Ce mouvement est déjà à la page 9 (Paiements fournisseurs)."))
+            messagebox.showinfo(self.titre, t("Ce mouvement est déjà dans « Comptabilité > Paiements fournisseur »."))
         registre.enregistrer()
         self.afficher()
-        if messagebox.askyesno(self.titre, t("Paiement de {m} ajouté à la page 9 : choisissez le fournisseur et la "
-                                             "facture, confirmez, puis « Payer dans Sage ».\n\nOuvrir la page 9 ?",
+        if messagebox.askyesno(self.titre, t("Paiement de {m} ajouté à « Paiements fournisseur » : choisissez le fournisseur et la "
+                                             "facture, confirmez, puis « Payer dans Sage ».\n\nOuvrir « Paiements fournisseur » ?",
                                              m=argent(-m.montant))) and self.naviguer:
             self.naviguer("paiements")
 
@@ -495,7 +496,7 @@ class PageRapprochement(ttk.Frame):
             fenetre.destroy()
             self.afficher()
             if messagebox.askyesno(self.titre, t("Encaissement de {m} sur {f} noté. Il sera saisi dans Sage par « "
-                                                 "Encaisser dans Sage » (page 7).\n\nOuvrir la page 7 ?",
+                                                 "Encaisser dans Sage » (« Comptabilité > Encaissements »).\n\nOuvrir « Encaissements » ?",
                                                  m=argent(valeur), f=numero)) and self.naviguer:
                 self.naviguer("encaissements")
 

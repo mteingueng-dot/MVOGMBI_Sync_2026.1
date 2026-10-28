@@ -8,7 +8,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, cadre_tableau, rayer
+from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, apres_frappe, cadre_tableau, rayer
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -47,7 +47,7 @@ class FenetreACocher(tk.Toplevel):
         self.recherche = tk.StringVar()
         champ = ttk.Entry(groupe, textvariable=self.recherche, width=22)
         champ.pack(side="left", padx=(4, 0))
-        champ.bind("<KeyRelease>", lambda _e: self.afficher())
+        champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher))
         barre.ajouter(Bouton(barre, COCHE + "  " + t("Tout cocher"), lambda: self.tout(True), "secondaire",
                              fond=CARTE, petit=True))
         barre.ajouter(Bouton(barre, VIDE + "  " + t("Tout décocher"), lambda: self.tout(False), "secondaire",

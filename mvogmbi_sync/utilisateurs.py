@@ -37,6 +37,7 @@ PROFILS_DEFAUT = {
                   "rapprochement", "rapports", "guide", "faq"],
     "Employé": ["accueil", "tableau", "guide", "faq"],
 }
+SANS_EXPORT_DEFAUT = ["Employé"]  # profils sans le droit d'exporter (règle du propriétaire du 2026-10-28)
 LONGUEUR_MIN = 6
 ITERATIONS = 200_000
 
@@ -74,6 +75,7 @@ class Registre:
         self.journal = Path(racine) / "donnees" / "journal_connexions.log"
         self.profils: dict[str, list[str]] = {k: list(v) for k, v in PROFILS_DEFAUT.items()}
         self.points_vente: dict[str, list[str]] = {}  # profil -> codes permis ; absent = tous
+        self.sans_export: list[str] = list(SANS_EXPORT_DEFAUT)  # profils qui ne peuvent pas exporter de données
         self.utilisateurs: list[Utilisateur] = []
         if self.chemin.exists():
             donnees = json.loads(self.chemin.read_text(encoding="utf-8"))
@@ -82,6 +84,7 @@ class Registre:
             self.points_vente = {k: [str(c) for c in v] for k, v in donnees.get("points_vente", {}).items()
                                  if k in self.profils and k != ADMIN}
             self.utilisateurs = [Utilisateur(**u) for u in donnees.get("utilisateurs", [])]
+            self.sans_export = [p for p in donnees.get("sans_export", SANS_EXPORT_DEFAUT) if p != ADMIN]
 
     # ------------------------------------------------------------------ lecture
     def existe(self) -> bool:
@@ -101,6 +104,17 @@ class Registre:
         if utilisateur.est_admin or utilisateur.profil not in self.points_vente:
             return None
         return set(self.points_vente[utilisateur.profil])
+
+    def peut_exporter(self, utilisateur: Utilisateur) -> bool:
+        """Droit d'exporter des données (Excel, CSV, PDF, images) : par profil ; l'administrateur l'a toujours."""
+        return utilisateur.est_admin or utilisateur.profil not in self.sans_export
+
+    def definir_export(self, profil: str, permis: bool) -> None:
+        if profil == ADMIN:
+            if not permis:
+                raise ErreurUtilisateur("Le profil Administrateur a toujours accès à tout.")
+            return
+        self.sans_export = [p for p in self.sans_export if p != profil] + ([] if permis else [profil])
 
     def admins_actifs(self) -> list[Utilisateur]:
         return [u for u in self.utilisateurs if u.est_admin and u.actif]
@@ -203,12 +217,14 @@ class Registre:
             raise ErreurUtilisateur("Ce profil est encore attribué à des utilisateurs.")
         self.profils.pop(profil, None)
         self.points_vente.pop(profil, None)
+        self.sans_export = [p for p in self.sans_export if p != profil]
 
     # ------------------------------------------------------------------ fichier
     def enregistrer(self) -> None:
         self.chemin.parent.mkdir(parents=True, exist_ok=True)
         temporaire = self.chemin.with_suffix(".tmp")
         temporaire.write_text(json.dumps({"profils": self.profils, "points_vente": self.points_vente,
+                                          "sans_export": self.sans_export,
                                           "utilisateurs": [asdict(u) for u in self.utilisateurs]},
                                          ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(temporaire, self.chemin)

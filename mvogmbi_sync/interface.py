@@ -22,7 +22,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import coffre, langues
+from . import coffre, export_tableau, langues
 from .design import (BORDURE, CARTE, FOND, ICONE, ID_APPLICATION, JAUNE, LOGO, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE,
                      TEXTE_DOUX, VERT, VERT_FONCE, Bouton, ChampDate, fond_de, image_filigrane, styler)
 from .langues import t
@@ -33,6 +33,31 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
 # Index des pages (ordre du menu)
 (ACCUEIL, CLOVER, SAGE, COURRIEL, AUTOMATISATION, CORRESPONDANCE, TABLEAU, ENCAISSEMENTS, FOURNISSEURS, PAIEMENTS,
  RAPPROCHEMENT, RAPPORTS, GUIDE, FAQ, UTILISATEURS) = range(15)
+# menu en groupes (demande du propriétaire du 2026-10-28) : pages (index) ou fenêtres (icône, titre, page dont le
+# profil donne l'accès, méthode qui ouvre la fenêtre)
+MENU_GROUPES = [
+    (None, "", [ACCUEIL]),
+    ("Administration", "⚙", [CLOVER, SAGE, COURRIEL, AUTOMATISATION, UTILISATEURS, GUIDE, FAQ]),
+    ("Articles", "🏷", [CORRESPONDANCE,
+                       ("📄", "Articles Clover", CORRESPONDANCE, "ouvrir_articles_clover"),
+                       ("🆕", "Créer un article", CORRESPONDANCE, "ouvrir_creation_article"),
+                       ("📋", "Inventaire Clover et Sage", CORRESPONDANCE, "ouvrir_inventaire"),
+                       ("🔁", "Transferts entre magasins", CORRESPONDANCE, "ouvrir_transferts"),
+                       ("💲", "Coûts Clover depuis Sage", CORRESPONDANCE, "ouvrir_couts_clover")]),
+    ("Vente", "🛒", [TABLEAU]),
+    ("Fournisseur", "🚚", [FOURNISSEURS,
+                          ("🗄", "Factures fournisseurs archivées", RAPPORTS, "ouvrir_rapports",
+                           "Factures fournisseurs archivées")]),
+    ("Comptabilité", "🏦", [ENCAISSEMENTS, PAIEMENTS, RAPPROCHEMENT,
+                           ("🧾", "Comptes Sage par catégorie", CORRESPONDANCE, "ouvrir_comptes_sage")]),
+    ("État", "📊", [("📈", "Suivi des ventes", RAPPORTS, "ouvrir_rapports", "Suivi des ventes"),
+                    ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
+                    ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover")]),
+]
+# libellés du menu (sans n° de page) ; la page « Tableau de bord » est la facturation des ventes Clover
+LIBELLES_MENU = {TABLEAU: "Ventes Clover → factures Sage"}
+# pages ouvertes seulement par des entrées de fenêtre ou d'onglet : leur groupe
+GROUPE_DES_PAGES_SANS_LIGNE = {RAPPORTS: "État"}
 
 
 # --------------------------------------------------------------------------------------------- configuration
@@ -85,6 +110,7 @@ class Application(tk.Tk):
 
             self._permises = Registre(racine).pages(session)
             self.points_permis = Registre(racine).points_vente_permis(session)
+            export_tableau.EXPORT_PERMIS = Registre(racine).peut_exporter(session)
         else:
             self._permises = None
             self.points_permis = None  # None = tous les points de vente
@@ -114,7 +140,7 @@ class Application(tk.Tk):
         self._bandeau()
         corps = tk.Frame(self, background=FOND)
         corps.pack(fill="both", expand=True)
-        self.menu = tk.Frame(corps, background=MENU_FOND, width=240)
+        self.menu = tk.Frame(corps, background=MENU_FOND, width=262)
         self.menu.pack(side="left", fill="y")
         self.menu.pack_propagate(False)
         contenu = ttk.Frame(corps, padding=(20, 14, 20, 10))
@@ -212,27 +238,47 @@ class Application(tk.Tk):
             tk.Frame(lisere, height=5, background=couleur).pack(side="left", fill="x", expand=True)
 
     def _construire_menu(self) -> None:
+        """Menu en groupes repliables (demande du propriétaire du 2026-10-28) : Accueil, puis Administration, Stock,
+        Vente, Fournisseur, Comptabilité, État ; un seul groupe ouvert à la fois (celui de la page affichée). Une page
+        cachée par le profil est absente ; un groupe sans page permise aussi."""
         tk.Label(self.menu, text="MENU", font=("Segoe UI", 8, "bold"), foreground="#7d8b81",
                  background=MENU_FOND).pack(anchor="w", padx=22, pady=(16, 6))
-        self.boutons_menu, self.barres_menu, self.pastilles_menu = [], [], []
-        for index, (icone, titre) in enumerate(self._pages):
-            ligne = tk.Frame(self.menu, background=MENU_FOND)
-            if self.permis(index):  # page cachée : absente du menu
-                ligne.pack(fill="x", padx=(8, 10), pady=1)
-            barre = tk.Frame(ligne, width=4, background=MENU_FOND)
-            barre.pack(side="left", fill="y")
-            bouton = tk.Label(ligne, text=f"{icone}   {titre}", anchor="w", font=("Segoe UI", 10),
-                              background=MENU_FOND, foreground=TEXTE, padx=16, pady=7, cursor="hand2")
-            bouton.pack(side="left", fill="x", expand=True)
-            pastille = tk.Label(ligne, text="", font=("Segoe UI", 9), background=MENU_FOND, padx=6)
-            pastille.place(relx=1.0, rely=0.5, anchor="e")
-            for element in (bouton, pastille):
-                element.bind("<Button-1>", lambda _e, i=index: self.aller(i))
-                element.bind("<Enter>", lambda _e, i=index: self._survol_menu(i, True))
-                element.bind("<Leave>", lambda _e, i=index: self._survol_menu(i, False))
-            self.boutons_menu.append(bouton)
-            self.barres_menu.append(barre)
-            self.pastilles_menu.append(pastille)
+        n = len(self._pages)
+        self.boutons_menu, self.barres_menu, self.pastilles_menu = [None] * n, [None] * n, [None] * n
+        self.groupes_menu: dict[str, tuple[tk.Label, tk.Frame]] = {}
+        self.groupe_de_page: dict[int, str] = {}
+        self.groupe_ouvert = None
+        for nom, icone_groupe, elements in MENU_GROUPES:
+            visibles = [e for e in elements if isinstance(e, int) and e < n and self.permis(e)] + [
+                e for e in elements if not isinstance(e, int) and self.permis(e[2])]
+            if not visibles:
+                continue
+            parent = self.menu
+            if nom:
+                entete = tk.Label(self.menu, text=f"▸  {icone_groupe}  {t(nom)}", anchor="w",
+                                  font=("Segoe UI Semibold", 10), background=MENU_FOND, foreground="#3d4a41",
+                                  padx=14, pady=6, cursor="hand2")
+                entete.pack(fill="x", padx=(8, 10), pady=(4, 0))
+                parent = tk.Frame(self.menu, background=MENU_FOND)
+                entete.bind("<Button-1>", lambda _e, g=nom: self.ouvrir_groupe(g, basculer=True))
+                entete.bind("<Enter>", lambda _e, w=entete: w.configure(background=MENU_SURVOL))
+                entete.bind("<Leave>", lambda _e, w=entete: w.configure(background=MENU_FOND))
+                self.groupes_menu[nom] = (entete, parent)
+            for element in elements:
+                if isinstance(element, int):
+                    if element >= n:
+                        continue
+                    self._ligne_menu(parent, element, decale=bool(nom))
+                    if nom:
+                        self.groupe_de_page[element] = nom
+                elif self.permis(element[2]):
+                    self._action_menu(parent, nom, *element)
+        cachees = tk.Frame(self.menu)  # pages sans ligne de menu (Rapports : par ses onglets) : jamais affiché
+        for index in range(n):
+            if self.boutons_menu[index] is None:
+                self._ligne_menu(cachees, index, decale=False)
+                if index in GROUPE_DES_PAGES_SANS_LIGNE:
+                    self.groupe_de_page[index] = GROUPE_DES_PAGES_SANS_LIGNE[index]
         manuel = tk.Label(self.menu, text="📖   " + t("Manuel d'utilisation (PDF)"), anchor="w", font=("Segoe UI", 10),
                           background=MENU_FOND, foreground=VERT_FONCE, padx=16, pady=7, cursor="hand2")
         manuel.pack(fill="x", padx=(12, 10), pady=(10, 1))
@@ -265,6 +311,79 @@ class Application(tk.Tk):
         for texte in (f"MVOGMBI_Sync {VERSION}", COPYRIGHT, t("Tous droits réservés.")):
             tk.Label(bas, text=texte, font=("Segoe UI", 8), foreground="#8a978e", background=MENU_FOND).pack(anchor="w")
 
+    def _ligne_menu(self, parent, index: int, decale: bool) -> None:
+        icone, titre = self._pages[index]
+        titre = t(LIBELLES_MENU[index]) if index in LIBELLES_MENU else re.sub(r"^\d+\.\s*", "", titre)
+        ligne = tk.Frame(parent, background=MENU_FOND)
+        if self.permis(index):  # page cachée : absente du menu
+            ligne.pack(fill="x", padx=(20 if decale else 8, 10), pady=1)
+        barre = tk.Frame(ligne, width=4, background=MENU_FOND)
+        barre.pack(side="left", fill="y")
+        bouton = tk.Label(ligne, text=f"{icone}   {titre}", anchor="w", font=("Segoe UI", 10),
+                          background=MENU_FOND, foreground=TEXTE, padx=12, pady=4, cursor="hand2")
+        bouton.pack(side="left", fill="x", expand=True)
+        pastille = tk.Label(ligne, text="", font=("Segoe UI", 9), background=MENU_FOND, padx=6)
+        pastille.place(relx=1.0, rely=0.5, anchor="e")
+        for element in (bouton, pastille):
+            element.bind("<Button-1>", lambda _e, i=index: self.aller(i))
+            element.bind("<Enter>", lambda _e, i=index: self._survol_menu(i, True))
+            element.bind("<Leave>", lambda _e, i=index: self._survol_menu(i, False))
+        self.boutons_menu[index], self.barres_menu[index], self.pastilles_menu[index] = bouton, barre, pastille
+
+    def _action_menu(self, parent, groupe, icone: str, titre: str, _page: int, methode: str, *arguments) -> None:
+        """Entrée qui ouvre une fenêtre de travail (inventaire, transferts…) ou un onglet des Rapports."""
+        bouton = tk.Label(parent, text=f"{icone}   {t(titre)}", anchor="w", font=("Segoe UI", 10),
+                          background=MENU_FOND, foreground=TEXTE, padx=12, pady=4, cursor="hand2")
+        bouton.pack(fill="x", padx=(24, 10), pady=1)
+        bouton.bind("<Button-1>", lambda _e: (getattr(self, methode)(*arguments), self.ouvrir_groupe(groupe)))
+        bouton.bind("<Enter>", lambda _e: bouton.configure(background=MENU_SURVOL))
+        bouton.bind("<Leave>", lambda _e: bouton.configure(background=MENU_FOND))
+
+    def ouvrir_groupe(self, nom: str | None, basculer: bool = False) -> None:
+        """Ouvre le groupe `nom` et referme les autres (un clic sur le groupe ouvert le referme)."""
+        if basculer and nom == self.groupe_ouvert:
+            nom = None
+        for g, (entete, conteneur) in self.groupes_menu.items():
+            ouvert = g == nom
+            texte = entete.cget("text")
+            entete.configure(text=("▾" if ouvert else "▸") + texte[1:])
+            if ouvert:
+                conteneur.pack(fill="x", after=entete)
+            else:
+                conteneur.pack_forget()
+        self.groupe_ouvert = nom
+
+    def ouvrir_creation_article(self) -> None:
+        self.page_correspondance.creer_article()
+
+    def ouvrir_rapports(self, onglet: str) -> None:
+        """Page Rapports sur l'onglet voulu (Suivi, Recherche, Factures archivées, Statistiques)."""
+        self.aller(RAPPORTS)
+        onglets = self.page_rapports.onglets
+        for o in onglets.tabs():
+            if onglets.tab(o, "text").strip() == t(onglet):
+                onglets.select(o)
+
+    def ouvrir_articles_clover(self) -> None:
+        from .fenetre_articles_clover import FenetreArticlesClover
+        FenetreArticlesClover(self, self.racine)
+
+    def ouvrir_inventaire(self) -> None:
+        from .page_inventaire import FenetreInventaire
+        FenetreInventaire(self, self.racine)
+
+    def ouvrir_transferts(self) -> None:
+        from .fenetre_transferts import FenetreTransferts
+        FenetreTransferts(self, self.racine)
+
+    def ouvrir_comptes_sage(self) -> None:
+        from .fenetre_article import FenetreCategories
+        FenetreCategories(self, self.racine)
+
+    def ouvrir_couts_clover(self) -> None:
+        from .fenetre_couts import FenetreCoutsClover
+        FenetreCoutsClover(self, self.racine)
+
     def ouvrir_manuel(self) -> None:
         """Manuel illustré dans la langue de l'application (sinon en français) : à côté du programme installé, sinon
         dans documentation/ (poste de développement)."""
@@ -277,7 +396,7 @@ class Application(tk.Tk):
         messagebox.showinfo(TITRE, t("Le manuel d'utilisation est introuvable : réinstallez l'application."))
 
     def _survol_menu(self, index: int, survol: bool) -> None:
-        if self.boutons_menu[index] is self._actif:
+        if self.boutons_menu[index] is None or self.boutons_menu[index] is self._actif:
             return
         couleur = MENU_SURVOL if survol else MENU_FOND
         self.boutons_menu[index].configure(background=couleur)
@@ -336,7 +455,11 @@ class Application(tk.Tk):
         if not self.permis(index):
             return
         self.onglets.select(index)
+        if hasattr(self, "groupes_menu") and self.groupe_de_page.get(index, self.groupe_ouvert) != self.groupe_ouvert:
+            self.ouvrir_groupe(self.groupe_de_page.get(index))
         for i, bouton in enumerate(self.boutons_menu):
+            if bouton is None:
+                continue
             actif = i == index
             fond = MENU_ACTIF if actif else MENU_FOND
             bouton.configure(background=fond, foreground=VERT_FONCE if actif else TEXTE,
@@ -801,17 +924,21 @@ class Application(tk.Tk):
         fc = self.config_toml.get("factures_courriel", {})
         factures = self._carte(f, 4, t("Factures fournisseurs reçues par courriel"), "4",
                                t("Les factures (PDF ou photos) jointes aux courriels de cette même boîte sont copiées "
-                                 "à la page « 8. Factures fournisseurs », puis lues. Lecture seule : aucun courriel "
+                                 "dans « Fournisseur > Factures fournisseurs », puis lues. Lecture seule : aucun courriel "
                                  "n'est marqué comme lu, déplacé ni supprimé ; chaque pièce jointe n'est prise "
                                  "qu'une fois."))
         self._champ(factures, 0, t("Expéditeurs des factures"), "fc.expediteurs", fc.get("expediteurs", ""),
                     aide=t("Adresses ou domaines séparés par des virgules (ex. factures@fournisseur.com, "
                            "grossiste.ca). Vide : tout courriel dont le sujet ou la pièce jointe parle de facture."))
-        self._champ(factures, 2, t("Lire les factures à partir du"), "fc.depuis",
+        self._champ(factures, 2, t("Textes dans le courriel"), "fc.textes", fc.get("textes", ""),
+                    aide=t("Textes séparés par des points-virgules (ex. 11983938 Canada Inc Brisk) : les pièces "
+                           "jointes de tout courriel qui contient l'un d'eux (sujet, expéditeur, message ou nom du "
+                           "fichier) sont prises."))
+        self._champ(factures, 4, t("Lire les factures à partir du"), "fc.depuis",
                     fc.get("depuis", b.get("depuis", "2026-08-01")), calendrier=True)
         ttk.Checkbutton(factures, text=t("Les relever aussi pendant le traitement de nuit"), style="Carte.TCheckbutton",
                         variable=self._var("fc.automatique", bool(fc.get("automatique", True)), tk.BooleanVar)).grid(
-            row=3, column=1, sticky="w", pady=6)
+            row=5, column=1, sticky="w", pady=6)
 
     def _onglet_automatisation(self) -> None:
         a = self.config_toml.get("automatique", {})
@@ -923,8 +1050,9 @@ class Application(tk.Tk):
         haut.grid(row=3, column=0, columnspan=3, sticky="we")
         Bouton(haut, "▶  " + t("Lancer maintenant"), lambda: self.lancer(False)).pack(side="left")
         Bouton(haut, "🧪  " + t("Simulation (sans import)"), lambda: self.lancer(True), "accent").pack(side="left", padx=8)
-        Bouton(haut, "📗  Excel", lambda: self.ouvrir(self.racine / "donnees" / "correspondance_articles.xlsx"),
-               "secondaire").pack(side="left")
+        if export_tableau.export_permis():
+            Bouton(haut, "📗  Excel", lambda: self.ouvrir(self.racine / "donnees" / "correspondance_articles.xlsx"),
+                   "secondaire").pack(side="left")
         Bouton(haut, "📁  " + t("Dossier des données"), lambda: self.ouvrir(self.racine / "donnees"),
                "secondaire").pack(side="left", padx=8)
         Bouton(haut, "⟳", self.actualiser_tableau, "secondaire", largeur=40).pack(side="right")
@@ -992,6 +1120,7 @@ class Application(tk.Tk):
             depuis=str(v["boite.depuis"]).strip() or "2026-08-01")
         c.setdefault("factures_courriel", {}).update(
             expediteurs=", ".join(e.strip() for e in str(v["fc.expediteurs"]).replace(";", ",").split(",") if e.strip()),
+            textes="; ".join(x.strip() for x in str(v["fc.textes"]).split(";") if x.strip()),
             depuis=str(v["fc.depuis"]).strip() or str(v["boite.depuis"]).strip() or "2026-08-01",
             automatique=bool(v["fc.automatique"]))
         c["boite_paiements"].setdefault("port", 993)

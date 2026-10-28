@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
-from .design import Bouton, Rangee, cadre_tableau, entete_page, rayer
+from .design import Bouton, Rangee, apres_frappe, cadre_tableau, entete_page, rayer
 from .export_tableau import bouton_exporter, rendre_exportable
 from .langues import t
 from .correspondance import (AUCUN, AUTOMATIQUE, A_CONFIRMER, CONFIRME, PERSONNALISE, RENOMME, conflit_format,
@@ -64,13 +64,14 @@ class PageCorrespondance(ttk.Frame):
         self.recherche = tk.StringVar()
         champ = ttk.Entry(groupe, textvariable=self.recherche, width=20)
         champ.pack(side="left", padx=(4, 0))
-        champ.bind("<KeyRelease>", lambda _e: self.afficher())
+        champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher))
         barre.ajouter(Bouton(barre, "⟳  " + t("Mettre à jour depuis Clover et Sage"), self.mettre_a_jour))
         barre.ajouter(Bouton(barre, t("Recharger"), self.charger, "secondaire"))
         barre.ajouter(Bouton(barre, "🆕  " + t("Créer un article"), self.creer_article, "secondaire"))
         barre.ajouter(Bouton(barre, "📦  " + t("Inventaire"), self.inventaire, "secondaire"))
         barre.ajouter(Bouton(barre, "💲  " + t("Coûts Clover depuis Sage"), self.couts_clover, "secondaire"))
         barre.ajouter(Bouton(barre, "🧾  " + t("Comptes Sage par catégorie"), self.comptes_sage, "secondaire"))
+        barre.ajouter(Bouton(barre, "🔁  " + t("Transferts entre points de vente"), self.transferts, "secondaire"))
         self.compteurs = ttk.Label(self, text="", foreground="#444", padding=(0, 6))
         self.compteurs.pack(fill="x")
 
@@ -98,7 +99,7 @@ class PageCorrespondance(ttk.Frame):
         self.recherche_sage = tk.StringVar()
         champ_sage = ttk.Entry(edition, textvariable=self.recherche_sage, width=40)
         champ_sage.grid(row=1, column=1, sticky="we", pady=(6, 0), padx=4)
-        champ_sage.bind("<KeyRelease>", lambda _e: self.chercher_sage())
+        champ_sage.bind("<KeyRelease>", apres_frappe(champ_sage, self.chercher_sage))
         self.resultats = tk.Listbox(edition, height=5, font=("Consolas", 9))
         self.resultats.grid(row=2, column=0, columnspan=2, sticky="we", pady=4)
         self.resultats.bind("<Double-Button-1>", lambda _e: self.confirmer())
@@ -247,6 +248,10 @@ class PageCorrespondance(ttk.Frame):
         c = self.courant()
         if c:
             self._appliquer(c, A_CONFIRMER)
+
+    def transferts(self) -> None:
+        from .fenetre_transferts import FenetreTransferts
+        FenetreTransferts(self, self.racine)
 
     def comptes_sage(self) -> None:
         from .fenetre_article import FenetreCategories

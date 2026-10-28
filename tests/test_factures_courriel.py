@@ -27,6 +27,19 @@ def test_pieces_retenues_selon_expediteur_ou_mot_facture():
     assert fc.nom_fichier(p) == "2026-10-27_grossiste.ca_14402.pdf"
 
 
+
+def test_pieces_retenues_par_un_texte_du_courriel():
+    textes = fc.textes_choisis("11983938 Canada Inc Brisk ; Grossiste Élan")
+    assert textes == ["11983938 Canada Inc Brisk", "Grossiste Élan"]
+    m = courriel("Ventes <ventes@brisk.example>", "Votre commande", [("BL-77.pdf", b"%PDF-3")])
+    m.get_body().set_content("Bonjour,\n\n11983938  CANADA inc   Brisk\nMerci de votre achat.")
+    assert [x.nom for x in fc.pieces_du_message(m, "<t1>", [], textes)] == ["BL-77.pdf"]  # majuscules, espaces
+    assert fc.pieces_du_message(m, "<t1>", [], ["Autre fournisseur"]) == []
+    m2 = courriel("Grossiste Elan <a@b.example>", "Commande", [("doc.pdf", b"%PDF-4")])
+    assert [x.nom for x in fc.pieces_du_message(m2, "<t2>", [], textes)] == ["doc.pdf"]  # nom de l'expéditeur, accents
+    assert fc.contient_texte(["brisk"], "", "", "<p>Facture <b>BRISK</b></p>") is True
+
+
 def test_recuperer_une_seule_fois(tmp_path, monkeypatch):
     m = courriel("factures@grossiste.ca", "Facture", [("14402.pdf", b"%PDF-1 facture")])
     lues = []

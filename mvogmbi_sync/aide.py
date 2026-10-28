@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.15.1"
+VERSION = "1.20.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -142,7 +142,7 @@ FAQ = {
                     "suivante. Vous pouvez aussi cliquer sur « Lancer maintenant » dans le Tableau de bord."),
         ("question", "Un article renommé ou supprimé dans Clover bloque d'anciennes ventes."),
         ("reponse", "Dans Clover, renommer un article en crée souvent un nouveau : les ventes d'avant gardent l'ancien "
-                    "article et l'ancien nom. Page « 5. Correspondance » : « Mettre à jour depuis Clover et Sage », "
+                    "article et l'ancien nom. Page « Articles > Correspondance » : « Mettre à jour depuis Clover et Sage », "
                     "puis le filtre « Supprimés ou renommés dans Clover ». Chaque ancien article y figure avec, quand "
                     "il est trouvé, le nouveau nom Clover et son article Sage proposés (« Autres suggestions ») : "
                     "« Accepter la proposition » s'ils sont bons, sinon choisissez l'article Sage, puis « Enregistrer "
@@ -150,7 +150,7 @@ FAQ = {
                     "la caisse sans article (« Article personnalisé ») se relient de la même façon."),
         ("question", "Un nouvel article a été créé dans Clover : que faire ?"),
         ("reponse", "S'il porte exactement le même nom qu'un article Sage, il est relié automatiquement. Sinon, "
-                    "ouvrez la page « 5. Correspondance », filtre « À traiter », choisissez l'article Sage et cliquez "
+                    "ouvrez la page « Articles > Correspondance », filtre « À traiter », choisissez l'article Sage et cliquez "
                     "sur « Confirmer l'article choisi », puis « Enregistrer les modifications ». S'il n'existe pas "
                     "dans Sage, créez-le d'abord dans Sage (avec son compte de produits)."),
         ("question", "Pourquoi l'application refuse-t-elle de relier 500 g et 1 kg ?"),
@@ -176,15 +176,15 @@ FAQ = {
                     "décaler un dépôt d'un jour."),
         ("sous_titre", "Factures fournisseurs"),
         ("question", "Les factures arrivent par courriel : faut-il les enregistrer à la main ?"),
-        ("reponse", "Non. Page « 3. Courriel », carte « Factures fournisseurs reçues par courriel » : indiquez les "
+        ("reponse", "Non. Page « Administration > Courriel », carte « Factures fournisseurs reçues par courriel » : indiquez les "
                     "expéditeurs (ou laissez vide : tout courriel dont le sujet ou la pièce jointe parle de facture) "
-                    "et la date de départ. Page 8, « 📧 Lire le courriel » copie les PDF et photos joints puis les "
+                    "et la date de départ. Page « Fournisseur > Factures fournisseurs », « 📧 Lire le courriel » copie les PDF et photos joints puis les "
                     "lit ; le traitement de nuit le fait aussi. La boîte est celle des avis Interac, en lecture "
                     "seule ; chaque pièce jointe n'est prise qu'une fois. Une pièce jointe qui n'est pas une facture "
                     "de marchandises s'écarte (« Écarter »)."),
         ("question", "Comment créer un nouvel article dans Clover et dans Sage ?"),
-        ("reponse", "Page 8, ligne de la facture : « 🆕 Créer l'article » (prix d'achat = prix Sage de la ligne), ou "
-                    "page 5 : « 🆕 Créer un article » (les deux) et « Créer l'article dans Sage » (article Clover "
+        ("reponse", "Page « Fournisseur > Factures fournisseurs », ligne de la facture : « 🆕 Créer l'article » (prix d'achat = prix Sage de la ligne), ou "
+                    "« Articles > Créer un article » (les deux) et « Créer l'article dans Sage » (article Clover "
                     "existant). Clover : nom, prix = prix d'achat + 40 % (modifiable), type de prix, taxes, catégorie, "
                     "coût, code du produit facultatif, UGS = date de péremption (obligatoire), stock. Sage : n° "
                     "proposé (préfixe de la catégorie + numéro suivant), description et comptes de la table « Comptes "
@@ -192,7 +192,7 @@ FAQ = {
                     "Sage (Sage ouvert sur le bon fichier, sinon elle l'ouvre elle-même), puis l'article dans Clover, "
                     "et les relie (« Confirmé »). Le jeton Clover doit avoir le droit « Inventaire » en écriture."),
         ("question", "Comment faire l'inventaire dans Clover et Sage en même temps ?"),
-        ("reponse", "Page 5, « 📦 Inventaire » : « Exporter l'inventaire » écrit un fichier Excel (code et description "
+        ("reponse", "« Articles > Inventaire Clover et Sage » : « Exporter l'inventaire » écrit un fichier Excel (code et description "
                     "Clover et Sage, quantité Clover, quantité Sage, écart, coût unitaire). Inscrivez les quantités "
                     "comptées dans la colonne jaune, puis « Saisir l'inventaire compté » : le stock Clover et le stock "
                     "Sage deviennent la quantité comptée (ajustement d'inventaire dans Sage, vérifié dans la base). Le "
@@ -200,15 +200,52 @@ FAQ = {
                     "l'ajustement (variation de la valeur du stock dans Sage), avec le total des plus, des moins et le "
                     "coût net. Les stocks sont relus juste avant la saisie : un article qui a bougé depuis l'export "
                     "est quand même ramené à la quantité comptée."),
+        ("question", "Où voir la liste des articles Clover et leurs dates de péremption ?"),
+        ("reponse", "« Articles > Articles Clover » : ID Clover, nom, prix, type de prix, unité de prix, code produit, "
+                    "date de péremption, quantité et catégories ; recherche, filtres (catégorie, type de prix, stock), "
+                    "tri par colonne et export. La date de péremption est l'UGS de Clover lue comme une date "
+                    "(JJ/MM/AAAA) ; une UGS qui n'est pas une date n'est pas affichée. « Effacer les UGS qui ne sont "
+                    "pas des dates… » les liste ; cochez celles à vider dans Clover (chaque UGS effacée est notée dans "
+                    "donnees/journal_ugs_effacees.csv)."),
+        ("question", "Qui peut exporter des données ?"),
+        ("reponse", "C'est un droit du profil (« Administration > Utilisateurs », case « Exporter les données »). "
+                    "Sans ce droit, les boutons « Exporter », « Excel » et « PDF de la page », le clic droit "
+                    "d'export des tableaux et l'export des graphiques disparaissent ou sont refusés. Par défaut : "
+                    "l'administrateur et le comptable peuvent exporter, l'employé non."),
+        ("question", "Comment voir les statistiques jour par jour ?"),
+        ("reponse", "« État > Statistiques Clover » : sur les vues par article, catégorie, employé, client, mode de "
+                    "paiement, carte, appareil et bénéfices, cochez « Détail par jour » : une ligne par jour, avec la "
+                    "date en premier (le jour le plus récent en haut). « État > Recherche dans l'historique » : "
+                    "« Par : Article par jour » ou « Catégorie par jour » pour les statistiques client, fournisseur "
+                    "et employé. Changer de type de recherche garde le client, le fournisseur ou l'employé choisi, la "
+                    "plage d'articles, la catégorie et la période ; « Réinitialiser les filtres » les vide."),
+        ("question", "Comment transférer des articles d'un point de vente à l'autre ?"),
+        ("reponse", "« Articles > Transferts entre magasins » : « Nouveau transfert », point de vente de départ "
+                    "et d'arrivée, date, puis les articles Sage et leurs quantités (le stock Sage des deux dépôts "
+                    "s'affiche ; en jaune : stock de départ insuffisant). « Transférer » : dans Sage, transfert entre "
+                    "les deux dépôts (même valeur, sans vente), vérifié dans la base ; dans Clover, stock diminué au "
+                    "départ et augmenté à l'arrivée (articles reliés dans la correspondance de chaque point de vente). "
+                    "Un transfert n'est jamais fait deux fois ; « À compléter » : relancez-le après correction."),
+        ("question", "Où voir les statistiques d'un client, d'un fournisseur ou d'un employé ?"),
+        ("reponse", "« État > Recherche dans l'historique » : « Statistiques client » (ventes de Sage), "
+                    "« Statistiques fournisseur » (achats moins retours dans Sage) ou « Statistiques employé » (ventes "
+                    "Clover), puis « Par : Article » ou « Catégorie ». Période et plage d'articles (du n° … au n° …) "
+                    "facultatives. Recherche « Article » avec « au » : chaque article de la plage à la suite de "
+                    "l'autre, avec son total."),
+        ("question", "Comment prendre les factures d'un fournisseur qui n'écrit jamais « facture » ?"),
+        ("reponse", "Page « Administration > Courriel », carte « Factures fournisseurs reçues par courriel », champ « Textes dans le courriel » : "
+                    "par exemple « 11983938 Canada Inc Brisk ». Les pièces jointes de tout courriel qui contient l'un "
+                    "de ces textes (sujet, expéditeur, message ou nom du fichier) sont prises ; plusieurs textes "
+                    "séparés par des points-virgules."),
         ("question", "Comment mettre les coûts Clover au coût moyen de Sage ?"),
-        ("reponse", "Page 5, « 💲 Coûts Clover depuis Sage » : pour chaque article Clover relié, la fenêtre montre le "
+        ("reponse", "« Articles > Coûts Clover depuis Sage » : pour chaque article Clover relié, la fenêtre montre le "
                     "prix de vente, le coût Clover et le coût moyen (CUMP) de Sage. Cochez les lignes à mettre à jour, "
                     "puis « Mettre à jour les coûts Clover » : le coût Sage remplace le coût Clover. Jamais de valeur "
                     "aberrante : un CUMP absent, plus de 5 fois le prix de vente ou sous 5 % du prix ne peut pas être "
                     "coché ; un CUMP égal ou supérieur au prix, très loin du coût Clover ou partagé par plusieurs "
                     "articles Clover est proposé décoché (à vérifier)."),
         ("question", "Comment corriger les comptes des articles dans Sage ?"),
-        ("reponse", "Page 5, « 🧾 Comptes Sage par catégorie » : la table donne, pour chaque catégorie Clover, les "
+        ("reponse", "« Comptabilité > Comptes Sage par catégorie » : la table donne, pour chaque catégorie Clover, les "
                     "comptes d'actif, de produits, de CMV et d'écart (écart = CMV). « Articles Sage à corriger… » "
                     "liste les articles de Sage dont un compte diffère de la table (catégorie des articles Clover "
                     "reliés, sinon celle du compte d'actif). Cochez les lignes puis « Corriger dans Sage » : "
@@ -217,12 +254,12 @@ FAQ = {
         ("question", "Que fait « Importer » dans Clover ?"),
         ("reponse", "Après l'import vérifié dans Sage, pour chaque article de la facture : stock Clover = stock "
                     "actuel + Qté Sage reçue, et coût Clover = nouveau prix d'achat (Prix Sage). L'article Clover est "
-                    "celui relié à la page 5 ; un n° Sage relié à plusieurs articles Clover reçoit le coût, mais son "
+                    "celui relié à la page « Articles > Correspondance » ; un n° Sage relié à plusieurs articles Clover reçoit le coût, mais son "
                     "stock est à répartir à la main. Une facture n'est jamais ajoutée deux fois au stock "
                     "(journal_stock_clover.csv)."),
         ("question", "Une facture prête à importer a déjà été saisie dans Sage à la main."),
-        ("reponse", "Elle est archivée (page « 11. Rapports », archives des factures) et retirée de la liste de la "
-                    "page 8, sans import : même fournisseur et même n°, avec ou sans préfixe (« FA-2581353 »). "
+        ("reponse", "Elle est archivée (« Fournisseur > Factures fournisseurs archivées ») et retirée de la liste de la "
+                    "page « Fournisseur > Factures fournisseurs », sans import : même fournisseur et même n°, avec ou sans préfixe (« FA-2581353 »). "
                     "Le contrôle se fait à l'import, avec « Fournisseurs et articles Sage » et pendant le traitement "
                     "de nuit."),
         ("question", "La facture n'est pas lue (photo, scan, écriture à la main) : que faire ?"),
@@ -242,7 +279,7 @@ FAQ = {
                     "« ecartees » et ne réapparaît plus."),
         ("sous_titre", "Paiements fournisseurs"),
         ("question", "Comment les paiements aux fournisseurs arrivent-ils dans Sage ?"),
-        ("reponse", "Page « 9. Paiements fournisseurs » : « Actualiser » lit les avis Interac reçus depuis la date "
+        ("reponse", "Page « Comptabilité > Paiements fournisseur » : « Actualiser » lit les avis Interac reçus depuis la date "
                     "choisie et propose le fournisseur et la facture. Vous confirmez chaque virement. Les paiements "
                     "confirmés sont saisis (compte 1055, « Comptant », à la date du virement) la nuit, ou tout de "
                     "suite avec « Payer dans Sage » (Sage fermé)."),
@@ -263,7 +300,7 @@ FAQ = {
         ("reponse", "Le montant ou la date diffère (plus de 7 jours avant ou 3 jours après) : corrigez l'écriture dans "
                     "Sage, ou cliquez sur « Ignorer » si elle est juste."),
         ("question", "Un virement Interac reçu ou un dépôt au guichet est « À encaisser sur les ventes »."),
-        ("reponse", "C'est de l'argent des ventes (espèces) : il ne devient pas une écriture de journal. La page 7 "
+        ("reponse", "C'est de l'argent des ventes (espèces) : il ne devient pas une écriture de journal. La page « Comptabilité > Encaissements » "
                     "l'encaisse sur la facture de vente (Interac : la vente du jour du virement ; dépôt d'espèces : les "
                     "factures dont il reste des espèces à encaisser, de la plus ancienne à la plus récente)."),
         ("question", "Un dépôt de salaire est « Paie absente de Sage »."),
@@ -284,10 +321,10 @@ FAQ = {
 
         ("sous_titre", "Plusieurs points de vente"),
         ("question", "Comment ajouter un autre point de vente Clover ?"),
-        ("reponse", "Page « 1. Clover », carte « Points de vente » : « Ajouter un point de vente », puis son nom, son "
+        ("reponse", "Page « Administration > Clover », carte « Points de vente » : « Ajouter un point de vente », puis son nom, son "
                     "identifiant marchand Clover, son jeton API, son client Sage, son dépôt Sage (emplacement "
                     "d'inventaire) et le préfixe de ses factures (ex. « V2 » : « V2 2026-10-23/25 »). Chaque point de "
-                    "vente a ses factures, son client et sa correspondance d'articles (page 5, liste « Point de "
+                    "vente a ses factures, son client et sa correspondance d'articles (« Articles > Correspondance », liste « Point de "
                     "vente »). Le point de vente n° 1 garde ses réglages : factures « Vente … », client « Vente "
                     "Hebdomadaire ». Les ventes vont dans les mêmes comptes de produits et les dépôts bancaires dans "
                     "le même compte 1055. Dans Sage, créez d'abord le client (« Ce client utilise mes n° articles » "
@@ -386,7 +423,7 @@ FAQ = {
                     "register without an item (“Article personnalisé”) are linked the same way."),
         ("question", "A new item was created in Clover: what should I do?"),
         ("reponse", "If it has exactly the same name as a Sage item, it is linked automatically. Otherwise open the "
-                    "“5. Item mapping” page, filter “To handle”, choose the Sage item and click “Confirm the chosen "
+                    "“Items > Mapping” page, filter “To handle”, choose the Sage item and click “Confirm the chosen "
                     "item”, then “Save changes”. If it does not exist in Sage, create it in Sage first (with its "
                     "revenue account)."),
         ("question", "Why does the application refuse to link 500 g and 1 kg?"),
@@ -412,13 +449,13 @@ FAQ = {
                     "deposit by one day."),
         ("sous_titre", "Supplier invoices"),
         ("question", "Invoices arrive by email: do I have to save them by hand?"),
-        ("reponse", "No. “3. Email” page, “Supplier invoices received by email” card: enter the senders (or leave "
-                    "empty: any email whose subject or attachment mentions an invoice) and the start date. Page 8, "
+        ("reponse", "No. “Administration > Email” page, “Supplier invoices received by email” card: enter the senders (or leave "
+                    "empty: any email whose subject or attachment mentions an invoice) and the start date. “Supplier > Supplier invoices”, "
                     "“📧 Read email” copies the attached PDFs and photos, then reads them; the night run does it too. "
                     "The mailbox is the one of the Interac notices, read only; each attachment is taken only once. An "
                     "attachment that is not a goods invoice is set aside (“Set aside”)."),
         ("question", "How do I create a new item in Clover and in Sage?"),
-        ("reponse", "Page 8, invoice line: “🆕 Create the item” (purchase price = Sage price of the line), or page 5: "
+        ("reponse", "“Supplier > Supplier invoices”, invoice line: “🆕 Create the item” (purchase price = Sage price of the line), or “Items > Mapping”: "
                     "“🆕 Create an item” (both) and “Create the item in Sage” (existing Clover item). Clover: name, "
                     "price = purchase price + 40% (can be changed), price type, taxes, category, cost, optional "
                     "product code, SKU = expiry date (required), stock. Sage: suggested number (category prefix + "
@@ -427,7 +464,7 @@ FAQ = {
                     "file, otherwise it opens Sage itself), then the item in Clover, and links them (“Confirmed”). "
                     "The Clover token needs the “Inventory” write permission."),
         ("question", "How do I take the inventory in Clover and Sage at the same time?"),
-        ("reponse", "Page 5, “📦 Inventory”: “Export the inventory” writes an Excel file (Clover and Sage code and "
+        ("reponse", "“Items > Clover and Sage inventory”: “Export the inventory” writes an Excel file (Clover and Sage code and "
                     "description, Clover quantity, Sage quantity, difference, unit cost). Enter the counted quantities "
                     "in the yellow column, then “Enter the counted inventory”: the Clover stock and the Sage stock "
                     "become the counted quantity (inventory adjustment in Sage, checked in the database). The entry "
@@ -435,15 +472,49 @@ FAQ = {
                     "cost (change of the stock value in Sage), with the total gains, losses and net cost. Stocks are "
                     "read again just before the entry: an item that changed since the export is still brought to the "
                     "counted quantity."),
+        ("question", "Where do I see the list of Clover items and their expiry dates?"),
+        ("reponse", "“Items > Clover items”: Clover ID, name, price, price type, price unit, product code, expiry "
+                    "date, quantity and categories; search, filters (category, price type, stock), sorting by column "
+                    "and export. The expiry date is the Clover SKU read as a date (DD/MM/YYYY); a SKU that is not a "
+                    "date is not shown. “Clear SKUs that are not dates…” lists them; check those to empty in Clover "
+                    "(each cleared SKU is noted in donnees/journal_ugs_effacees.csv)."),
+        ("question", "Who can export data?"),
+        ("reponse", "It is a profile right (“Administration > Users”, “Export data” box). Without it, the “Export”, "
+                    "“Excel” and “PDF of the page” buttons, the right-click export of tables and the export of charts "
+                    "disappear or are refused. By default: the administrator and the accountant can export, the "
+                    "employee cannot."),
+        ("question", "How do I see the statistics day by day?"),
+        ("reponse", "“Reports > Clover statistics”: on the views by item, category, employee, customer, payment "
+                    "method, card, device and profits, check “Detail by day”: one row per day, with the date first "
+                    "(most recent day at the top). “Reports > Search the history”: “By: Item by day” or “Category by "
+                    "day” for customer, supplier and employee statistics. Changing the search type keeps the chosen "
+                    "customer, supplier or employee, the item range, the category and the period; “Reset the "
+                    "filters” empties them."),
+        ("question", "How do I transfer items from one point of sale to another?"),
+        ("reponse", "“Items > Transfers between stores”: “New transfer”, origin and destination point of "
+                    "sale, date, then the Sage items and their quantities (the Sage stock of both locations is shown; "
+                    "yellow: origin stock too low). “Transfer”: in Sage, a transfer between the two locations (same "
+                    "value, no sale), checked in the database; in Clover, stock decreased at the origin and increased "
+                    "at the destination (items linked in each point of sale's matching). A transfer is never done "
+                    "twice; “To complete”: run it again after fixing."),
+        ("question", "Where do I see the statistics of a customer, a supplier or an employee?"),
+        ("reponse", "“Reports > Search the history”: “Customer statistics” (Sage sales), “Supplier statistics” "
+                    "(Sage purchases minus returns) or “Employee statistics” (Clover sales), then “By: Item” or "
+                    "“Category”. Period and item range (from no. … to no. …) are optional. “Item” search with “to”: "
+                    "each item of the range one after the other, with its total."),
+        ("question", "How do I take the invoices of a supplier who never writes “invoice”?"),
+        ("reponse", "“Administration > Email”, “Supplier invoices received by email” card, “Texts in the email” field: for example "
+                    "“11983938 Canada Inc Brisk”. The attachments of any email that contains one of these texts "
+                    "(subject, sender, message or file name) are taken; several texts separated by semicolons."),
         ("question", "How do I set the Clover costs to the Sage average cost?"),
-        ("reponse", "Page 5, “💲 Clover costs from Sage”: for each linked Clover item, the window shows the selling "
+        ("reponse", "“Items > Clover costs from Sage”: for each linked Clover item, the window shows the selling "
                     "price, the Clover cost and the Sage average cost. Check the rows to update, then “Update the "
                     "Clover costs”: the Sage cost replaces the Clover cost. Never an outlier value: no average cost, "
                     "more than 5 times the selling price or under 5% of the price cannot be checked; an average cost "
                     "equal to or above the price, very far from the Clover cost or shared by several Clover items is "
                     "offered unchecked (to check)."),
         ("question", "How do I correct the item accounts in Sage?"),
-        ("reponse", "Page 5, “🧾 Sage accounts by category”: the table gives, for each Clover category, the asset, "
+        ("reponse", "“Accounting > Sage accounts by category”: the table gives, for each Clover category, the asset, "
                     "revenue, COGS and variance accounts (variance = COGS). “Sage items to correct…” lists the Sage "
                     "items with an account that differs from the table (category of the linked Clover items, "
                     "otherwise that of the asset account). Check the rows then “Correct in Sage”: the application "
@@ -452,10 +523,10 @@ FAQ = {
         ("question", "What does “Import” do in Clover?"),
         ("reponse", "After the import is verified in Sage, for each item of the invoice: Clover stock = current stock + "
                     "Sage quantity received, and Clover cost = new purchase price (Sage price). The Clover item is the "
-                    "one linked on page 5; a Sage number linked to several Clover items gets the cost, but its stock "
+                    "one linked on the “Items > Mapping” page; a Sage number linked to several Clover items gets the cost, but its stock "
                     "must be split by hand. An invoice is never added twice to the stock (journal_stock_clover.csv)."),
         ("question", "An invoice ready to import was already entered in Sage by hand."),
-        ("reponse", "It is archived (“11. Reports” page, invoice archives) and removed from the page 8 list, without "
+        ("reponse", "It is archived (“Supplier > Archived supplier invoices”) and removed from the “Supplier > Supplier invoices” page list, without "
                     "import: same supplier and same number, with or without prefix (“FA-2581353”). The check is made "
                     "at import, with “Sage suppliers and items” and during the night run."),
         ("question", "The invoice is not read (photo, scan, handwriting): what should I do?"),
@@ -475,7 +546,7 @@ FAQ = {
                     "does not come back."),
         ("sous_titre", "Supplier payments"),
         ("question", "How do supplier payments get into Sage?"),
-        ("reponse", "Page “9. Supplier payments”: “Refresh” reads the Interac notices received since the chosen "
+        ("reponse", "Page “Accounting > Supplier payments”: “Refresh” reads the Interac notices received since the chosen "
                     "date and suggests the supplier and invoice. You confirm each transfer. Confirmed payments are "
                     "entered (account 1055, “Cash”, at the transfer date) at night, or right away with “Pay in "
                     "Sage” (Sage closed)."),
@@ -496,7 +567,7 @@ FAQ = {
         ("reponse", "The amount or the date differs (more than 7 days before or 3 days after): fix the entry in Sage, "
                     "or click “Ignore” if it is correct."),
         ("question", "An Interac transfer received or an ATM deposit is “To receive on the sales”."),
-        ("reponse", "It is sales money (cash): it does not become a journal entry. Page 7 records it on the sales "
+        ("reponse", "It is sales money (cash): it does not become a journal entry. “Accounting > Receipts” records it on the sales "
                     "invoice (Interac: the sale of the transfer day; cash deposit: the invoices with cash still to "
                     "receive, oldest first)."),
         ("question", "A salary deposit is “Payroll missing from Sage”."),
@@ -517,10 +588,10 @@ FAQ = {
 
         ("sous_titre", "Several points of sale"),
         ("question", "How do I add another Clover point of sale?"),
-        ("reponse", "“1. Clover” page, “Points of sale” card: “Add a point of sale”, then its name, Clover merchant "
+        ("reponse", "“Administration > Clover” page, “Points of sale” card: “Add a point of sale”, then its name, Clover merchant "
                     "ID, API token, Sage customer, Sage warehouse (inventory location) and invoice prefix (e.g. "
                     "“V2”: “V2 2026-10-23/25”). Each point of sale has its own invoices, customer and item mapping "
-                    "(page 5, “Point of sale” list). Point of sale no. 1 keeps its settings: “Vente …” invoices, "
+                    "(“Items > Mapping”, “Point of sale” list). Point of sale no. 1 keeps its settings: “Vente …” invoices, "
                     "“Vente Hebdomadaire” customer. Sales go to the same revenue accounts and bank deposits to the "
                     "same 1055 account. In Sage, first create the customer (“This customer uses my item numbers” "
                     "ticked) and the warehouse."),
@@ -602,7 +673,7 @@ GUIDE = {
                   "caractères) est dans l'adresse de la page, après « /m/ »."),
         ("etape", "2. Compte et configuration > Jetons API > Créer un jeton. Donnez-lui un nom (ex. MVOGMBI_Sync) et "
                   "les droits en LECTURE : Commandes, Inventaire, Paiements, Marchand."),
-        ("etape", "3. Page « 1. Clover » : collez l'identifiant marchand et le jeton, puis cliquez sur « Tester la "
+        ("etape", "3. Page « Administration > Clover » : collez l'identifiant marchand et le jeton, puis cliquez sur « Tester la "
                   "connexion à Clover » : le nom du marché doit s'afficher."),
 
         ("sous_titre", "Étape 2 — Sage 50"),
@@ -615,7 +686,7 @@ GUIDE = {
                   "factures."),
         ("etape", "3. Comptes des articles : chaque article doit avoir un compte de produits. Règle du marché : "
                   "compte d'actif 15xx → produits 40xx et coût des marchandises 50xx (ex. 1514 → 4014 / 5014)."),
-        ("etape", "4. Page « 2. Sage 50 » : choisissez le fichier d'entreprise (.SAI), l'utilisateur mvogmbi_sync et "
+        ("etape", "4. Page « Administration > Sage 50 » : choisissez le fichier d'entreprise (.SAI), l'utilisateur mvogmbi_sync et "
                   "son mot de passe, puis le mot de passe de sysadmin (utilisé pour l'import)."),
         ("etape", "5. « Premier jour à importer » : utilisé seulement si Sage ne contient encore aucune facture "
                   "« Vente AAAA-MM-JJ ». « Compte de dépôt des encaissements » : 1055 (Desjardins). « Encaisser à "
@@ -647,7 +718,7 @@ GUIDE = {
         ("etape", "3. « État de la tâche » confirme l'installation et la prochaine exécution."),
 
         ("sous_titre", "Étape 5 — Correspondance des articles"),
-        ("para", "Chaque article Clover doit être relié à un numéro d'article Sage. La page « 5. Correspondance » "
+        ("para", "Chaque article Clover doit être relié à un numéro d'article Sage. La page « Articles > Correspondance » "
                  "affiche les statuts :"),
         ("puce", "Automatique : même nom ou même code-barres dans Sage, relié sans intervention."),
         ("puce", "Confirmé : relié par vous ; conservé à chaque mise à jour."),
@@ -675,10 +746,10 @@ GUIDE = {
         ("sous_titre", "Mise en production (vrai fichier d'entreprise)"),
         ("etape", "1. Dans le vrai fichier : créez l'utilisateur mvogmbi_sync, cochez la case du client "
                   "« Vente Hebdomadaire » (et des fournisseurs) et vérifiez les comptes des articles (étape 2)."),
-        ("etape", "2. Page « 2. Sage 50 » : choisissez le vrai fichier .SAI, puis « Tester l'accès à Sage »."),
+        ("etape", "2. Page « Administration > Sage 50 » : choisissez le vrai fichier .SAI, puis « Tester l'accès à Sage »."),
         ("etape", "3. Vérifiez le « Premier jour à importer » et faites une simulation avant la première nuit."),
 
-        ("sous_titre", "Encaissements des dépôts Clover (page 7)"),
+        ("sous_titre", "Encaissements des dépôts Clover (menu « Comptabilité »)"),
         ("para", "Clover dépose dans le compte Desjardins (1055) les ventes encaissées moins les espèces : c'est "
                  "le lot de cartes que Clover ferme chaque soir. Ventes du lundi au jeudi : déposées le lendemain ; "
                  "ventes du vendredi, samedi et dimanche : déposées ensemble le lundi."),
@@ -692,15 +763,15 @@ GUIDE = {
         ("note", "Un dépôt supérieur au solde dû de la facture n'est jamais saisi. Le solde restant sur une facture "
                  "correspond aux ventes en espèces."),
         ("para", "Espèces des ventes : les virements Interac reçus et les dépôts d'espèces au guichet des relevés "
-                 "Desjardins chargés à la page 10 sont aussi vérifiés et encaissés (un encaissement par mouvement, "
+                 "Desjardins chargés à la page « Comptabilité > Rapprochement » sont aussi vérifiés et encaissés (un encaissement par mouvement, "
                  "« Comptant », compte 1055). Interac : sur la facture du jour du virement. Dépôt d'espèces : sur les "
                  "factures dont il reste des espèces (solde dû moins les dépôts Clover à venir), de la plus ancienne à "
                  "la plus récente. Un mouvement qui ne trouve pas sa place est marqué « Espèces à répartir à la main »."),
 
-        ("sous_titre", "Factures fournisseurs (page 8)"),
+        ("sous_titre", "Factures fournisseurs (menu « Fournisseur »)"),
         ("etape", "1. « Ajouter des factures… » copie les PDF ou photos dans le dossier des factures (vous pouvez "
                   "aussi les y déposer, puis « Actualiser »), et « 📧 Lire le courriel » y copie les factures jointes "
-                  "aux courriels (page 3, carte 4). Chaque facture est lue : fournisseur, n°, date, lignes et "
+                  "aux courriels (« Administration > Courriel », carte 4). Chaque facture est lue : fournisseur, n°, date, lignes et "
                   "totaux."),
         ("etape", "2. Vérifiez le fournisseur Sage (recherche rapide), le n° et la date ; les totaux sont contrôlés "
                   "(sous-total + TPS + TVQ = total)."),
@@ -716,7 +787,7 @@ GUIDE = {
         ("note", "« Écarter » met de côté une facture qui ne doit pas être traitée. Les choix d'articles et de "
                  "facteurs sont retenus pour chaque fournisseur."),
 
-        ("sous_titre", "Paiements fournisseurs (page 9)"),
+        ("sous_titre", "Paiements fournisseurs (menu « Comptabilité »)"),
         ("etape", "1. Choisissez la date « Lire depuis le », puis « Actualiser » : les avis de virement Interac "
                   "reçus depuis cette date sont lus, ainsi que les factures impayées de Sage. Tous les virements non "
                   "encore traités s'affichent. La date « au » limite l'affichage entre deux dates. Seuls les avis "
@@ -731,10 +802,10 @@ GUIDE = {
         ("note", "Un paiement partiel est accepté. « Ignorer » écarte un virement qui ne concerne pas un "
                  "fournisseur ; « Déjà dans Sage » signale un paiement déjà saisi à la main."),
 
-        ("sous_titre", "Rapprochement bancaire (page 10)"),
+        ("sous_titre", "Rapprochement bancaire (menu « Comptabilité »)"),
         ("para", "« Encaissement manuel » (entrée d'argent choisie) : choisissez la facture de vente et le montant ; "
-                 "l'encaissement est noté à la page 7 et saisi dans Sage par « Encaisser dans Sage ». « Paiement "
-                 "fournisseur manuel » (sortie d'argent choisie) : le mouvement est ajouté à la page 9, où l'on choisit "
+                 "l'encaissement est noté à la page « Comptabilité > Encaissements » et saisi dans Sage par « Encaisser dans Sage ». « Paiement "
+                 "fournisseur manuel » (sortie d'argent choisie) : le mouvement est ajouté à la page « Comptabilité > Paiements fournisseur », où l'on choisit "
                  "le fournisseur et la facture, puis « Payer dans Sage »."),
         ("etape", "1. Téléchargez le relevé de compte PDF dans AccèsD (compte 1055, folio 321147), puis « Charger des "
                   "relevés… ». Chaque relevé est contrôlé : solde d'ouverture + dépôts − retraits = solde de fermeture."),
@@ -752,14 +823,14 @@ GUIDE = {
         ("note", "« Période du … au … » (📅 calendrier) : rapproche seulement les mouvements et les écritures de ces "
                  "dates, avec les soldes du début et de la fin de la période ; « Toute la période des relevés » revient "
                  "à l'ensemble des relevés chargés."),
-        ("note", "Virements Interac reçus et dépôts au guichet : « À encaisser sur les ventes », encaissés à la page 7. "
+        ("note", "Virements Interac reçus et dépôts au guichet : « À encaisser sur les ventes », encaissés à la page « Comptabilité > Encaissements ». "
                  "Dépôts de salaire : reliés aux paies de Sage, sinon « Paie absente de Sage » (à corriger dans le "
                  "module Paie)."),
 
-        ("sous_titre", "Rapports (page 11)"),
+        ("sous_titre", "Rapports (menu « État »)"),
         ("puce", "Suivi des ventes : une ligne par facture de vente — date de traitement, journée(s), statut "
                  "(importée, bloquée, échec), montants HT, taxes et TTC, commentaire, état de l'encaissement (solde dû "
-                 "dans Sage) et état du rapprochement (encaissements retrouvés sur les relevés chargés à la page 10)."),
+                 "dans Sage) et état du rapprochement (encaissements retrouvés sur les relevés chargés à la page « Comptabilité > Rapprochement »)."),
         ("puce", "Recherche dans l'historique de Sage : par client (factures et encaissements), fournisseur "
                  "(factures, paiements, notes de crédit, avec le solde dû), vente, encaissement, paiement, ou article "
                  "(ventes, achats, retours et ajustements, avec le cumul), sur une période au choix."),
@@ -805,19 +876,19 @@ GUIDE = {
         ("etape", "1. Lisez le courriel de la nuit : « succès », ou la liste des points à corriger."),
         ("etape", "2. Un jour bloqué : corrigez la cause (article à relier, compte manquant…) ; il sera repris la "
                   "nuit suivante, ou tout de suite avec « Lancer maintenant » (Sage fermé)."),
-        ("etape", "3. Page 9 : « Actualiser », puis confirmez les nouveaux virements aux fournisseurs."),
-        ("etape", "4. Page 8 : ajoutez les factures fournisseurs reçues, vérifiez-les et enregistrez-les."),
+        ("etape", "3. Page « Comptabilité > Paiements fournisseur » : « Actualiser », puis confirmez les nouveaux virements aux fournisseurs."),
+        ("etape", "4. Page « Fournisseur > Factures fournisseurs » : ajoutez les factures fournisseurs reçues, vérifiez-les et enregistrez-les."),
         ("etape", "5. Avant de quitter le soir : fermez Sage, pour que le traitement de nuit puisse importer et saisir."),
 
         ("sous_titre", "Mode opératoire — chaque semaine"),
-        ("etape", "1. Page 7 : « Calculer les dépôts » sur la semaine passée ; tous les dépôts doivent être "
+        ("etape", "1. Page « Comptabilité > Encaissements » : « Calculer les dépôts » sur la semaine passée ; tous les dépôts doivent être "
                   "« Appliqué ». Les écarts sont à regarder avec le relevé Desjardins."),
-        ("etape", "2. Page 5 : filtre « À traiter » : reliez les nouveaux articles Clover."),
-        ("etape", "3. Page 8 : importez dans Sage les factures « Prêtes à importer » (Sage fermé)."),
+        ("etape", "2. Page « Articles > Correspondance » : filtre « À traiter » : reliez les nouveaux articles Clover."),
+        ("etape", "3. Page « Fournisseur > Factures fournisseurs » : importez dans Sage les factures « Prêtes à importer » (Sage fermé)."),
         ("etape", "4. Sauvegardez le dossier des données (bouton du Tableau de bord)."),
 
         ("sous_titre", "Mode opératoire — chaque mois"),
-        ("etape", "1. Page 10 : chargez le relevé Desjardins du mois, « Actualiser », choisissez le compte des "
+        ("etape", "1. Page « Comptabilité > Rapprochement » : chargez le relevé Desjardins du mois, « Actualiser », choisissez le compte des "
                   "mouvements absents de Sage, puis « Saisir dans Sage » ; l'écart non expliqué doit être nul."),
         ("etape", "2. Vérifiez qu'il ne reste aucun virement « À relier » ni facture « À vérifier »."),
         ("etape", "3. Comparez le total des ventes du mois dans Sage avec le rapport des ventes Clover."),
@@ -866,7 +937,7 @@ GUIDE = {
                   "page address, after “/m/”."),
         ("etape", "2. Account & Setup > API Tokens > Create token. Give it a name (e.g. MVOGMBI_Sync) and READ "
                   "permissions: Orders, Inventory, Payments, Merchant."),
-        ("etape", "3. “1. Clover” page: paste the merchant ID and the token, then click “Test the Clover "
+        ("etape", "3. “Administration > Clover” page: paste the merchant ID and the token, then click “Test the Clover "
                   "connection”: the market's name must appear."),
 
         ("sous_titre", "Step 2 — Sage 50"),
@@ -877,7 +948,7 @@ GUIDE = {
                   "numbers”. Do the same on the record of each supplier whose invoices you import."),
         ("etape", "3. Item accounts: every item needs a revenue account. Market rule: asset account 15xx → "
                   "revenue 40xx and cost of goods 50xx (e.g. 1514 → 4014 / 5014)."),
-        ("etape", "4. “2. Sage 50” page: choose the company file (.SAI), the mvogmbi_sync user and its password, "
+        ("etape", "4. “Administration > Sage 50” page: choose the company file (.SAI), the mvogmbi_sync user and its password, "
                   "then the sysadmin password (used for the import)."),
         ("etape", "5. “First day to import”: only used if Sage does not yet contain any “Vente YYYY-MM-DD” invoice. "
                   "“Receipt deposit account”: 1055 (Desjardins). “Record receipts from sales of”: older deposits "
@@ -908,7 +979,7 @@ GUIDE = {
         ("etape", "3. “Task status” confirms the installation and the next run."),
 
         ("sous_titre", "Step 5 — Item mapping"),
-        ("para", "Each Clover item must be linked to a Sage item number. The “5. Item mapping” page shows the "
+        ("para", "Each Clover item must be linked to a Sage item number. The “Items > Mapping” page shows the "
                  "statuses:"),
         ("puce", "Automatic: same name or same barcode in Sage, linked with no action."),
         ("puce", "Confirmed: linked by you; kept at every update."),
@@ -934,10 +1005,10 @@ GUIDE = {
         ("sous_titre", "Going live (real company file)"),
         ("etape", "1. In the real file: create the mvogmbi_sync user, check the “Vente Hebdomadaire” customer box "
                   "(and the suppliers') and check the item accounts (step 2)."),
-        ("etape", "2. “2. Sage 50” page: choose the real .SAI file, then “Test Sage access”."),
+        ("etape", "2. “Administration > Sage 50” page: choose the real .SAI file, then “Test Sage access”."),
         ("etape", "3. Check the “First day to import” and run a simulation before the first night."),
 
-        ("sous_titre", "Receipts for Clover deposits (page 7)"),
+        ("sous_titre", "Receipts for Clover deposits (“Accounting” menu)"),
         ("para", "Clover deposits into the Desjardins account (1055) the sales collected minus cash: this is the "
                  "card batch Clover closes every evening. Monday to Thursday sales: deposited the next day; Friday, "
                  "Saturday and Sunday sales: deposited together on Monday."),
@@ -950,14 +1021,14 @@ GUIDE = {
         ("note", "A deposit larger than the invoice balance is never entered. The balance left on an invoice is the "
                  "cash sales."),
         ("para", "Sales cash: the Interac transfers received and the ATM cash deposits of the Desjardins statements "
-                 "loaded on page 10 are also checked and recorded (one receipt per transaction, “Cash”, account 1055). "
+                 "loaded on the “Accounting > Reconciliation” page are also checked and recorded (one receipt per transaction, “Cash”, account 1055). "
                  "Interac: on the invoice of the transfer day. Cash deposit: on the invoices with cash left (balance "
                  "due minus the upcoming Clover deposits), oldest first. A transaction that does not fit is marked "
                  "“Cash to allocate manually”."),
 
-        ("sous_titre", "Supplier invoices (page 8)"),
+        ("sous_titre", "Supplier invoices (“Supplier” menu)"),
         ("etape", "1. “Add invoices…” copies the PDFs or photos into the invoice folder (you can also drop them "
-                  "there, then “Refresh”), and “📧 Read email” copies there the invoices attached to emails (page 3, "
+                  "there, then “Refresh”), and “📧 Read email” copies there the invoices attached to emails (“Administration > Email”, "
                   "card 4). Each invoice is read: supplier, number, date, lines and totals."),
         ("etape", "2. Check the Sage supplier (quick search), the number and the date; totals are checked "
                   "(subtotal + GST + QST = total)."),
@@ -973,7 +1044,7 @@ GUIDE = {
         ("note", "“Set aside” puts aside an invoice that must not be processed. Item and factor choices are "
                  "remembered for each supplier."),
 
-        ("sous_titre", "Supplier payments (page 9)"),
+        ("sous_titre", "Supplier payments (“Accounting” menu)"),
         ("etape", "1. Choose the “Read since” date, then “Refresh”: the Interac transfer notices received since that "
                   "date are read, along with the unpaid invoices in Sage. All transfers not yet processed are shown. "
                   "The “to” date limits the display between two dates. Only notices still in the mailbox can be "
@@ -986,10 +1057,10 @@ GUIDE = {
         ("note", "A partial payment is accepted. “Ignore” sets aside a transfer that is not for a supplier; "
                  "“Already in Sage” flags a payment already entered by hand."),
 
-        ("sous_titre", "Bank reconciliation (page 10)"),
+        ("sous_titre", "Bank reconciliation (“Accounting” menu)"),
         ("para", "“Manual receipt” (selected incoming amount): choose the sales invoice and the amount; the receipt "
-                 "is noted on page 7 and entered in Sage with “Record in Sage”. “Manual supplier payment” (selected "
-                 "outgoing amount): the transaction is added to page 9, where you choose the supplier and the invoice, "
+                 "is noted on the “Accounting > Receipts” page and entered in Sage with “Record in Sage”. “Manual supplier payment” (selected "
+                 "outgoing amount): the transaction is added to the “Accounting > Supplier payments” page, where you choose the supplier and the invoice, "
                  "then “Pay in Sage”."),
         ("etape", "1. Download the PDF account statement from AccèsD (account 1055, folio 321147), then “Load "
                   "statements…”. Each statement is checked: opening balance + deposits − withdrawals = closing balance."),
@@ -1007,14 +1078,14 @@ GUIDE = {
         ("note", "“Period from … to …” (📅 calendar): reconciles only the transactions and entries of those dates, "
                  "with the balances at the start and end of the period; “Whole statement period” goes back to all the "
                  "loaded statements."),
-        ("note", "Interac transfers received and ATM deposits: “To receive on the sales”, recorded on page 7. Salary "
+        ("note", "Interac transfers received and ATM deposits: “To receive on the sales”, recorded on the “Accounting > Receipts” page. Salary "
                  "deposits: linked to the Sage payroll, otherwise “Payroll missing from Sage” (to fix in the Payroll "
                  "module)."),
 
-        ("sous_titre", "Reports (page 11)"),
+        ("sous_titre", "Reports (“Reports” menu)"),
         ("puce", "Sales tracking: one line per sales invoice — processing date, day(s), status (imported, blocked, "
                  "failed), amounts before tax, taxes and including tax, comment, receipt status (balance due in Sage) "
-                 "and reconciliation status (receipts found on the statements loaded on page 10)."),
+                 "and reconciliation status (receipts found on the statements loaded on the “Accounting > Reconciliation” page)."),
         ("puce", "Sage history search: by customer (invoices and receipts), supplier (invoices, payments, credit notes, "
                  "with the balance due), sale, receipt, payment, or item (sales, purchases, returns and adjustments, "
                  "with the running total), over any period."),
@@ -1055,19 +1126,19 @@ GUIDE = {
         ("etape", "1. Read the nightly email: “success”, or the list of points to fix."),
         ("etape", "2. A blocked day: fix the cause (item to link, missing account…); it is resumed the following "
                   "night, or right away with “Run now” (Sage closed)."),
-        ("etape", "3. Page 9: “Refresh”, then confirm the new transfers to suppliers."),
-        ("etape", "4. Page 8: add the supplier invoices received, check them and save them."),
+        ("etape", "3. “Accounting > Supplier payments”: “Refresh”, then confirm the new transfers to suppliers."),
+        ("etape", "4. “Supplier > Supplier invoices”: add the supplier invoices received, check them and save them."),
         ("etape", "5. Before leaving in the evening: close Sage, so the nightly run can import and enter."),
 
         ("sous_titre", "Operating procedure — every week"),
-        ("etape", "1. Page 7: “Calculate deposits” for the past week; every deposit must be “Applied”. Check "
+        ("etape", "1. “Accounting > Receipts”: “Calculate deposits” for the past week; every deposit must be “Applied”. Check "
                   "differences against the Desjardins statement."),
-        ("etape", "2. Page 5: “To handle” filter: link the new Clover items."),
-        ("etape", "3. Page 8: import into Sage the invoices “Ready to import” (Sage closed)."),
+        ("etape", "2. “Items > Mapping”: “To handle” filter: link the new Clover items."),
+        ("etape", "3. “Supplier > Supplier invoices”: import into Sage the invoices “Ready to import” (Sage closed)."),
         ("etape", "4. Back up the data folder (Dashboard button)."),
 
         ("sous_titre", "Operating procedure — every month"),
-        ("etape", "1. Page 10: load the month's Desjardins statement, “Refresh”, choose the account of the "
+        ("etape", "1. “Accounting > Reconciliation”: load the month's Desjardins statement, “Refresh”, choose the account of the "
                   "transactions missing from Sage, then “Enter in Sage”; the unexplained difference must be zero."),
         ("etape", "2. Check that no transfer is left “To link” and no invoice “To check”."),
         ("etape", "3. Compare the month's sales total in Sage with the Clover sales report."),

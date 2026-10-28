@@ -173,6 +173,8 @@ tr {{ page-break-inside: avoid; }}
 
 def exporter(tableau: ttk.Treeview, nom: str, format_: str = "xlsx") -> None:
     """Demande où enregistrer puis écrit le fichier ; propose de l'ouvrir."""
+    if not autorise(tableau):
+        return
     entetes, lignes = contenu(tableau)
     if not lignes:
         messagebox.showinfo(nom, t("Le tableau est vide : rien à exporter."), parent=tableau)
@@ -208,6 +210,25 @@ def exporter(tableau: ttk.Treeview, nom: str, format_: str = "xlsx") -> None:
         os.startfile(chemin)
 
 
+EXPORT_PERMIS = True  # droit du profil de la personne connectée (réglé par l'application à la connexion)
+
+
+def export_permis() -> bool:
+    return EXPORT_PERMIS
+
+
+def autorise(parent=None) -> bool:
+    """Export permis au profil ; sinon un message (le profil n'a pas le droit d'exporter des données)."""
+    if not autorise(tableau):
+        return
+    if EXPORT_PERMIS:
+        return True
+    from tkinter import messagebox
+
+    messagebox.showinfo("MVOGMBI_Sync", t("Votre profil n'a pas le droit d'exporter des données."), parent=parent)
+    return False
+
+
 def menu(tableau: ttk.Treeview, nom: str) -> tk.Menu:
     m = tk.Menu(tableau, tearoff=0)
     m.add_command(label="📗  " + t("Exporter en Excel (.xlsx)…"), command=lambda: exporter(tableau, nom, "xlsx"))
@@ -219,14 +240,18 @@ def menu(tableau: ttk.Treeview, nom: str) -> tk.Menu:
 def rendre_exportable(tableau: ttk.Treeview, nom: str) -> None:
     """Clic droit sur le tableau : Exporter en Excel / en CSV / en PDF."""
     tableau._nom_export = nom
+    if not EXPORT_PERMIS:  # profil sans le droit d'exporter : pas de menu d'export
+        return
     tableau.bind("<Button-3>", lambda e: menu(tableau, nom).tk_popup(e.x_root, e.y_root), add="+")
 
 
 def bouton_exporter(parent, tableau: ttk.Treeview, nom: str, **options):
     """Bouton « Exporter » qui propose Excel ou CSV ; rend aussi le tableau exportable par clic droit."""
-    from .design import Bouton
+    from .design import Bouton, fond_de
 
     rendre_exportable(tableau, nom)
+    if not EXPORT_PERMIS:  # profil sans le droit d'exporter : aucun bouton (cadre vide, sans taille)
+        return tk.Frame(parent, width=1, height=1, background=fond_de(parent))
     bouton = None
 
     def ouvrir() -> None:
@@ -247,6 +272,8 @@ def image_widget(widget):
 
 def demander_et_ecrire(parent, nom: str, format_: str, ecrire) -> None:
     """Demande où enregistrer (PDF ou PNG), écrit avec `ecrire(chemin)`, propose d'ouvrir le fichier."""
+    if not autorise(parent):
+        return
     types = {"pdf": ("PDF", "*.pdf"), "png": (t("Image PNG"), "*.png")}
     chemin = filedialog.asksaveasfilename(parent=parent, defaultextension="." + format_,
                                           initialfile=f"{nom} {date.today().isoformat()}.{format_}",

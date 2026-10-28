@@ -159,6 +159,10 @@ class ClientClover:
     def regler_cout(self, id_article: str, cout: Decimal) -> None:
         self._ecrire("POST", f"items/{id_article}", {"cost": int((cout * CENT).quantize(Decimal(1), ROUND_HALF_UP))})
 
+    def regler_ugs(self, id_article: str, ugs: str) -> None:
+        """UGS (SKU) de l'article ; « » l'efface (vérifié sur un article d'essai le 2026-10-28)."""
+        self._ecrire("POST", f"items/{id_article}", {"sku": ugs})
+
     def supprimer_article(self, id_article: str) -> None:
         self._ecrire("DELETE", f"items/{id_article}")
 

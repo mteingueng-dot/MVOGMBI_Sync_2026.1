@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -663,6 +663,37 @@ def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
                          remboursements=[r for r in d.remboursements if (r.get("orderRef") or {}).get("id") in ids],
                          employes=d.employes, clients=d.clients, appareils=d.appareils, categories=d.categories,
                          fuseau=d.fuseau)
+
+
+# vues regroupées qui peuvent être détaillées jour par jour (demande du propriétaire du 2026-10-28 : la date compte)
+VUES_PAR_JOUR = ("Par article", "Par catégorie", "Par employé", "Par client", "Par mode de paiement",
+                 "Par type de carte", "Par mode de saisie de la carte", "Par appareil", "Bénéfices")
+
+
+def detail_par_jour(d: DonneesClover, vue: str, couts: dict | None = None) -> tuple[list[str], list[list]]:
+    """La vue `vue` calculée jour par jour (jour du premier paiement, comme la facturation) : une colonne Date en
+    premier, le jour le plus récent en haut."""
+    fuseau = ZoneInfo(d.fuseau)
+    par_jour: dict[date, list[dict]] = defaultdict(list)
+    for o in d.commandes:
+        moment = moment_paiement(o)
+        if moment is not None:
+            par_jour[datetime.fromtimestamp(moment / 1000, fuseau).date()].append(o)
+    paiements, remboursements = defaultdict(list), defaultdict(list)
+    for p in d.paiements:
+        paiements[(p.get("order") or {}).get("id")].append(p)
+    for r in d.remboursements:
+        remboursements[(r.get("orderRef") or {}).get("id")].append(r)
+    entetes, lignes = None, []
+    for jour in sorted(par_jour, reverse=True):
+        commandes = par_jour[jour]
+        sous = replace(d, commandes=commandes, prepare=None,
+                       paiements=[p for o in commandes for p in paiements.get(o["id"], [])],
+                       remboursements=[r for o in commandes for r in remboursements.get(o["id"], [])])
+        e, l = statistiques(sous, couts)[vue]
+        entetes = ["Date"] + list(e)
+        lignes += [[jour.isoformat()] + list(x) for x in l]
+    return entetes or ["Date"], lignes
 
 
 def evolution_par_annee(par_annee: dict[int, DonneesClover], du: date, au: date) -> tuple[list[str], dict[int, list]]:

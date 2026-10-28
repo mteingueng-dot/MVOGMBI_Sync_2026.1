@@ -178,13 +178,13 @@ CHAPITRES = [
     ("installation", "Installation et premier lancement", "Installation and first start"),
     ("interface", "Découvrir l'interface", "Getting to know the interface"),
     ("configuration", "Configuration (pages 1 à 4)", "Setup (pages 1 to 4)"),
-    ("correspondance", "Correspondance des articles (page 5)", "Item mapping (page 5)"),
+    ("correspondance", "Correspondance des articles (Articles > Correspondance)", "Item mapping (Items > Mapping)"),
     ("tableau", "Tableau de bord et traitement de nuit", "Dashboard and nightly run"),
-    ("encaissements", "Encaissements des dépôts Clover (page 7)", "Receipts for Clover deposits (page 7)"),
-    ("fournisseurs", "Factures fournisseurs (page 8)", "Supplier invoices (page 8)"),
-    ("paiements", "Paiements fournisseurs (page 9)", "Supplier payments (page 9)"),
-    ("rapprochement", "Rapprochement bancaire (page 10)", "Bank reconciliation (page 10)"),
-    ("rapports", "Rapports et recherches (page 11)", "Reports and searches (page 11)"),
+    ("encaissements", "Encaissements des dépôts Clover (Comptabilité > Encaissements)", "Receipts for Clover deposits (Accounting > Receipts)"),
+    ("fournisseurs", "Factures fournisseurs (Fournisseur > Factures fournisseurs)", "Supplier invoices (Supplier > Supplier invoices)"),
+    ("paiements", "Paiements fournisseurs (Comptabilité > Paiements fournisseur)", "Supplier payments (Accounting > Supplier payments)"),
+    ("rapprochement", "Rapprochement bancaire (Comptabilité > Rapprochement)", "Bank reconciliation (Accounting > Reconciliation)"),
+    ("rapports", "Rapports et recherches (État)", "Reports and searches (Reports)"),
     ("mode", "Mode opératoire", "Operating procedure"),
     ("regles", "Règles de gestion", "Business rules"),
     ("faq", "Questions fréquentes et dépannage", "Frequently asked questions and troubleshooting"),
@@ -302,7 +302,7 @@ propre fichier d'installation ; une mise à jour conserve votre configuration et
 <li>L'application s'installe dans <code>%LOCALAPPDATA%\\Programs\\MVOGMBI_Sync</code>. Le menu Démarrer contient
 l'application, ce manuel, le journal du traitement et la désinstallation.</li>
 </ol>
-<div class="note">💡 Nouvel ordinateur ou réinstallation : page « 4. Automatisation », bouton « Reprendre une
+<div class="note">💡 Nouvel ordinateur ou réinstallation : « Administration > Automatisation », bouton « Reprendre une
 configuration existante… », puis choisissez l'ancien dossier : la correspondance validée, les journaux et la
 configuration sont recopiés.</div>""", """
 <ol class="etapes">
@@ -313,7 +313,7 @@ file; an update keeps your configuration and data.</li>
 <li>The application is installed in <code>%LOCALAPPDATA%\\Programs\\MVOGMBI_Sync</code>. The Start menu holds the
 application, this manual, the run log and the uninstaller.</li>
 </ol>
-<div class="note">💡 New computer or reinstall: page “4. Automation”, button “Import an existing configuration…”, then
+<div class="note">💡 New computer or reinstall: “Administration > Automation”, button “Import an existing configuration…”, then
 choose the old folder: the validated item mapping, the logs and the configuration are copied over.</div>"""))
 
     # ------------------------------------------------------------------ 3. Interface
@@ -367,23 +367,26 @@ profile sees (an unticked page disappears from the menu). They can also create o
 active administrator always remains. Passwords are never kept, only an encrypted fingerprint.</p>"""))
 
     # ------------------------------------------------------------------ 4. Configuration
-    parties.append(titre(4) + blocs("Avant de commencer") + "<h2>" + x("Page 1 — Clover", "Page 1 — Clover") + "</h2>"
-                   + figure("01_clover", x("Page 1 — Clover : identifiant marchand et jeton API",
-                                           "Page 1 — Clover: merchant ID and API token"))
-                   + blocs("Étape 1") + "<h2>Page 2 — Sage 50</h2>"
-                   + figure("02_sage", x("Page 2 — Sage 50 : fichier d'entreprise, comptes et utilisateurs",
-                                         "Page 2 — Sage 50: company file, accounts and users"))
-                   + blocs("Étape 2") + "<h2>" + x("Page 3 — Courriel", "Page 3 — Email") + "</h2>"
-                   + figure("03_courriel", x("Page 3 — Courriel : compte rendu et boîte des avis de paiement",
-                                             "Page 3 — Email: report and payment notice mailbox"))
-                   + blocs("Étape 3") + "<h2>" + x("Page 4 — Automatisation", "Page 4 — Automation") + "</h2>"
-                   + figure("04_automatisation", x("Page 4 — Automatisation : tâche planifiée de la nuit",
-                                                   "Page 4 — Automation: nightly scheduled task"))
+    parties.append(titre(4) + blocs("Avant de commencer") + "<h2>" + x("Administration > Clover",
+"Administration > Clover") + "</h2>"
+                   + figure("01_clover", x("Administration > Clover : identifiant marchand et jeton API",
+                                           "Administration > Clover: merchant ID and API token"))
+                   + blocs("Étape 1") + "<h2>Administration > Sage 50</h2>"
+                   + figure("02_sage", x("Administration > Sage 50 : fichier d'entreprise, comptes et utilisateurs",
+                                         "Administration > Sage 50: company file, accounts and users"))
+                   + blocs("Étape 2") + "<h2>" + x("Administration > Courriel",
+"Administration > Email") + "</h2>"
+                   + figure("03_courriel", x("Administration > Courriel : compte rendu et boîte des avis de paiement",
+                                             "Administration > Email: report and payment notice mailbox"))
+                   + blocs("Étape 3") + "<h2>" + x("Administration > Automatisation",
+"Administration > Automation") + "</h2>"
+                   + figure("04_automatisation", x("Administration > Automatisation : tâche planifiée de la nuit",
+                                                   "Administration > Automation: nightly scheduled task"))
                    + blocs("Étape 4") + blocs("Mise en production"))
 
     # ------------------------------------------------------------------ 5. Correspondance
-    parties.append(titre(5) + figure("05_correspondance", x("Page 5 — Correspondance des articles Clover et Sage",
-                                                            "Page 5 — Mapping of Clover and Sage items"))
+    parties.append(titre(5) + figure("05_correspondance", x("Articles > Correspondance des articles Clover et Sage",
+                                                            "Items > Mapping of Clover and Sage items"))
                    + blocs("Étape 5") + x("""
 <table class="simple"><tr><th>Statut</th><th>Signification</th><th>Action</th></tr>
 <tr><td><span class="pastille p-vert">Confirmé</span></td><td>Relié par vous</td><td>Aucune</td></tr>
@@ -401,8 +404,8 @@ active administrator always remains. Passwords are never kept, only an encrypted
 <td>Create the item in Sage, then “Update from Clover and Sage”</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 6. Tableau de bord
-    parties.append(titre(6) + figure("06_tableau_de_bord", x("Page 6 — Tableau de bord : dernier import, tâche, journal",
-                                                             "Page 6 — Dashboard: last import, task, log"))
+    parties.append(titre(6) + figure("06_tableau_de_bord", x("Vente > Ventes Clover → factures Sage — Tableau de bord : dernier import, tâche, journal",
+                                                             "Sales > Clover sales → Sage invoices — Dashboard: last import, task, log"))
                    + x("""
 <ul>
 <li><b>Dernière facture importée</b>, état de la <b>tâche planifiée</b> et nombre de <b>points à corriger</b>.</li>
@@ -427,8 +430,8 @@ weekend always starts on Friday).</li>
                    + "</p><div class='courriel'>" + courriel_exemple() + "</div>")
 
     # ------------------------------------------------------------------ 7. Encaissements
-    parties.append(titre(7) + figure("07_encaissements", x("Page 7 — Encaissements des dépôts Clover",
-                                                           "Page 7 — Receipts for Clover deposits"))
+    parties.append(titre(7) + figure("07_encaissements", x("Comptabilité > Encaissements des dépôts Clover",
+                                                           "Accounting > Receipts for Clover deposits"))
                    + blocs("Encaissements des dépôts Clover") + x("""
 <table class="simple"><tr><th>État</th><th>Signification</th></tr>
 <tr><td><span class="pastille p-vert">Appliqué</span></td><td>Le dépôt est encaissé sur la facture dans Sage.</td></tr>
@@ -452,11 +455,11 @@ finds no invoice: record it yourself in Sage.</td></tr>
 deposit has not arrived yet.</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 8. Factures fournisseurs
-    parties.append(titre(8) + figure("08_factures_fournisseurs", x("Page 8 — Liste des factures fournisseurs",
-                                                                   "Page 8 — List of supplier invoices"))
+    parties.append(titre(8) + figure("08_factures_fournisseurs", x("Fournisseur > Factures fournisseurs — Liste des factures fournisseurs",
+                                                                   "Supplier > Supplier invoices — List of supplier invoices"))
                    + blocs("Factures fournisseurs")
-                   + figure("08b_facture_detail", x("Page 8 — Une facture ouverte : en-tête, lignes et article Sage",
-                                                    "Page 8 — An open invoice: header, lines and Sage item"))
+                   + figure("08b_facture_detail", x("Fournisseur > Factures fournisseurs — Une facture ouverte : en-tête, lignes et article Sage",
+                                                    "Supplier > Supplier invoices — An open invoice: header, lines and Sage item"))
                    + x("""
 <h3>Calcul des quantités et des prix</h3>
 <table class="simple"><tr><th>Champ</th><th>Calcul</th><th>Exemple</th></tr>
@@ -474,8 +477,8 @@ saisissent. La touche Entrée applique la ligne et passe à la suivante.</div>""
 Enter key applies the line and moves to the next one.</div>"""))
 
     # ------------------------------------------------------------------ 9. Paiements fournisseurs
-    parties.append(titre(9) + figure("09_paiements", x("Page 9 — Virements Interac reliés aux factures fournisseurs",
-                                                       "Page 9 — Interac transfers linked to supplier invoices"))
+    parties.append(titre(9) + figure("09_paiements", x("Comptabilité > Paiements fournisseur — Virements Interac reliés aux factures fournisseurs",
+                                                       "Accounting > Supplier payments — Interac transfers linked to supplier invoices"))
                    + blocs("Paiements fournisseurs") + x("""
 <table class="simple"><tr><th>État</th><th>Signification</th></tr>
 <tr><td><span class="pastille p-jaune">À relier</span></td><td>Fournisseur ou facture à choisir.</td></tr>
@@ -507,8 +510,8 @@ newest; only the last one can be partly paid. Example: a $910.00 transfer on two
 $905.00 on the first and $5.00 on the second.</p>"""))
 
     # ------------------------------------------------------------------ 10. Rapprochement bancaire
-    parties.append(titre(10) + figure("10_rapprochement", x("Page 10 — Relevés Desjardins rapprochés du compte 1055",
-                                                            "Page 10 — Desjardins statements reconciled with account 1055"))
+    parties.append(titre(10) + figure("10_rapprochement", x("Comptabilité > Rapprochement — Relevés Desjardins rapprochés du compte 1055",
+                                                            "Accounting > Reconciliation — Desjardins statements reconciled with account 1055"))
                    + blocs("Rapprochement bancaire") + x("""
 <table class="simple"><tr><th>Chiffre</th><th>Signification</th></tr>
 <tr><td>Solde du relevé</td><td>Solde de fermeture du dernier relevé chargé.</td></tr>
@@ -525,13 +528,13 @@ load).</td></tr>
 other.</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 11. Mode opératoire
-    parties.append(titre(11) + figure("14_rapports", x("Page 11 — Rapports : suivi complet de chaque vente",
-                                                        "Page 11 — Reports: complete tracking of each sale"))
-                   + figure("15_statistiques", x("Page 11 — Statistiques Clover : cartes, courbes, anneaux et menu des "
+    parties.append(titre(11) + figure("14_rapports", x("État > Suivi des ventes : suivi complet de chaque vente",
+                                                        "Reports > Sales tracking: complete tracking of each sale"))
+                   + figure("15_statistiques", x("État > Statistiques Clover : cartes, courbes, anneaux et menu des "
                                                  "états, comme le tableau de bord de Clover",
-                                                 "Page 11 — Clover statistics: cards, curves, rings and the report "
+                                                 "Reports > Clover statistics: cards, curves, rings and the report "
                                                  "menu, like the Clover dashboard"))
-                   + blocs("Rapports (page 11)")
+                   + blocs("Rapports (menu")
                    + figure("16_apercu_ventes", x("Aperçu des ventes : courbes, anneaux et classements, infobulle au "
                                                   "survol", "Sales overview: curves, rings and rankings, tooltip on "
                                                   "hover"))

@@ -380,7 +380,7 @@ def lire_comptes(config_toml: dict, numeros: list[str]) -> dict[str, tuple[str, 
     marques = ", ".join(["%s"] * len(numeros))
     lignes = lire_sage(config_toml, lambda b: b.requete(
         "SELECT TRIM(sPartCode) n, lAcNAsset, lAcNRev, lAcNExp, lAcNVar FROM tinvent "
-        f"WHERE TRIM(sPartCode) IN ({marques})", tuple(numeros)),
+        f"WHERE sPartCode IN ({marques})", tuple(numeros)),
         config_toml.get("sage_import", {}).get("fichier_entreprise"))
     return {l["n"]: tuple(compte4(l[c]) for c in ("lAcNAsset", "lAcNRev", "lAcNExp", "lAcNVar")) for l in lignes}
 

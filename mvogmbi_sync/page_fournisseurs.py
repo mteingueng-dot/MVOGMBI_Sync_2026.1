@@ -14,8 +14,8 @@ from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
 from .correspondance import conflit_format, normaliser
-from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau, entete_page,
-                     fond_de, rayer)
+from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, apres_frappe, cadre_tableau,
+                     entete_page, fond_de, rayer)
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
                            completer, etat_apres_controle, lire_copie_fournisseurs, lire_facture)
 from .export_tableau import bouton_exporter, rendre_exportable
@@ -205,7 +205,7 @@ class PageFournisseurs(ttk.Frame):
         etiquette(recherche_cadre, "Article Sage :")
         recherche = self.champ_recherche = ttk.Entry(recherche_cadre, textvariable=self.l["recherche"])
         recherche.pack(side="left", fill="x", expand=True)
-        recherche.bind("<KeyRelease>", lambda e: None if e.keysym in ("Return", "Down", "Up") else self.chercher_sage())
+        recherche.bind("<KeyRelease>", apres_frappe(recherche, self.chercher_sage))
         recherche.bind("<Return>", lambda _e: self.relier())
         recherche.bind("<Down>", lambda _e: (self.resultats.focus_set(), self.resultats.selection_set(0)))
         self.resultats = tk.Listbox(gauche, height=3, font=("Consolas", 9), activestyle="none")
@@ -288,7 +288,7 @@ class PageFournisseurs(ttk.Frame):
         config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8")) \
             if (self.racine / "config.toml").exists() else {}
         if not configuree(config):
-            messagebox.showinfo(self.titre, t("Configurez d'abord la boîte de courriel (page « 3. Courriel », carte "
+            messagebox.showinfo(self.titre, t("Configurez d'abord la boîte de courriel (« Administration > Courriel », carte "
                                               "« Avis de paiement »)."))
             return
         self.resume.configure(text=t("Lecture du courriel (pièces jointes des factures)…"))

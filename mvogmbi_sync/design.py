@@ -193,6 +193,21 @@ class ChampDate(tk.Frame):
         dessiner()
 
 
+def apres_frappe(widget, fonction, delai: int = 60):
+    """Gestionnaire de <KeyRelease> qui lance `fonction` une seule fois, `delai` ms après la dernière touche : le
+    tableau n'est plus refait à chaque lettre (la frappe reste fluide)."""
+    attente = {"id": None}
+
+    def gerer(evenement=None):
+        if evenement is not None and getattr(evenement, "keysym", "") in ("Return", "Down", "Up", "Tab"):
+            return
+        if attente["id"]:
+            widget.after_cancel(attente["id"])
+        attente["id"] = widget.after(delai, fonction)
+
+    return gerer
+
+
 class ChampRecherche(tk.Frame):
     """Champ de saisie avec recherche rapide : la liste des choix correspondants s'affiche dessous pendant la frappe.
 
@@ -220,6 +235,7 @@ class ChampRecherche(tk.Frame):
 
     def configurer_valeurs(self, valeurs) -> None:
         self.valeurs = list(valeurs)
+        self._normalisees = None  # préparées au premier besoin, une seule fois
 
     def _correspondances(self, tout: bool = False) -> list[str]:
         from .correspondance import normaliser
@@ -227,13 +243,17 @@ class ChampRecherche(tk.Frame):
         texte = normaliser(self.variable.get())
         if tout or not texte:
             return self.valeurs
+        if getattr(self, "_normalisees", None) is None:
+            self._normalisees = [normaliser(v) for v in self.valeurs]
         mots = texte.split()
-        return [v for v in self.valeurs if all(m in normaliser(v) for m in mots)]
+        return [v for v, n in zip(self.valeurs, self._normalisees) if all(m in n for m in mots)]
 
     def _frappe(self, evenement) -> None:
         if evenement.keysym in ("Up", "Down", "Return", "Escape", "Tab"):
             return
-        self.afficher()
+        if getattr(self, "_attente", None):  # la liste suit la frappe sans la ralentir
+            self.after_cancel(self._attente)
+        self._attente = self.after(50, self.afficher)
 
     def afficher(self, tout: bool = False) -> None:
         choix = self._correspondances(tout)
@@ -252,8 +272,7 @@ class ChampRecherche(tk.Frame):
         self.popup.geometry(f"{self.champ.winfo_width() + 24}x{min(8, len(choix)) * 22 + 4}"
                             f"+{self.champ.winfo_rootx()}+{self.champ.winfo_rooty() + self.champ.winfo_height()}")
         self.liste.delete(0, "end")
-        for v in choix:
-            self.liste.insert("end", v)
+        self.liste.insert("end", *choix[:500])  # 500 au plus : la frappe affine
         self.liste.selection_clear(0, "end")
         self.liste.selection_set(0)
 
@@ -398,6 +417,13 @@ class Rangee(tk.Frame):
         self._plus_tard()
         return widget
 
+    def montrer(self, widget, visible: bool) -> None:
+        """Affiche ou cache un élément de la rangée (les suivants se resserrent)."""
+        widget._cache_rangee = not visible
+        if not visible:
+            widget.place_forget()
+        self._plus_tard()
+
     def _plus_tard(self) -> None:
         if not getattr(self, "_prevu", False):
             self._prevu = True
@@ -410,7 +436,7 @@ class Rangee(tk.Frame):
             return
         lignes, ligne, x = [], [], 0
         for w, espace in self.elements:
-            if not w.winfo_exists():
+            if not w.winfo_exists() or getattr(w, "_cache_rangee", False):
                 continue
             l = w.winfo_reqwidth()
             if ligne and x + l > largeur:

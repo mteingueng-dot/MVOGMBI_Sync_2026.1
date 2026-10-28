@@ -94,7 +94,7 @@ def mettre_a_jour(client, facture, correspondances, journal: Journal) -> list[st
             continue
         ids = par_numero.get(r.numero_sage, [])
         if not ids:
-            messages.append(f"{r.numero_sage} : aucun article Clover relié (page 5) — stock et coût Clover non modifiés")
+            messages.append(f"{r.numero_sage} : aucun article Clover relié (Articles > Correspondance) — stock et coût Clover non modifiés")
             continue
         try:
             for id_clover in ids:

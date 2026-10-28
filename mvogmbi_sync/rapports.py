@@ -10,7 +10,12 @@ Recherches dans Sage (lecture seule) par client, fournisseur, vente, encaissemen
 - client : factures, encaissements (tcustr + tcustrdt) ;
 - fournisseur : factures, paiements, notes de crédit (tventr + tventrdt), avec le solde courant ;
 - article : mouvements de stock (titrec + titrline : ventes, achats, retours, ajustements), sans les écritures
-  corrigées (« CORR ») qui s'annulent ni les lignes d'écart de coût.
+  corrigées (« CORR ») qui s'annulent ni les lignes d'écart de coût ; une plage d'articles (du n° … au n° …) donne
+  chaque article à la suite de l'autre, avec son total ;
+- statistiques client et fournisseur (demande du propriétaire du 2026-10-28) : ventes (journal 8) ou achats moins
+  retours (journaux 7 et 17) par article ou par catégorie, sur une période et une plage d'articles facultatives.
+  Catégorie d'une ligne : table « Comptes Sage par catégorie Clover » (compte de la ligne), sinon nom du compte
+  (« Produit des Ventes - Fruits & Légumes » -> « Fruits & Légumes »).
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+
+from .articles_sage import reparer_texte
 
 CENT = Decimal("0.01")
 HISTORIQUE = "historique_ventes.csv"
@@ -207,7 +214,7 @@ def noms(base, table: str) -> list[str]:
 
 
 def articles(base) -> list[str]:
-    return [f"{r['c']} — {r['n']}" for r in base.requete(
+    return [f"{r['c']} — {reparer_texte(r['n'] or '')}" for r in base.requete(
         "SELECT TRIM(sPartCode) c, TRIM(sName) n FROM tinvent ORDER BY sPartCode")]
 
 
@@ -227,7 +234,7 @@ def mouvements_client(base, nom: str, du=None, au=None) -> tuple[list[str], list
     lignes = base.requete(
         "SELECT d.dtDate, d.nTranType, TRIM(t.sSource) f, TRIM(d.sSource) piece, d.dAmount FROM tcustrdt d "
         "JOIN tcustr t ON t.lId = d.lCusTrId JOIN tcustomr c ON c.lId = t.lCusId "
-        "WHERE TRIM(c.sName) = %s AND d.bReversed = 0" + filtre + " ORDER BY d.dtDate, d.lId", [nom] + p)
+        "WHERE c.sName = %s AND d.bReversed = 0" + filtre + " ORDER BY d.dtDate, d.lId", [nom] + p)
     solde, resultat = Decimal(0), []
     for l in lignes:
         montant = _d(l["dAmount"])
@@ -242,7 +249,7 @@ def mouvements_fournisseur(base, nom: str, du=None, au=None) -> tuple[list[str],
     lignes = base.requete(
         "SELECT d.dtDate, d.nTranType, TRIM(t.sSource) f, TRIM(d.sSource) piece, d.dAmount FROM tventrdt d "
         "JOIN tventr t ON t.lId = d.lVenTrId JOIN tvendor v ON v.lId = t.lVenId "
-        "WHERE TRIM(v.sName) = %s AND d.bReversed = 0" + filtre + " ORDER BY d.dtDate, d.lId", [nom] + p)
+        "WHERE v.sName = %s AND d.bReversed = 0" + filtre + " ORDER BY d.dtDate, d.lId", [nom] + p)
     solde, resultat = Decimal(0), []
     for l in lignes:
         montant = _d(l["dAmount"])
@@ -260,7 +267,7 @@ def mouvements_article(base, code: str, du=None, au=None) -> tuple[list[str], li
         "JOIN tinvent i ON i.lId = l.lInventId "
         "LEFT JOIN tcustomr c ON r.nJournal = 8 AND c.lId = r.lVenCusId "
         "LEFT JOIN tvendor v ON r.nJournal IN (7, 17) AND v.lId = r.lVenCusId "
-        "WHERE TRIM(i.sPartCode) = %s AND l.bVarLine = 0 AND r.bReversed = 0 AND r.bReversal = 0" + filtre +
+        "WHERE i.sPartCode = %s AND l.bVarLine = 0 AND r.bReversed = 0 AND r.bReversal = 0" + filtre +
         " ORDER BY r.dtJournal, r.lId, l.nLineNum", [code] + p)
     stock, resultat = Decimal(0), []
     for l in lignes:
@@ -344,23 +351,30 @@ def _dans(l: dict, du, au) -> bool:
 
 
 def _mouvements(lignes: list[dict], types: dict, nom: str, du, au) -> list[list]:
-    solde, resultat = Decimal(0), []
+    """Mouvements d'un tiers avec son solde ; `nom` vide : tous les tiers, le nom en 2e colonne et le solde de
+    chacun."""
+    soldes: dict[str, Decimal] = {}
+    resultat = []
     for l in lignes:
-        if l["nom"] != nom or not _dans(l, du, au):
+        if (nom and l["nom"] != nom) or not _dans(l, du, au):
             continue
         montant = _d(l["dAmount"])
-        solde += montant
-        resultat.append([_jour(l["dtDate"]), types.get(l["nTranType"], f"Type {l['nTranType']}"), l["f"],
-                         l["piece"] if l["piece"] != l["f"] else "", montant, solde])
+        soldes[l["nom"]] = soldes.get(l["nom"], Decimal(0)) + montant
+        ligne = [_jour(l["dtDate"]), types.get(l["nTranType"], f"Type {l['nTranType']}"), l["f"],
+                 l["piece"] if l["piece"] != l["f"] else "", montant, soldes[l["nom"]]]
+        if not nom:
+            ligne.insert(1, l["nom"])
+        resultat.append(ligne)
     return resultat
 
 
 def h_mouvements_client(h: dict, nom: str, du=None, au=None):
-    return ["Date", "Type", "Facture", "Pièce", "Montant", "Solde"], _mouvements(h["clients"], TYPES_CLIENT, nom, du, au)
+    return (["Date"] + ([] if nom else ["Client"]) + ["Type", "Facture", "Pièce", "Montant", "Solde"],
+            _mouvements(h["clients"], TYPES_CLIENT, nom, du, au))
 
 
 def h_mouvements_fournisseur(h: dict, nom: str, du=None, au=None):
-    return (["Date", "Type", "Facture", "Pièce", "Montant", "Solde dû"],
+    return (["Date"] + ([] if nom else ["Fournisseur"]) + ["Type", "Facture", "Pièce", "Montant", "Solde dû"],
             _mouvements(h["fournisseurs"], TYPES_FOURNISSEUR, nom, du, au))
 
 
@@ -380,3 +394,171 @@ def h_paiements(h: dict, texte: str = "", du=None, au=None):
     return (["Date", "Fournisseur", "Facture", "Pièce", "Montant"],
             _filtrer([[_jour(l["dtDate"]), l["nom"], l["f"], l["piece"], -_d(l["dAmount"])]
                       for l in reversed(h["fournisseurs"]) if l["nTranType"] in (1, 2) and _dans(l, du, au)], texte))
+
+
+# --------------------------------------------------------------------------------------------- plage d'articles
+LIMITE_LIGNES = 20000  # au-delà, le tableau devient trop lent : réduire la plage ou la période
+
+
+def _plage(colonne: str, de: str, a: str) -> tuple[str, list]:
+    """Condition « du n° `de` au n° `a` » (ordre des n° de Sage, sans tenir compte des majuscules)."""
+    conditions, parametres = [], []
+    if de:
+        conditions.append(f"UPPER(TRIM({colonne})) >= UPPER(%s)")
+        parametres.append(de)
+    if a:
+        conditions.append(f"UPPER(TRIM({colonne})) <= UPPER(%s)")
+        parametres.append(a)
+    return "".join(f" AND {c}" for c in conditions), parametres
+
+
+def _type_piece(type_: str, piece: str) -> str:
+    """« Vente » + « Vente 2026-06-10 » -> « Vente 2026-06-10 » ; « Achat » + « 14402 » -> « Achat 14402 »."""
+    piece = (piece or "").strip()
+    return piece if piece.lower().startswith(type_.lower()) else f"{type_} {piece}".strip()
+
+
+def comptes_de_categorie(base, categorie: str, categories: dict[str, str] | None = None) -> list[int]:
+    """Comptes Sage (actif, produits, CMV…) de la catégorie : table des comptes par catégorie, sinon nom du compte
+    (« Stock - Riz » -> « Riz »)."""
+    voulue = categorie.strip().casefold()
+    categories = categories or {}
+    return [r["lId"] for r in base.requete("SELECT lId, sName FROM taccount")
+            if (categories.get(str(r["lId"])[:4]) or nom_categorie(r["sName"] or "")).casefold() == voulue]
+
+
+def _filtre_categorie(colonne: str, comptes: list[int] | None) -> str:
+    if comptes is None:
+        return ""
+    return f" AND {colonne} IN ({', '.join(str(int(c)) for c in comptes) or '0'})"
+
+
+def mouvements_articles(base, de: str, a: str, du=None, au=None, categorie: str = "",
+                        categories: dict[str, str] | None = None) -> tuple[list[str], list[list]]:
+    """Mouvements de chaque article de la plage (et de la catégorie), un article à la suite de l'autre, puis son
+    total."""
+    filtre, p = _periode("r.dtJournal", du, au)
+    plage, p2 = _plage("i.sPartCode", de, a)
+    plage += _filtre_categorie("i.lAcNAsset", comptes_de_categorie(base, categorie, categories) if categorie else None)
+    lignes = base.requete(
+        "SELECT TRIM(i.sPartCode) n, TRIM(i.sName) nom, r.dtJournal, r.nJournal, TRIM(r.sSource1) s, l.dQty, "
+        "l.dPrice, l.dAmt, c.sName client, v.sName fournisseur FROM titrline l JOIN titrec r ON r.lId = l.lITRecId "
+        "JOIN tinvent i ON i.lId = l.lInventId "
+        "LEFT JOIN tcustomr c ON r.nJournal = 8 AND c.lId = r.lVenCusId "
+        "LEFT JOIN tvendor v ON r.nJournal IN (7, 17) AND v.lId = r.lVenCusId "
+        "WHERE l.bVarLine = 0 AND r.bReversed = 0 AND r.bReversal = 0" + filtre + plage +
+        f" ORDER BY UPPER(TRIM(i.sPartCode)), r.dtJournal, r.lId, l.nLineNum LIMIT {LIMITE_LIGNES + 1}", p + p2)
+    resultat, numero, stock, quantite, montant, nom_article = [], None, Decimal(0), Decimal(0), Decimal(0), ""
+
+    def total():
+        resultat.append([numero, nom_article, "", "Total de l'article", "", quantite, "", montant, stock])
+
+    for l in lignes[:LIMITE_LIGNES]:
+        if l["n"] != numero:
+            if numero is not None:
+                total()
+            numero, stock, quantite, montant = l["n"], Decimal(0), Decimal(0), Decimal(0)
+        q = Decimal(str(l["dQty"] or 0)).quantize(Decimal("0.0001")).normalize()
+        entree = q if l["nJournal"] in (7, 12) else -q
+        stock += entree
+        quantite += entree
+        montant += _d(l["dAmt"])
+        nom_article = reparer_texte(l["nom"] or "")
+        resultat.append([l["n"], nom_article, _jour(l["dtJournal"]),
+                         _type_piece(JOURNAUX_ARTICLES.get(l["nJournal"], f"Journal {l['nJournal']}"), l["s"]),
+                         (l["client"] or l["fournisseur"] or "").strip(), entree, _d(l["dPrice"]), _d(l["dAmt"]),
+                         stock])
+    if numero is not None:
+        total()
+    if len(lignes) > LIMITE_LIGNES:
+        resultat.append(["", "", "", f"… plus de {LIMITE_LIGNES} lignes : réduisez la plage ou la période", "", "",
+                         "", "", ""])
+    return ["N° Sage", "Article", "Date", "Type et pièce", "Client / fournisseur", "Quantité (+ entrée / − sortie)",
+            "Prix", "Montant", "Cumul"], resultat
+
+
+# --------------------------------------------------------------------------------------------- statistiques
+def nom_categorie(compte: str) -> str:
+    """« Produit des Ventes - Fruits & Légumes » -> « Fruits & Légumes »."""
+    return compte.split(" - ", 1)[1].strip() if " - " in compte else compte.strip()
+
+
+def statistiques_tiers(base, tiers: str, nom: str, par: str, du=None, au=None, de: str = "", a: str = "",
+                       categories: dict[str, str] | None = None, categorie: str = "") -> tuple[list[str], list[list]]:
+    """Ventes d'un client (tiers « client ») ou achats moins retours d'un fournisseur (« fournisseur »), par article
+    ou par catégorie (`par`) ; `nom` vide : tous les clients ou tous les fournisseurs. `categories` : compte « 4017 » -> catégorie (table des comptes par catégorie)."""
+    table, journaux = ("tcustomr", {8: 1}) if tiers == "client" else ("tvendor", {7: 1, 17: -1})
+    filtre, p = _periode("r.dtJournal", du, au)
+    plage, p2 = _plage("i.sPartCode", de, a)
+    plage += _filtre_categorie("l.lAcctId", comptes_de_categorie(base, categorie, categories) if categorie else None)
+    lignes = base.requete(
+        "SELECT TRIM(i.sPartCode) n, TRIM(i.sName) nom, l.lAcctId, r.nJournal, r.lId rec, r.dtJournal, l.dQty, l.dAmt "
+        f"FROM titrline l JOIN titrec r ON r.lId = l.lITRecId JOIN tinvent i ON i.lId = l.lInventId "
+        f"JOIN {table} t ON t.lId = r.lVenCusId WHERE " + ("t.sName = %s " if nom else "1 = 1 ") +
+        f"AND r.nJournal IN ({', '.join(str(j) for j in journaux)}) "
+        "AND l.bVarLine = 0 AND r.bReversed = 0 AND r.bReversal = 0" + filtre + plage, ([nom] if nom else []) + p + p2)
+    comptes = {r["lId"]: r["sName"] or "" for r in base.requete("SELECT lId, sName FROM taccount")}
+    categories = categories or {}
+
+    def categorie(compte) -> str:
+        texte = str(compte or "")
+        return categories.get(texte[:4]) or nom_categorie(comptes.get(compte, "")) or "Sans catégorie"
+
+    par_jour = par.endswith("par jour")
+    par = par.replace(" par jour", "")
+    groupes: dict = {}
+    for l in lignes:
+        signe = journaux[l["nJournal"]]
+        cat = categorie(l["lAcctId"])
+        cle = cat if par == "Catégorie" else l["n"]
+        if par_jour:
+            cle = (_jour(l["dtJournal"]), cle)
+        g = groupes.setdefault(cle, {"nom": reparer_texte(l["nom"] or ""), "cat": cat, "articles": set(), "q": Decimal(0),
+                                     "m": Decimal(0), "pieces": set()})
+        g["articles"].add(l["n"])
+        g["q"] += signe * Decimal(str(l["dQty"] or 0))
+        g["m"] += signe * _d(l["dAmt"])
+        g["pieces"].add(l["rec"])
+    total = sum((g["m"] for g in groupes.values()), Decimal(0))
+    ordre = sorted(groupes.items(), key=lambda x: -x[1]["m"])
+    if par_jour:  # jour le plus récent en haut, puis le plus gros montant
+        ordre = sorted(ordre, key=lambda x: x[0][0], reverse=True)
+    piece = "Factures" if tiers == "client" else "Factures d'achat"
+
+    def part(m: Decimal) -> Decimal:
+        return (m / total * 100).quantize(Decimal("0.1")) if total else Decimal(0)
+
+    def qte(q: Decimal) -> Decimal:
+        return q.quantize(Decimal("0.001")).normalize()
+
+    toutes = set().union(*(g["pieces"] for g in groupes.values())) if groupes else set()
+    jour = (lambda cle: [cle[0]]) if par_jour else (lambda cle: [])
+    nom_de = (lambda cle: cle[1]) if par_jour else (lambda cle: cle)
+    avant = ["Date"] if par_jour else []
+    if par == "Catégorie":
+        resultat = [jour(c) + [nom_de(c), len(g["articles"]), qte(g["q"]), g["m"], len(g["pieces"]), part(g["m"])]
+                    for c, g in ordre]
+        resultat.append([""] * len(avant) + ["Total", len(set().union(*(g["articles"] for g in groupes.values()))
+                                                         if groupes else set()),
+                         qte(sum((g["q"] for g in groupes.values()), Decimal(0))), total, len(toutes),
+                         Decimal(100) if total else Decimal(0)])
+        return avant + ["Catégorie", "Articles", "Quantité", "Montant", piece, "Part (%)"], resultat
+    resultat = [jour(n) + [nom_de(n), g["nom"], g["cat"], qte(g["q"]), g["m"],
+                           (g["m"] / g["q"]).quantize(CENT) if g["q"] else Decimal(0), len(g["pieces"]), part(g["m"])]
+                for n, g in ordre]
+    resultat.append([""] * len(avant) + ["", "Total", "", qte(sum((g["q"] for g in groupes.values()), Decimal(0))),
+                                         total, "", len(toutes), Decimal(100) if total else Decimal(0)])
+    return avant + ["N° Sage", "Article", "Catégorie", "Quantité", "Montant", "Prix moyen", piece, "Part (%)"], resultat
+
+
+def categories_par_compte(racine: Path) -> dict[str, str]:
+    """Compte « 4017 » / « 1517 » / « 5017 » -> catégorie, d'après la table des comptes par catégorie."""
+    from .creation_articles import TableCategories
+
+    resultat = {}
+    for c in TableCategories(racine).lignes.values():
+        for compte in (c.actif, c.produits, c.cmv):
+            if compte:
+                resultat.setdefault(compte, c.categorie)
+    return resultat
+

@@ -92,6 +92,9 @@ class BaseSage:
             database=config.base, charset="utf8mb4", connect_timeout=10,
             cursorclass=pymysql.cursors.DictCursor,
         )
+        import threading
+
+        self._verrou = threading.RLock()  # connexion partagée entre les fils : une requête à la fois
 
     def __enter__(self) -> "BaseSage":
         return self
@@ -100,7 +103,7 @@ class BaseSage:
         self.connexion.close()
 
     def requete(self, sql: str, parametres: tuple = ()) -> list[dict]:
-        with self.connexion.cursor() as curseur:
+        with self._verrou, self.connexion.cursor() as curseur:
             curseur.execute(sql, parametres)
             return list(curseur.fetchall())
 
@@ -162,7 +165,7 @@ class BaseSage:
         """Une facture de ce numéro existe-t-elle déjà pour ce client (table des transactions clients) ?"""
         lignes = self.requete(
             "SELECT 1 FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
-            "WHERE TRIM(t.sSource) = %s AND c.sName = %s LIMIT 1", (numero.strip(), client))
+            "WHERE t.sSource = %s AND c.sName = %s LIMIT 1", (numero.strip(), client))
         return bool(lignes)
 
     def table_articles(self) -> tuple[str, dict[str, str]]:

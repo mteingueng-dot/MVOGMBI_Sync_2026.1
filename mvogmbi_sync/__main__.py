@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import tomllib
 from datetime import date, timedelta
 from pathlib import Path
@@ -139,6 +140,28 @@ def commande_payer_bureau(args: argparse.Namespace) -> None:
     bilan["notes"] = notes
     Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
     sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
+
+
+def commande_transfert_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : transfert entre deux dépôts Sage décrit dans `--demande`."""
+    import json
+    from dataclasses import asdict
+    from decimal import Decimal
+
+    from .robot_transferts import transferer
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    d = json.loads(Path(args.demande).read_text(encoding="utf-8"))
+    notes, bilan = [], {"resultats": [], "erreur": ""}
+    try:
+        lots = transferer(config_toml, d["reference"], d["de"], d["vers"],
+                          [(n, Decimal(q)) for n, q in d["lignes"]], d["jour"], d.get("remarque", ""), notes.append)
+        bilan["resultats"] = [asdict(l) | {"lignes": [(n, str(q)) for n, q in l.lignes]} for l in lots]
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or not all(r["fait"] for r in bilan["resultats"]) else 0)
 
 
 def commande_creer_articles_bureau(args: argparse.Namespace) -> None:
@@ -285,6 +308,33 @@ def ouvrir_base_sage(config_toml: dict, fichier_sai: str | Path | None = None):
 COPIE_ARTICLES_SAGE = "articles_sage.csv"
 
 
+_BASES: dict = {}  # (fichier, utilisateur) -> BaseSage ouverte, réutilisée par toutes les lectures
+_VERROU_BASES = threading.RLock()
+
+
+def base_partagee(config_toml: dict, fichier):
+    """Connexion à la base Sage du fichier, ouverte une fois puis réutilisée (1,2 s gagnées par lecture : coffre,
+    recherche du port, connexion). Vérifiée avant chaque usage (Sage fermé ou rouvert : nouvelle connexion) ; en
+    autocommit, chaque requête voit les dernières écritures de Sage."""
+    cle = (str(fichier or ""), config_toml.get("sage_base", {}).get("utilisateur", ""))
+    with _VERROU_BASES:
+        base = _BASES.get(cle)
+        if base is not None:
+            try:
+                base.connexion.ping(reconnect=False)
+                return base
+            except Exception:
+                _BASES.pop(cle, None)
+                try:
+                    base.connexion.close()
+                except Exception:
+                    pass
+        base = ouvrir_base_sage(config_toml, fichier)
+        base.connexion.autocommit(True)
+        _BASES[cle] = base
+        return base
+
+
 def lire_sage(config_toml: dict, fonction, fichier_sai=None):
     """Exécute fonction(base) sur la base Sage du fichier ; si Sage est fermé, la base est ouverte par l'outil
     d'import le temps de la lecture, puis refermée (aucun import)."""
@@ -294,8 +344,7 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None):
         or config_toml.get("sage_import", {}).get("fichier_entreprise")
 
     def lecture():
-        with ouvrir_base_sage(config_toml, fichier) as base:
-            return fonction(base)
+        return fonction(base_partagee(config_toml, fichier))
 
     try:
         return lecture()
@@ -921,6 +970,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--comptes", action="store_true", help="Corriger les comptes d'articles existants")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_creer_articles_bureau)
+
+    p = sous.add_parser("transfert-bureau", help="(interne) Transfert entre deux dépôts Sage sur le bureau caché")
+    p.add_argument("--demande", required=True, help="Fichier JSON du transfert")
+    p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_transfert_bureau)
 
     p = sous.add_parser("journal-bureau", help="(interne) Écritures de journal des mouvements de banque confirmés")
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")

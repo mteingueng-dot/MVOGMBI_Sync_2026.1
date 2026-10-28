@@ -120,7 +120,7 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
         marques = ",".join(["%s"] * len(numeros))
         lu = lire_sage(config_toml, lambda b: b.requete(
             "SELECT TRIM(i.sPartCode) n, COALESCE(SUM(y.dInStock), 0) q, COALESCE(SUM(y.dCostStk), 0) v FROM tinvent i "
-            f"LEFT JOIN tinvbyln y ON y.lInventId = i.lId WHERE TRIM(i.sPartCode) IN ({marques}) "
+            f"LEFT JOIN tinvbyln y ON y.lInventId = i.lId WHERE i.sPartCode IN ({marques}) "
             "GROUP BY i.lId, i.sPartCode", tuple(numeros)), fichier)
         for l in lu:
             valeurs[l["n"]] = Decimal(str(l["v"])).quantize(Decimal("0.01"))

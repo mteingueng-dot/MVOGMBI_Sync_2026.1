@@ -109,6 +109,12 @@ class PageUtilisateurs(ttk.Frame):
             boite = ttk.Checkbutton(droite, text=p.libelle, variable=self.cases_pdv[p.code], style="Carte.TCheckbutton")
             boite.pack(anchor="w", padx=(18, 0), pady=1)
             self.boites_pdv[p.code] = boite
+        tk.Label(droite, text=t("Droits"), font=("Segoe UI Semibold", 10), foreground=TEXTE,
+                 background=CARTE).pack(anchor="w", pady=(10, 2))
+        self.exporter = tk.BooleanVar(value=True)
+        self.boite_exporter = ttk.Checkbutton(droite, text=t("Exporter les données (Excel, CSV, PDF, images)"),
+                                              variable=self.exporter, style="Carte.TCheckbutton")
+        self.boite_exporter.pack(anchor="w", pady=1)
         self.note = tk.Label(droite, text="", font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=CARTE,
                              wraplength=330, justify="left")
         self.note.pack(anchor="w", pady=(8, 4))
@@ -149,6 +155,8 @@ class PageUtilisateurs(ttk.Frame):
         for code, variable in self.cases_pdv.items():
             variable.set(codes is None or code in codes)
         self.boite_pdv_tous.state(["disabled"] if admin else ["!disabled"])
+        self.exporter.set(admin or profil not in self.registre.sans_export)
+        self.boite_exporter.state(["disabled"] if admin else ["!disabled"])
         self._etat_cases_pdv()
         n = sum(1 for u in self.registre.utilisateurs if u.profil == profil)
         self.note.configure(text=(t("L'administrateur voit toutes les pages et gère les utilisateurs.") if admin
@@ -262,6 +270,7 @@ class PageUtilisateurs(ttk.Frame):
         codes = None if self.pdv_tous.get() else [c for c, v in self.cases_pdv.items() if v.get()]
 
         def enregistrer():
+            self.registre.definir_export(profil, self.exporter.get())
             self.registre.definir_points_vente(profil, codes)
             self.registre.definir_profil(profil, pages)
 

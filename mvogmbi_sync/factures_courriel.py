@@ -9,6 +9,9 @@ Courriels retenus ([factures_courriel]) :
 - reçus depuis la date `depuis` ;
 - avec `expediteurs` (adresses ou domaines séparés par des virgules) : toutes leurs pièces jointes ;
 - sans `expediteurs` : seulement si le sujet ou le nom du fichier parle de facture (facture, invoice, fact., inv) ;
+- avec `textes` (séparés par des points-virgules, ex. « 11983938 Canada Inc Brisk ») : toutes les pièces jointes des
+  courriels qui contiennent l'un de ces textes (sujet, nom de l'expéditeur, texte du message ou nom du fichier ; sans
+  tenir compte des majuscules, des accents ni des espaces en trop ; demande du propriétaire du 2026-10-28) ;
 - jamais les avis Interac.
 Chaque pièce jointe n'est prise qu'une fois (donnees/factures_courriel.json : n° de message + nom du fichier, et
 empreinte du contenu).
@@ -60,22 +63,65 @@ def expediteurs_choisis(texte: str) -> list[str]:
     return [e.strip().lower() for e in re.split(r"[,;\s]+", texte or "") if e.strip()]
 
 
-def retenue(expediteur: str, sujet: str, nom: str, expediteurs: list[str]) -> bool:
-    """La pièce jointe est-elle une facture à prendre ?"""
+def textes_choisis(texte: str) -> list[str]:
+    """« 11983938 Canada Inc Brisk; Grossiste ABC » -> textes à chercher (points-virgules ou lignes)."""
+    return [x.strip() for x in re.split(r"[;\n]+", texte or "") if x.strip()]
+
+
+def _normaliser(texte: str) -> str:
+    import unicodedata
+
+    sans_accents = "".join(c for c in unicodedata.normalize("NFD", texte or "") if unicodedata.category(c) != "Mn")
+    return " ".join(sans_accents.casefold().split())
+
+
+def contient_texte(textes: list[str], *contenus: str) -> bool:
+    """L'un des textes choisis se trouve-t-il dans le courriel (majuscules, accents et espaces ignorés) ?"""
+    tout = _normaliser(" ".join(contenus))
+    return any(_normaliser(x) in tout for x in textes if _normaliser(x))
+
+
+def texte_du_message(message: email.message.Message) -> str:
+    """Texte lisible du courriel (parties texte et HTML, balises retirées), sans les pièces jointes."""
+    morceaux = []
+    for partie in message.walk():
+        if partie.get_filename() or partie.get_content_maintype() != "text":
+            continue
+        try:
+            contenu = partie.get_payload(decode=True) or b""
+            texte = contenu.decode(partie.get_content_charset() or "utf-8", "replace")
+        except Exception:
+            continue
+        if partie.get_content_subtype() == "html":
+            import html
+
+            texte = html.unescape(re.sub(r"(?s)<(script|style).*?</\1>|<[^>]+>", " ", texte))
+        morceaux.append(texte)
+    return " ".join(morceaux)
+
+
+def retenue(expediteur: str, sujet: str, nom: str, expediteurs: list[str], texte_trouve: bool = False) -> bool:
+    """La pièce jointe est-elle une facture à prendre ? (`texte_trouve` : le courriel contient un texte choisi)"""
     adresse = expediteur.lower()
     if any(adresse.endswith(d) for d in EXPEDITEURS_INTERAC):
         return False
     if Path(nom).suffix.lower() not in EXTENSIONS:
         return False
+    if texte_trouve:
+        return True
     if expediteurs:
         return any(adresse == e or adresse.endswith("@" + e.lstrip("@")) or adresse.endswith("." + e.lstrip("@"))
                    for e in expediteurs)
     return bool(MOTS_FACTURE.search(sujet) or MOTS_FACTURE.search(nom))
 
 
-def pieces_du_message(message: email.message.Message, cle_message: str, expediteurs: list[str]) -> list[PieceJointe]:
-    expediteur = parseaddr(message.get("From", ""))[1]
+def pieces_du_message(message: email.message.Message, cle_message: str, expediteurs: list[str],
+                      textes: list[str] = ()) -> list[PieceJointe]:
+    nom_expediteur, expediteur = parseaddr(_decoder(message.get("From", "")))
     sujet = _decoder(message.get("Subject"))
+    noms = [Path(_decoder(p.get_filename()).replace("\\", "/")).name for p in message.walk() if p.get_filename()]
+    trouve = bool(textes) and contient_texte(textes, sujet, nom_expediteur, expediteur, texte_du_message(message),
+                                             *noms)
     try:
         recu = parsedate_to_datetime(message.get("Date")).date()
     except (TypeError, ValueError):
@@ -86,7 +132,7 @@ def pieces_du_message(message: email.message.Message, cle_message: str, expedite
         if not nom or partie.get_content_maintype() == "multipart":
             continue
         nom = Path(nom.replace("\\", "/")).name
-        if not retenue(expediteur, sujet, nom, expediteurs):
+        if not retenue(expediteur, sujet, nom, expediteurs, trouve):
             continue
         contenu = partie.get_payload(decode=True) or b""
         if contenu:
@@ -95,7 +141,8 @@ def pieces_du_message(message: email.message.Message, cle_message: str, expedite
 
 
 def lire_boite(serveur: str, utilisateur: str, mot_de_passe: str, depuis: date, expediteurs: list[str],
-               port: int = 993, dossier: str = "INBOX", deja: set[str] = frozenset()) -> list[PieceJointe]:
+               port: int = 993, dossier: str = "INBOX", deja: set[str] = frozenset(),
+               textes: list[str] = ()) -> list[PieceJointe]:
     """Pièces jointes de factures reçues depuis `depuis` (lecture seule)."""
     pieces = []
     with imaplib.IMAP4_SSL(serveur, port, ssl_context=ssl.create_default_context(), timeout=60) as boite:
@@ -108,6 +155,11 @@ def lire_boite(serveur: str, utilisateur: str, mot_de_passe: str, depuis: date, 
                 _, donnees = boite.uid("search", None, "SINCE", depuis_imap, "FROM", e)
                 uids.update((donnees[0] or b"").split())
         else:
+            _, donnees = boite.uid("search", None, "SINCE", depuis_imap)
+            uids.update((donnees[0] or b"").split())
+        if textes and expediteurs:
+            # textes cherchés ici, pas par le serveur (sa recherche TEXT ne trouve rien, constat du 2026-10-28) :
+            # tous les courriels de la période avec pièce jointe sont lus (pieces_du_message)
             _, donnees = boite.uid("search", None, "SINCE", depuis_imap)
             uids.update((donnees[0] or b"").split())
         for uid in sorted(uids, key=int):
@@ -123,7 +175,7 @@ def lire_boite(serveur: str, utilisateur: str, mot_de_passe: str, depuis: date, 
             _, donnees = boite.uid("fetch", uid, "(BODY.PEEK[])")
             brut = next((d[1] for d in donnees if isinstance(d, tuple)), None)
             if brut:
-                pieces += pieces_du_message(email.message_from_bytes(brut), cle_message, expediteurs)
+                pieces += pieces_du_message(email.message_from_bytes(brut), cle_message, expediteurs, textes)
     return pieces
 
 
@@ -168,18 +220,18 @@ def recuperer(racine: Path, config_toml: dict) -> list[Path]:
     from .fournisseurs import Registre
 
     if not configuree(config_toml):
-        raise RuntimeError("Boîte de courriel non configurée (page « 3. Courriel », carte « Avis de paiement »).")
+        raise RuntimeError("Boîte de courriel non configurée (« Administration > Courriel », carte « Avis de paiement »).")
     b, c = config_toml.get("boite_paiements", {}), config_toml.get("factures_courriel", {})
     mot_de_passe = coffre.lire(coffre.BOITE_PAIEMENTS)
     if not mot_de_passe:
-        raise RuntimeError("Mot de passe de la boîte de courriel absent (page « 3. Courriel »).")
+        raise RuntimeError("Mot de passe de la boîte de courriel absent (« Administration > Courriel »).")
     depuis = date.fromisoformat(str(c.get("depuis") or b.get("depuis") or date.today() - timedelta(days=30)))
     registre = Registre(racine)
     memoire = Memoire(racine)
     connues = {f.empreinte for f in registre.factures}
     pieces = lire_boite(b["serveur"], b["utilisateur"], mot_de_passe, depuis,
                         expediteurs_choisis(str(c.get("expediteurs", ""))), int(b.get("port", 993)),
-                        str(c.get("dossier") or "INBOX"), set(memoire.prises))
+                        str(c.get("dossier") or "INBOX"), set(memoire.prises), textes_choisis(str(c.get("textes", ""))))
     registre.dossier.mkdir(parents=True, exist_ok=True)
     crees = []
     for piece in pieces:

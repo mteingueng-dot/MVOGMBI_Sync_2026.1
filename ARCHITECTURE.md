@@ -131,6 +131,8 @@ flowchart TB
 | | `factures_fournisseurs.py`, `fournisseurs.py`, `import_achats.py` | Lecture des factures fournisseurs, registre, import `<PurInvoice>`. |
 | | `creation_articles.py`, `stock_clover.py` | Nouvel article dans Clover et Sage (comptes par catégorie) ; stock et coût Clover après l'import d'une facture fournisseur. |
 | | `inventaire.py` | Inventaire Clover + Sage en un fichier ; saisie de l'inventaire compté dans les deux ; rapport du coût de l'ajustement. |
+| | `fenetre_articles_clover.py` | Liste des articles Clover (date de péremption lue dans l'UGS ; UGS qui ne sont pas des dates effacées dans Clover après confirmation). |
+| | `transferts.py`, `robot_transferts.py`, `fenetre_transferts.py` | Transferts de marchandises entre points de vente : transfert entre les deux dépôts Sage, puis stock Clover des deux marchands. |
 | | `couts_clover.py`, `fenetre_couts.py`, `fenetre_cocher.py` | Coûts Clover remplacés par le coût moyen Sage (lignes cochées, sans valeur aberrante) ; comptes des articles Sage corrigés d'après la table catégorie -> comptes. |
 | | `paiements_fournisseurs.py` | Avis Interac → factures fournisseurs → paiements. |
 | | `rapprochement.py` | Relevé Desjardins ↔ écritures du compte 1055. |
@@ -271,6 +273,8 @@ flowchart TD
     I1["Inventaire exporté<br/>Clover + Sage, un fichier"] --> I2["Quantités comptées<br/>colonne jaune"]
     I2 --> I3["Clover : stock = compté<br/>Sage : ajustement d'inventaire"]
     I3 --> I4["Rapport : coût de l'ajustement<br/>variation de la valeur Sage"]
+    X1["Transfert saisi<br/>départ, arrivée, articles"] --> X2["Sage : transfert<br/>entre les deux dépôts"]
+    X2 --> X3["Clover : stock − au départ<br/>+ à l'arrivée"]
     K1["Coût moyen Sage<br/>et coût Clover"] --> K2["Lignes cochées<br/>sans valeur aberrante"]
     K2 --> K3["Clover : coût = coût moyen Sage"]
     T1["Table catégorie -> comptes<br/>écart = CMV"] --> T2["Articles Sage à corriger<br/>lignes cochées"]

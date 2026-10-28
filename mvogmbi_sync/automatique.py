@@ -584,8 +584,8 @@ def recevoir_factures_fournisseurs(racine: Path, config_toml: dict, cr: CompteRe
         crees = recuperer(racine, config_toml)
         lues = lire_nouvelles(racine) if crees else []
         if lues:
-            cr.note(f"{len(lues)} facture(s) fournisseur(s) reçue(s) par courriel, à vérifier à la page "
-                    "« 8. Factures fournisseurs » : " + ", ".join(f.fichier for f in lues))
+            cr.note(f"{len(lues)} facture(s) fournisseur(s) reçue(s) par courriel, à vérifier dans "
+                    "« Fournisseur > Factures fournisseurs » : " + ", ".join(f.fichier for f in lues))
     except Exception as exc:
         cr.note(f"Factures fournisseurs du courriel non relevées : {exc}")
 
@@ -604,7 +604,7 @@ def archiver_factures_deja_dans_sage(racine: Path, config_toml: dict, cr: Compte
                               config_toml.get("sage_import", {}).get("fichier_entreprise"))
         if archivees:
             cr.note(f"{len(archivees)} facture(s) fournisseur(s) déjà dans Sage, archivée(s) et retirée(s) de la "
-                    "page 8 : " + ", ".join(f"{f.fournisseur_sage} n° {f.numero}" for f in archivees))
+                    "liste « Factures fournisseurs » : " + ", ".join(f"{f.fournisseur_sage} n° {f.numero}" for f in archivees))
     except Exception as exc:
         cr.note(f"Factures fournisseurs déjà dans Sage non vérifiées : {exc}")
 

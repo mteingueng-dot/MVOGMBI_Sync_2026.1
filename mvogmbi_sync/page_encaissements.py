@@ -12,7 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .design import CARTE, TEXTE_DOUX, Bouton, ChampDate, cadre_tableau, entete_page
 from .encaissements import A_SAISIR, A_VENIR, A_VERIFIER, APPLIQUE, ECART, SANS_FACTURE
-from .export_tableau import bouton_exporter
+from .export_tableau import bouton_exporter, export_permis
 from .langues import courante, jours_semaine, t
 
 COULEURS = {APPLIQUE: "#e6f4ea", A_SAISIR: "#fff4d6", ECART: "#fde2e4", A_VERIFIER: "#fde2e4",
@@ -51,7 +51,8 @@ class PageEncaissements(ttk.Frame):
         self.fin = tk.StringVar(value=hier.isoformat())
         ChampDate(barre, self.fin).pack(side="left", padx=4)
         Bouton(barre, "⟳  " + t("Calculer les dépôts"), self.calculer).pack(side="left", padx=8)
-        Bouton(barre, "📗  Excel", self.exporter, "secondaire").pack(side="right")
+        if export_permis():
+            Bouton(barre, "📗  Excel", self.exporter, "secondaire").pack(side="right")
         Bouton(barre, "🏦  " + t("Encaisser dans Sage"), self.encaisser, "accent").pack(side="right", padx=8)
         self.resume = ttk.Label(self, text=t("Cliquez sur « Calculer les dépôts » : lots de cartes Clover et état dans Sage."),
                                 foreground=TEXTE_DOUX, padding=(0, 8))
