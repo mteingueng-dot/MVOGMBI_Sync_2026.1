@@ -11,7 +11,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from . import comptabilite as cp
-from .design import CARTE, ROUGE, TEXTE_DOUX, Bouton, ChampDate, Rangee
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, Bouton, ChampDate, Rangee
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -32,7 +32,7 @@ def _config(racine: Path) -> dict:
     return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
 
 
-class FenetreComptabilite(tk.Toplevel):
+class FenetreComptabilite(FenetreOutil):
     def __init__(self, parent, racine: Path, onglet: str = ONGLETS[0]):
         super().__init__(parent)
         self.racine = Path(racine)

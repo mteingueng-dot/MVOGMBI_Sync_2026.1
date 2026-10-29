@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from .cache_lectures import vide_apres
 
 ENTETE = ["Date", "Fournisseur", "Facture", "N° Sage", "ID Clover", "Stock avant", "Quantité ajoutée", "Stock après",
           "Coût"]
@@ -115,6 +116,7 @@ def mettre_a_jour(client, facture, correspondances, journal: Journal) -> list[st
     return messages
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def mettre_a_jour_factures(racine: Path, config_toml_chemin: Path, factures) -> dict[str, list[str]]:
     """Après l'import : met Clover à jour pour chaque facture importée ; {fichier : messages}."""
     from .__main__ import charger_config

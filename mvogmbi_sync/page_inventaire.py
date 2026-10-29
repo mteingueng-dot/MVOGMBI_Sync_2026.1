@@ -9,11 +9,11 @@ import tomllib
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton
 from .langues import t
 
 
-class FenetreInventaire(tk.Toplevel):
+class FenetreInventaire(FenetreOutil):
     def __init__(self, parent, racine: Path):
         super().__init__(parent)
         self.racine = Path(racine)

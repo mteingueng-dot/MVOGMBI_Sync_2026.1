@@ -11,7 +11,7 @@ from tkinter import messagebox, ttk
 
 from . import paie_temps as pt
 from . import planning as pl
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -23,7 +23,7 @@ def _mois_suivant(mois: str, sens: int) -> str:
     return f"{annee}-{m:02d}"
 
 
-class FenetrePlanning(tk.Toplevel):
+class FenetrePlanning(FenetreOutil):
     def __init__(self, parent, racine: Path):
         from .page_rapports import tableau_simple
 
@@ -108,6 +108,8 @@ class FenetrePlanning(tk.Toplevel):
 
 
 class DialogueHoraire(tk.Toplevel):
+    CREATION = True  # fenêtre de création : reste une fenêtre à part (avec « Fermer »)
+
     def __init__(self, parent, planning: pl.Planning, employes: list[pt.Employe], mois: str, apres):
         super().__init__(parent)
         self.planning, self.employes, self.apres = planning, employes, apres
@@ -141,6 +143,7 @@ class DialogueHoraire(tk.Toplevel):
         self.erreur.pack(anchor="w")
         bas = tk.Frame(self, background=CARTE)
         bas.pack(anchor="e", pady=(8, 0))
+        Bouton(bas, "✖  " + t("Fermer"), self.destroy, "secondaire", fond=CARTE, petit=True).pack(side="left")
         Bouton(bas, t("Repos ces jours-là"), lambda: self.appliquer(repos=True), "secondaire", fond=CARTE,
                petit=True).pack(side="left", padx=6)
         Bouton(bas, t("Appliquer l'horaire"), self.appliquer, fond=CARTE, petit=True).pack(side="left")
@@ -175,7 +178,7 @@ def lignes_horaire(planning: pl.Planning, employe: str, depuis: date, jours: int
     return lignes
 
 
-class FenetreMonHoraire(tk.Toplevel):
+class FenetreMonHoraire(FenetreOutil):
     """Horaire publié de l'employé relié au compte connecté (5 semaines à partir d'aujourd'hui)."""
 
     def __init__(self, parent, racine: Path, compte: str):

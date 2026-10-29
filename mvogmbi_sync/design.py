@@ -487,3 +487,70 @@ def entete_page(parent, icone: str, titre: str, sous_titre: str = "") -> tk.Fram
     for couleur, largeur in ((JAUNE, 46), (ROUGE, 14)):
         tk.Frame(filet, width=largeur, height=3, background=couleur).pack(side="left", padx=(0, 4))
     return bloc
+
+
+
+class FenetreOutil(tk.Frame):
+    """Fenêtre de travail (liste, fiche, outil) affichée DANS la fenêtre principale de l'application, sous un
+    bandeau avec son titre et « ✖ Fermer » / « ◀ Retour » (demande du propriétaire du 2026-10-29). Hors de
+    l'application (outils, essais), elle s'ouvre dans une fenêtre à part. Les appels propres aux fenêtres de Windows
+    (title, geometry, transient…) restent possibles : ils sont transmis à la fenêtre à part, ou ignorés."""
+
+    def __init__(self, parent, **options):
+        self._racine = parent.nametowidget(".")
+        self._seule = None
+        self._titre = ""
+        if hasattr(self._racine, "nouvel_outil"):
+            conteneur = self._racine.nouvel_outil(self)
+        else:
+            self._seule = conteneur = tk.Toplevel(parent)
+        super().__init__(conteneur, **options)
+        tk.Frame.pack(self, fill="both", expand=True)
+
+    def title(self, texte=None):
+        if texte is None:
+            return self._titre
+        self._titre = texte
+        if self._seule is not None:
+            self._seule.title(texte)
+        elif hasattr(self._racine, "titre_outil"):
+            self._racine.titre_outil(self, texte)
+        return ""
+
+    def _fenetre(self, nom, *arguments, **options):
+        return getattr(self._seule, nom)(*arguments, **options) if self._seule is not None else ""
+
+    def geometry(self, *a, **k):
+        return self._fenetre("geometry", *a, **k)
+
+    def minsize(self, *a, **k):
+        return self._fenetre("minsize", *a, **k)
+
+    def transient(self, *a, **k):
+        return self._fenetre("transient", *a, **k)
+
+    def resizable(self, *a, **k):
+        return self._fenetre("resizable", *a, **k)
+
+    def protocol(self, *a, **k):
+        return self._fenetre("protocol", *a, **k)
+
+    def attributes(self, *a, **k):
+        return self._fenetre("attributes", *a, **k)
+
+    def grab_set(self):
+        return self._fenetre("grab_set")
+
+    def destroy(self):
+        seule, racine = self._seule, self._racine
+        super().destroy()
+        if seule is not None:
+            if seule.winfo_exists():
+                seule.destroy()
+        elif hasattr(racine, "_outil_detruit"):
+            racine._outil_detruit(self)
+
+
+def dans_application(parent, fenetre, empiler: bool = True):
+    """Compatibilité : une FenetreOutil s'affiche déjà d'elle-même dans la fenêtre principale."""
+    return fenetre

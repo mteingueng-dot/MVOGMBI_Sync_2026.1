@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
 from . import paie_temps as pt
-from .design import CARTE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee
+from .design import FenetreOutil, CARTE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, dans_application
 from .export_tableau import bouton_exporter
 from .fenetre_pointage import reference
 from .langues import t
@@ -23,7 +23,7 @@ def _h(v) -> str:
     return "" if not v else f"{v:.2f}".replace(".", ",")
 
 
-class FenetreFeuilles(tk.Toplevel):
+class FenetreFeuilles(FenetreOutil):
     def __init__(self, parent, racine: Path, auteur: str):
         from .page_rapports import tableau_simple
 
@@ -44,8 +44,8 @@ class FenetreFeuilles(tk.Toplevel):
                              petit=True))
         barre.ajouter(Bouton(barre, "✎  " + t("Pointages de l'employé…"), self.detail, "secondaire", fond=CARTE,
                              petit=True))
-        barre.ajouter(Bouton(barre, "👥  " + t("Employés et NIP…"), lambda: FenetreEmployes(self, self.racine,
-                                                                                         self.afficher),
+        barre.ajouter(Bouton(barre, "👥  " + t("Employés et NIP…"), lambda: dans_application(
+            self, FenetreEmployes(self.nametowidget("."), self.racine, self.afficher)),
                              "secondaire", fond=CARTE, petit=True))
         self.etat = tk.Label(self, text="", background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left",
                              wraplength=1200)
@@ -116,10 +116,11 @@ class FenetreFeuilles(tk.Toplevel):
     def detail(self) -> None:
         f = self._feuille()
         if f:
-            FenetreDetail(self, self.registre, f.employe, self.debut, self.auteur, self.afficher)
+            dans_application(self, FenetreDetail(self.nametowidget("."), self.registre, f.employe, self.debut,
+                                                 self.auteur, self.afficher))
 
 
-class FenetreDetail(tk.Toplevel):
+class FenetreDetail(FenetreOutil):
     """Pointages d'un employé pendant la période ; corrections avec motif."""
 
     def __init__(self, parent, registre: pt.Registre, employe: pt.Employe, debut: date, auteur: str, apres):
@@ -222,6 +223,8 @@ class FenetreDetail(tk.Toplevel):
 
 class TypeChoisi(tk.Toplevel):
     """Petite boîte : type du pointage à ajouter."""
+    CREATION = True  # fenêtre de création : reste une fenêtre à part (avec « Fermer »)
+
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -242,7 +245,7 @@ class TypeChoisi(tk.Toplevel):
         self.wait_window()
 
 
-class FenetreEmployes(tk.Toplevel):
+class FenetreEmployes(FenetreOutil):
     """Employés du pointage : importés de Clover ou ajoutés, NIP (empreinte seulement), actif."""
 
     def __init__(self, parent, racine: Path, apres):
@@ -257,7 +260,8 @@ class FenetreEmployes(tk.Toplevel):
         barre = Rangee(self)
         barre.pack(fill="x")
         for texte, commande in (("⬇  " + t("Importer les employés de Clover"), self.importer),
-                                ("➕  " + t("Ajouter un employé"), self.ajouter),
+                                ("➕  " + t("Ajouter"), self.ajouter), ("✎  " + t("Modifier"), self.renommer),
+                                ("🗑  " + t("Supprimer"), self.supprimer),
                                 ("🔑  " + t("Définir le NIP"), self.nip),
                                 ("🔗  " + t("Relier à un compte…"), self.relier),
                                 ("⏻  " + t("Activer / désactiver"), self.basculer)):
@@ -311,6 +315,31 @@ class FenetreEmployes(tk.Toplevel):
             return
         try:
             self.registre.ajouter(nom)
+        except pt.ErreurPointage as exc:
+            messagebox.showerror(self.title(), t(str(exc)), parent=self)
+            return
+        self._fin()
+
+    def renommer(self) -> None:
+        e = self._choisi()
+        if not e:
+            return
+        nom = simpledialog.askstring(self.title(), t("Nom de l'employé :"), initialvalue=e.nom, parent=self)
+        if not nom:
+            return
+        try:
+            self.registre.renommer(e.id, nom)
+        except pt.ErreurPointage as exc:
+            messagebox.showerror(self.title(), t(str(exc)), parent=self)
+            return
+        self._fin()
+
+    def supprimer(self) -> None:
+        e = self._choisi()
+        if not e or not messagebox.askyesno(self.title(), t("Supprimer {n} ?", n=e.nom), parent=self):
+            return
+        try:
+            self.registre.supprimer(e.id)
         except pt.ErreurPointage as exc:
             messagebox.showerror(self.title(), t(str(exc)), parent=self)
             return

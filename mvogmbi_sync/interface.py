@@ -55,16 +55,15 @@ MENU_GROUPES = [
     ("Vente", "🛒", [("👥", "Liste des clients", ENCAISSEMENTS, "ouvrir_liste", "clients"),
                     ("🗂", "Liste des documents de vente", ENCAISSEMENTS, "ouvrir_liste", "documents_vente"),
                     ("✏", "Saisir une facture de vente", ENCAISSEMENTS, "ouvrir_documents", "facture"),
-                    ("📝", "Saisir une commande client", ENCAISSEMENTS, "ouvrir_documents", "commande"),
+                    ("📝", "Commandes clients", ENCAISSEMENTS, "ouvrir_documents", "commande"),
                     ("🔎", "Interrogation de compte client", RAPPORTS, "ouvrir_interrogation", "Client"),
                     TABLEAU]),
     ("Fournisseur", "🚚", [("🏭", "Liste des fournisseurs", FOURNISSEURS, "ouvrir_liste", "fournisseurs"),
                           ("🗂", "Liste des documents d'achat", FOURNISSEURS, "ouvrir_liste", "documents_achat"),
                           FOURNISSEURS,
                           ("✏", "Saisir une facture d'achat", FOURNISSEURS, "ouvrir_saisie_achat"),
-                          ("🛍", "Bons de commande", FOURNISSEURS, "ouvrir_bons_commande"),
-                          ("📝", "Saisir une commande fournisseur", FOURNISSEURS, "ouvrir_saisie_bon"),
-                          ("📦", "Réceptions fournisseurs", FOURNISSEURS, "ouvrir_receptions"),
+                          # bons de commande : liste, saisie, proposition et réception réunies (2026-10-29)
+                          ("🛍", "Bons de commande", FOURNISSEURS, "ouvrir_receptions"),
                           ("🔎", "Interrogation de compte fournisseur", RAPPORTS, "ouvrir_interrogation",
                            "Fournisseur"),
                           ("🗄", "Factures fournisseurs archivées", RAPPORTS, "ouvrir_rapports",
@@ -88,7 +87,7 @@ MENU_GROUPES = [
                     ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
                     ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover"),
                     ("💤", "Produits inactifs", RAPPORTS, "ouvrir_rapports", "Produits inactifs"),
-                    ("🥇", "Articles 80/20", RAPPORTS, "ouvrir_rapports", "Articles 80/20")]),
+                    ("🥇", "Articles 20/80", RAPPORTS, "ouvrir_rapports", "Articles 20/80")]),
     (None, "", [GUIDE, FAQ]),  # aide : hors des rubriques, en bas du menu (demande du propriétaire)
 ]
 # libellés du menu (sans n° de page) ; la page « Tableau de bord » est la facturation des ventes Clover
@@ -148,11 +147,16 @@ class Application(tk.Tk):
             self._permises = Registre(racine).pages(session)
             self.points_permis = Registre(racine).points_vente_permis(session)
             export_tableau.EXPORT_PERMIS = Registre(racine).peut_exporter(session)
+            self._refusees = Registre(racine).refusees(session)
         else:
+            self._refusees = set()
             self._permises = None
             self.points_permis = None  # None = tous les points de vente
         export_tableau.RACINE_ENTETE = Path(racine)  # en-tête des impressions : informations Clover de l'entreprise
         threading.Thread(target=lambda: entreprise.actualiser(Path(racine)), daemon=True).start()  # 1 fois/jour
+        # listes principales lues d'avance si Sage répond déjà (jamais d'ouverture de Sage pour cela)
+        threading.Thread(target=lambda: __import__("mvogmbi_sync.cache_lectures", fromlist=["x"]).precharger(
+            Path(racine)), daemon=True).start()
         self.chemin_config = racine / "config.toml"
         self.config_toml = lire_config(self.chemin_config)
         langues.depuis_config(self.config_toml)
@@ -193,6 +197,10 @@ class Application(tk.Tk):
         self.etat.pack(side="left")
         self.onglets = ttk.Notebook(contenu, style="Pages.TNotebook")
         self.onglets.pack(fill="both", expand=True)
+        # outils (listes, fenêtres de travail) affichés dans la fenêtre principale, pas dans une fenêtre à part
+        # (demande du propriétaire du 2026-10-29) ; seules les créations ouvrent une nouvelle fenêtre
+        self.zone_outil = ttk.Frame(contenu)
+        self._pile_outils: list = []
         self.vars: dict[str, tk.Variable] = {}
         self._pages: list[tuple[str, str]] = []
         self._onglet_accueil()
@@ -289,7 +297,7 @@ class Application(tk.Tk):
         self.groupe_ouvert = None
         for nom, icone_groupe, elements in MENU_GROUPES:
             visibles = [e for e in elements if isinstance(e, int) and e < n and self.permis(e)] + [
-                e for e in elements if not isinstance(e, int) and self.permis(e[2])]
+                e for e in elements if not isinstance(e, int) and self.permis_action(e)]
             if not visibles:
                 continue
             parent = self.menu
@@ -310,7 +318,7 @@ class Application(tk.Tk):
                     self._ligne_menu(parent, element, decale=bool(nom))
                     if nom:
                         self.groupe_de_page[element] = nom
-                elif self.permis(element[2]):
+                elif self.permis_action(element):
                     self._action_menu(parent, nom, *element)
         cachees = tk.Frame(self.menu)  # pages sans ligne de menu (Rapports : par ses onglets) : jamais affiché
         for index in range(n):
@@ -374,9 +382,82 @@ class Application(tk.Tk):
         bouton = tk.Label(parent, text=f"{icone}   {t(titre)}", anchor="w", font=("Segoe UI", 10),
                           background=MENU_FOND, foreground=TEXTE, padx=12, pady=4, cursor="hand2")
         bouton.pack(fill="x", padx=(24, 10), pady=1)
-        bouton.bind("<Button-1>", lambda _e: (getattr(self, methode)(*arguments), self.ouvrir_groupe(groupe)))
+        bouton.bind("<Button-1>", lambda _e: (self._lancer_action(methode, *arguments), self.ouvrir_groupe(groupe)))
         bouton.bind("<Enter>", lambda _e: bouton.configure(background=MENU_SURVOL))
         bouton.bind("<Leave>", lambda _e: bouton.configure(background=MENU_FOND))
+
+    def permis_action(self, element: tuple) -> bool:
+        """Entrée du menu permise : sa page l'est, et le profil n'a pas retiré cette fonction."""
+        return self.permis(element[2]) and element[1] not in getattr(self, "_refusees", set())
+
+    def _lancer_action(self, methode: str, *arguments) -> None:
+        """Entrée du menu : la fenêtre de travail qu'elle ouvre (FenetreOutil) remplace l'outil affiché dans la
+        fenêtre principale ; une fenêtre de création (tk.Toplevel) reste à part."""
+        self._mode_outil = "remplacer"
+        try:
+            getattr(self, methode)(*arguments)
+        finally:
+            self._mode_outil = "empiler"
+
+    # ------------------------------------------------------------ outils dans la fenêtre principale
+    def nouvel_outil(self, fenetre) -> ttk.Frame:
+        """Panneau d'une FenetreOutil : bandeau (titre, « ✖ Fermer » ou « ◀ Retour ») puis le corps où elle se
+        place. Ouvert depuis le menu : remplace l'outil affiché ; depuis un outil (fiche, sous-liste) : par-dessus."""
+        if getattr(self, "_mode_outil", "empiler") == "remplacer":
+            self._vider_pile()
+            self._mode_outil = "empiler"  # les fenêtres ouvertes ensuite par le même clic s'empilent
+        if self._pile_outils:
+            self._pile_outils[-1]["cadre"].pack_forget()
+        cadre = ttk.Frame(self.zone_outil)
+        bandeau = ttk.Frame(cadre)
+        bandeau.pack(fill="x", pady=(0, 6))
+        titre = tk.Label(bandeau, text="", font=("Segoe UI Semibold", 15), foreground=VERT_FONCE,
+                         background=fond_de(bandeau))
+        titre.pack(side="left")
+        Bouton(bandeau, ("◀  " + t("Retour")) if self._pile_outils else ("✖  " + t("Fermer")), fenetre.destroy,
+               "secondaire", petit=True).pack(side="right")
+        corps = ttk.Frame(cadre)
+        corps.pack(fill="both", expand=True)
+        self._pile_outils.append({"cadre": cadre, "fenetre": fenetre, "titre": titre})
+        cadre.pack(fill="both", expand=True)
+        self.onglets.pack_forget()
+        self.zone_outil.pack(fill="both", expand=True)
+        return corps
+
+    def titre_outil(self, fenetre, texte: str) -> None:
+        for entree in self._pile_outils:
+            if entree["fenetre"] is fenetre:
+                entree["titre"].configure(text=texte)
+
+    def fermer_outil(self, fenetre=None) -> None:
+        if self._pile_outils:
+            (fenetre or self._pile_outils[-1]["fenetre"]).destroy()
+
+    def _outil_detruit(self, fenetre) -> None:
+        entree = next((e for e in self._pile_outils if e["fenetre"] is fenetre), None)
+        if entree is None or not self.onglets.winfo_exists():  # application en train de se fermer
+            return
+        self._pile_outils.remove(entree)
+        if entree["cadre"].winfo_exists():
+            entree["cadre"].destroy()
+        if self._pile_outils:
+            self._pile_outils[-1]["cadre"].pack(fill="both", expand=True)
+        else:
+            self.zone_outil.pack_forget()
+            self.onglets.pack(fill="both", expand=True)
+
+    def _vider_pile(self) -> None:
+        pile, self._pile_outils = list(self._pile_outils), []
+        for entree in pile:
+            if entree["cadre"].winfo_exists():
+                entree["cadre"].destroy()
+
+    def _cacher_outils(self) -> None:
+        """Retour à une page : l'outil affiché est fermé."""
+        self._vider_pile()
+        self.zone_outil.pack_forget()
+        if not self.onglets.winfo_ismapped():
+            self.onglets.pack(fill="both", expand=True)
 
     def ouvrir_groupe(self, nom: str | None, basculer: bool = False) -> None:
         """Ouvre le groupe `nom` et referme les autres (un clic sur le groupe ouvert le referme)."""
@@ -457,12 +538,7 @@ class Application(tk.Tk):
 
     def ouvrir_comptabilite(self, onglet: str) -> None:
         from .fenetre_comptabilite import FenetreComptabilite
-        fenetre = getattr(self, "_fenetre_comptabilite", None)
-        if fenetre is not None and fenetre.winfo_exists():
-            fenetre.choisir(onglet)
-            fenetre.lift()
-            return
-        self._fenetre_comptabilite = FenetreComptabilite(self, self.racine, onglet)
+        FenetreComptabilite(self, self.racine, onglet)
 
     def ouvrir_pointage(self) -> None:
         from .fenetre_pointage import ouvrir
@@ -578,6 +654,8 @@ class Application(tk.Tk):
     def aller(self, index: int) -> None:
         if not self.permis(index):
             return
+        if getattr(self, "_pile_outils", None) is not None:
+            self._cacher_outils()
         self.onglets.select(index)
         if hasattr(self, "groupes_menu") and self.groupe_de_page.get(index, self.groupe_ouvert) != self.groupe_ouvert:
             self.ouvrir_groupe(self.groupe_de_page.get(index))

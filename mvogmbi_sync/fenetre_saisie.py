@@ -27,13 +27,20 @@ def _argent(v: Decimal) -> str:
 class SaisieDocument(tk.Toplevel):
     """`articles` : {n° Sage : (description, prix proposé)} ; `tiers` : liste des clients ou fournisseurs (None :
     pas de tiers) ; `sens` : choix Entrée / Sortie (documents de stock) ; `taxable` : colonne des taxes."""
+    CREATION = True  # fenêtre de création : reste une fenêtre à part (avec « Fermer »)
+
 
     def __init__(self, parent, titre: str, articles: dict[str, tuple[str, Decimal | None]], valider,
                  tiers: list[str] | None = None, libelle_tiers: str = "Client", libelle_prix: str = "Prix (HT)",
                  taxable: bool = False, sens: list[str] | None = None, action: str = "Enregistrer",
-                 libelle_remarque: str = "Remarque"):
+                 libelle_remarque: str = "Remarque", initial: dict | None = None, remarque_obligatoire: bool = False,
+                 facteurs: dict | None = None):
+        """`initial` (« Modifier ») : {"tiers", "date", "remarque", "sens", "lignes": [dict comme self.lignes]}."""
         super().__init__(parent)
         self.articles, self.valider_document, self.avec_taxes = articles, valider, taxable
+        # bons de commande : facteur du dernier achat (Qté Sage = Qté × Facteur), affiché en gris, non modifiable
+        self.facteurs = facteurs
+        self.remarque_obligatoire, self.libelle_remarque = remarque_obligatoire, libelle_remarque
         self.lignes: list[dict] = []
         self.title(t(titre))
         self.configure(background=CARTE, padx=14, pady=10)
@@ -58,7 +65,8 @@ class SaisieDocument(tk.Toplevel):
         self.date = tk.StringVar(value=date.today().isoformat())
         ChampDate(g, self.date, fond=CARTE).pack(side="left")
         g = entete.ajouter(entete.groupe(), 12)
-        tk.Label(g, text=t(libelle_remarque), background=CARTE).pack(side="left", padx=(0, 4))
+        tk.Label(g, text=t(libelle_remarque) + (" *" if remarque_obligatoire else ""), background=CARTE).pack(
+            side="left", padx=(0, 4))
         self.remarque = tk.StringVar()
         ttk.Entry(g, textvariable=self.remarque, width=36).pack(side="left")
         # ligne à ajouter
@@ -79,32 +87,67 @@ class SaisieDocument(tk.Toplevel):
         tk.Label(g, text=t(libelle_prix), background=CARTE).pack(side="left", padx=(0, 4))
         self.prix = tk.StringVar()
         ttk.Entry(g, textvariable=self.prix, width=10).pack(side="left")
-        self.taxe = tk.BooleanVar(value=False)
+        if facteurs is not None:
+            self.facteur, self.qte_sage = tk.StringVar(value="1"), tk.StringVar(value="")
+            for libelle, variable in (("Facteur", self.facteur), ("Qté Sage", self.qte_sage)):
+                g = ajout.ajouter(ajout.groupe(), 10)
+                tk.Label(g, text=t(libelle), background=CARTE).pack(side="left", padx=(0, 4))
+                tk.Label(g, textvariable=variable, width=7, anchor="e", background="#e9eeea", foreground="#24332a",
+                         font=("Segoe UI Semibold", 10), padx=6, pady=3).pack(side="left")
+            self.quantite.trace_add("write", lambda *_: self._qte_sage())
+        from . import taxes as tx
+
+        self.taxe = tk.StringVar(value=t(tx.CHOIX[""]))
         if taxable:
-            ajout.ajouter(ttk.Checkbutton(ajout, text=t("TPS + TVQ"), variable=self.taxe), 10)
+            g = ajout.ajouter(ajout.groupe(), 10)
+            tk.Label(g, text=t("Taxes"), background=CARTE).pack(side="left", padx=(0, 4))
+            ttk.Combobox(g, textvariable=self.taxe, values=[t(v) for v in tx.CHOIX.values()], state="readonly",
+                         width=14).pack(side="left")
         ajout.ajouter(Bouton(ajout, "➕  " + t("Ajouter la ligne"), self.ajouter, fond=CARTE, petit=True), 6)
         ajout.ajouter(Bouton(ajout, "✖  " + t("Retirer la ligne"), self.retirer, "secondaire", fond=CARTE,
                              petit=True))
         cadre = cadre_tableau(self)
         cadre.pack(fill="both", expand=True)
-        colonnes = ["N° Sage", "Description", "Quantité", libelle_prix, "Montant"] + (["Taxes"] if taxable else [])
+        colonnes = (["N° Sage", "Description", "Quantité"] + (["Facteur", "Qté Sage"] if facteurs is not None else [])
+                    + [libelle_prix, "Montant"] + (["Taxes"] if taxable else []))
         self.arbre = ttk.Treeview(cadre, columns=[f"c{i}" for i in range(len(colonnes))], show="headings",
                                   selectmode="browse", height=10)
-        for i, (c, l) in enumerate(zip(colonnes, (110, 330, 80, 100, 100, 80))):
+        largeurs = {"N° Sage": 110, "Description": 300, "Taxes": 110}
+        for i, c in enumerate(colonnes):
             self.arbre.heading(f"c{i}", text=t(c))
-            self.arbre.column(f"c{i}", width=l, anchor="e" if i in (2, 3, 4) else "w", stretch=i == 1)
+            self.arbre.column(f"c{i}", width=largeurs.get(c, 85), anchor="w" if c in largeurs else "e",
+                              stretch=c == "Description")
         self.arbre.pack(fill="both", expand=True)
         bas = Rangee(self)
         bas.pack(fill="x", pady=(8, 0))
         self.total = bas.ajouter(tk.Label(bas, text="", background=CARTE, font=("Segoe UI Semibold", 10)), 16)
-        bas.ajouter(Bouton(bas, "✔  " + t(action), self.valider, fond=CARTE))
+        bas.ajouter(Bouton(bas, "✔  " + t(action), self.valider, fond=CARTE), 8)
+        bas.ajouter(Bouton(bas, "✖  " + t("Fermer"), self.destroy, "secondaire", fond=CARTE))
         self.etat = tk.Label(self, text="", background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left",
                              wraplength=940)
         self.etat.pack(fill="x", pady=(6, 0))
+        if initial:
+            self.tiers.set(initial.get("tiers", ""))
+            self.date.set(initial.get("date") or self.date.get())
+            self.remarque.set(initial.get("remarque", ""))
+            if initial.get("sens"):
+                self.sens.set(t(initial["sens"]))
+            self.lignes = [dict(l) for l in initial.get("lignes", [])]
         self._afficher()
+
+    def _qte_sage(self) -> None:
+        quantite, facteur = _decimal(self.quantite.get()), _decimal(self.facteur.get()) or Decimal(1)
+        self.qte_sage.set(f"{(quantite * facteur).normalize():f}".replace(".", ",") if quantite else "")
 
     def _prix_propose(self) -> None:
         numero = self.choix.get(self.article.get())
+        if numero and self.facteurs is not None:
+            facteur = self.facteurs(self.tiers.get().strip(), numero) or Decimal(1)
+            self.facteur.set(f"{facteur.normalize():f}".replace(".", ","))
+            self._qte_sage()
+            if self.articles[numero][1] is not None and not self.prix.get().strip():  # prix Sage × facteur
+                self.prix.set(f"{self.articles[numero][1] * facteur:.2f}".replace(".", ","))
+            return
         if numero and self.articles[numero][1] is not None and not self.prix.get().strip():
             self.prix.set(f"{self.articles[numero][1]:.2f}".replace(".", ","))
 
@@ -117,8 +160,14 @@ class SaisieDocument(tk.Toplevel):
         if not quantite or quantite <= 0:
             self.etat.configure(text="✘ " + t("La quantité doit être un nombre positif."), foreground=ROUGE)
             return
-        self.lignes.append({"numero_sage": numero, "description": self.articles[numero][0], "quantite": quantite,
-                            "prix": prix, "taxable": self.taxe.get()})
+        from . import taxes as tx
+
+        code = tx.code_du_libelle(self.taxe.get(), t)
+        ligne = {"numero_sage": numero, "description": self.articles[numero][0], "quantite": quantite, "prix": prix,
+                 "taxable": bool(code), "taxe": code}
+        if self.facteurs is not None:
+            ligne["facteur"] = _decimal(self.facteur.get()) or Decimal(1)
+        self.lignes.append(ligne)
         self.article.set("")
         self.quantite.set("1")
         self.prix.set("")
@@ -135,8 +184,15 @@ class SaisieDocument(tk.Toplevel):
         self.arbre.delete(*self.arbre.get_children())
         for i, l in enumerate(self.lignes):
             montant = (l["quantite"] * l["prix"]).quantize(Decimal("0.01"))
-            valeurs = [l["numero_sage"], l["description"], f"{l['quantite'].normalize():f}".replace(".", ","),
-                       _argent(l["prix"]), _argent(montant)] + (["✔" if l["taxable"] else ""] if self.avec_taxes else [])
+            from . import taxes as tx
+
+            facteur = l.get("facteur", Decimal(1))
+            valeurs = ([l["numero_sage"], l["description"], f"{l['quantite'].normalize():f}".replace(".", ",")]
+                       + ([f"{facteur.normalize():f}".replace(".", ","),
+                           f"{(l['quantite'] * facteur).normalize():f}".replace(".", ",")]
+                          if self.facteurs is not None else [])
+                       + [_argent(l["prix"]), _argent(montant)]
+                       + ([t(tx.libelle(tx.code(l)))] if self.avec_taxes else []))
             self.arbre.insert("", "end", iid=str(i), values=valeurs)
         rayer(self.arbre)
         total = sum(((l["quantite"] * l["prix"]).quantize(Decimal("0.01")) for l in self.lignes), Decimal(0))
@@ -145,6 +201,9 @@ class SaisieDocument(tk.Toplevel):
     def valider(self) -> None:
         if not self.lignes:
             self.etat.configure(text="✘ " + t("Ajoutez au moins une ligne."), foreground=ROUGE)
+            return
+        if self.remarque_obligatoire and not self.remarque.get().strip():
+            self.etat.configure(text="✘ " + t("{c} est obligatoire.", c=t(self.libelle_remarque)), foreground=ROUGE)
             return
         try:
             date.fromisoformat(self.date.get().strip())

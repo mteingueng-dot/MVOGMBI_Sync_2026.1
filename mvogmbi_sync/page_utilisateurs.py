@@ -118,8 +118,12 @@ class PageUtilisateurs(ttk.Frame):
         self.note = tk.Label(droite, text="", font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=CARTE,
                              wraplength=330, justify="left")
         self.note.pack(anchor="w", pady=(8, 4))
-        Bouton(droite, "💾  " + t("Enregistrer les accès"), self.enregistrer_acces, "accent", fond=CARTE).pack(
-            anchor="w")
+        rangee = tk.Frame(droite, background=CARTE)
+        rangee.pack(anchor="w")
+        Bouton(rangee, "💾  " + t("Enregistrer les accès"), self.enregistrer_acces, "accent", fond=CARTE).pack(
+            side="left")
+        Bouton(rangee, "🧩  " + t("Fonctions permises…"), self.fonctions, "secondaire", fond=CARTE).pack(
+            side="left", padx=8)
         self.afficher()
 
     # ------------------------------------------------------------------ affichage
@@ -260,6 +264,50 @@ class PageUtilisateurs(ttk.Frame):
         if profil and messagebox.askyesno(self.titre, t("Supprimer le profil « {nom} » ?", nom=t(profil)),
                                           parent=self):
             self._faire(lambda: self.registre.supprimer_profil(profil))
+
+    def fonctions(self) -> None:
+        """Fonctions du menu permises au profil choisi (cochées) ; une fonction décochée disparaît du menu, même
+        si sa page est permise."""
+        from .interface import MENU_GROUPES
+
+        profil = self._interne(self.profil_choisi.get())
+        if profil == ADMIN:
+            messagebox.showinfo(self.titre, t("Le profil Administrateur a toujours accès à tout."), parent=self)
+            return
+        refusees = set(self.registre.fonctions_refusees.get(profil, []))
+        boite = tk.Toplevel(self)
+        boite.title(t("Fonctions permises — {p}", p=t(profil)))
+        boite.configure(background=CARTE, padx=16, pady=12)
+        boite.transient(self.winfo_toplevel())
+        tk.Label(boite, text=t("Cochez les fonctions que ce profil peut utiliser. Une fonction n'apparaît que si sa page "
+                               "est aussi permise."), background=CARTE, foreground=TEXTE_DOUX, wraplength=640,
+                 justify="left").pack(anchor="w")
+        grille = tk.Frame(boite, background=CARTE)
+        grille.pack(fill="both", expand=True, pady=8)
+        cases: dict[str, tk.BooleanVar] = {}
+        colonne = 0
+        for nom, _icone, elements in MENU_GROUPES:
+            actions = [e for e in elements if not isinstance(e, int)]
+            if not nom or not actions:
+                continue
+            cadre = tk.Frame(grille, background=CARTE)
+            cadre.grid(row=0, column=colonne, sticky="nw", padx=(0, 18))
+            colonne += 1
+            tk.Label(cadre, text=t(nom), font=("Segoe UI Semibold", 10), background=CARTE).pack(anchor="w")
+            for e in actions:
+                cases[e[1]] = tk.BooleanVar(value=e[1] not in refusees)
+                ttk.Checkbutton(cadre, text=t(e[1]), variable=cases[e[1]], style="Carte.TCheckbutton").pack(
+                    anchor="w", pady=1)
+        bas = tk.Frame(boite, background=CARTE)
+        bas.pack(anchor="e")
+
+        def enregistrer():
+            if self._faire(lambda: self.registre.definir_fonctions(profil, [k for k, v in cases.items() if not v.get()]),
+                           t("Accès du profil {nom} enregistrés.", nom=t(profil))):
+                boite.destroy()
+
+        Bouton(bas, "✖  " + t("Fermer"), boite.destroy, "secondaire", fond=CARTE).pack(side="right")
+        Bouton(bas, "💾  " + t("Enregistrer"), enregistrer, "accent", fond=CARTE).pack(side="right", padx=8)
 
     def enregistrer_acces(self) -> None:
         profil = self._interne(self.profil_choisi.get())

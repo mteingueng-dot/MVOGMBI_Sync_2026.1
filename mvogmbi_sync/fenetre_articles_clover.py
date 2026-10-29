@@ -16,7 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 from tkinter import ttk
 
-from .design import (CARTE, ROUGE, TEXTE_DOUX, Bouton, ChampRecherche, Rangee, apres_frappe, cadre_tableau, defilement,
+from .design import (FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, Bouton, ChampRecherche, Rangee, apres_frappe, cadre_tableau, defilement,
                      rayer)
 from .export_tableau import bouton_exporter
 from .langues import t
@@ -49,7 +49,7 @@ def _texte(v) -> str:
     return "" if v is None else str(v)
 
 
-class FenetreArticlesClover(tk.Toplevel):
+class FenetreArticlesClover(FenetreOutil):
     def __init__(self, parent, racine: Path):
         from .creation_articles import TYPES_PRIX
 

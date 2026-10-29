@@ -926,6 +926,11 @@ def main(argv: list[str] | None = None) -> None:
     p = sous.add_parser("interface", help="Ouvrir l'application de configuration et de suivi")
     p.set_defaults(fonction=commande_interface)
 
+    p = sous.add_parser("essai-pdf", help="Diagnostic : crée un PDF d'essai avec Microsoft Edge")
+    p.add_argument("chemin")
+    p.set_defaults(fonction=lambda a: print(__import__("mvogmbi_sync.export_tableau", fromlist=["x"]).ecrire_pdf(
+        Path(a.chemin), "Essai PDF", ["Colonne"], [["ligne"]]) or f"PDF créé : {a.chemin}"))
+
     p = sous.add_parser("pointage", help="Poste de pointage des employés (NIP), sans connexion à l'application")
     p.set_defaults(fonction=lambda _a: __import__("mvogmbi_sync.fenetre_pointage", fromlist=["x"]).poste_seul(RACINE))
 

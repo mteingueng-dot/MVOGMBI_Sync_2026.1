@@ -76,6 +76,8 @@ class Registre:
         self.profils: dict[str, list[str]] = {k: list(v) for k, v in PROFILS_DEFAUT.items()}
         self.points_vente: dict[str, list[str]] = {}  # profil -> codes permis ; absent = tous
         self.sans_export: list[str] = list(SANS_EXPORT_DEFAUT)  # profils qui ne peuvent pas exporter de données
+        # fonctions du menu retirées à un profil (titre français de l'entrée), en plus des pages (2026-10-29)
+        self.fonctions_refusees: dict[str, list[str]] = {}
         self.utilisateurs: list[Utilisateur] = []
         if self.chemin.exists():
             donnees = json.loads(self.chemin.read_text(encoding="utf-8"))
@@ -85,6 +87,8 @@ class Registre:
                                  if k in self.profils and k != ADMIN}
             self.utilisateurs = [Utilisateur(**u) for u in donnees.get("utilisateurs", [])]
             self.sans_export = [p for p in donnees.get("sans_export", SANS_EXPORT_DEFAUT) if p != ADMIN]
+            self.fonctions_refusees = {k: list(v) for k, v in donnees.get("fonctions_refusees", {}).items()
+                                       if k in self.profils and k != ADMIN}
 
     # ------------------------------------------------------------------ lecture
     def existe(self) -> bool:
@@ -108,6 +112,17 @@ class Registre:
     def peut_exporter(self, utilisateur: Utilisateur) -> bool:
         """Droit d'exporter des données (Excel, CSV, PDF, images) : par profil ; l'administrateur l'a toujours."""
         return utilisateur.est_admin or utilisateur.profil not in self.sans_export
+
+    def refusees(self, utilisateur: Utilisateur) -> set[str]:
+        """Fonctions du menu retirées au profil de l'utilisateur ; l'administrateur a tout."""
+        return set() if utilisateur.est_admin else set(self.fonctions_refusees.get(utilisateur.profil, []))
+
+    def definir_fonctions(self, profil: str, refusees: list[str]) -> None:
+        if profil == ADMIN:
+            if refusees:
+                raise ErreurUtilisateur("Le profil Administrateur a toujours accès à tout.")
+            return
+        self.fonctions_refusees[profil] = sorted(set(refusees))
 
     def definir_export(self, profil: str, permis: bool) -> None:
         if profil == ADMIN:
@@ -218,6 +233,7 @@ class Registre:
         self.profils.pop(profil, None)
         self.points_vente.pop(profil, None)
         self.sans_export = [p for p in self.sans_export if p != profil]
+        self.fonctions_refusees.pop(profil, None)
 
     # ------------------------------------------------------------------ fichier
     def enregistrer(self) -> None:
@@ -225,6 +241,7 @@ class Registre:
         temporaire = self.chemin.with_suffix(".tmp")
         temporaire.write_text(json.dumps({"profils": self.profils, "points_vente": self.points_vente,
                                           "sans_export": self.sans_export,
+                                          "fonctions_refusees": self.fonctions_refusees,
                                           "utilisateurs": [asdict(u) for u in self.utilisateurs]},
                                          ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(temporaire, self.chemin)

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .couts_clover import SEUIL_CUMP_BAS
 from .statistiques_clover import SEUIL_CUMP_DOUTEUX
+from .cache_lectures import vide_apres
 
 CENT = Decimal("0.01")
 MARGES = (15, 20, 25, 30, 35, 40, 45, 50)
@@ -149,10 +150,13 @@ def lire_donnees(racine: Path, config_toml: dict) -> dict:
     hier = date.today() - timedelta(days=1)
     debut = hier - timedelta(days=JOURS_VENTES - 1)
     donnees = lire_clover(client, debut, hier, Path(racine) / "donnees" / "cache_clover")
-    return {"articles": client.inventaire(), "liens": correspondance(racine),
+    from .cache_lectures import inventaire_clover
+
+    return {"articles": inventaire_clover(racine), "liens": correspondance(racine),
             "couts": charger(racine, config_toml, forcer=True), "ventes": ventes_par_article(donnees, debut, hier)}
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def appliquer(racine: Path, lignes: list[LignePrix], progression=None) -> list[tuple[LignePrix, str]]:
     """Écrit le prix proposé dans Clover pour les lignes choisies ; renvoie [(ligne, erreur ou "")]."""
     from .__main__ import charger_config

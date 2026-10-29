@@ -8,7 +8,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, apres_frappe, cadre_tableau, rayer
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, apres_frappe, cadre_tableau, rayer
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -16,7 +16,7 @@ COCHE, VIDE = "☑", "☐"
 TOUS = "Tous"
 
 
-class FenetreACocher(tk.Toplevel):
+class FenetreACocher(FenetreOutil):
     """`colonnes` : [(titre, largeur)] ; `valeurs(ligne)` -> tuple affiché ; chaque ligne a `permis`,
     `cochee_par_defaut` et `etat`. `lire()` -> (lignes, résumé) et `traiter(lignes, progression)` -> texte du bilan
     sont lancés dans un fil (jamais dans la fenêtre)."""

@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from .cache_lectures import vide_apres
 
 FICHIER = "transferts.json"
 BROUILLON, SAGE_FAIT, TERMINE, A_COMPLETER = "Brouillon", "Fait dans Sage", "Terminé", "À compléter"
@@ -153,6 +154,7 @@ def faits_clover(t: Transfert) -> bool:
     return all(f"{code}|{l.numero}" in t.clover for code in (t.de, t.vers) for l in t.lignes)
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def transferer(racine: Path, config_toml: dict, numero: str, journal=print) -> Transfert:
     """Sage puis Clover ; état et messages enregistrés dans le registre."""
     from .__main__ import charger_config

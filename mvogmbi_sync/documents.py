@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from .cache_lectures import vide_apres
 
 CENT = Decimal("0.01")
 COMMANDE, FACTURE, STOCK = "commande", "facture", "stock"
@@ -39,6 +40,7 @@ class LigneDocument:
     prix: str = "0"           # prix de vente hors taxes, ou coût unitaire d'une entrée de stock
     taxable: bool = False
     cible: str = ""           # document de stock : stock visé dans Sage (noté au 1er essai)
+    taxe: str = ""            # « GQ », « G » (TPS), « Q » (TVQ), « » ; vide + taxable = « GQ » (taxes.py)
 
     @property
     def montant(self) -> Decimal:
@@ -66,10 +68,9 @@ class Document:
 
     @property
     def taxes(self) -> Decimal:
-        from .import_sage import TAXES_GQ
+        from . import taxes as tx
 
-        return sum(((l.montant * taux).quantize(CENT) for l in self.lignes if l.taxable for _n, _a, taux in TAXES_GQ),
-                   Decimal(0))
+        return sum((sum(tx.montants(l.montant, tx.code(l)), Decimal(0)) for l in self.lignes), Decimal(0))
 
     @property
     def total(self) -> Decimal:
@@ -121,6 +122,36 @@ class Registre:
         self.enregistrer()
         return doc
 
+    def modifiable(self, doc: Document) -> bool:
+        """Un document se modifie ou se supprime tant qu'il n'est pas dans Sage ni facturé."""
+        return doc.etat in (BROUILLON, OUVERTE, ECHEC) and not (doc.genre == STOCK and any(l.cible for l in doc.lignes))
+
+    def modifier(self, numero: str, tiers: str, jour: str, lignes: list[LigneDocument], remarque: str = "",
+                 sens: str = "") -> Document:
+        doc = self.document(numero)
+        if not self.modifiable(doc):
+            raise ValueError(f"{numero} ({doc.etat}) ne peut plus être modifié.")
+        if not lignes:
+            raise ValueError("Ajoutez au moins une ligne.")
+        date.fromisoformat(jour)
+        doc.tiers, doc.date, doc.lignes, doc.remarque = tiers, jour, lignes, remarque
+        doc.sens = sens or doc.sens
+        doc.messages = []
+        self.enregistrer()
+        return doc
+
+    def supprimer(self, numero: str) -> None:
+        doc = self.document(numero)
+        if not self.modifiable(doc):
+            raise ValueError(f"{numero} ({doc.etat}) ne peut plus être supprimé.")
+        self.documents.remove(doc)
+        for autre in self.documents:  # commande facturée : le lien vers la facture supprimée est retiré
+            if autre.lien == numero:
+                autre.lien = ""
+                if autre.genre == COMMANDE and autre.etat == FACTUREE:
+                    autre.etat = OUVERTE
+        self.enregistrer()
+
     def facturer(self, numero_commande: str, auteur: str = "") -> Document:
         """Facture de vente (brouillon) faite des lignes de la commande ; la commande passe à « Facturée »."""
         commande = self.document(numero_commande)
@@ -148,7 +179,9 @@ def ecrire_pdf(racine: Path, doc: Document) -> Path:
     dossier.mkdir(parents=True, exist_ok=True)
     chemin = dossier / (re.sub(r'[\\/:*?"<>|]+', "-", f"{doc.numero} {doc.tiers}".strip())[:100] + ".pdf")
     lignes = [[l.numero_sage, l.description, l.quantite.replace(".", ","), _argent(Decimal(l.prix or 0)),
-               "TPS+TVQ" if l.taxable else "", _argent(l.montant)] for l in doc.lignes]
+               __import__("mvogmbi_sync.taxes", fromlist=["x"]).libelle(
+                   __import__("mvogmbi_sync.taxes", fromlist=["x"]).code(l)) if l.taxable or l.taxe else "",
+               _argent(l.montant)] for l in doc.lignes]
     if doc.genre != STOCK:
         lignes += [["", "Sous-total", "", "", "", _argent(doc.sous_total)], ["", "Taxes", "", "", "", _argent(doc.taxes)],
                    ["", "Total", "", "", "", _argent(doc.total)]]
@@ -164,10 +197,12 @@ def ecrire_imp(docs: list[Document], chemin: Path, config_toml: dict) -> Path:
     from types import SimpleNamespace
 
     from .__main__ import config_import
+    from . import taxes as tx
     from .import_sage import ImportSage, LigneImport, ecrire_imp as ecrire
 
     imps = [ImportSage(SimpleNamespace(client=d.tiers, numero=d.numero, date_facture=date.fromisoformat(d.date)),
-                       [LigneImport(l.numero_sage, Decimal(l.quantite), l.montant, l.taxable) for l in d.lignes], [])
+                       [LigneImport(l.numero_sage, Decimal(l.quantite), l.montant, bool(tx.code(l)), codes=tx.code(l))
+                        for l in d.lignes], [])
             for d in docs]
     return ecrire(imps, chemin, config_import(config_toml))
 
@@ -194,6 +229,7 @@ def controler(base, docs: list[Document]) -> dict[str, list[str]]:
     return resultat
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def importer_factures(racine: Path, config_toml: dict, numeros: list[str], journal=print) -> dict[str, str]:
     """Contrôle, écrit le .IMP et l'importe (Sage fermé), puis vérifie chaque facture dans Sage."""
     from . import coffre
@@ -254,6 +290,7 @@ def importer_factures(racine: Path, config_toml: dict, numeros: list[str], journ
 
 
 # --------------------------------------------------------------------------------------------- documents de stock
+@vide_apres  # mémoire des lectures vidée après une écriture
 def passer_stock(racine: Path, config_toml: dict, numero: str, journal=print) -> dict[str, str]:
     """Entrée ou sortie de stock dans Sage ; renvoie {n° Sage : résultat}."""
     from .__main__ import lire_sage

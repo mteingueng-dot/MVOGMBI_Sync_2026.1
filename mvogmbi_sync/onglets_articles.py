@@ -1,4 +1,4 @@
-"""Onglets « Produits inactifs » et « Articles 80/20 » de la page Rapports (rubrique État, demande du propriétaire du
+"""Onglets « Produits inactifs » et « Articles 20/80 » de la page Rapports (rubrique État, demande du propriétaire du
 2026-10-29). Calculs dans analyse_articles.py ; source Clover (par défaut) ou Sage, lue une fois par « Actualiser » /
 « Calculer », filtres recalculés sans relire."""
 
@@ -18,7 +18,7 @@ TOUTES = "Toutes les catégories"
 SOURCES = ["Clover", "Sage"]
 PERIODES = ["30 derniers jours", "90 derniers jours", "6 derniers mois", "12 derniers mois", "Cette année",
             "Période choisie"]
-AFFICHAGES_PARETO = ["Classe A (80 % des ventes)", "Classes A et B (95 % des ventes)", "Toutes les classes"]
+AFFICHAGES_PARETO = ["Les 20 % d'articles qui vendent le plus", "Les 50 % premiers (A et B)", "Toutes les classes"]
 COULEURS_CLASSES = {"A": "#dff3e4", "B": "#fff4d6", "C": "#f3f4f3"}
 
 
@@ -99,7 +99,9 @@ class _Onglet(ttk.Frame):
 
                 client = ClientClover(charger_config(racine / "config.toml"))
                 donnees = lire(client, du, au, racine / "donnees" / "cache_clover")
-                items = list(client._pages("items", {"expand": "categories,itemStock"}))
+                from .cache_lectures import inventaire_clover
+
+                items = inventaire_clover(racine)  # catalogue gardé quelques minutes
                 ventes = ventes_par_article(donnees, du, au)
                 self.after(0, lambda: fin(items, ventes))
             except BaseException as exc:  # SystemExit compris (jeton absent)
@@ -204,7 +206,7 @@ class OngletInactifs(_Onglet):
 
 
 class OngletPareto(_Onglet):
-    titre = "Articles 80/20"
+    titre = "Articles 20/80"
 
     def __init__(self, page, notebook):
         super().__init__(page, notebook)
@@ -233,7 +235,7 @@ class OngletPareto(_Onglet):
         choix.bind("<<ComboboxSelected>>", lambda _e: self.afficher())
         self.barre.ajouter(Bouton(self.barre, "🔍  " + t("Calculer"), self.actualiser, petit=True), 10)
         self._fin_barre("Ventes nettes de la période (Clover, ou factures de vente de Sage), de l'article le plus vendu au moins vendu : "
-                        "classe A = les articles qui font 80 % du chiffre d'affaires, B = jusqu'à 95 %, C = le reste ; "
+                        "classe A = les 20 % d'articles qui vendent le plus, B = les 30 % suivants, C = le reste ; "
                         "stock actuel, valeur du stock (coût Clover, ou CUMP de Sage) et couverture en jours de "
                         "vente.")
         for classe, couleur in COULEURS_CLASSES.items():
@@ -292,7 +294,7 @@ class OngletPareto(_Onglet):
             return
         lignes, resume = aa.pareto(self.articles, self.ventes, self.jours_periode, self._categorie())
         choix = next((a for a in AFFICHAGES_PARETO if t(a) == self.affichage.get()), AFFICHAGES_PARETO[0])
-        classes = {"Classe A (80 % des ventes)": "A", "Classes A et B (95 % des ventes)": "AB"}.get(choix, "ABC")
+        classes = {AFFICHAGES_PARETO[0]: "A", AFFICHAGES_PARETO[1]: "AB"}.get(choix, "ABC")
         visibles = [l for l in lignes if l[1] in classes]
         valeurs = [l[:-1] + [t(l[-1]) if l[-1] else ""] for l in visibles]
         remplir(self.tableau, self._premiere(aa.ENTETES_PARETO), valeurs, {
@@ -301,17 +303,17 @@ class OngletPareto(_Onglet):
             "Valeur du stock": 105, "Couverture (jours)": 110, "Contrôle": 220},
             lambda i: (visibles[i][1],), decroissant=False)
         du, au = self.periode_lue
-        self.libelle.configure(text=t("Articles 80/20 du {du} au {au}", du=du.isoformat(), au=au.isoformat())
+        self.libelle.configure(text=t("Articles 20/80 du {du} au {au}", du=du.isoformat(), au=au.isoformat())
                                + f" ({self.source.get()})")
         if not lignes:
             self.etat.configure(text=t("Aucune vente sur cette période."))
             return
-        part = round(resume["A"] / resume["articles"] * 100) if resume["articles"] else 0
         ventes_a = (resume["ventes_A"] / resume["ventes"] * 100).quantize(aa.Decimal("0.1")) if resume["ventes"] else 0
-        texte = t("{a} article(s) sur {n} vendus ({p} %) font {pa} % du chiffre d'affaires ({va} sur {v}) — valeur du "
-                  "stock des articles A : {sa}, de tous les articles vendus : {s}", a=resume["A"], n=resume["articles"],
-                  p=part, pa=str(ventes_a).replace(".", ","), va=argent(resume["ventes_A"]),
-                  v=argent(resume["ventes"]), sa=argent(resume["valeur_A"]), s=argent(resume["valeur"]))
+        texte = t("Les 20 % d'articles qui vendent le plus ({a} sur {n} articles vendus) font {pa} % de votre chiffre "
+                  "d'affaires ({va} sur {v}) — valeur de leur stock : {sa} ; de tous les articles vendus : {s}",
+                  a=resume["A"], n=resume["articles"], pa=str(ventes_a).replace(".", ","),
+                  va=argent(resume["ventes_A"]), v=argent(resume["ventes"]), sa=argent(resume["valeur_A"]),
+                  s=argent(resume["valeur"]))
         if resume["douteux"]:
             texte += "\n" + t("{n} valeur(s) de stock douteuse(s) (coût plus de 5 fois le prix de vente) laissée(s) hors "
                               "des totaux : à vérifier.", n=resume["douteux"])

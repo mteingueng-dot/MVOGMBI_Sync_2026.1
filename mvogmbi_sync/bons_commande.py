@@ -44,6 +44,7 @@ class Proposition:
     prix: Decimal | None = None
     dernier_achat: str = ""
     etat: str = A_COMMANDER
+    facteur: Decimal = Decimal(1)  # unités Sage par unité du fournisseur (dernier achat) : quantité et prix fournisseur
 
     @property
     def montant(self) -> Decimal | None:
@@ -62,9 +63,10 @@ class Proposition:
 class LigneBon:
     numero_sage: str
     description: str
-    quantite: str
-    prix: str
+    quantite: str      # unités du fournisseur
+    prix: str          # prix du fournisseur (par unité du fournisseur)
     montant: str
+    facteur: str = "1"  # Qté Sage = quantité × facteur (dernier achat)
 
 
 @dataclass
@@ -99,6 +101,22 @@ def derniers_achats(base) -> dict[str, dict]:
     return resultat
 
 
+def facteurs_dernier_achat(racine: Path) -> dict[tuple[str, str], Decimal]:
+    """(fournisseur Sage, n° Sage) -> facteur de la dernière facture reliée (mémoire des factures fournisseurs)."""
+    from .fournisseurs import MemoireCorrespondance
+
+    resultat = {}
+    for fournisseur, articles in MemoireCorrespondance(racine).donnees.get("articles", {}).items():
+        for a in articles.values():
+            try:
+                facteur = Decimal(str(a.get("facteur") or 1))
+            except Exception:
+                continue
+            if a.get("numero_sage") and facteur > 0:
+                resultat[(fournisseur, a["numero_sage"])] = facteur
+    return resultat
+
+
 def descriptions_sage(base) -> dict[str, str]:
     from .articles_sage import reparer_texte
 
@@ -107,7 +125,8 @@ def descriptions_sage(base) -> dict[str, str]:
 
 
 def proposer(ventes: dict, articles: list[dict], liens: dict[str, str], achats: dict[str, dict],
-             descriptions: dict[str, str] | None = None) -> list[Proposition]:
+             descriptions: dict[str, str] | None = None,
+             facteurs: dict[tuple[str, str], Decimal] | None = None) -> list[Proposition]:
     """`ventes` : ID Clover -> VenteArticle des N jours ; `articles` : catalogue Clover (itemStock) ; `liens` : ID
     Clover -> n° Sage ; `achats` : derniers_achats. Une ligne par n° Sage à commander (ou par article Clover non
     relié) ; quantités Clover additionnées."""
@@ -141,6 +160,11 @@ def proposer(ventes: dict, articles: list[dict], liens: dict[str, str], achats: 
             p.etat = SANS_FOURNISSEUR
         else:
             p.fournisseur, p.prix, p.dernier_achat = achat["fournisseur"], achat["prix"], achat["date"]
+            facteur = (facteurs or {}).get((p.fournisseur, g["numero"]), Decimal(1))
+            if facteur != 1:  # commande en unités du fournisseur : quantité Sage / facteur, prix Sage × facteur
+                p.facteur = facteur
+                p.quantite = (quantite / facteur).quantize(Decimal(1), ROUND_CEILING)
+                p.prix = (achat["prix"] * facteur).quantize(Decimal("0.0001"))
         resultat.append(p)
     ordre = {A_COMMANDER: 0, SANS_FOURNISSEUR: 1, SANS_LIEN: 2}
     resultat.sort(key=lambda p: (ordre[p.etat], p.fournisseur.casefold(), p.description.casefold()))
@@ -163,7 +187,10 @@ def lire(racine: Path, config_toml: dict, jours: int) -> list[Proposition]:
     ventes = ventes_par_article(donnees, hier - timedelta(days=jours - 1), hier)
     achats, descriptions = lire_sage(config_toml, lambda b: (derniers_achats(b), descriptions_sage(b)),
                                      config_toml.get("sage_import", {}).get("fichier_entreprise"))
-    return proposer(ventes, client.inventaire(), correspondance(racine), achats, descriptions)
+    from .cache_lectures import inventaire_clover
+
+    return proposer(ventes, inventaire_clover(racine), correspondance(racine), achats, descriptions,
+                    facteurs_dernier_achat(racine))
 
 
 # --------------------------------------------------------------------------------------------- bons
@@ -197,7 +224,7 @@ def creer_bons(racine: Path, propositions: list[Proposition], aujourdhui: date |
             par_fournisseur.setdefault(p.fournisseur, []).append(p)
     crees = []
     for fournisseur in sorted(par_fournisseur, key=str.casefold):
-        lignes = [LigneBon(p.numero_sage, p.description, str(p.quantite), str(p.prix), str(p.montant))
+        lignes = [LigneBon(p.numero_sage, p.description, str(p.quantite), str(p.prix), str(p.montant), str(p.facteur))
                   for p in sorted(par_fournisseur[fournisseur], key=lambda p: p.description.casefold())]
         bon = Bon(registre.prochain_numero(), fournisseur, jour, lignes)
         registre.bons.append(bon)
@@ -213,6 +240,32 @@ def creer_bons(racine: Path, propositions: list[Proposition], aujourdhui: date |
     if erreurs:
         raise RuntimeError("Bons enregistrés, mais PDF non créé : " + " ; ".join(erreurs))
     return crees
+
+
+def modifier_bon(racine: Path, numero: str, fournisseur: str, jour: str, lignes: list[LigneBon]) -> Bon:
+    """Bon pas encore reçu : fournisseur, date et lignes remplacés, PDF refait."""
+    registre = Registre(racine)
+    bon = next(b for b in registre.bons if b.numero == numero)
+    if bon.etat != CREE:
+        raise ValueError(f"{numero} ({bon.etat}) ne peut plus être modifié.")
+    if not lignes:
+        raise ValueError("Ajoutez au moins une ligne.")
+    bon.fournisseur, bon.date, bon.lignes = fournisseur, jour, lignes
+    registre.enregistrer()
+    bon.pdf = str(ecrire_pdf_bon(racine, bon))
+    registre.enregistrer()
+    return bon
+
+
+def supprimer_bon(racine: Path, numero: str) -> None:
+    registre = Registre(racine)
+    bon = next(b for b in registre.bons if b.numero == numero)
+    if bon.etat != CREE:
+        raise ValueError(f"{numero} ({bon.etat}) ne peut plus être supprimé.")
+    registre.bons.remove(bon)
+    registre.enregistrer()
+    if bon.pdf:
+        Path(bon.pdf).unlink(missing_ok=True)
 
 
 def refaire_pdf(racine: Path, numero: str) -> Path:
@@ -278,8 +331,10 @@ def comparer(bon: Bon, facture) -> tuple[list[list], bool]:
         f[0] += quantite
         f[1] += l.montant
     lignes, conforme = [], True
-    for l in bon.lignes:
-        commandee, prix = Decimal(l.quantite), Decimal(l.prix or 0)
+    for l in bon.lignes:  # bon en unités du fournisseur : ramené en unités Sage avec son facteur
+        facteur = Decimal(l.facteur or 1)
+        commandee = Decimal(l.quantite) * facteur
+        prix = (Decimal(l.prix or 0) / facteur).quantize(Decimal("0.0001"))
         q, m = facturees.pop(l.numero_sage, [Decimal(0), Decimal(0)])
         prix_facture = (m / q).quantize(Decimal("0.0001")) if q else None
         ecart_q = (q - commandee).normalize()

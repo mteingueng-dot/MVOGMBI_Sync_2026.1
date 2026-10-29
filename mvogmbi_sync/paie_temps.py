@@ -130,6 +130,20 @@ class Registre:
         self.employes.append(e)
         return e
 
+    def renommer(self, ident: str, nom: str) -> None:
+        nom = " ".join(nom.split())
+        if not nom:
+            raise ErreurPointage("Le nom est obligatoire.")
+        if any(e.nom.casefold() == nom.casefold() and e.id != ident for e in self.employes):
+            raise ErreurPointage(f"« {nom} » existe déjà.")
+        self.employe(ident).nom = nom
+
+    def supprimer(self, ident: str) -> None:
+        """Seulement un employé qui n'a jamais pointé (sinon ses heures resteraient sans nom : le désactiver)."""
+        if any(p.employe == ident for p in self.pointages):
+            raise ErreurPointage("Cet employé a des pointages : désactivez-le plutôt (ses heures sont gardées).")
+        self.employes = [e for e in self.employes if e.id != ident]
+
     def importer_clover(self, employes_clover: list[dict]) -> int:
         """Employés Clover absents du registre (par identifiant Clover ou par nom) ; renvoie le nombre ajouté."""
         connus = {e.clover for e in self.employes} | {e.nom.casefold() for e in self.employes}

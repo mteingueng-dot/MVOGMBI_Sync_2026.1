@@ -11,12 +11,12 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, Rangee, cadre_tableau,
+from .design import (FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, Rangee, cadre_tableau,
                      defilement, rayer)
 from .langues import t
 
 
-class FenetreTransferts(tk.Toplevel):
+class FenetreTransferts(FenetreOutil):
     def __init__(self, parent, racine: Path):
         from .points_vente import points_de_vente
         from .transferts import Registre

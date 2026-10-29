@@ -148,7 +148,7 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
                 if "%" in entete:
                     v = f"{v} %".replace(".", ",")
                 elif any(m in entete for m in ("Quantité", "Cumul", "Vendu", "Stock ", "Stock", "Besoin", "À acheter",
-                                                 "Sold")) and "Valeur" not in entete:
+                                                 "Sold")) and "Valeur" not in entete and not entete.startswith("Solde"):
                     v = f"{v.normalize():f}".replace(".", ",")
                 else:
                     v = montant(v)
@@ -178,7 +178,7 @@ class PageRapports(ttk.Frame):
         self.onglet_inactifs = OngletInactifs(self, self.onglets)
         self.onglets.add(self.onglet_inactifs, text="  " + t("Produits inactifs") + "  ")
         self.onglet_pareto = OngletPareto(self, self.onglets)
-        self.onglets.add(self.onglet_pareto, text="  " + t("Articles 80/20") + "  ")
+        self.onglets.add(self.onglet_pareto, text="  " + t("Articles 20/80") + "  ")
         self.onglets.bind("<<NotebookTabChanged>>", lambda _e: self._au_changement())
 
     def _config(self) -> dict:

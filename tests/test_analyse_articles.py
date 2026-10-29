@@ -1,4 +1,4 @@
-﻿from datetime import date
+from datetime import date
 from decimal import Decimal
 
 from mvogmbi_sync import analyse_articles as aa
@@ -31,10 +31,10 @@ def test_pareto_classes_et_couverture():
     ventes = {"X": (Decimal(30), Decimal(700)), "Y": (Decimal(10), Decimal(200)), "Z": (Decimal(10), Decimal(100)),
               "W": (Decimal(1), Decimal(0))}
     lignes, resume = aa.pareto(articles, ventes, 30)
-    assert [(l[2], l[1]) for l in lignes] == [("X", "A"), ("Y", "A"), ("Z", "B")]  # Y : 70 % avant -> A ; Z : 90 % -> B
+    assert [(l[2], l[1]) for l in lignes] == [("X", "A"), ("Y", "B"), ("Z", "C")]  # 3 articles : 20 % -> 1 en A, 50 % -> 2 en A+B
     assert lignes[0][13] == 30 and lignes[1][14] == "Rupture"   # 30 en stock pour 1 vendu par jour
     assert lignes[2][14].startswith("Valeur du stock douteuse") and resume["douteux"] == 1
-    assert resume["A"] == 2 and resume["ventes_A"] == Decimal(900) and resume["valeur"] == Decimal(60)
+    assert resume["A"] == 1 and resume["ventes_A"] == Decimal(700) and resume["valeur"] == Decimal(60)
 
 
 def test_articles_clover():

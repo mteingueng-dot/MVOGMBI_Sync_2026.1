@@ -50,6 +50,7 @@ class LigneImport:
     montant: Decimal
     taxable: bool
     noms_clover: list[str] = field(default_factory=list)
+    codes: str = "GQ"  # taxes de la ligne taxable : « GQ », « G » (TPS seulement), « Q » (TVQ seulement)
 
     @property
     def prix(self) -> Decimal:
@@ -59,7 +60,7 @@ class LigneImport:
         if not self.taxable:
             return []
         return [(nom, taux_affiche, (self.montant * taux).quantize(CENT, rounding=ROUND_HALF_UP))
-                for nom, taux_affiche, taux in TAXES_GQ]
+                for nom, taux_affiche, taux in TAXES_GQ if ("G" if nom.startswith("TPS") else "Q") in self.codes]
 
 
 @dataclass

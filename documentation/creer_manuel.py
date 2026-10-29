@@ -565,7 +565,7 @@ other.</td></tr></table>"""))
         "Les menus Vente, Fournisseur et Articles reprennent la gestion commerciale de Sage : listes lues dans Sage, "
         "interrogations de compte et saisies de documents.", "The Sales, Supplier and Items menus follow Sage's "
         "business management: lists read from Sage, account inquiries and document entry.") + "</p>"
-        + questions("Comment sont rangés les menus", "Comment saisir une facture"))
+        + questions("Comment sont rangés les menus", "Comment fonctionnent les listes", "Comment saisir une facture"))
     parties.append(titre("commercial") + "<p>" + x(
         "Deux outils pour acheter au bon moment et vendre au bon prix ; rien n'est envoyé ni changé sans votre clic.",
         "Two tools to buy at the right time and sell at the right price; nothing is sent or changed without your "

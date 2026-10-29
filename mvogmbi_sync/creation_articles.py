@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from .cache_lectures import vide_apres
 
 MARGE = Decimal("0.40")  # prix de vente = prix d'achat + 40 %
 CENT = Decimal("100")
@@ -302,6 +303,7 @@ class NouvelArticle:
         return ArticleACreer(self.numero_sage.strip(), self.description_sage.strip(), c.actif, c.produits, c.cmv, c.ecart)
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def creer_dans_clover(client, a: NouvelArticle) -> str:
     article = client.creer_article(a.donnees_clover(), a.id_categorie, a.taxes or None, a.stock)
     a.id_clover = article["id"]
@@ -330,6 +332,7 @@ def noter(racine: Path, a: NouvelArticle, resultat: str) -> None:
                     ugs_peremption(a.peremption) if a.peremption else "", a.numero_sage, a.id_clover, resultat])
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def creer_dans_sage(racine: Path, config_toml: dict, articles: list, comptes: bool = False) -> list[dict]:
     """Crée les articles (ArticleACreer) dans Sage — ou, avec `comptes`, corrige les comptes d'articles existants :
     dans le Sage déjà ouvert sur le fichier d'entreprise configuré, sinon l'application ouvre Sage elle-même.

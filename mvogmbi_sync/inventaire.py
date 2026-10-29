@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from .cache_lectures import vide_apres
 
 FEUILLE = "Inventaire"
 ENTETES = ["Code Clover", "Code Sage", "Description Clover", "Description Sage", "Quantité Clover", "Quantité Sage",
@@ -306,6 +307,7 @@ def nom_fichier(prefixe: str) -> str:
 
 
 # ----------------------------------------------------------------------------- saisie complète
+@vide_apres  # mémoire des lectures vidée après une écriture
 def ajuster_sage(racine: Path, config_toml: dict, ajustements: list[AjustementSage], jour: str, source: str = "",
                  remarque: str = "") -> dict[str, dict]:
     """Ajustements Sage par le Sage ouvert sur le fichier configuré, sinon l'application ouvre Sage elle-même.

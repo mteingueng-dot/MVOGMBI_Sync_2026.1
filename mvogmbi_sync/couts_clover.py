@@ -17,6 +17,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from .statistiques_clover import SEUIL_CUMP_DOUTEUX
+from .cache_lectures import vide_apres
 
 SEUIL_CUMP_BAS = Decimal("0.05")  # CUMP sous 5 % du prix de vente : aberrant
 ECART_FORT = 3  # CUMP plus de 3 fois plus haut ou plus bas que le coût Clover : proposé décoché
@@ -95,9 +96,12 @@ def lire(racine: Path, config_toml: dict) -> tuple[list[PropositionCout], int]:
 
     client = ClientClover(charger_config(Path(racine) / "config.toml"))
     couts = charger(racine, config_toml, forcer=True)
-    return proposer(client.inventaire(), correspondance(racine), couts)
+    from .cache_lectures import inventaire_clover
+    del client
+    return proposer(inventaire_clover(racine), correspondance(racine), couts)
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def appliquer(racine: Path, propositions: list[PropositionCout], progression=None) -> list[tuple[PropositionCout, str]]:
     """Écrit le CUMP Sage comme coût Clover des lignes choisies ; renvoie [(ligne, erreur ou "")]."""
     from .api_clover import ClientClover

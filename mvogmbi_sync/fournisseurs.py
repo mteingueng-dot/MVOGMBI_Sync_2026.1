@@ -52,6 +52,7 @@ class Ligne:
     description_sage: str = ""
     facteur: Decimal = Decimal(1)
     confirme: bool = False          # correspondance confirmée par le propriétaire (mémorisée)
+    taxe: str = ""                  # « GQ », « G » (TPS), « Q » (TVQ), « » ; vide + taxable = « GQ » (taxes.py)
 
     @property
     def cle(self) -> str:
@@ -199,7 +200,12 @@ class Registre:
     def chemin_fichier(self, facture: Facture) -> Path:
         return self.dossier / facture.fichier
 
-    def ecarter(self, facture: Facture) -> Path | None:
+    def supprimer(self, facture: Facture) -> Path | None:
+        """Facture supprimée de la liste (doublon, erreur…) ; son fichier est rangé dans « supprimees » (copie
+        gardée, jamais relu ni retéléchargé : la mémoire du courriel retient son empreinte)."""
+        return self.ecarter(facture, "supprimees")
+
+    def ecarter(self, facture: Facture, sous_dossier: str = "ecartees") -> Path | None:
         """Retire la facture de la liste à traiter ; son fichier est rangé dans « ecartees » (rien n'est détruit).
 
         Pour la traiter plus tard : remettre le fichier dans le dossier des factures, puis « Actualiser ».
@@ -207,7 +213,7 @@ class Registre:
         cible = None
         source = self.chemin_fichier(facture)
         if source.exists():
-            dossier = self.dossier / "ecartees"
+            dossier = self.dossier / sous_dossier
             dossier.mkdir(parents=True, exist_ok=True)
             cible = dossier / source.name
             numero = 2

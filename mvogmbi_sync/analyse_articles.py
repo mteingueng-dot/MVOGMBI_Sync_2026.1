@@ -1,4 +1,4 @@
-"""Produits inactifs et articles 80/20 (demande du propriétaire du 2026-10-29), rubrique État.
+"""Produits inactifs et articles 20/80 (demande du propriétaire du 2026-10-29), rubrique État.
 
 Deux sources au choix (Clover par défaut, demande du propriétaire) :
 - Clover : articles du catalogue (stock itemStock, coût Clover : valeur = stock × coût), ventes nettes des commandes
@@ -10,8 +10,10 @@ stock de la fiche (somme de tinvbyln.dInStock et dCostStk, tous emplacements), v
 
 - Produits inactifs : articles sans vente depuis N jours (30, 60, 90…) ou jamais vendus, avec la date de la dernière
   vente et du dernier achat, le stock et sa valeur (argent immobilisé).
-- Articles 80/20 (Pareto) : ventes de la période par article, du plus vendu au moins vendu, part et part cumulée du
-  chiffre d'affaires ; classe A = articles qui font les premiers 80 %, B = jusqu'à 95 %, C = le reste ; stock actuel,
+- Articles 20/80 (Pareto, demande du propriétaire : « les 20 % d'articles qui me donnent 80 % de mon chiffre
+  d'affaires ») : ventes de la période par article, du plus vendu au moins vendu, part et part cumulée du chiffre
+  d'affaires ; classe A = les 20 % d'articles qui vendent le plus (au rang), B = les 30 % suivants, C = la moitié
+  restante ; le résumé donne la part du chiffre d'affaires des articles A ; stock actuel,
   valeur du stock et couverture (jours de vente que le stock permet au rythme de la période).
 """
 
@@ -26,7 +28,7 @@ from .articles_sage import reparer_texte
 
 CENT = Decimal("0.01")
 SEUILS_INACTIVITE = (30, 60, 90, 120, 180, 365)  # jours sans vente proposés
-SEUIL_A, SEUIL_B = Decimal(80), Decimal(95)       # parts cumulées du chiffre d'affaires des classes A et B
+PART_A, PART_B = Decimal("0.20"), Decimal("0.50")  # classes au rang : 20 % premiers articles (A), jusqu'à 50 % (B)
 SEUIL_CUMP_DOUTEUX = Decimal(5)                    # CUMP > 5 × prix de vente moyen : valeur du stock douteuse
 JOURS_CLOVER = 365                                 # ventes Clover lues pour trouver la dernière vente
 JAMAIS_SAGE, JAMAIS_CLOVER = "Jamais vendu", "Aucune vente en 365 jours"
@@ -176,14 +178,14 @@ def produits_inactifs(articles: dict[str, ArticleSage], jours: int, aujourdhui: 
     return lignes, resume
 
 
-# --------------------------------------------------------------------------------------------- articles 80/20
+# --------------------------------------------------------------------------------------------- articles 20/80
 ENTETES_PARETO = ["Rang", "Classe", "N° Sage", "Article", "Catégorie", "Quantité vendue", "Ventes", "Part (%)",
                   "Cumul (%)", "Prix moyen", "Stock", "CUMP", "Valeur du stock", "Couverture (jours)", "Contrôle"]
 
 
 def pareto(articles: dict[str, ArticleSage], ventes: dict[str, tuple[Decimal, Decimal]], jours_periode: int,
            categorie: str = "") -> tuple[list[list], dict]:
-    """Classement 80/20 des articles vendus sur la période (ventes > 0) : rang, classe A/B/C, part et part cumulée
+    """Classement 20/80 des articles vendus sur la période (ventes > 0) : rang, classe A/B/C, part et part cumulée
     du chiffre d'affaires, stock actuel et sa valeur, couverture en jours. Valeur de stock douteuse (CUMP > 5 × prix
     de vente moyen) : signalée et hors des totaux."""
     vendus = []
@@ -194,14 +196,16 @@ def pareto(articles: dict[str, ArticleSage], ventes: dict[str, tuple[Decimal, De
         vendus.append((a, quantite, montant))
     vendus.sort(key=lambda x: (-x[2], x[0].numero))
     total = sum((m for _a, _q, m in vendus), Decimal(0))
+    nombre_a = max(1, int((len(vendus) * PART_A).to_integral_value(rounding="ROUND_CEILING")))
+    nombre_b = max(nombre_a, int((len(vendus) * PART_B).to_integral_value(rounding="ROUND_CEILING")))
     lignes, cumul, resume = [], Decimal(0), {"articles": len(vendus), "ventes": total, "A": 0, "ventes_A": Decimal(0),
                                               "valeur_A": Decimal(0), "valeur": Decimal(0), "douteux": 0}
     for rang, (a, quantite, montant) in enumerate(vendus, 1):
         avant = cumul
         cumul += montant
         part = (montant / total * 100) if total else Decimal(0)
-        # un article est en A tant que les ventes cumulées AVANT lui n'ont pas atteint 80 % (le 1er est toujours A)
-        classe = "A" if avant / total * 100 < SEUIL_A else ("B" if avant / total * 100 < SEUIL_B else "C")
+        # classe au rang : les 20 % premiers articles (au moins 1) en A, jusqu'à 50 % en B, le reste en C
+        classe = "A" if rang <= nombre_a else ("B" if rang <= nombre_b else "C")
         prix = (montant / quantite).quantize(CENT) if quantite > 0 else None
         douteux = bool(a.cump and prix and a.cump > SEUIL_CUMP_DOUTEUX * prix)
         par_jour = quantite / jours_periode if jours_periode > 0 else Decimal(0)

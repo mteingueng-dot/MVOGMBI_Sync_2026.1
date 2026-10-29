@@ -116,6 +116,32 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
     pdf_depuis_html(page_html(titre, entetes, lignes, images, sous_titre), chemin)
 
 
+class _ProgrammeExterne:
+    """Le programme installé (PyInstaller) donne à ce qu'il lance son propre dossier de bibliothèques
+    (SetDllDirectory) : Edge y prenait de mauvaises DLL et s'arrêtait sans rien dire (« Le PDF n'a pas pu être
+    créé », constat du 2026-10-29 : aucun PDF de bon de commande créé par le programme installé). Le réglage normal
+    est remis le temps de lancer Edge, puis rétabli."""
+
+    def __enter__(self):
+        import ctypes
+        import sys
+
+        self.avant = None
+        if getattr(sys, "frozen", False) and sys.platform == "win32":
+            noyau = ctypes.windll.kernel32
+            tampon = ctypes.create_unicode_buffer(1024)
+            if noyau.GetDllDirectoryW(1024, tampon):
+                self.avant = tampon.value
+            noyau.SetDllDirectoryW(None)
+        return self
+
+    def __exit__(self, *_):
+        import ctypes
+
+        if self.avant:
+            ctypes.windll.kernel32.SetDllDirectoryW(self.avant)
+
+
 def pdf_depuis_html(page: str, chemin: Path, delai: int = 120) -> None:
     """Page HTML imprimée en PDF par Microsoft Edge sans fenêtre (tableaux, bons de commande, manuel du profil)."""
     import shutil
@@ -126,18 +152,23 @@ def pdf_depuis_html(page: str, chemin: Path, delai: int = 120) -> None:
     if not edge:
         raise RuntimeError(t("Microsoft Edge introuvable : l'export PDF en a besoin."))
     raison = ""
-    with tempfile.TemporaryDirectory() as dossier:
+    # des processus d'Edge gardent quelques secondes leur profil ouvert : le dossier temporaire est effacé sans
+    # erreur (« WinError 32 … Extension Rules », constat du 2026-10-29 : le PDF était fait, l'erreur venait du
+    # ménage) ; ce qui reste est effacé par Windows plus tard
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
         # Edge écrit dans un dossier temporaire (chemin simple), puis le PDF est copié à sa place : un dossier
         # OneDrive, réseau ou protégé ne fait plus échouer Edge (constat du 2026-10-28)
         source, pdf = Path(dossier) / "tableau.html", Path(dossier) / "tableau.pdf"
         source.write_text(page, encoding="utf-8")
         for options in (["--headless"], ["--headless=old"]):  # 2e essai avec l'ancien mode sans fenêtre
             try:
-                r = subprocess.run([str(edge), *options, "--disable-gpu", "--no-pdf-header-footer",
-                                    f"--user-data-dir={Path(dossier) / 'profil'}", f"--print-to-pdf={pdf}",
-                                    source.as_uri()], timeout=delai, capture_output=True)
-                raison = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
-                raison = raison[0][:200]
+                with _ProgrammeExterne():
+                    r = subprocess.run([str(edge), *options, "--disable-gpu", "--no-pdf-header-footer",
+                                        f"--user-data-dir={Path(dossier) / 'profil'}", f"--print-to-pdf={pdf}",
+                                        source.as_uri()], timeout=delai, capture_output=True,
+                                       stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                lignes = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+                raison = (lignes[-1] if lignes else f"Edge s'est arrêté (code {r.returncode})")[:200]
             except subprocess.TimeoutExpired:
                 raison = "Edge n'a pas répondu en 2 minutes"
             if pdf.exists() and pdf.stat().st_size > 0:

@@ -24,6 +24,7 @@ from pathlib import Path
 
 from .facture import TAUX_TPS, TAUX_TVQ
 from .fournisseurs import IMPORTEE, Facture, archiver, archiver_deja_dans_sage
+from .cache_lectures import vide_apres
 
 CENT = Decimal("0.01")
 
@@ -48,17 +49,18 @@ def meme_numero(a: str, b: str) -> bool:
 
 
 def taxes_par_ligne(facture: Facture) -> list[tuple[Decimal, Decimal]]:
-    """TPS et TVQ de chaque ligne taxable (5 % et 9,975 % du montant), ajustées au cent sur les totaux de la facture."""
-    taxes = [((l.montant * TAUX_TPS).quantize(CENT, ROUND_HALF_UP), (l.montant * TAUX_TVQ).quantize(CENT, ROUND_HALF_UP))
-             if l.taxable else (Decimal(0), Decimal(0)) for l in facture.lignes]
-    taxables = [i for i, l in enumerate(facture.lignes) if l.taxable]
-    if taxables:
-        dernier = taxables[-1]
-        ecart_tps = facture.tps - sum(t[0] for t in taxes)
-        ecart_tvq = facture.tvq - sum(t[1] for t in taxes)
-        if abs(ecart_tps) <= Decimal("0.05") and abs(ecart_tvq) <= Decimal("0.05"):  # arrondis du fournisseur
-            taxes[dernier] = (taxes[dernier][0] + ecart_tps, taxes[dernier][1] + ecart_tvq)
-    return taxes
+    """TPS et TVQ de chaque ligne selon sa taxe (TPS + TVQ, une seule, ou aucune ; taxes.py), ajustées au cent sur les
+    totaux de la facture (arrondis du fournisseur, 5 cents au plus) sur la dernière ligne qui porte la taxe."""
+    from . import taxes as tx
+
+    codes = [tx.code(l) for l in facture.lignes]
+    taxes = [list(tx.montants(l.montant, c)) for l, c in zip(facture.lignes, codes)]
+    for rang, total, lettre in ((0, facture.tps, "G"), (1, facture.tvq, "Q")):
+        portent = [i for i, c in enumerate(codes) if lettre in c]
+        ecart = total - sum(x[rang] for x in taxes)
+        if portent and abs(ecart) <= Decimal("0.05"):
+            taxes[portent[-1]][rang] += ecart
+    return [(a, b) for a, b in taxes]
 
 
 def bloc_achat(facture: Facture) -> list[str]:
@@ -70,9 +72,13 @@ def bloc_achat(facture: Facture) -> list[str]:
     for l, (tps, tvq) in zip(facture.lignes, taxes_par_ligne(facture)):
         quantite, prix = l.en_sage()
         champs = [_texte(l.numero_sage), _nombre(quantite, 4), _nombre(prix, 4), _nombre(l.montant, 2)]
-        if l.taxable:
-            champs += ['"TPS/TVH"', '"0"', '"1"', '"5.00"', _nombre(tps, 2),
-                       '"TVQ"', '"0"', '"1"', '"9.975"', _nombre(tvq, 2)]
+        from . import taxes as tx
+
+        code = tx.code(l)
+        if "G" in code:
+            champs += ['"TPS/TVH"', '"0"', '"1"', '"5.00"', _nombre(tps, 2)]
+        if "Q" in code:
+            champs += ['"TVQ"', '"0"', '"1"', '"9.975"', _nombre(tvq, 2)]
         lignes.append(",".join(champs))
     return lignes + ["</PurInvoice>"]
 
@@ -162,6 +168,7 @@ def sage_ouvert() -> bool:
     return ouvert()
 
 
+@vide_apres  # mémoire des lectures vidée après une écriture
 def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], journal=print) -> dict[str, str]:
     """Contrôle, écrit le .IMP et l'importe (Sage fermé, fenêtres de l'outil cachées), puis vérifie chaque facture.
 

@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.26.0"
+VERSION = "1.29.1"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -244,22 +244,44 @@ FAQ = {
                     "Clover » change les prix aux caisses ; chaque prix est noté dans donnees/journal_prix_clover.csv."),
         ("question", "Comment sont rangés les menus Vente, Fournisseur et Articles ?"),
         ("reponse", "Comme la gestion commerciale de Sage. Vente : Liste des clients, Liste des documents de vente, "
-                    "Saisir une facture de vente, Saisir une commande client, Interrogation de compte client, Ventes "
-                    "Clover → factures Sage. Fournisseur : Liste des fournisseurs, Liste des documents d'achat, Factures "
-                    "fournisseurs, Saisir une facture d'achat, Bons de commande, Saisir une commande fournisseur, "
-                    "Réceptions fournisseurs, Interrogation de compte fournisseur, Factures archivées. Articles : Liste "
+                    "Saisir une facture de vente, Commandes clients, Interrogation de compte client, Ventes Clover → "
+                    "factures Sage. Fournisseur : Liste des fournisseurs, Liste des documents d'achat, Factures "
+                    "fournisseurs, Saisir une facture d'achat, Bons de commande (liste, saisie, proposition et "
+                    "réception réunies), Interrogation de compte fournisseur, Factures archivées. Articles : Liste "
                     "des articles, Articles Clover, Créer un article, Liste des documents de stock, Saisir un document "
                     "de stock, Transferts, Interrogation de compte article, Inventaire, Livre d'inventaire, "
                     "Correspondance, Coûts, Prix et marges. Les listes sont lues dans Sage et s'exportent."),
+        ("question", "Comment fonctionnent les listes, les fiches et les boutons Ajouter, Modifier, Supprimer ?"),
+        ("reponse", "Les listes et outils du menu s'affichent dans la fenêtre principale, avec leur titre et « ✖ "
+                    "Fermer » ; seules les créations (saisie d'un document, d'un horaire, d'un article) ouvrent une "
+                    "nouvelle fenêtre, avec « Fermer ». Un double-clic sur une ligne ouvre sa fiche (client ou "
+                    "fournisseur : coordonnées, conditions et mouvements avec le solde ; article : comptes, prix, stock "
+                    "par emplacement et mouvements ; document : ses lignes) ; « ◀ Retour » revient à la liste. Ajouter, "
+                    "Modifier et Supprimer agissent sur ce qui est saisi dans l'application (commandes clients, "
+                    "factures et documents de stock pas encore dans Sage, bons de commande non reçus, employés sans "
+                    "pointage) ; les fiches et documents de Sage se créent, se modifient ou s'annulent dans Sage (Sage "
+                    "n'accepte pas l'import des fiches) : le bouton l'explique et ouvre la fiche."),
+        ("question", "Pourquoi les listes s'ouvrent-elles plus vite la deuxième fois ?"),
+        ("reponse", "Les lectures de Sage et du catalogue Clover sont gardées en mémoire quelques minutes et partagées "
+                    "par toutes les pages ; au démarrage, les listes des clients, fournisseurs et articles sont lues "
+                    "d'avance si Sage répond déjà. « Actualiser » relit toujours, et toute écriture dans Sage ou dans "
+                    "Clover (import, ajustement, prix, coûts) vide cette mémoire."),
+        ("question", "Comment limiter les fonctions d'un profil ?"),
+        ("reponse", "« Administration > Utilisateurs », choisissez le profil, puis « Fonctions permises… » : chaque "
+                    "fonction du menu, rubrique par rubrique ; une fonction décochée disparaît du menu de ce profil, "
+                    "même si sa page est permise. Les changements s'appliquent à la prochaine connexion. "
+                    "L'administrateur a toujours tout."),
         ("question", "Comment saisir une facture, une commande ou un document de stock ?"),
         ("reponse", "« Nouveau… » dans la fenêtre du document : client (ou fournisseur), date, remarque, puis chaque "
-                    "ligne (article Sage, quantité, prix, TPS + TVQ). Facture de vente : « Importer dans Sage » (Sage "
+                    "ligne (article Sage, quantité, prix, taxes : aucune, TPS + TVQ, TPS seulement ou TVQ "
+                    "seulement). Facture de vente : « Importer dans Sage » (Sage "
                     "fermé) ; le client doit exister dans Sage et utiliser vos n° d'articles ; vérifiée après l'import. "
                     "Commande client : gardée dans l'application (la fonction « Commandes clients » n'est pas activée "
                     "dans Sage), PDF, puis « Facturer la commande ». Document de stock : entrée ou sortie (perte, casse, "
                     "don…), « Passer dans Sage » avec Sage ouvert sur le fichier de l'entreprise. Facture d'achat "
-                    "saisie : ajoutée à « Factures fournisseurs », d'où elle est importée. Commande fournisseur saisie : "
-                    "bon de commande en PDF."),
+                    "saisie (n° de facture du fournisseur obligatoire) : ajoutée à « Factures fournisseurs », d'où elle "
+                    "est importée. Bon de commande : quantité et prix dans l'unité du fournisseur ; le facteur du "
+                    "dernier achat et la Qté Sage (Qté × Facteur) s'affichent en gris, non modifiables."),
         ("question", "Comment préparer le planning des employés ?"),
         ("reponse", "« Paie > Planning mensuel » : choisissez le mois (◀ ▶), un ou plusieurs employés (Ctrl+clic), "
                     "puis « Horaire des employés choisis… » : période, jours de la semaine, début, fin et pause non "
@@ -310,11 +332,11 @@ FAQ = {
                     "articles supprimés ou renommés dans Clover sont écartés) ou Sage (articles de stock actifs, "
                     "factures de vente, dernier achat et CUMP). Filtres : catégorie, « Seulement les articles en "
                     "stock »."),
-        ("question", "Quels articles font l'essentiel de mon chiffre d'affaires (80/20) ?"),
-        ("reponse", "« État > Articles 80/20 » : ventes nettes de la période (30 ou 90 jours, 6 ou 12 mois, cette "
+        ("question", "Quels articles font l'essentiel de mon chiffre d'affaires (20/80) ?"),
+        ("reponse", "« État > Articles 20/80 » : ventes nettes de la période (30 ou 90 jours, 6 ou 12 mois, cette "
                     "année ou dates choisies), de l'article le plus vendu au moins vendu, avec sa part et la part "
-                    "cumulée. Classe A (vert) : les articles qui font les premiers 80 % des ventes ; B (jaune) : "
-                    "jusqu'à 95 % ; C : le reste. Pour chacun : stock actuel, coût, valeur du stock et couverture "
+                    "cumulée. Classe A (vert) : les 20 % d'articles qui vendent le plus ; B (jaune) : les 30 % "
+                    "suivants ; C : le reste ; le résumé dit quelle part du chiffre d'affaires font ces 20 %. Pour chacun : stock actuel, coût, valeur du stock et couverture "
                     "(jours de vente que le stock permet au rythme de la période ; « Rupture » si le stock est nul). "
                     "Le résumé donne le nombre d'articles A et la valeur de leur stock. Source Clover ou Sage."),
         ("question", "Comment transférer des articles d'un point de vente à l'autre ?"),
@@ -611,20 +633,40 @@ FAQ = {
                     "changes the register prices; each price is logged in donnees/journal_prix_clover.csv."),
         ("question", "How are the Sales, Supplier and Items menus organized?"),
         ("reponse", "Like Sage's business management. Sales: Customer list, Sales document list, Enter a sales invoice, "
-                    "Enter a customer order, Customer account inquiry, Clover sales → Sage invoices. Supplier: Supplier "
-                    "list, Purchase document list, Supplier invoices, Enter a purchase invoice, Purchase orders, Enter a "
-                    "supplier order, Supplier receipts, Supplier account inquiry, Archived invoices. Items: Item list, "
+                    "Customer orders, Customer account inquiry, Clover sales → Sage invoices. Supplier: Supplier list, "
+                    "Purchase document list, Supplier invoices, Enter a purchase invoice, Purchase orders (list, entry, "
+                    "suggestion and receipt together), Supplier account inquiry, Archived invoices. Items: Item list, "
                     "Clover items, Create an item, Stock document list, Enter a stock document, Transfers, Item account "
                     "inquiry, Inventory, Inventory book, Mapping, Costs, Prices and margins. Lists are read from Sage "
                     "and can be exported."),
+        ("question", "How do the lists, records and the Add, Edit, Delete buttons work?"),
+        ("reponse", "Lists and tools from the menu open inside the main window, with their title and “✖ Close”; only "
+                    "creations (entering a document, a schedule, an item) open a new window, with “Close”. A "
+                    "double-click on a row opens its record (customer or supplier: contact details, terms and "
+                    "movements with the balance; item: accounts, prices, stock by location and movements; document: "
+                    "its lines); “◀ Back” returns to the list. Add, Edit and Delete act on what is entered in the "
+                    "application (customer orders, invoices and stock documents not yet in Sage, purchase orders not "
+                    "received, employees without punches); Sage records and documents are created, changed or "
+                    "reversed in Sage (Sage does not accept importing records): the button explains it and opens the "
+                    "record."),
+        ("question", "Why do lists open faster the second time?"),
+        ("reponse", "Reads from Sage and the Clover catalogue are kept in memory for a few minutes and shared by all "
+                    "pages; at start-up, the customer, supplier and item lists are read ahead if Sage already answers. "
+                    "“Refresh” always reads again, and any write to Sage or Clover (import, adjustment, prices, costs) "
+                    "clears this memory."),
+        ("question", "How do I limit a profile's functions?"),
+        ("reponse", "“Administration > Users”, choose the profile, then “Allowed functions…”: each menu function, "
+                    "section by section; an unticked function disappears from that profile's menu, even if its page "
+                    "is allowed. Changes apply at the next sign-in. The administrator always has everything."),
         ("question", "How do I enter an invoice, an order or a stock document?"),
         ("reponse", "“New…” in the document window: customer (or supplier), date, note, then each row (Sage item, "
-                    "quantity, price, GST + QST). Sales invoice: “Import into Sage” (Sage closed); the customer must "
+                    "quantity, price, taxes: none, GST + QST, GST only or QST only). Sales invoice: “Import into Sage” (Sage closed); the customer must "
                     "exist in Sage and use your item numbers; checked after the import. Customer order: kept in the "
                     "application (the “Customer orders” feature is not enabled in Sage), PDF, then “Invoice the "
                     "order”. Stock document: in or out (loss, breakage, donation…), “Post to Sage” with Sage open on "
-                    "the company file. Entered purchase invoice: added to “Supplier invoices”, from where it is "
-                    "imported. Entered supplier order: purchase order as a PDF."),
+                    "the company file. Entered purchase invoice (supplier invoice number required): added to “Supplier "
+                    "invoices”, from where it is imported. Purchase order: quantity and price in the supplier's unit; "
+                    "the last purchase's factor and the Sage qty (qty × factor) are shown in grey, not editable."),
         ("question", "How do I prepare the employee schedule?"),
         ("reponse", "“Payroll > Monthly schedule”: choose the month (◀ ▶), one or more employees (Ctrl+click), then "
                     "“Schedule for chosen employees…”: period, weekdays, start, end and unpaid break, or “Day off on "
@@ -671,10 +713,11 @@ FAQ = {
                     "of the last 365 days, stock × Clover cost; old items deleted or renamed in Clover are left out) "
                     "or Sage (active stock items, sales invoices, last purchase and average cost). Filters: category, "
                     "“Only items in stock”."),
-        ("question", "Which items make most of my revenue (80/20)?"),
-        ("reponse", "“Reports > 80/20 items”: net sales of the period (30 or 90 days, 6 or 12 months, this year or "
+        ("question", "Which items make most of my revenue (20/80)?"),
+        ("reponse", "“Reports > 20/80 items”: net sales of the period (30 or 90 days, 6 or 12 months, this year or "
                     "chosen dates), from best to least selling item, with its share and cumulative share. Class A "
-                    "(green): items making the first 80 % of sales; B (yellow): up to 95 %; C: the rest. For each: "
+                    "(green): the 20 % best-selling items; B (yellow): the next 30 %; C: the rest; the summary "
+                    "gives the share of revenue of these 20 %. For each: "
                     "current stock, cost, stock value and coverage (days of sales the stock allows at the period's "
                     "pace; “Out of stock” if the stock is zero). The summary gives the number of A items and the value "
                     "of their stock. Clover or Sage source."),

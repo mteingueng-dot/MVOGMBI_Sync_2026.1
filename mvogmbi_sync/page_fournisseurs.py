@@ -117,6 +117,8 @@ class PageFournisseurs(ttk.Frame):
         ChampDate(entete, self.v["date"]).pack(side="left", padx=(4, 12))
         Bouton(entete, "🗑  " + t("Écarter"), self.ecarter, "danger", petit=True).pack(side="right", padx=(6, 0))
         Bouton(entete, "👁  " + t("Voir la facture"), self.voir_facture, "secondaire", petit=True).pack(side="right")
+        Bouton(entete, "✖  " + t("Supprimer"), self.supprimer_facture, "danger", petit=True).pack(side="right",
+                                                                                                 padx=(0, 6))
         self.lu = ttk.Label(parent, text="", foreground=TEXTE_DOUX)
         self.lu.pack(fill="x")
         montants = ttk.Frame(parent, padding=(0, 4, 0, 0))
@@ -156,7 +158,7 @@ class PageFournisseurs(ttk.Frame):
         edition.pack(fill="x", pady=(6, 0))
         self.l = {cle: tk.StringVar() for cle in ("code", "description", "quantite", "prix", "montant", "facteur",
                                                   "qte_sage", "recherche")}
-        self.l_taxable = tk.BooleanVar()
+        self.l_taxe = tk.StringVar(value=t("Aucune"))  # taxes de la ligne : aucune, TPS + TVQ, une seule (taxes.py)
 
         def etiquette(cadre, texte):
             tk.Label(cadre, text=t(texte), background=CARTE, font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
@@ -170,7 +172,11 @@ class PageFournisseurs(ttk.Frame):
         etiquette(rang1, "Désignation")
         self.champs_ligne["description"] = ttk.Entry(rang1, textvariable=self.l["description"])
         self.champs_ligne["description"].pack(side="left", fill="x", expand=True, padx=(0, 10))
-        ttk.Checkbutton(rang1, text=t("Taxable"), variable=self.l_taxable, style="Carte.TCheckbutton").pack(side="left")
+        from . import taxes as tx
+
+        etiquette(rang1, "Taxes")
+        ttk.Combobox(rang1, textvariable=self.l_taxe, values=[t(v) for v in tx.CHOIX.values()], state="readonly",
+                     width=14).pack(side="left")
 
         rang2 = tk.Frame(edition, background=CARTE)
         rang2.pack(fill="x", padx=12, pady=2)
@@ -191,7 +197,7 @@ class PageFournisseurs(ttk.Frame):
             self.l[cle].trace_add("write", lambda *_: self._recalculer())
         for cle in ("code", "description", "quantite", "prix", "facteur"):
             self.l[cle].trace_add("write", self._planifier_sauvegarde)
-        self.l_taxable.trace_add("write", self._planifier_sauvegarde)
+        self.l_taxe.trace_add("write", self._planifier_sauvegarde)
         Bouton(rang2, t("Appliquer"), self.appliquer_ligne, "secondaire", fond=CARTE, petit=True).pack(side="left")
         Bouton(rang2, "➕", self.ajouter_ligne, "secondaire", fond=CARTE, petit=True, largeur=34).pack(side="left", padx=4)
         Bouton(rang2, "🗑", self.supprimer_ligne, "danger", fond=CARTE, petit=True, largeur=34).pack(side="left")
@@ -404,6 +410,24 @@ class PageFournisseurs(ttk.Frame):
         self.lu.configure(text="")
         self.afficher_liste()
 
+    def supprimer_facture(self) -> None:
+        """Supprime la facture choisie de la liste (fichier rangé dans « supprimees »)."""
+        if not self.facture:
+            messagebox.showinfo(self.titre, t("Choisissez d'abord la facture à supprimer dans la liste."))
+            return
+        if not messagebox.askyesno(self.titre, t("Supprimer la facture « {f} » de la liste ?\n\nSon fichier est rangé "
+                                                 "dans le sous-dossier « supprimees » (rien n'est importé ni changé "
+                                                 "dans Sage).", f=self.facture.fichier)):
+            return
+        self.registre.supprimer(self.facture)
+        self.facture = None
+        for cle in self.v:
+            self.v[cle].set("")
+        self.lignes.delete(*self.lignes.get_children())
+        self.controle.configure(text="")
+        self.lu.configure(text="")
+        self.afficher_liste()
+
     def lire_nouvelles(self) -> None:
         nouveaux = self.registre.nouveaux_fichiers()
         if not nouveaux:
@@ -603,7 +627,7 @@ class PageFournisseurs(ttk.Frame):
         l.code, l.description = self.l["code"].get().strip(), self.l["description"].get().strip()
         l.quantite, l.prix, l.facteur = quantite, prix, facteur
         l.montant = (quantite * prix).quantize(Decimal("0.01"))
-        l.taxable = self.l_taxable.get()
+        self._taxe_vers_ligne(l)
         if self.lignes.exists(str(i)):
             self.lignes.item(str(i), **self._valeurs_ligne(l))
             rayer(self.lignes)
@@ -674,11 +698,18 @@ class PageFournisseurs(ttk.Frame):
                             ("prix", f"{l.prix}"), ("montant", f"{l.montant}"), ("facteur", f"{l.facteur:g}"),
                             ("qte_sage", f"{l.en_sage()[0]:g}")):
             self.l[cle].set(valeur)
-        self.l_taxable.set(l.taxable)
+        self.l_taxe.set(t(__import__("mvogmbi_sync.taxes", fromlist=["x"]).libelle(
+            __import__("mvogmbi_sync.taxes", fromlist=["x"]).code(l))))
         self._chargement = False
         self.l["recherche"].set(l.description)
         self.chercher_sage()
         self.montrer_conversion(l)
+
+    def _taxe_vers_ligne(self, l: Ligne) -> None:
+        from . import taxes as tx
+
+        l.taxe = tx.code_du_libelle(self.l_taxe.get(), t)
+        l.taxable = bool(l.taxe)
 
     def montrer_conversion(self, l: Ligne) -> None:
         quantite, prix = l.en_sage()
@@ -700,7 +731,7 @@ class PageFournisseurs(ttk.Frame):
         except ValueError as exc:
             messagebox.showerror(self.titre, str(exc))
             return False
-        l.taxable = self.l_taxable.get()
+        self._taxe_vers_ligne(l)
         self.l["facteur"].set(f"{l.facteur:g}")
         self.l["qte_sage"].set(f"{l.en_sage()[0]:g}")
         self.afficher_lignes(i)

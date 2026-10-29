@@ -12,7 +12,7 @@ from tkinter import messagebox, ttk
 
 from .creation_articles import (AUCUNE_TAXE, TAXES_DEFAUT, TYPES_PRIX, ComptesCategorie, NouvelArticle, TableCategories,
                                 choix_taxes, lire_date, prix_vente, prochain_numero)
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, cadre_tableau, defilement, rayer
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, cadre_tableau, defilement, rayer
 from .langues import t
 
 
@@ -41,6 +41,8 @@ class FenetreCreationArticle(tk.Toplevel):
 
     `au_succes(nouvel_article)` est appelé après une création réussie (ex. : la ligne de facture est reliée).
     """
+    CREATION = True  # fenêtre de création : reste une fenêtre à part (avec « Fermer »)
+
 
     def __init__(self, parent, racine: Path, nom: str = "", cout: Decimal | None = None, numeros_sage=(),
                  au_succes=None, categorie: str = "", id_clover: str = "", relier: bool = True):
@@ -131,7 +133,7 @@ class FenetreCreationArticle(tk.Toplevel):
         self.etat.grid(row=1, column=0, columnspan=2, sticky="we", pady=(10, 4))
         boutons = tk.Frame(self, background=CARTE)
         boutons.grid(row=2, column=0, columnspan=2, sticky="e")
-        Bouton(boutons, t("Annuler"), self.destroy, "secondaire", fond=CARTE).pack(side="right", padx=(8, 0))
+        Bouton(boutons, "✖  " + t("Fermer"), self.destroy, "secondaire", fond=CARTE).pack(side="right", padx=(8, 0))
         self.bouton_creer = Bouton(boutons, "🆕  " + t("Créer l'article"), self.creer, fond=CARTE)
         self.bouton_creer.pack(side="right")
 
@@ -285,7 +287,7 @@ def proposer_depuis_sage(racine: Path) -> dict:
     return proposer_table(lire_correspondances(Path(racine) / "donnees" / "correspondance_articles.xlsx"), lignes)
 
 
-class FenetreCategories(tk.Toplevel):
+class FenetreCategories(FenetreOutil):
     """Table « catégorie Clover -> préfixe du n° Sage et comptes Sage » (actif 15xx, produits 40xx, CMV 50xx, écart)."""
 
     COLONNES = (("categorie", "Catégorie Clover", 200), ("prefixe", "Préfixe n° Sage", 90), ("actif", "Actif", 70),
@@ -320,6 +322,8 @@ class FenetreCategories(tk.Toplevel):
             tk.Label(edition, text=t(titre), background=CARTE, font=("Segoe UI", 9)).pack(side="left", padx=(8, 2))
             ttk.Entry(edition, textvariable=self.v[cle], width=7).pack(side="left")
         Bouton(edition, t("Appliquer"), self.appliquer, "secondaire", fond=CARTE, petit=True).pack(side="left", padx=8)
+        Bouton(edition, "➕", self.ajouter, "secondaire", fond=CARTE, petit=True, largeur=34).pack(side="left")
+        Bouton(edition, "🗑", self.supprimer, "danger", fond=CARTE, petit=True, largeur=34).pack(side="left", padx=4)
         self.etat = tk.Label(self, text=t("Règle : actif 15xx -> produits 40xx / CMV 50xx ; écart = CMV."),
                              background=CARTE, foreground=TEXTE_DOUX, anchor="w")
         self.etat.pack(fill="x")
@@ -356,6 +360,32 @@ class FenetreCategories(tk.Toplevel):
         problemes = c.problemes()
         self.etat.configure(text=("⚠ " + " ; ".join(problemes)) if problemes else "✔ " + nom,
                             foreground=ROUGE if problemes else VERT_FONCE)
+
+    def ajouter(self) -> None:
+        """Nouvelle ligne : catégorie (nom exact de la catégorie Clover), puis ses comptes et « Appliquer »."""
+        from tkinter import simpledialog
+
+        nom = simpledialog.askstring(self.title(), t("Nom de la catégorie Clover :"), parent=self)
+        nom = " ".join((nom or "").split())
+        if not nom:
+            return
+        if nom in self.table.lignes:
+            self.etat.configure(text=t("« {n} » existe déjà.", n=nom), foreground=ROUGE)
+        else:
+            self.table.lignes[nom] = ComptesCategorie(nom)
+            self.afficher()
+        self.arbre.selection_set(nom)
+        self.arbre.see(nom)
+        self.etat.configure(text=t("Complétez les comptes de « {n} », puis « Appliquer » et « Enregistrer ».", n=nom),
+                            foreground=VERT_FONCE)
+
+    def supprimer(self) -> None:
+        choix = self.arbre.selection()
+        if not choix:
+            return
+        if messagebox.askyesno(self.title(), t("Retirer la catégorie « {n} » de la table ?", n=choix[0]), parent=self):
+            del self.table.lignes[choix[0]]
+            self.afficher()
 
     def proposer(self) -> None:
         """Complète les catégories sans comptes à partir des articles Sage déjà reliés (comptes les plus fréquents)."""

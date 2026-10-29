@@ -9,7 +9,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from . import bons_commande as bc
-from .design import CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -46,8 +46,6 @@ def ouvrir(parent, racine: Path):
         choix.pack(side="left", padx=4)
         choix.bind("<<ComboboxSelected>>", lambda _e: fenetre.charger())
         tk.Label(groupe, text=t("jours de ventes"), background=CARTE).pack(side="left")
-        barre.ajouter(Bouton(barre, "📂  " + t("Bons créés…"), lambda: FenetreBons(fenetre, racine), "secondaire",
-                             fond=CARTE, petit=True))
 
     def lire():
         jours = int(reglages["jours"].get())
@@ -83,22 +81,24 @@ def ouvrir(parent, racine: Path):
         t("Créer les bons de commande pour {n} ligne(s) cochée(s) ?"), ajouts=ajouts)
 
 
-class FenetreBons(tk.Toplevel):
+class FenetreBons(FenetreOutil):
     """Bons créés : PDF, comparaison avec la facture du fournisseur, réception."""
 
     def __init__(self, parent, racine: Path):
         from .page_rapports import tableau_simple
 
-        super().__init__(parent)
+        super().__init__(parent.nametowidget("."))  # affichée dans la fenêtre principale
         self.racine = Path(racine)
-        self.title(t("Bons de commande créés"))
+        self.title(t("Bons de commande"))
         self.configure(background=CARTE, padx=14, pady=10)
         self.transient(parent)
         self.geometry("1000x620")
         barre = Rangee(self)
         barre.pack(fill="x")
-        for texte, commande in (("➕  " + t("Nouveau bon…"), self.nouveau),
-                                ("📄  " + t("Ouvrir le PDF"), self.ouvrir_pdf),
+        for texte, commande in (("📂  " + t("Ouvrir"), self.ouvrir_pdf),
+                                ("➕  " + t("Ajouter"), self.nouveau), ("✎  " + t("Modifier"), self.modifier),
+                                ("🗑  " + t("Supprimer"), self.supprimer),
+                                ("🧮  " + t("Proposer les commandes…"), lambda: ouvrir(self, self.racine)),
                                 ("🔁  " + t("Refaire le PDF"), self.refaire),
                                 ("⚖  " + t("Comparer avec la facture"), self.comparer)):
             barre.ajouter(Bouton(barre, texte, commande, "secondaire", fond=CARTE, petit=True))
@@ -120,6 +120,10 @@ class FenetreBons(tk.Toplevel):
         barre.ajouter(bouton_exporter(barre, self.tableau, t("Bons de commande")))
         self.resultat = None
         self.afficher()
+        # liste relue à chaque retour (bons créés depuis « Proposer les commandes… »)
+        self.bind("<Map>", lambda e: e.widget is self and self.afficher(), add="+")
+        from .design import dans_application
+        dans_application(parent, self)
 
     def afficher(self) -> None:
         from .page_rapports import remplir
@@ -136,6 +140,28 @@ class FenetreBons(tk.Toplevel):
     def nouveau(self) -> None:
         from .fenetre_gestion import saisir_bon_commande
         saisir_bon_commande(self, self.racine, apres=self.afficher)
+
+    def modifier(self) -> None:
+        from .fenetre_gestion import saisir_bon_commande
+
+        bon = self._bon()
+        if not bon:
+            return
+        if bon.etat != bc.CREE:
+            messagebox.showinfo(self.title(), t("{n} ({e}) ne peut plus être modifié.", n=bon.numero, e=t(bon.etat)),
+                                parent=self)
+            return
+        saisir_bon_commande(self, self.racine, apres=self.afficher, bon=bon)
+
+    def supprimer(self) -> None:
+        bon = self._bon()
+        if not bon or not messagebox.askyesno(self.title(), t("Supprimer {n} ?", n=bon.numero), parent=self):
+            return
+        try:
+            bc.supprimer_bon(self.racine, bon.numero)
+        except ValueError as exc:
+            messagebox.showerror(self.title(), t(str(exc)), parent=self)
+        self.afficher()
 
     def _bon(self):
         choix = self.tableau.selection()
