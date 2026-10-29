@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
 from .design import CARTE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton, cadre_tableau, defilement, entete_page, rayer
-from .export_tableau import bouton_exporter
+from .export_tableau import bouton_exporter, placer_a_droite
 from .langues import t
 from .utilisateurs import ADMIN, LONGUEUR_MIN, PAGES, ErreurUtilisateur, Registre
 
@@ -46,7 +46,7 @@ class PageUtilisateurs(ttk.Frame):
         self.tableau.pack(side="left", fill="both", expand=True)
         defilement(self.tableau)
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
-        bouton_exporter(barre, self.tableau, t("Utilisateurs")).pack(side="right")
+        placer_a_droite(bouton_exporter(barre, self.tableau, t("Utilisateurs")))
 
         fiche = tk.Frame(gauche, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4", padx=14,
                          pady=10)

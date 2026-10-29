@@ -113,15 +113,47 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
     de plus) : en-tête du marché, titre, date, en-têtes verts, une ligne sur deux teintée, montants à droite,
     page à l'horizontale au-delà de 7 colonnes (ou s'il y a des graphiques). `images` : images PIL (graphiques,
     cartes d'indicateurs) placées avant le tableau ; sans en-têtes, le PDF ne contient que les images."""
-    import html
     import subprocess
     import tempfile
-    from datetime import datetime
 
     edge = next((e for e in EDGE if e.exists()), None)
     if not edge:
         raise RuntimeError(t("Microsoft Edge introuvable : l'export PDF en a besoin."))
+    import shutil
+
+    page = page_html(titre, entetes, lignes, images, sous_titre)
+    raison = ""
+    with tempfile.TemporaryDirectory() as dossier:
+        # Edge écrit dans un dossier temporaire (chemin simple), puis le PDF est copié à sa place : un dossier
+        # OneDrive, réseau ou protégé ne fait plus échouer Edge (constat du 2026-10-28)
+        source, pdf = Path(dossier) / "tableau.html", Path(dossier) / "tableau.pdf"
+        source.write_text(page, encoding="utf-8")
+        for options in (["--headless"], ["--headless=old"]):  # 2e essai avec l'ancien mode sans fenêtre
+            try:
+                r = subprocess.run([str(edge), *options, "--disable-gpu", "--no-pdf-header-footer",
+                                    f"--user-data-dir={Path(dossier) / 'profil'}", f"--print-to-pdf={pdf}",
+                                    source.as_uri()], timeout=120, capture_output=True)
+                raison = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
+                raison = raison[0][:200]
+            except subprocess.TimeoutExpired:
+                raison = "Edge n'a pas répondu en 2 minutes"
+            if pdf.exists() and pdf.stat().st_size > 0:
+                break
+        if not pdf.exists():
+            raise RuntimeError(t("Le PDF n'a pas pu être créé.") + (f" ({raison})" if raison else ""))
+        Path(chemin).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(pdf, chemin)
+
+
+def page_html(titre: str, entetes: list[str], lignes: list[list[str]], images=None, sous_titre: str = "",
+              imprimer: bool = False) -> str:
+    """Page HTML du tableau (PDF et impression) ; `imprimer` : la boîte d'impression s'ouvre dès l'affichage.
+    En-tête : logo et informations de l'entreprise lues dans Clover (nom, adresse, téléphone, site web)."""
+    import html
+    from datetime import datetime
+
     e = html.escape
+    entete = entete_html()
     import base64
     import io
 
@@ -137,51 +169,113 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
     corps = "".join(
         "<tr>" + "".join(f"<td class='{'n' if nombres[i] else ''}'>{e(str(v).strip())}</td>"
                          for i, v in enumerate(l)) + "</tr>" for l in lignes)
-    page = f"""<!doctype html><html lang='fr'><head><meta charset='utf-8'><style>
+    page = f"""<!doctype html><html lang='fr'><head><meta charset='utf-8'><title>{e(titre)}</title><style>
 @page {{ size: Letter {'landscape' if len(entetes) > 7 or images else 'portrait'}; margin: 12mm 10mm; }}
 img.graphique {{ display: block; max-width: 100%; max-height: 165mm; margin: 6px auto 10px; border: 1px solid #e2e8e4;
                  page-break-inside: avoid; }}
+* {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
 body {{ font-family: 'Segoe UI', Arial, sans-serif; font-size: 8.5pt; color: #1f2d24; margin: 0; }}
-.bandeau {{ border-top: 6px solid #1a9b3c; padding-top: 6px; display: flex; justify-content: space-between; }}
-.marche {{ color: #13772d; font-weight: 600; font-size: 10pt; }}
-.date {{ color: #6b7a70; font-size: 8pt; }}
-h1 {{ font-size: 14pt; color: #13772d; margin: 8px 0 2px; }}
-.sous {{ color: #6b7a70; margin-bottom: 8px; }}
-table {{ width: 100%; border-collapse: collapse; }}
+/* en-tête moderne : filet aux couleurs du marché, bandeau clair arrondi, titre au centre */
+.filet {{ height: 4px; border-radius: 2px; margin-bottom: 8px;
+          background: linear-gradient(90deg, #1a9b3c 0 34%, #d62e3c 34% 67%, #f5c518 67% 100%); }}
+.bandeau {{ display: flex; justify-content: space-between; align-items: center; gap: 14px;
+            background: #f4f9f5; border: 1px solid #e1ece4; border-radius: 10px; padding: 10px 14px; }}
+.ident {{ display: flex; gap: 10px; align-items: center; min-width: 0; flex: 0 1 38%; }}
+.ident img {{ height: 52px; width: 52px; object-fit: contain; background: #fff; border-radius: 8px;
+              border: 1px solid #e1ece4; padding: 3px; }}
+.marche {{ color: #13772d; font-weight: 700; font-size: 11.5pt; letter-spacing: .2px; }}
+.coord {{ color: #5b6a60; font-size: 7.5pt; line-height: 1.4; }}
+.titre {{ flex: 1; text-align: center; }}
+.titre h1 {{ margin: 0; font-size: 16pt; font-weight: 700; color: #1f2d24; letter-spacing: .3px; }}
+.titre .sous {{ margin: 3px 0 0; color: #6b7a70; font-size: 8pt; }}
+.date {{ flex: 0 0 auto; color: #6b7a70; font-size: 7.5pt; text-align: right; line-height: 1.5; }}
+.date b {{ display: block; color: #13772d; font-size: 9pt; }}
+.sous {{ color: #6b7a70; }}
+table {{ width: 100%; border-collapse: separate; border-spacing: 0; }}
 thead {{ display: table-header-group; }}
-th {{ background: #1f7a3a; color: #fff; text-align: left; padding: 4px 5px; font-weight: 600; }}
-td {{ padding: 3px 5px; border-bottom: 1px solid #e2e8e4; vertical-align: top; }}
+th {{ background: #1f7a3a; color: #fff; text-align: left; padding: 6px 7px; font-weight: 600; font-size: 8pt; }}
+th.n {{ text-align: right; }}
+th:first-child {{ border-top-left-radius: 6px; }}
+th:last-child {{ border-top-right-radius: 6px; }}
+td {{ padding: 4px 7px; border-bottom: 1px solid #e8efe9; vertical-align: top; }}
 td.n {{ text-align: right; white-space: nowrap; }}
 tr:nth-child(even) td {{ background: #f4f8f5; }}
 tr {{ page-break-inside: avoid; }}
 </style></head><body>
-<div class='bandeau'><span class='marche'>Marché MVOG-MBI Sherbrooke — MVOGMBI_Sync</span>
-<span class='date'>{datetime.now():%Y-%m-%d %H:%M}</span></div>
-<h1>{e(titre)}</h1><div class='sous'>{e(sous_titre or (t("{n} ligne(s)", n=len(lignes)) if entetes else ""))}</div>
+<div class='filet'></div>
+<div class='bandeau'>{entete}
+<div class='titre'><h1>{e(titre)}</h1>
+<div class='sous'>{e(sous_titre or (t("{n} ligne(s)", n=len(lignes)) if entetes else ""))}</div></div>
+<div class='date'><b>{datetime.now():%Y-%m-%d}</b>{datetime.now():%H:%M}<br>MVOGMBI_Sync</div></div>
+<div style='height:10px'></div>
 {"".join(blocs_images)}
-{f'<table><thead><tr>{"".join(f"<th>{e(str(x))}</th>" for x in entetes)}</tr></thead><tbody>{corps}</tbody></table>'
+{f'<table><thead><tr>{"".join(f"<th class={chr(39)}{chr(110) if nombres[i] else chr(32)}{chr(39)}>{e(str(x))}</th>" for i, x in enumerate(entetes))}</tr></thead><tbody>{corps}</tbody></table>'
  if entetes else ""}
+{"<script>window.addEventListener('load', () => window.print());</script>" if imprimer else ""}
 </body></html>"""
-    with tempfile.TemporaryDirectory() as dossier:
-        source = Path(dossier) / "tableau.html"
-        source.write_text(page, encoding="utf-8")
-        subprocess.run([str(edge), "--headless", "--disable-gpu", "--no-pdf-header-footer",
-                        f"--print-to-pdf={chemin}", source.as_uri()], check=True, timeout=120, capture_output=True)
-    if not Path(chemin).exists():
-        raise RuntimeError(t("Le PDF n'a pas pu être créé."))
+    return page
 
 
-def exporter(tableau: ttk.Treeview, nom: str, format_: str = "xlsx") -> None:
+def entete_html() -> str:
+    """Bloc gauche de l'en-tête : logo du marché, nom, adresse, téléphone et site web (Clover, gardés localement)."""
+    import base64
+    import html
+
+    from .design import LOGO
+    from .entreprise import Entreprise, lire
+
+    e = html.escape
+    info = lire(RACINE_ENTETE) if RACINE_ENTETE else Entreprise()
+    logo = ""
+    try:
+        logo = ("<img src='data:image/png;base64," + base64.b64encode(Path(LOGO).read_bytes()).decode("ascii")
+                + "'>")
+    except OSError:
+        pass
+    coordonnees = [x for x in (info.adresse, info.ville,
+                               "  •  ".join(y for y in (f"Tél. {info.telephone}" if info.telephone else "", info.site)
+                                            if y)) if x]
+    return (f"<div class='ident'>{logo}<div><div class='marche'>{e(info.nom)}</div>"
+            f"<div class='coord'>{'<br>'.join(e(x) for x in coordonnees)}</div></div></div>")
+
+
+def imprimer(tableau: ttk.Treeview, nom) -> None:
+    """Imprime le tableau affiché (toutes ses lignes) : la page s'ouvre dans le navigateur avec la boîte
+    d'impression de Windows (choix de l'imprimante, aperçu, orientation)."""
+    import tempfile
+    from datetime import datetime
+
+    if not autorise(tableau):
+        return
+    nom = _nom(nom)
+    entetes, lignes = contenu(tableau)
+    if not lignes:
+        messagebox.showinfo(nom, t("Le tableau est vide : rien à imprimer."), parent=tableau)
+        return
+    dossier = Path(tempfile.gettempdir()) / "MVOGMBI_Sync_impression"
+    dossier.mkdir(exist_ok=True)
+    for ancien in dossier.glob("*.html"):  # impressions précédentes : effacées
+        try:
+            ancien.unlink()
+        except OSError:
+            pass
+    chemin = dossier / f"impression_{datetime.now():%Y%m%d_%H%M%S}.html"
+    chemin.write_text(page_html(nom, entetes, lignes, imprimer=True), encoding="utf-8")
+    os.startfile(chemin)
+
+
+def exporter(tableau: ttk.Treeview, nom, format_: str = "xlsx") -> None:
     """Demande où enregistrer puis écrit le fichier ; propose de l'ouvrir."""
     if not autorise(tableau):
         return
+    nom = _nom(nom)
     entetes, lignes = contenu(tableau)
     if not lignes:
         messagebox.showinfo(nom, t("Le tableau est vide : rien à exporter."), parent=tableau)
         return
     types = {"xlsx": ("Excel", "*.xlsx"), "csv": ("CSV", "*.csv"), "pdf": ("PDF", "*.pdf")}
     chemin = filedialog.asksaveasfilename(parent=tableau, defaultextension="." + format_,
-                                          initialfile=f"{nom} {date.today().isoformat()}.{format_}",
+                                          initialfile=f"{nom_de_fichier(nom)} {date.today().isoformat()}.{format_}",
                                           filetypes=[types[format_]] + [v for k, v in types.items() if k != format_])
     if not chemin:
         return
@@ -210,6 +304,7 @@ def exporter(tableau: ttk.Treeview, nom: str, format_: str = "xlsx") -> None:
         os.startfile(chemin)
 
 
+RACINE_ENTETE: Path | None = None  # dossier de l'application : informations d'entreprise de l'en-tête (Clover)
 EXPORT_PERMIS = True  # droit du profil de la personne connectée (réglé par l'application à la connexion)
 
 
@@ -219,8 +314,6 @@ def export_permis() -> bool:
 
 def autorise(parent=None) -> bool:
     """Export permis au profil ; sinon un message (le profil n'a pas le droit d'exporter des données)."""
-    if not autorise(tableau):
-        return
     if EXPORT_PERMIS:
         return True
     from tkinter import messagebox
@@ -229,11 +322,24 @@ def autorise(parent=None) -> bool:
     return False
 
 
-def menu(tableau: ttk.Treeview, nom: str) -> tk.Menu:
+def nom_de_fichier(nom: str) -> str:
+    """Titre sans les caractères interdits dans un nom de fichier Windows (« : », « / », « ? »…)."""
+    return re.sub(r'[<>:"/\\|?*]+', "-", nom).strip(" -.")[:80] or "MVOGMBI_Sync"
+
+
+def _nom(nom) -> str:
+    """Titre du document : un texte, ou une fonction appelée au moment de l'export (titre des résultats affichés)."""
+    texte = nom() if callable(nom) else nom
+    return " ".join(str(texte or "").split()) or "MVOGMBI_Sync"
+
+
+def menu(tableau: ttk.Treeview, nom) -> tk.Menu:
     m = tk.Menu(tableau, tearoff=0)
     m.add_command(label="📗  " + t("Exporter en Excel (.xlsx)…"), command=lambda: exporter(tableau, nom, "xlsx"))
     m.add_command(label="📄  " + t("Exporter en CSV (.csv)…"), command=lambda: exporter(tableau, nom, "csv"))
     m.add_command(label="📕  " + t("Exporter en PDF (.pdf)…"), command=lambda: exporter(tableau, nom, "pdf"))
+    m.add_separator()
+    m.add_command(label="🖨  " + t("Imprimer…"), command=lambda: imprimer(tableau, nom))
     return m
 
 
@@ -246,7 +352,7 @@ def rendre_exportable(tableau: ttk.Treeview, nom: str) -> None:
 
 
 def bouton_exporter(parent, tableau: ttk.Treeview, nom: str, **options):
-    """Bouton « Exporter » qui propose Excel ou CSV ; rend aussi le tableau exportable par clic droit."""
+    """Liste déroulante « Exporter ▾ » : Excel, CSV, PDF et Imprimer ; aussi par clic droit sur le tableau."""
     from .design import Bouton, fond_de
 
     rendre_exportable(tableau, nom)
@@ -257,8 +363,16 @@ def bouton_exporter(parent, tableau: ttk.Treeview, nom: str, **options):
     def ouvrir() -> None:
         menu(tableau, nom).tk_popup(bouton.winfo_rootx(), bouton.winfo_rooty() + bouton.winfo_height())
 
-    bouton = Bouton(parent, "⬇  " + t("Exporter"), ouvrir, "secondaire", **options)
+    bouton = Bouton(parent, "⬇  " + t("Exporter") + "  ▾", ouvrir, "secondaire", **options)
     return bouton
+
+
+def placer_a_droite(widget, **options):
+    """Place le bouton « Exporter ▾ » le plus à droite de sa barre (demande du propriétaire du 2026-10-28), même si
+    d'autres boutons y sont déjà rangés à droite."""
+    a_droite = [w for w in widget.master.pack_slaves() if w is not widget and w.pack_info().get("side") == "right"]
+    widget.pack(side="right", **({"before": a_droite[0]} if a_droite else {}), **options)
+    return widget
 
 
 def image_widget(widget):
@@ -276,7 +390,7 @@ def demander_et_ecrire(parent, nom: str, format_: str, ecrire) -> None:
         return
     types = {"pdf": ("PDF", "*.pdf"), "png": (t("Image PNG"), "*.png")}
     chemin = filedialog.asksaveasfilename(parent=parent, defaultextension="." + format_,
-                                          initialfile=f"{nom} {date.today().isoformat()}.{format_}",
+                                          initialfile=f"{nom_de_fichier(nom)} {date.today().isoformat()}.{format_}",
                                           filetypes=[types[format_]])
     if not chemin:
         return

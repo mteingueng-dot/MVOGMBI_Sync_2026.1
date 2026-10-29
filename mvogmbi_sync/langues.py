@@ -1228,4 +1228,9 @@ EN: dict[str, str] = {
     'Compte manquant (import bloqué)': 'Missing account (import blocked)',
     "comptes de l'article": "item's accounts",
     'comptes et Clover': 'accounts and Clover',
+    'Imprimer…': 'Print…',
+    'Le tableau est vide : rien à imprimer.': 'The table is empty: nothing to print.',
+    '* champ obligatoire': '* required field',
+    'Champs obligatoires à remplir :': 'Required fields to fill in:',
+    'Identifiant marchand (13 lettres ou chiffres)': 'Merchant ID (13 letters or digits)',
 }

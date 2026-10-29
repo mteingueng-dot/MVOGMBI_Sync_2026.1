@@ -22,7 +22,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import coffre, export_tableau, langues
+from . import coffre, entreprise, export_tableau, langues
 from .design import (BORDURE, CARTE, FOND, ICONE, ID_APPLICATION, JAUNE, LOGO, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE,
                      TEXTE_DOUX, VERT, VERT_FONCE, Bouton, ChampDate, fond_de, image_filigrane, styler)
 from .langues import t
@@ -37,7 +37,7 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
 # profil donne l'accès, méthode qui ouvre la fenêtre)
 MENU_GROUPES = [
     (None, "", [ACCUEIL]),
-    ("Administration", "⚙", [CLOVER, SAGE, COURRIEL, AUTOMATISATION, UTILISATEURS, GUIDE, FAQ]),
+    ("Administration", "⚙", [CLOVER, SAGE, COURRIEL, AUTOMATISATION, UTILISATEURS]),
     ("Articles", "🏷", [CORRESPONDANCE,
                        ("📄", "Articles Clover", CORRESPONDANCE, "ouvrir_articles_clover"),
                        ("🆕", "Créer un article", CORRESPONDANCE, "ouvrir_creation_article"),
@@ -53,6 +53,7 @@ MENU_GROUPES = [
     ("État", "📊", [("📈", "Suivi des ventes", RAPPORTS, "ouvrir_rapports", "Suivi des ventes"),
                     ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
                     ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover")]),
+    (None, "", [GUIDE, FAQ]),  # aide : hors des rubriques, en bas du menu (demande du propriétaire)
 ]
 # libellés du menu (sans n° de page) ; la page « Tableau de bord » est la facturation des ventes Clover
 LIBELLES_MENU = {TABLEAU: "Ventes Clover → factures Sage"}
@@ -114,6 +115,8 @@ class Application(tk.Tk):
         else:
             self._permises = None
             self.points_permis = None  # None = tous les points de vente
+        export_tableau.RACINE_ENTETE = Path(racine)  # en-tête des impressions : informations Clover de l'entreprise
+        threading.Thread(target=lambda: entreprise.actualiser(Path(racine)), daemon=True).start()  # 1 fois/jour
         self.chemin_config = racine / "config.toml"
         self.config_toml = lire_config(self.chemin_config)
         langues.depuis_config(self.config_toml)

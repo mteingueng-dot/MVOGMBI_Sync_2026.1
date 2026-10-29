@@ -18,7 +18,7 @@ from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Ch
                      entete_page, fond_de, rayer)
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
                            completer, etat_apres_controle, lire_copie_fournisseurs, lire_facture)
-from .export_tableau import bouton_exporter, rendre_exportable
+from .export_tableau import bouton_exporter, placer_a_droite, rendre_exportable
 from .langues import t
 
 COULEURS = {A_SAISIR: "#fff4d6", A_VERIFIER: "#fde2e4", PRETE: "#e6f4ea", IMPORTEE: None}
@@ -88,7 +88,7 @@ class PageFournisseurs(ttk.Frame):
         defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.liste.pack(side="left", fill="both", expand=True)
         self.liste.bind("<<TreeviewSelect>>", lambda _e: self.choisir_facture())
-        bouton_exporter(barre, self.liste, t("Factures fournisseurs")).pack(side="right")
+        placer_a_droite(bouton_exporter(barre, self.liste, t("Factures fournisseurs")))
         self.liste.bind("<Delete>", lambda _e: self.ecarter())
         self.bind("<Map>", lambda _e: self.actualiser(silencieux=True))  # retour sur la page : liste à jour
         # départ de la page ou fermeture : la saisie en cours est gardée

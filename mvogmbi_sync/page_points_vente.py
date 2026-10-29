@@ -155,8 +155,11 @@ class Fiche(tk.Toplevel):
             lignes.append(("prefixe", t("Préfixe des factures"), p.prefixe,
                            t("{n} caractères au plus, sans espace : « {p} 2026-10-23/25 ».", n=LONGUEUR_PREFIXE,
                              p=p.prefixe or "V2")))
+        self.libelles = {cle: libelle for cle, libelle, _, _ in lignes}
+        self.jeton_present = not p.principal and coffre.present(p.cle_jeton)
         for i, (cle, libelle, valeur, aide) in enumerate(lignes):
-            ttk.Label(corps, text=libelle).grid(row=2 * i, column=0, sticky="w", pady=(4, 0), padx=(0, 12))
+            obligatoire = cle != "jeton" or not self.jeton_present  # tous obligatoires (demande du propriétaire)
+            ttk.Label(corps, text=libelle + (" *" if obligatoire else "")).grid(row=2 * i, column=0, sticky="w", pady=(4, 0), padx=(0, 12))
             self.vars[cle] = tk.StringVar(value=valeur)
             ttk.Entry(corps, textvariable=self.vars[cle], width=44, show="•" if cle == "jeton" else "").grid(
                 row=2 * i, column=1, sticky="we", pady=(4, 0))
@@ -168,14 +171,30 @@ class Fiche(tk.Toplevel):
             self.vars["actif"] = tk.BooleanVar(value=p.actif)
             ttk.Checkbutton(corps, text=t("Actif (traité avec « tous les points de vente »)"),
                             variable=self.vars["actif"]).grid(row=ligne, column=1, sticky="w", pady=(8, 0))
+        ttk.Label(corps, text=t("* champ obligatoire"), font=("Segoe UI", 8), foreground="#6b7a70").grid(
+            row=ligne + 1, column=0, sticky="w", pady=(14, 0))
         boutons = ttk.Frame(corps)
-        boutons.grid(row=ligne + 1, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        boutons.grid(row=ligne + 1, column=1, sticky="e", pady=(14, 0))
         Bouton(boutons, t("Enregistrer"), self.valider, petit=True).pack(side="left")
         Bouton(boutons, t("Annuler"), self.destroy, "secondaire", petit=True).pack(side="left", padx=(8, 0))
         self.grab_set()
 
+    def manquants(self, v: dict) -> list[str]:
+        """Champs obligatoires vides (le jeton seulement s'il n'est pas déjà dans le coffre-fort) ; identifiant
+        marchand de 13 caractères."""
+        manquants = [self.libelles[cle] for cle in self.libelles
+                     if not str(v.get(cle, "")).strip() and (cle != "jeton" or not self.jeton_present)]
+        marchand = str(v.get("marchand", "")).strip()
+        if "marchand" in self.libelles and marchand and (len(marchand) != 13 or not marchand.isalnum()):
+            manquants.append(t("Identifiant marchand (13 lettres ou chiffres)"))
+        return manquants
+
     def valider(self) -> None:
         v = {cle: (var.get().strip() if isinstance(var.get(), str) else var.get()) for cle, var in self.vars.items()}
+        if manquants := self.manquants(v):
+            messagebox.showwarning(self.title(), t("Champs obligatoires à remplir :") + "\n\n• "
+                                   + "\n• ".join(manquants), parent=self)
+            return
         p = self.p
         p.nom, p.client_sage, p.depot_sage = v["nom"], v["client"], v["depot"] or DEPOT_DEFAUT
         if not p.principal:

@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 
 from .design import (CARTE, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton,
                      ChampDate, ChampRecherche, Rangee, apres_frappe, cadre_tableau, entete_page, fond_de, rayer)
-from .export_tableau import bouton_exporter, export_permis
+from .export_tableau import bouton_exporter, export_permis, placer_a_droite
 from .statistiques_clover import SEUIL_CUMP_DOUTEUX
 from .langues import t
 
@@ -226,7 +226,7 @@ class PageRapports(ttk.Frame):
         self.tableau_suivi = tableau_simple(cadre)
         for cle, couleur in COULEURS.items():
             self.tableau_suivi.tag_configure(cle, background=couleur)
-        bouton_exporter(barre, self.tableau_suivi, t("Suivi des ventes")).pack(side="right")
+        placer_a_droite(bouton_exporter(barre, self.tableau_suivi, t("Suivi des ventes")))
 
     def actualiser(self) -> None:
         from .encaissements import numero_compte_sage
@@ -346,7 +346,8 @@ class PageRapports(ttk.Frame):
         self.titre_recherche.pack(fill="x")
         self.tableau_recherche = tableau_simple(cadre)
         self.tableau_recherche.tag_configure("total", font=("Segoe UI Semibold", 9), background="#e8f3ea")
-        barre.ajouter(bouton_exporter(barre, self.tableau_recherche, t("Recherche")))
+        barre.ajouter(bouton_exporter(barre, self.tableau_recherche,  # titre : celui des résultats affichés
+                                      lambda: self.titre_recherche.cget("text") or t("Recherche dans l'historique")))
         self._preparer_recherche(lire=False)
 
     def _type(self) -> str:
@@ -731,7 +732,7 @@ class PageRapports(ttk.Frame):
         self.titre_tableau.pack(fill="x", pady=(8, 0))
         self.tableau_stats = tableau_simple(self.page_tableau)
         self.tableau_stats.tag_configure("a_commander", background=COULEURS_PEREMPTION["rouge"])
-        bouton_exporter(ligne, self.tableau_stats, t("Statistiques Clover")).pack(side="right")
+        placer_a_droite(bouton_exporter(ligne, self.tableau_stats, t("Statistiques Clover")))
         self.donnees_prev = None
         self.vues_prev: dict = {}
         self._lecture_prev = False
@@ -1498,7 +1499,7 @@ class PageRapports(ttk.Frame):
         self.tableau_peremption = tableau_simple(cadre)
         for cle, couleur in COULEURS_PEREMPTION.items():
             self.tableau_peremption.tag_configure(cle, background=couleur)
-        bouton_exporter(barre, self.tableau_peremption, t("Péremption")).pack(side="right")
+        placer_a_droite(bouton_exporter(barre, self.tableau_peremption, t("Péremption")))
         self.peremption = []
 
     def lire_peremption(self) -> None:
@@ -1580,7 +1581,7 @@ class PageRapports(ttk.Frame):
         self.tableau_archives.pack(fill="x")
         self.tableau_archives.bind("<<TreeviewSelect>>", lambda _e: self.afficher_lignes())
         self.tableau_archives.bind("<Double-Button-1>", lambda _e: self.ouvrir_piece())
-        bouton_exporter(barre, self.tableau_archives, t("Factures fournisseurs archivées")).pack(side="right")
+        placer_a_droite(bouton_exporter(barre, self.tableau_archives, t("Factures fournisseurs archivées")))
         tk.Label(cadre, text=t("Lignes de la facture choisie"), font=("Segoe UI Semibold", 10),
                  background=fond_de(cadre)).pack(anchor="w", pady=(10, 0))
         self.tableau_lignes = tableau_simple(cadre, hauteur=6)

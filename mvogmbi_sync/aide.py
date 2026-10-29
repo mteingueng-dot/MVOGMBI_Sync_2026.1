@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.21.2"
+VERSION = "1.22.3"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -207,6 +207,14 @@ FAQ = {
                     "(JJ/MM/AAAA) ; une UGS qui n'est pas une date n'est pas affichée. « Effacer les UGS qui ne sont "
                     "pas des dates… » les liste ; cochez celles à vider dans Clover (chaque UGS effacée est notée dans "
                     "donnees/journal_ugs_effacees.csv)."),
+        ("question", "Comment imprimer un tableau ?"),
+        ("reponse", "Liste « ⬇ Exporter ▾ » de la page (ou clic droit sur le tableau) : « 🖨 Imprimer… ». Le tableau "
+                    "complet (toutes ses lignes) s'ouvre dans le navigateur avec la boîte d'impression de Windows : "
+                    "choix de l'imprimante, aperçu, orientation. La même liste exporte en Excel, CSV ou PDF. "
+                    "L'impression et les PDF portent un en-tête : logo, nom, adresse, téléphone et site web de "
+                    "l'entreprise (lus dans Clover une fois par jour), titre du document, date. Pour changer ces "
+                    "informations, modifiez-les dans Clover (Compte et configuration > Informations sur "
+                    "l'entreprise)."),
         ("question", "Qui peut exporter des données ?"),
         ("reponse", "C'est un droit du profil (« Administration > Utilisateurs », case « Exporter les données »). "
                     "Sans ce droit, les boutons « Exporter », « Excel » et « PDF de la page », le clic droit "
@@ -478,6 +486,12 @@ FAQ = {
                     "and export. The expiry date is the Clover SKU read as a date (DD/MM/YYYY); a SKU that is not a "
                     "date is not shown. “Clear SKUs that are not dates…” lists them; check those to empty in Clover "
                     "(each cleared SKU is noted in donnees/journal_ugs_effacees.csv)."),
+        ("question", "How do I print a table?"),
+        ("reponse", "The page's “⬇ Export ▾” list (or right-click on the table): “🖨 Print…”. The complete table (all "
+                    "its rows) opens in the browser with the Windows print dialog: printer, preview, orientation. "
+                    "The same list exports to Excel, CSV or PDF. Prints and PDFs carry a header: logo, name, address, "
+                    "phone and website of the business (read from Clover once a day), document title, date. To "
+                    "change this information, edit it in Clover (Account & Setup > Business Information)."),
         ("question", "Who can export data?"),
         ("reponse", "It is a profile right (“Administration > Users”, “Export data” box). Without it, the “Export”, "
                     "“Excel” and “PDF of the page” buttons, the right-click export of tables and the export of charts "

@@ -12,7 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .design import CARTE, TEXTE_DOUX, Bouton, ChampDate, cadre_tableau, entete_page
 from .encaissements import A_SAISIR, A_VENIR, A_VERIFIER, APPLIQUE, ECART, SANS_FACTURE
-from .export_tableau import bouton_exporter, export_permis
+from .export_tableau import bouton_exporter, export_permis, placer_a_droite
 from .langues import courante, jours_semaine, t
 
 COULEURS = {APPLIQUE: "#e6f4ea", A_SAISIR: "#fff4d6", ECART: "#fde2e4", A_VERIFIER: "#fde2e4",
@@ -76,7 +76,7 @@ class PageEncaissements(ttk.Frame):
         defilement.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.tableau.pack(side="left", fill="both", expand=True)
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.afficher_saisie())
-        bouton_exporter(barre, self.tableau, t("Encaissements")).pack(side="right")
+        placer_a_droite(bouton_exporter(barre, self.tableau, t("Encaissements")))
 
         bas = tk.Frame(self, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
         bas.pack(fill="x", pady=(10, 0))

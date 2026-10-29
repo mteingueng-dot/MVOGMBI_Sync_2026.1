@@ -88,7 +88,7 @@ flowchart TB
         interface["interface.py<br/>fenêtre, menu, verrouillage"]
         connexion["connexion.py<br/>connexion, Verrou"]
         pages["page_correspondance · page_encaissements<br/>page_fournisseurs · page_paiements<br/>page_rapprochement · page_rapports<br/>page_utilisateurs · page_points_vente"]
-        design["design.py · graphiques.py<br/>export_tableau.py · aide.py · langues.py"]
+        design["design.py · graphiques.py<br/>export_tableau.py · entreprise.py · aide.py · langues.py"]
     end
     subgraph Métier
         ventes["models · periodes · facture<br/>correspondance · verification_comptes<br/>points_vente"]
@@ -122,7 +122,8 @@ flowchart TB
 | | `connexion.py` | Connexion, création du premier administrateur, fenêtre `Verrou`. |
 | | `page_*.py` | Une page par module. |
 | | `graphiques.py` | Graphiques sur `tk.Canvas` (barres, courbes, anneau, classement, carte de chaleur, infobulles, export PDF/PNG). |
-| | `export_tableau.py` | Export Excel, CSV et PDF (HTML imprimé par Edge sans fenêtre). |
+| | `export_tableau.py` | Liste « Exporter » : Excel, CSV, PDF (HTML imprimé par Edge sans fenêtre) et impression ; en-tête aux couleurs du marché ; droit d'exporter par profil. |
+| | `entreprise.py` | Nom, adresse, téléphone et site web de l'entreprise lus dans Clover (une fois par jour) pour l'en-tête des impressions. |
 | | `design.py` | Couleurs, boutons, tableaux. |
 | | `aide.py`, `langues.py` | Aide et FAQ en français et en anglais ; traduction. |
 | Métier | `facture.py`, `periodes.py`, `models.py` | Factures de vente : une par jour du lundi au jeudi, une pour la fin de semaine. |

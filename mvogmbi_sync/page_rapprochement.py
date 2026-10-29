@@ -12,7 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau,
                      defilement, entete_page, fond_de, rayer)
-from .export_tableau import bouton_exporter, export_permis, rendre_exportable
+from .export_tableau import bouton_exporter, export_permis, placer_a_droite, rendre_exportable
 from .langues import t
 from .rapprochement import (A_ENCAISSER, A_PAIE, A_SAISIR, CONFIRME, DELAI_PAIE, EN_CIRCULATION, IGNORE, RAPPROCHE,
                             MouvementBanque,
@@ -125,7 +125,7 @@ class PageRapprochement(ttk.Frame):
         defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
         self.tableau.pack(side="left", fill="both", expand=True)
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
-        bouton_exporter(barre, self.tableau, t("Rapprochement bancaire")).pack(side="right")
+        placer_a_droite(bouton_exporter(barre, self.tableau, t("Rapprochement bancaire")))
         rendre_exportable(self.liste, t("Relevés Desjardins"))
 
         # décision pour le mouvement choisi
