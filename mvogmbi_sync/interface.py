@@ -52,7 +52,9 @@ MENU_GROUPES = [
                            ("🧾", "Comptes Sage par catégorie", CORRESPONDANCE, "ouvrir_comptes_sage")]),
     ("État", "📊", [("📈", "Suivi des ventes", RAPPORTS, "ouvrir_rapports", "Suivi des ventes"),
                     ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
-                    ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover")]),
+                    ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover"),
+                    ("💤", "Produits inactifs", RAPPORTS, "ouvrir_rapports", "Produits inactifs"),
+                    ("🥇", "Articles 80/20", RAPPORTS, "ouvrir_rapports", "Articles 80/20")]),
     (None, "", [GUIDE, FAQ]),  # aide : hors des rubriques, en bas du menu (demande du propriétaire)
 ]
 # libellés du menu (sans n° de page) ; la page « Tableau de bord » est la facturation des ventes Clover

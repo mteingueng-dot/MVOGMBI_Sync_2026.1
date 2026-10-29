@@ -95,7 +95,7 @@ flowchart TB
         enc["encaissements"]
         four["factures_fournisseurs · fournisseurs<br/>factures_courriel · import_achats<br/>paiements_fournisseurs"]
         rap["rapprochement"]
-        stats["rapports · statistiques_clover<br/>couts_sage · previsions · peremption"]
+        stats["rapports · statistiques_clover<br/>couts_sage · previsions · peremption<br/>analyse_articles · onglets_articles"]
         nuit["automatique · courriel · planification"]
     end
     subgraph Intégration
@@ -139,6 +139,7 @@ flowchart TB
 | | `rapprochement.py` | Relevé Desjardins ↔ écritures du compte 1055. |
 | | `rapports.py` | Suivi des ventes et recherches dans l'historique Sage. |
 | | `statistiques_clover.py`, `couts_sage.py`, `previsions.py`, `peremption.py` | Statistiques Clover, bénéfices au CUMP Sage, prévisions, péremption. |
+| | `analyse_articles.py`, `onglets_articles.py` | État > Produits inactifs (sans vente depuis N jours) et Articles 80/20 (classes A/B/C, stock et sa valeur) ; source Clover ou Sage. |
 | | `automatique.py`, `courriel.py`, `planification.py` | Traitement de nuit, compte rendu, tâche planifiée. |
 | Intégration | `api_clover.py`, `export_clover.py` | API REST Clover v3 (parallélisée) ; export Excel Clover. |
 | | `base_sage.py`, `articles_sage.py` | Lecture MySQL de Sage, même quand Sage est fermé (`lire_pendant_connexion`). |

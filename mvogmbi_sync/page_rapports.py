@@ -173,6 +173,12 @@ class PageRapports(ttk.Frame):
         self._onglet_recherche()
         self._onglet_archives()
         self._onglet_statistiques()
+        from .onglets_articles import OngletInactifs, OngletPareto  # rubrique État (demande du 2026-10-29)
+
+        self.onglet_inactifs = OngletInactifs(self, self.onglets)
+        self.onglets.add(self.onglet_inactifs, text="  " + t("Produits inactifs") + "  ")
+        self.onglet_pareto = OngletPareto(self, self.onglets)
+        self.onglets.add(self.onglet_pareto, text="  " + t("Articles 80/20") + "  ")
         self.onglets.bind("<<NotebookTabChanged>>", lambda _e: self._au_changement())
 
     def _config(self) -> dict:
@@ -1592,6 +1598,10 @@ class PageRapports(ttk.Frame):
             self.charger_archives()
         elif onglet == 3 and not self.vues_stats and not self._calcul_en_cours:
             self.calculer_statistiques()  # journée en cours dès l'ouverture de l'onglet
+        elif onglet == 4:
+            self.onglet_inactifs.premiere_fois()
+        elif onglet == 5:
+            self.onglet_pareto.premiere_fois()
 
     def charger_archives(self) -> None:
         from .fournisseurs import archiver_importees, archives

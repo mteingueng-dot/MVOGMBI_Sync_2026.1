@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.22.3"
+VERSION = "1.23.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -227,6 +227,21 @@ FAQ = {
                     "« Par : Article par jour » ou « Catégorie par jour » pour les statistiques client, fournisseur "
                     "et employé. Changer de type de recherche garde le client, le fournisseur ou l'employé choisi, la "
                     "plage d'articles, la catégorie et la période ; « Réinitialiser les filtres » les vide."),
+        ("question", "Quels produits ne se vendent plus ?"),
+        ("reponse", "« État > Produits inactifs » : articles sans vente depuis au moins 30, 60, 90, 120, 180 ou 365 "
+                    "jours (ou un autre nombre tapé), ou jamais vendus, avec la date de la dernière vente, la tranche "
+                    "d'inactivité, le stock et sa valeur : la plus grande valeur de stock en haut (argent immobilisé). "
+                    "Source Clover (par défaut : ventes des 365 derniers jours, stock × coût Clover ; les anciens "
+                    "articles supprimés ou renommés dans Clover sont écartés) ou Sage (articles de stock actifs, "
+                    "factures de vente, dernier achat et CUMP). Filtres : catégorie, « Seulement les articles en "
+                    "stock »."),
+        ("question", "Quels articles font l'essentiel de mon chiffre d'affaires (80/20) ?"),
+        ("reponse", "« État > Articles 80/20 » : ventes nettes de la période (30 ou 90 jours, 6 ou 12 mois, cette "
+                    "année ou dates choisies), de l'article le plus vendu au moins vendu, avec sa part et la part "
+                    "cumulée. Classe A (vert) : les articles qui font les premiers 80 % des ventes ; B (jaune) : "
+                    "jusqu'à 95 % ; C : le reste. Pour chacun : stock actuel, coût, valeur du stock et couverture "
+                    "(jours de vente que le stock permet au rythme de la période ; « Rupture » si le stock est nul). "
+                    "Le résumé donne le nombre d'articles A et la valeur de leur stock. Source Clover ou Sage."),
         ("question", "Comment transférer des articles d'un point de vente à l'autre ?"),
         ("reponse", "« Articles > Transferts entre magasins » : « Nouveau transfert », point de vente de départ "
                     "et d'arrivée, date, puis les articles Sage et leurs quantités (le stock Sage des deux dépôts "
@@ -504,6 +519,20 @@ FAQ = {
                     "day” for customer, supplier and employee statistics. Changing the search type keeps the chosen "
                     "customer, supplier or employee, the item range, the category and the period; “Reset the "
                     "filters” empties them."),
+        ("question", "Which products no longer sell?"),
+        ("reponse", "“Reports > Inactive products”: items with no sale for at least 30, 60, 90, 120, 180 or 365 days "
+                    "(or another number typed in), or never sold, with the last sale date, the inactivity bracket, "
+                    "the stock and its value: largest stock value first (idle money). Clover source (default: sales "
+                    "of the last 365 days, stock × Clover cost; old items deleted or renamed in Clover are left out) "
+                    "or Sage (active stock items, sales invoices, last purchase and average cost). Filters: category, "
+                    "“Only items in stock”."),
+        ("question", "Which items make most of my revenue (80/20)?"),
+        ("reponse", "“Reports > 80/20 items”: net sales of the period (30 or 90 days, 6 or 12 months, this year or "
+                    "chosen dates), from best to least selling item, with its share and cumulative share. Class A "
+                    "(green): items making the first 80 % of sales; B (yellow): up to 95 %; C: the rest. For each: "
+                    "current stock, cost, stock value and coverage (days of sales the stock allows at the period's "
+                    "pace; “Out of stock” if the stock is zero). The summary gives the number of A items and the value "
+                    "of their stock. Clover or Sage source."),
         ("question", "How do I transfer items from one point of sale to another?"),
         ("reponse", "“Items > Transfers between stores”: “New transfer”, origin and destination point of "
                     "sale, date, then the Sage items and their quantities (the Sage stock of both locations is shown; "
