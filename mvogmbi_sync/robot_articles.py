@@ -7,8 +7,11 @@ bouton 30 ; onglet « Associé » : listes Actif 77, Produits 73, CMV 74, Écart
 foi.
 
 Correction des comptes d'un article existant (demande du propriétaire du 2026-10-28) : la liste de la barre d'outils
-de la fiche (ComboBox 504, éléments « N°  Description ») choisit l'article affiché ; Sage enregistre les changements
-de la fiche en passant à l'article suivant (vérifié sur la copie d'essai), puis « Enreg. et Fermer » pour le dernier.
+de la fiche (ComboBox 504, éléments « N°  Description ») choisit l'article affiché ; les comptes sont changés dans
+l'onglet « Associé » (affiché par les flèches du clavier dans la barre d'onglets : Sage ignore un changement fait dans
+un onglet caché, et une sélection qui ne vient pas du clavier) ; Sage enregistre l'article quitté en passant au
+suivant (3 essais : juste après un enregistrement, la 1re demande est parfois ignorée), puis « Enreg. et Fermer »
+pour le dernier. Validé sur la copie d'essai le 2026-10-28 : 7 articles sans compte de produits corrigés.
 Les comptes sont ensuite relus dans la base (tinvent.lAcNAsset, lAcNRev, lAcNExp, lAcNVar).
 """
 
@@ -117,9 +120,18 @@ class FenetreArticle(FenetreEncaissements):
         if index is None:
             raise ErreurRobot(f"L'article {numero} n'est pas dans la liste de la fiche Sage.")
         deja = set(self.dialogues())
+        for _ in range(3):  # juste après l'enregistrement d'un article, Sage ignore parfois la 1re demande
+            if self.lire(ID_NUMERO).strip() == numero:
+                break
+            self._choisir_navigation(cb, index, numero, deja, resultat)
+        if self.lire(ID_NUMERO).strip() != numero:
+            raise ErreurRobot(f"La fiche Sage n'affiche pas l'article {numero}.")
+        time.sleep(0.5)
+
+    def _choisir_navigation(self, cb, index: int, numero: str, deja: set, resultat) -> None:
         user32.SendMessageW(cb, CB_SETCURSEL, index, 0)
         user32.PostMessageW(user32.GetParent(cb), WM_COMMAND, (CBN_SELCHANGE << 16) | ID_NAVIGATION, cb)
-        fin = time.time() + 8
+        fin = time.time() + 5
         while time.time() < fin and self.lire(ID_NUMERO).strip() != numero:
             for d in [d for d in self.dialogues() if d not in deja]:
                 texte = self.message(d)
@@ -131,18 +143,79 @@ class FenetreArticle(FenetreEncaissements):
                     user32.PostMessageW(d, 0x0010, 0, 0)
                 deja.add(d)
             time.sleep(0.3)
-        if self.lire(ID_NUMERO).strip() != numero:
-            raise ErreurRobot(f"La fiche Sage n'affiche pas l'article {numero}.")
-        time.sleep(0.5)
 
-    def modifier(self, a: ArticleACreer) -> None:
-        """Comptes de l'article affiché (seuls ceux qui diffèrent sont changés)."""
+    def modifie(self) -> bool:
+        """Sage a vu un changement : « Enreg. et Fermer » n'est plus grisé."""
+        return bool(user32.IsWindowEnabled(user32.GetDlgItem(self.h, ID_ENREGISTRER_FERMER)))
+
+    def compte_saisi(self, ident: int, numero: str, journal=None) -> None:
+        """Choisit le compte comme une personne (onglet « Associé » affiché) : la liste prend le focus clavier,
+        l'élément est choisi par une flèche du clavier, puis le focus passe à la description ; Sage voit alors un
+        changement (« Enreg. et Fermer » actif). Sinon, le n° est tapé dans la liste."""
+        cb = user32.GetDlgItem(self.h, ident)
+        elements = self._elements(cb)
+        index = next((i for i, e in enumerate(elements) if e.startswith(f"{numero} ")), None)
+        if index is None:
+            raise ErreurRobot(f"Compte {numero} absent de la liste de Sage.")
+        from .sage_bureau import kernel32
+
+        fil, moi = user32.GetWindowThreadProcessId(self.h, None), kernel32.GetCurrentThreadId()
+        user32.AttachThreadInput(moi, fil, True)  # focus clavier dans la fiche, comme après un clic
+        try:
+            user32.SetActiveWindow(self.h)
+            user32.SetFocus(cb)
+            time.sleep(0.2)
+            user32.SendMessageW(cb, CB_SETCURSEL, max(index - 1, 0), 0)
+            touche = 0x28 if index > 0 else 0x26  # flèche bas (ou haut pour le 1er élément) : changement au clavier
+            if index == 0:
+                user32.SendMessageW(cb, CB_SETCURSEL, 1, 0)
+            user32.SendMessageW(cb, 0x0100, touche, 0)  # WM_KEYDOWN
+            user32.SendMessageW(cb, 0x0101, touche, 0xC0000000)  # WM_KEYUP
+            time.sleep(0.4)
+            user32.SetFocus(user32.GetDlgItem(self.h, ID_DESCRIPTION))  # quitter la liste : Sage valide
+            time.sleep(0.4)
+        finally:
+            user32.AttachThreadInput(moi, fil, False)
+        if self.modifie() and self.lire(ident).startswith(f"{numero} "):
+            return
+        edit = user32.FindWindowExW(cb, None, "Edit", None)  # saisie au clavier dans la liste
+        if edit:
+            user32.SendMessageW(edit, 0x00B1, 0, -1)  # EM_SETSEL : tout sélectionner
+            for caractere in numero:
+                user32.PostMessageW(edit, 0x0102, ord(caractere), 0)  # WM_CHAR
+                time.sleep(0.05)
+            user32.PostMessageW(edit, 0x0100, 0x09, 1)  # Tab : valide
+            user32.PostMessageW(edit, 0x0101, 0x09, 0xC0000001)
+            time.sleep(1)
+
+    def onglet_comptes(self) -> None:
+        """Affiche l'onglet « Associé » (les listes de comptes) : Sage ignore un changement fait dans un onglet caché
+        (constat du 2026-10-28). Les flèches du clavier envoyées à la barre d'onglets changent d'onglet comme une
+        personne, jusqu'à ce que la liste « Produits » soit visible."""
+        from .sage_bureau import _descendants
+
+        onglets = next((e for e in _descendants(self.h) if _classe(e) == "SysTabControl32"), None)
+        produits = user32.GetDlgItem(self.h, ID_PRODUITS)
+        if not onglets:
+            raise ErreurRobot("Barre d'onglets de la fiche introuvable.")
+        for touche in [0x24] + [0x27] * 12:  # Début, puis flèche droite
+            if user32.IsWindowVisible(produits):
+                return
+            user32.SendMessageW(onglets, 0x0100, touche, 0)  # WM_KEYDOWN
+            user32.SendMessageW(onglets, 0x0101, touche, 0xC0000000)  # WM_KEYUP
+            time.sleep(0.4)
+        if not user32.IsWindowVisible(produits):
+            raise ErreurRobot("L'onglet des comptes (« Associé ») ne s'affiche pas.")
+
+    def modifier(self, a: ArticleACreer, journal=None) -> None:
+        """Comptes de l'article affiché (seuls ceux qui diffèrent sont changés), dans l'onglet « Associé »."""
         if self.lire(ID_NUMERO).strip() != a.numero:
             raise ErreurRobot(f"La fiche n'affiche pas l'article {a.numero} : rien n'est modifié.")
+        self.onglet_comptes()
         for ident, compte in ((ID_ACTIF, a.actif), (ID_PRODUITS, a.produits), (ID_CMV, a.cmv),
                               (ID_ECART, a.ecart or a.cmv)):
             if compte and not self.lire(ident).startswith(f"{compte} "):
-                self.compte(ident, compte)
+                self.compte_saisi(ident, compte, journal)
 
     def enregistrer(self, resultat: ResultatArticle) -> None:
         """« Enreg. et Fermer » ; toute question de Sage est notée puis refusée (rien n'est forcé)."""
@@ -403,7 +476,9 @@ def corriger_comptes(config_toml: dict, articles: list[ArticleACreer], journal=p
             r = resultats[a.numero]
             try:
                 fiche.aller(a.numero, r)
-                fiche.modifier(a)
+                fiche.modifier(a, journal)
+                journal(f"{a.numero} : fiche « {fiche.lire(ID_NUMERO)} », comptes saisis {fiche.lire(ID_ACTIF)[:4]} / "
+                        f"{fiche.lire(ID_PRODUITS)[:4]} / {fiche.lire(ID_CMV)[:4]} / {fiche.lire(ID_ECART)[:4]}")
             except Exception as exc:
                 r.messages.append(str(exc))
         if articles:  # le dernier article est enregistré en le quittant (ou par « Enreg. et Fermer »)

@@ -174,7 +174,10 @@ def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str 
         si elle renvoie False, la connexion est annulée (aucun import).
     pendant_resume : appelée avec le texte du résumé, avant de le fermer (la base est encore lisible).
     """
+    from .__main__ import fermer_bases
+
     resultat = ResultatSage()
+    fermer_bases()  # l'import exige qu'aucune autre connexion ne tienne l'entreprise
     fermer_restes()
     commande = [str(exe), str(fichier_imp), str(fichier_sai)]
     processus = lancer_cache(commande) if discret else subprocess.Popen(commande)

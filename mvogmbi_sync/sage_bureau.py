@@ -56,6 +56,9 @@ class _PROCESS_INFORMATION(ctypes.Structure):
 
 def executer_sur_bureau_cache(commande: list[str], dossier: Path | None = None, delai: int = 1800) -> int:
     """Exécute `commande` sur le bureau caché du robot et renvoie son code de sortie (-1 si délai dépassé)."""
+    from .__main__ import fermer_bases
+
+    fermer_bases()  # sinon Sage, lancé par la commande, voit « d'autres utilisateurs »
     user32.CreateDesktopW.restype = wt.HANDLE
     kernel32.CreateProcessW.argtypes = [wt.LPCWSTR, wt.LPWSTR, ctypes.c_void_p, ctypes.c_void_p, wt.BOOL, wt.DWORD,
                                         ctypes.c_void_p, wt.LPCWSTR, ctypes.c_void_p, ctypes.c_void_p]
@@ -193,6 +196,9 @@ class SessionSage:
         return textes
 
     def ouvrir(self, fichier_sai: Path, utilisateur: str, mot_de_passe: str, delai: int = 180) -> None:
+        from .__main__ import fermer_bases
+
+        fermer_bases()  # aucune connexion de l'application ouverte quand Sage ouvre l'entreprise
         self.processus = subprocess.Popen([str(self.exe)])
         self.journal("Sage lancé.")
         accueil = _attendre(lambda: next((h for h in self.fenetres()
@@ -351,6 +357,9 @@ class SessionSage:
     def fermer(self, delai: int = 60) -> None:
         if not self.processus or self.processus.poll() is not None:
             return
+        from .__main__ import fermer_bases
+
+        fermer_bases()  # Sage se referme proprement seulement si personne d'autre ne tient l'entreprise
         for titre in ("Encaissements", "Paiements", "Journal général"):
             fenetre = user32.FindWindowW("#32770", titre)
             if fenetre:
@@ -365,4 +374,4 @@ class SessionSage:
             return
         restantes = [_texte(h) for h in self.fenetres()]
         self.processus.kill()
-        self.journal(f"Sage ne se refermait pas (fenêtres : {restantes}) : arrêté.")
+        self.journal(f"Sage ne se refermait pas (fenêtres : {restantes} ; messages : {self._messages()}) : arrêté.")

@@ -335,6 +335,19 @@ def base_partagee(config_toml: dict, fichier):
         return base
 
 
+def fermer_bases() -> None:
+    """Ferme les connexions gardées : à faire AVANT d'ouvrir Sage, d'importer ou de refermer Sage. Sinon Sage voit
+    un autre utilisateur dans l'entreprise et refuse le mode mono-utilisateur (« D'autres utilisateurs travaillent
+    maintenant avec cette entreprise », constat du 2026-10-28)."""
+    with _VERROU_BASES:
+        for base in _BASES.values():
+            try:
+                base.connexion.close()
+            except Exception:
+                pass
+        _BASES.clear()
+
+
 def lire_sage(config_toml: dict, fonction, fichier_sai=None):
     """Exécute fonction(base) sur la base Sage du fichier ; si Sage est fermé, la base est ouverte par l'outil
     d'import le temps de la lecture, puis refermée (aucun import)."""
@@ -346,13 +359,18 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None):
     def lecture():
         return fonction(base_partagee(config_toml, fichier))
 
+    def lecture_ponctuelle():  # base ouverte par l'outil d'import le temps de la lecture : jamais gardée
+        with ouvrir_base_sage(config_toml, fichier) as base:
+            return fonction(base)
+
     try:
         return lecture()
     except Exception:
+        fermer_bases()
         exe = executable_import()
         if not fichier or not exe:
             raise
-        return lire_pendant_connexion(exe, Path(fichier), lecture)
+        return lire_pendant_connexion(exe, Path(fichier), lecture_ponctuelle)
 
 
 def commande_verifier_sage(args: argparse.Namespace) -> None:
