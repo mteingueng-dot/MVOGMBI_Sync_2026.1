@@ -149,6 +149,13 @@ def executable_sage(executable_import: Path | None) -> Path | None:
     return None
 
 
+def _est_mise_a_jour(titre: str) -> bool:
+    import unicodedata
+
+    texte = unicodedata.normalize("NFKD", titre).encode("ascii", "ignore").decode().lower()
+    return "mise a jour" in " ".join(texte.split()) or "update" in texte
+
+
 class SessionSage:
     """Sage 50 ouvert par le robot sur un fichier d'entreprise, en mono-utilisateur (à utiliser sur le bureau caché)."""
 
@@ -250,6 +257,32 @@ class SessionSage:
                              + (f" ; message : {' | '.join(m for m in messages if m)}" if any(messages) else "")
                              + ") — mot de passe de sysadmin refusé ou fichier utilisé par quelqu'un d'autre ?")
         self.journal(f"Sage ouvert sur {Path(fichier_sai).name}.")
+        self.fermer_mise_a_jour(attente=15)
+
+    def fermer_mise_a_jour(self, attente: float = 0) -> bool:
+        """Fenêtre « Sage 50 - Mise à jour » (proposition de mise à jour au démarrage, constat du 2026-10-29) :
+        elle bloque les autres fenêtres de Sage. Elle est fermée (la mise à jour reste proposée à la personne la
+        prochaine fois qu'elle ouvre Sage)."""
+        fin = time.time() + attente
+        while True:
+            fenetre = next((h for h in self.fenetres() if _est_mise_a_jour(_texte(h))), None)
+            if fenetre:
+                boutons = [e for e in _descendants(fenetre) if self._classe(e).lower().endswith("button")
+                           or "button" in self._classe(e).lower()]
+                textes = [_texte(e) for e in boutons if _texte(e)]
+                plus_tard = next((e for e in boutons if any(m in _texte(e).replace("&", "").lower() for m in (
+                    "plus tard", "rappeler", "later", "remind", "annuler", "cancel", "fermer", "close", "non"))), None)
+                if plus_tard:
+                    user32.SendMessageW(plus_tard, BM_CLICK, 0, 0)
+                else:
+                    user32.PostMessageW(fenetre, WM_CLOSE, 0, 0)
+                self.journal(f"Proposition de mise à jour de Sage fermée (boutons : {textes} ; "
+                             f"{'clic sur « ' + _texte(plus_tard) + ' »' if plus_tard else 'fermeture'}).")
+                time.sleep(2)
+                return not _attendre(lambda: user32.IsWindow(fenetre) and user32.IsWindowVisible(fenetre), 0.5)
+            if time.time() >= fin:
+                return False
+            time.sleep(1)
 
     @staticmethod
     def _contenu(h) -> str:
@@ -369,9 +402,12 @@ class SessionSage:
                 time.sleep(1)
         if self.principale:
             user32.PostMessageW(self.principale, WM_CLOSE, 0, 0)
-        if _attendre(lambda: self.processus.poll() is not None, delai):
-            self.journal("Sage refermé.")
-            return
+        fin = time.time() + delai
+        while time.time() < fin:  # Sage peut proposer une mise à jour en se fermant (constat du 2026-10-29)
+            if _attendre(lambda: self.processus.poll() is not None, 5):
+                self.journal("Sage refermé.")
+                return
+            self.fermer_mise_a_jour()
         restantes = [_texte(h) for h in self.fenetres()]
         self.processus.kill()
         self.journal(f"Sage ne se refermait pas (fenêtres : {restantes} ; messages : {self._messages()}) : arrêté.")

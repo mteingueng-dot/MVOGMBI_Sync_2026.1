@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.23.0"
+#define Version "1.26.0"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -49,6 +49,8 @@ fr.Manuel=Manuel d'utilisation
 en.Manuel=User manual
 fr.Architecture=Document d'architecture
 en.Architecture=Architecture document (French)
+fr.Pointage=Pointage des employés
+en.Pointage=Employee time clock
 fr.Desinstaller=Désinstaller MVOGMBI_Sync
 en.Desinstaller=Uninstall MVOGMBI_Sync
 fr.ReglageLangue=Réglage de la langue de l'application…
@@ -65,6 +67,10 @@ Source: "..\dist\MVOGMBI_Sync\*"; DestDir: "{app}"; Flags: recursesubdirs create
 Source: "..\documentation\Manuel_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\User_Manual_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Architecture_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; manuel du profil : page HTML du manuel et captures (l'application en retire les chapitres non permis)
+Source: "..\documentation\Manuel_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\User_Manual_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\captures\*"; DestDir: "{app}\manuel\captures"; Flags: recursesubdirs createallsubdirs ignoreversion skipifsourcedoesntexist
 ; La configuration et les données existantes ne sont jamais écrasées lors d'une mise à jour.
 
 [Dirs]
@@ -72,6 +78,7 @@ Name: "{app}\donnees"
 
 [Icons]
 Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"; AppUserModelID: "ConceptInformatique.MVOGMBI_Sync"
+Name: "{group}\{cm:Pointage}"; Filename: "{app}\MVOGMBI_Sync.exe"; Parameters: "pointage"; WorkingDir: "{app}"
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\Manuel_MVOGMBI_Sync.pdf"; Languages: fr
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\User_Manual_MVOGMBI_Sync.pdf"; Languages: en
 Name: "{group}\{cm:Architecture}"; Filename: "{app}\Architecture_MVOGMBI_Sync.pdf"

@@ -126,7 +126,10 @@ def _sujet_factures(cr) -> str:
 
 
 def texte_compte_rendu(cr) -> str:
-    parties = [t("Traitement du {d}", d=f"{cr.debut:%Y-%m-%d %H:%M}")
+    from .resume_matin import texte as texte_resume
+
+    parties = (texte_resume(cr.resume) + [""]) if getattr(cr, "resume", None) else []
+    parties += [t("Traitement du {d}", d=f"{cr.debut:%Y-%m-%d %H:%M}")
                + (t(" (SIMULATION : aucun import)") if cr.simulation else ""),
                t("Fichier Sage : {f}", f=cr.fichier or "?"),
                t("Dernière facture journalière avant le traitement : {d}", d=cr.derniere_avant or t("aucune"))]
@@ -164,6 +167,8 @@ def texte_compte_rendu(cr) -> str:
 
 
 def html_compte_rendu(cr) -> str:
+    from .resume_matin import html as html_resume
+
     e = html.escape
     lignes_tableau = []
     for j in cr.jours:
@@ -198,6 +203,7 @@ def html_compte_rendu(cr) -> str:
     return (
         "<div style='font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
         f"<h2 style='margin-bottom:4px'>{e(sujet_compte_rendu(cr))}</h2>"
+        f"{html_resume(cr.resume) if getattr(cr, 'resume', None) else ''}"
         f"<p>{e(t('Traitement du {d}', d=f'{cr.debut:%Y-%m-%d %H:%M}'))}"
         f"{t(' — <b>SIMULATION</b> : aucun import') if cr.simulation else ''}<br>"
         f"{e(t('Fichier Sage : {f}', f=cr.fichier or '?'))}<br>"

@@ -159,6 +159,10 @@ class ClientClover:
     def regler_cout(self, id_article: str, cout: Decimal) -> None:
         self._ecrire("POST", f"items/{id_article}", {"cost": int((cout * CENT).quantize(Decimal(1), ROUND_HALF_UP))})
 
+    def regler_prix(self, id_article: str, prix: Decimal) -> None:
+        """Prix de vente (en cents dans Clover) ; pour un prix à l'unité, prix par unité."""
+        self._ecrire("POST", f"items/{id_article}", {"price": int((prix * CENT).quantize(Decimal(1), ROUND_HALF_UP))})
+
     def regler_ugs(self, id_article: str, ugs: str) -> None:
         """UGS (SKU) de l'article ; « » l'efface (vérifié sur un article d'essai le 2026-10-28)."""
         self._ecrire("POST", f"items/{id_article}", {"sku": ugs})

@@ -102,7 +102,13 @@ class FenetreAjustement(FenetreEncaissements):
         return self.traiter(resultat)
 
 
-def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journal=print) -> list[LigneAjustement]:
+def _texte_fenetre(h) -> str:
+    from .sage_bureau import _texte
+    return _texte(h)
+
+
+def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journal=print, source: str = "",
+              remarque: str = "") -> list[LigneAjustement]:
     """Ramène le stock Sage de chaque article à sa cible (Sage ouvert sur le fichier configuré, sinon l'application
     l'ouvre elle-même : appelé alors par la commande interne `inventaire-bureau`)."""
     from . import coffre
@@ -151,6 +157,9 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
         for _ in range(4):
             if not session.processus:
                 premier_plan(session.principale)
+            else:
+                session.fermer_mise_a_jour()  # proposition de mise à jour de Sage : bloque les autres fenêtres
+                journal(f"Fenêtres de Sage : {[_texte_fenetre(h) for h in session.fenetres()]}")
             icone = _attendre(lambda: icone_tache(session, TACHE), 30)
             if not icone:
                 lien = session._visible("Stocks & Services")
@@ -187,7 +196,8 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
                 if not session.processus:
                     premier_plan(fenetre.h)
                 r = ResultatEncaissement(jour, Decimal(0))
-                fenetre.saisir(saisies, jour, f"Inv. {jour}", "Saisie d'inventaire MVOGMBI_Sync", r)
+                fenetre.saisir(saisies, jour, source or f"Inv. {jour}", remarque or "Saisie d'inventaire MVOGMBI_Sync",
+                               r)
                 time.sleep(1.5)
                 if r.messages:
                     journal("Sage : " + " ; ".join(r.messages))

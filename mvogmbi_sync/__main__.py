@@ -208,7 +208,8 @@ def commande_inventaire_bureau(args: argparse.Namespace) -> None:
     entree = json.loads(Path(args.ajustements).read_text(encoding="utf-8"))
     notes, bilan = [], {"resultats": {}, "erreur": ""}
     try:
-        lignes = ajuster_dans_sage(config_toml, entree["lignes"], entree["jour"], journal=notes.append)
+        lignes = ajuster_dans_sage(config_toml, entree["lignes"], entree["jour"], journal=notes.append,
+                                   source=entree.get("source", ""), remarque=entree.get("remarque", ""))
         bilan["resultats"] = {l.numero: resume(l) for l in lignes}
     except Exception as exc:
         bilan["erreur"] = str(exc)
@@ -924,6 +925,9 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sous.add_parser("interface", help="Ouvrir l'application de configuration et de suivi")
     p.set_defaults(fonction=commande_interface)
+
+    p = sous.add_parser("pointage", help="Poste de pointage des employés (NIP), sans connexion à l'application")
+    p.set_defaults(fonction=lambda _a: __import__("mvogmbi_sync.fenetre_pointage", fromlist=["x"]).poste_seul(RACINE))
 
     p = sous.add_parser("auto", help="Traitement automatique : de la dernière facture dans Sage jusqu'à hier")
     p.add_argument("--point-de-vente", dest="point_de_vente", default=None,

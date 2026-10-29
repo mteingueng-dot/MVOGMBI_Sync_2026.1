@@ -139,6 +139,15 @@ flowchart TB
 | | `rapprochement.py` | Relevé Desjardins ↔ écritures du compte 1055. |
 | | `rapports.py` | Suivi des ventes et recherches dans l'historique Sage. |
 | | `statistiques_clover.py`, `couts_sage.py`, `previsions.py`, `peremption.py` | Statistiques Clover, bénéfices au CUMP Sage, prévisions, péremption. |
+| | `bons_commande.py`, `fenetre_bons_commande.py` | Fournisseur > Bons de commande : articles à commander, fournisseur et prix du dernier achat Sage, un bon PDF par fournisseur, comparaison avec la facture reçue. |
+| | `prix_marges.py`, `fenetre_prix_marges.py` | Articles > Prix et marges : marge au CUMP Sage, prix proposé arrondi, mise à jour des prix Clover cochés. |
+| | `paie_temps.py`, `fenetre_pointage.py`, `fenetre_feuilles_temps.py` | Paie : poste de pointage par NIP (commande `pointage`, raccourci « Pointage des employés »), feuilles de temps de 14 jours, heures supplémentaires, corrections avec motif, approbation, employés et NIP (empreintes seulement). |
+| | `retenues.py` | Paie > Retenues à la source : retenues et cotisations du mois par compte de passif de Sage, versements, total à remettre par organisme (Revenu Québec, ARC, CNESST), échéance du 15. |
+| | `comptabilite.py`, `fenetre_comptabilite.py` | Comptabilité : âge des comptes, déclaration TPS/TVQ, prévision de trésorerie, clôture du mois et état des résultats (lecture seule de Sage). |
+| | `listes_sage.py`, `documents.py`, `fenetre_saisie.py`, `fenetre_gestion.py` | Gestion des ventes, achats et stocks (menus comme Sage) : listes des clients, fournisseurs, documents de vente, d'achat et de stock, articles, livre d'inventaire ; commandes clients, factures de vente (.IMP SalInvoice), documents de stock (ajustements), factures d'achat et bons saisis. |
+| | `planning.py`, `fenetre_planning.py` | Paie > Planning mensuel du gérant, publication, « Mon horaire » de l'employé (compte relié) et au poste de pointage. |
+| | `manuel.py` | Manuel d'utilisation du profil : chapitres des pages permises seulement, renumérotés, PDF par Edge dans donnees/manuels/. |
+| | `resume_matin.py` | Résumé du matin en tête du courriel de nuit (ventes, marge, banque, factures à payer, ruptures, péremption). |
 | | `analyse_articles.py`, `onglets_articles.py` | État > Produits inactifs (sans vente depuis N jours) et Articles 80/20 (classes A/B/C, stock et sa valeur) ; source Clover ou Sage. |
 | | `automatique.py`, `courriel.py`, `planification.py` | Traitement de nuit, compte rendu, tâche planifiée. |
 | Intégration | `api_clover.py`, `export_clover.py` | API REST Clover v3 (parallélisée) ; export Excel Clover. |

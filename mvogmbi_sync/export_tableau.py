@@ -113,15 +113,18 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
     de plus) : en-tête du marché, titre, date, en-têtes verts, une ligne sur deux teintée, montants à droite,
     page à l'horizontale au-delà de 7 colonnes (ou s'il y a des graphiques). `images` : images PIL (graphiques,
     cartes d'indicateurs) placées avant le tableau ; sans en-têtes, le PDF ne contient que les images."""
+    pdf_depuis_html(page_html(titre, entetes, lignes, images, sous_titre), chemin)
+
+
+def pdf_depuis_html(page: str, chemin: Path, delai: int = 120) -> None:
+    """Page HTML imprimée en PDF par Microsoft Edge sans fenêtre (tableaux, bons de commande, manuel du profil)."""
+    import shutil
     import subprocess
     import tempfile
 
     edge = next((e for e in EDGE if e.exists()), None)
     if not edge:
         raise RuntimeError(t("Microsoft Edge introuvable : l'export PDF en a besoin."))
-    import shutil
-
-    page = page_html(titre, entetes, lignes, images, sous_titre)
     raison = ""
     with tempfile.TemporaryDirectory() as dossier:
         # Edge écrit dans un dossier temporaire (chemin simple), puis le PDF est copié à sa place : un dossier
@@ -132,7 +135,7 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
             try:
                 r = subprocess.run([str(edge), *options, "--disable-gpu", "--no-pdf-header-footer",
                                     f"--user-data-dir={Path(dossier) / 'profil'}", f"--print-to-pdf={pdf}",
-                                    source.as_uri()], timeout=120, capture_output=True)
+                                    source.as_uri()], timeout=delai, capture_output=True)
                 raison = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
                 raison = raison[0][:200]
             except subprocess.TimeoutExpired:

@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.23.0"
+VERSION = "1.26.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -227,6 +227,81 @@ FAQ = {
                     "« Par : Article par jour » ou « Catégorie par jour » pour les statistiques client, fournisseur "
                     "et employé. Changer de type de recherche garde le client, le fournisseur ou l'employé choisi, la "
                     "plage d'articles, la catégorie et la période ; « Réinitialiser les filtres » les vide."),
+        ("question", "Comment préparer mes commandes aux fournisseurs ?"),
+        ("reponse", "« Fournisseur > Bons de commande » : les articles à commander (stock Clover − ventes des 14 "
+                    "derniers jours <= 0 ; « Couvrir » 7 à 28 jours), regroupés par article Sage, avec le fournisseur et "
+                    "le prix de leur dernier achat dans Sage. Cochez les lignes, puis « Créer les bons de commande » : "
+                    "un bon par fournisseur (BC-0001…), en PDF avec l'en-tête de l'entreprise, dans "
+                    "donnees/bons_commande ; rien n'est envoyé sans vous. « Bons créés… » : à la réception, « Comparer "
+                    "avec la facture » met le bon en face de la facture du fournisseur (quantités et prix en unités "
+                    "Sage : non livré, livré en partie, prix différent…), puis « Marquer reçu »."),
+        ("question", "Comment vérifier mes marges et ajuster mes prix ?"),
+        ("reponse", "« Articles > Prix et marges » : marge de chaque article Clover (prix − coût, coût = CUMP de Sage, "
+                    "sinon coût Clover). Sous la marge minimale choisie (25 % par défaut), un prix est proposé : coût "
+                    "/ (1 − marge), arrondi à ,49 / ,99. L'effet sur 90 jours de ventes est estimé. Les lignes sont "
+                    "proposées cochées ; une hausse de plus de 30 % ou un n° Sage relié à plusieurs articles est à "
+                    "vérifier (décoché) ; un coût aberrant ne peut pas être coché. « Mettre à jour les prix dans "
+                    "Clover » change les prix aux caisses ; chaque prix est noté dans donnees/journal_prix_clover.csv."),
+        ("question", "Comment sont rangés les menus Vente, Fournisseur et Articles ?"),
+        ("reponse", "Comme la gestion commerciale de Sage. Vente : Liste des clients, Liste des documents de vente, "
+                    "Saisir une facture de vente, Saisir une commande client, Interrogation de compte client, Ventes "
+                    "Clover → factures Sage. Fournisseur : Liste des fournisseurs, Liste des documents d'achat, Factures "
+                    "fournisseurs, Saisir une facture d'achat, Bons de commande, Saisir une commande fournisseur, "
+                    "Réceptions fournisseurs, Interrogation de compte fournisseur, Factures archivées. Articles : Liste "
+                    "des articles, Articles Clover, Créer un article, Liste des documents de stock, Saisir un document "
+                    "de stock, Transferts, Interrogation de compte article, Inventaire, Livre d'inventaire, "
+                    "Correspondance, Coûts, Prix et marges. Les listes sont lues dans Sage et s'exportent."),
+        ("question", "Comment saisir une facture, une commande ou un document de stock ?"),
+        ("reponse", "« Nouveau… » dans la fenêtre du document : client (ou fournisseur), date, remarque, puis chaque "
+                    "ligne (article Sage, quantité, prix, TPS + TVQ). Facture de vente : « Importer dans Sage » (Sage "
+                    "fermé) ; le client doit exister dans Sage et utiliser vos n° d'articles ; vérifiée après l'import. "
+                    "Commande client : gardée dans l'application (la fonction « Commandes clients » n'est pas activée "
+                    "dans Sage), PDF, puis « Facturer la commande ». Document de stock : entrée ou sortie (perte, casse, "
+                    "don…), « Passer dans Sage » avec Sage ouvert sur le fichier de l'entreprise. Facture d'achat "
+                    "saisie : ajoutée à « Factures fournisseurs », d'où elle est importée. Commande fournisseur saisie : "
+                    "bon de commande en PDF."),
+        ("question", "Comment préparer le planning des employés ?"),
+        ("reponse", "« Paie > Planning mensuel » : choisissez le mois (◀ ▶), un ou plusieurs employés (Ctrl+clic), "
+                    "puis « Horaire des employés choisis… » : période, jours de la semaine, début, fin et pause non "
+                    "payée, ou « Repos ces jours-là ». « Reprendre le mois précédent » recopie l'horaire de chaque jour "
+                    "de la semaine. « Publier le mois » : chaque employé voit son horaire au poste de pointage (bouton "
+                    "« Mon horaire » après son NIP) et dans « Paie > Mon horaire » si son compte de l'application est "
+                    "relié à sa fiche (« Paie > Employés et NIP », « Relier à un compte… »)."),
+        ("question", "Comment les employés pointent-ils ?"),
+        ("reponse", "Sur le poste du magasin, raccourci « Pointage des employés » (sans connexion à l'application) ou "
+                    "« Paie > Pointage des employés » : l'employé touche son nom, tape son NIP, puis Arrivée, Début de "
+                    "pause, Fin de pause ou Départ. Un départ pendant la pause termine la pause. Après 5 NIP faux, "
+                    "le pointage de cet employé est bloqué une minute. Le gérant crée les NIP dans « Paie > Employés "
+                    "et NIP » (importés de Clover ou ajoutés) ; seule l'empreinte du NIP est gardée."),
+        ("question", "Comment préparer la paie avec les feuilles de temps ?"),
+        ("reponse", "« Paie > Feuilles de temps » : période de paie de 14 jours (◀ ▶), heures de chaque jour, total "
+                    "de chaque semaine, heures normales et supplémentaires (au-delà de 40 h par semaine) ; les pauses "
+                    "pointées ne sont pas payées. En rose : anomalie (départ manquant, pause non terminée) à corriger "
+                    "par « Pointages de l'employé… » (ajouter, changer l'heure ou annuler un pointage, motif "
+                    "obligatoire ; l'original et l'auteur sont gardés). « Approuver les feuilles sans anomalie » ; une "
+                    "feuille changée après approbation revient à approuver. Sage Paie calcule ensuite les retenues "
+                    "(RRQ, AE, RQAP, impôts) avec ses tables à jour."),
+        ("question", "Où voir les retenues à la source à remettre ?"),
+        ("reponse", "« Paie > Retenues à la source » (ou Comptabilité) : pour le mois choisi, chaque compte de retenue "
+                    "de Sage (RRQ, impôt du Québec, RQAP, FSS, CNESST, impôt fédéral, AE, RPC) : solde au début, "
+                    "retenues et cotisations du mois (écritures de paie), versements, solde à la fin, et le total à "
+                    "remettre à Revenu Québec, à l'Agence du revenu du Canada et à la CNESST, au plus tard le 15 du mois "
+                    "suivant. Les salaires bruts et cotisations de l'employeur sont donnés à part. Les vacances à payer "
+                    "ne sont jamais remises. Le détail par employé (T4, Relevé 1) demande l'accès en lecture au module "
+                    "Paie de Sage."),
+        ("question", "Quelles fonctions de comptabilité sont disponibles ?"),
+        ("reponse", "Rubrique Comptabilité : « Âge des comptes » (factures fournisseurs ou clients ouvertes, par tiers ou "
+                    "par facture, tranches à échoir, 1-30, 31-60, 61-90 et plus de 90 jours) ; « Déclaration TPS/TVQ » "
+                    "(taxes perçues moins taxes payées sur les achats, net à remettre ou à recevoir, contrôle avec les "
+                    "taxes encaissées par Clover) ; « Prévision de trésorerie » (4 semaines : solde du compte de dépôt, "
+                    "ventes prévues, factures fournisseurs à échéance, paies) ; « Clôture du mois » (contrôles du mois "
+                    "et état des résultats comparé au mois précédent et au même mois l'an dernier). Tout est lu dans "
+                    "Sage, rien n'y est écrit."),
+        ("question", "Que contient le résumé du matin ?"),
+        ("reponse", "En tête du courriel du traitement de nuit : ventes d'hier contre le même jour la semaine passée, "
+                    "marge, solde du compte de dépôt dans Sage, factures fournisseurs à payer d'ici 7 jours (retards "
+                    "compris), ruptures parmi les articles A, articles à commander et produits en stock périmés ou "
+                    "qui périment dans le mois. Pour l'arrêter : [courriel] resume_matin = false dans config.toml."),
         ("question", "Quels produits ne se vendent plus ?"),
         ("reponse", "« État > Produits inactifs » : articles sans vente depuis au moins 30, 60, 90, 120, 180 ou 365 "
                     "jours (ou un autre nombre tapé), ou jamais vendus, avec la date de la dernière vente, la tranche "
@@ -519,6 +594,76 @@ FAQ = {
                     "day” for customer, supplier and employee statistics. Changing the search type keeps the chosen "
                     "customer, supplier or employee, the item range, the category and the period; “Reset the "
                     "filters” empties them."),
+        ("question", "How do I prepare my supplier orders?"),
+        ("reponse", "“Supplier > Purchase orders”: items to order (Clover stock − sales of the last 14 days <= 0; "
+                    "“Cover” 7 to 28 days), grouped by Sage item, with the supplier and price of their last purchase "
+                    "in Sage. Check the rows, then “Create purchase orders”: one order per supplier (BC-0001…), as a "
+                    "PDF with the business header, in donnees/bons_commande; nothing is sent without you. “Created "
+                    "orders…”: on delivery, “Compare with the invoice” puts the order next to the supplier's invoice "
+                    "(quantities and prices in Sage units: not delivered, partly delivered, different price…), then "
+                    "“Mark received”."),
+        ("question", "How do I check my margins and adjust my prices?"),
+        ("reponse", "“Items > Prices and margins”: margin of each Clover item (price − cost, cost = Sage average "
+                    "cost, otherwise Clover cost). Below the chosen minimum margin (25 % by default), a price is "
+                    "proposed: cost / (1 − margin), rounded to .49 / .99. The effect over 90 days of sales is "
+                    "estimated. Rows are proposed checked; an increase over 30 % or a Sage number linked to several "
+                    "items is to check (unchecked); an aberrant cost cannot be checked. “Update prices in Clover” "
+                    "changes the register prices; each price is logged in donnees/journal_prix_clover.csv."),
+        ("question", "How are the Sales, Supplier and Items menus organized?"),
+        ("reponse", "Like Sage's business management. Sales: Customer list, Sales document list, Enter a sales invoice, "
+                    "Enter a customer order, Customer account inquiry, Clover sales → Sage invoices. Supplier: Supplier "
+                    "list, Purchase document list, Supplier invoices, Enter a purchase invoice, Purchase orders, Enter a "
+                    "supplier order, Supplier receipts, Supplier account inquiry, Archived invoices. Items: Item list, "
+                    "Clover items, Create an item, Stock document list, Enter a stock document, Transfers, Item account "
+                    "inquiry, Inventory, Inventory book, Mapping, Costs, Prices and margins. Lists are read from Sage "
+                    "and can be exported."),
+        ("question", "How do I enter an invoice, an order or a stock document?"),
+        ("reponse", "“New…” in the document window: customer (or supplier), date, note, then each row (Sage item, "
+                    "quantity, price, GST + QST). Sales invoice: “Import into Sage” (Sage closed); the customer must "
+                    "exist in Sage and use your item numbers; checked after the import. Customer order: kept in the "
+                    "application (the “Customer orders” feature is not enabled in Sage), PDF, then “Invoice the "
+                    "order”. Stock document: in or out (loss, breakage, donation…), “Post to Sage” with Sage open on "
+                    "the company file. Entered purchase invoice: added to “Supplier invoices”, from where it is "
+                    "imported. Entered supplier order: purchase order as a PDF."),
+        ("question", "How do I prepare the employee schedule?"),
+        ("reponse", "“Payroll > Monthly schedule”: choose the month (◀ ▶), one or more employees (Ctrl+click), then "
+                    "“Schedule for chosen employees…”: period, weekdays, start, end and unpaid break, or “Day off on "
+                    "those days”. “Reuse the previous month” copies each weekday's schedule. “Publish the month”: each "
+                    "employee sees their schedule at the time clock (“My schedule” button after their PIN) and in "
+                    "“Payroll > My schedule” if their application account is linked to their record (“Payroll > "
+                    "Employees and PINs”, “Link to an account…”)."),
+        ("question", "How do employees clock in?"),
+        ("reponse", "On the store computer, “Employee time clock” shortcut (no application sign-in) or “Payroll > "
+                    "Employee time clock”: the employee touches their name, enters their PIN, then Clock in, Start "
+                    "break, End break or Clock out. Clocking out during a break ends the break. After 5 wrong PINs, "
+                    "that employee's time clock is locked for one minute. The manager creates PINs in “Payroll > "
+                    "Employees and PINs” (imported from Clover or added); only the PIN's hash is kept."),
+        ("question", "How do I prepare payroll with the timesheets?"),
+        ("reponse", "“Payroll > Timesheets”: 14-day pay period (◀ ▶), hours of each day, total of each week, regular "
+                    "and overtime hours (beyond 40 h per week); punched breaks are not paid. Pink: issue (missing "
+                    "clock-out, unfinished break) to fix with “Employee punches…” (add, change the time or cancel a "
+                    "punch, reason required; the original and the author are kept). “Approve timesheets without "
+                    "issues”; a timesheet changed after approval goes back to approval. Sage Payroll then calculates "
+                    "the deductions (QPP, EI, QPIP, taxes) with its up-to-date tables."),
+        ("question", "Where do I see the source deductions to remit?"),
+        ("reponse", "“Payroll > Source deductions” (or Accounting): for the chosen month, each Sage deduction account "
+                    "(QPP, Québec tax, QPIP, HSF, CNESST, federal tax, EI, CPP): opening balance, deductions and "
+                    "contributions of the month (payroll entries), remittances, closing balance, and the total to remit "
+                    "to Revenu Québec, the Canada Revenue Agency and the CNESST, by the 15th of the following month. "
+                    "Gross wages and employer contributions are shown separately. Vacation payable is never remitted. "
+                    "The per-employee detail (T4, RL-1) needs read access to Sage's Payroll module."),
+        ("question", "Which accounting functions are available?"),
+        ("reponse", "Accounting section: “Accounts aging” (open supplier or customer invoices, by party or by invoice, "
+                    "not yet due, 1-30, 31-60, 61-90 and over 90 days); “GST/QST return” (taxes collected minus taxes "
+                    "paid on purchases, net to remit or to receive, checked against the taxes collected by Clover); "
+                    "“Cash flow forecast” (4 weeks: deposit account balance, expected sales, supplier invoices due, "
+                    "payroll); “Month-end close” (checks of the month and income statement compared with the previous "
+                    "month and the same month last year). Everything is read from Sage; nothing is written to it."),
+        ("question", "What does the morning summary contain?"),
+        ("reponse", "At the top of the night process email: yesterday's sales vs the same day last week, margin, "
+                    "deposit account balance in Sage, supplier invoices due within 7 days (overdue included), A items "
+                    "out of stock, items to order and products in stock expired or expiring within a month. To turn "
+                    "it off: [courriel] resume_matin = false in config.toml."),
         ("question", "Which products no longer sell?"),
         ("reponse", "“Reports > Inactive products”: items with no sale for at least 30, 60, 90, 120, 180 or 365 days "
                     "(or another number typed in), or never sold, with the last sale date, the inactivity bracket, "

@@ -173,26 +173,33 @@ table.simple tr:nth-child(even) td { background: #f4f8f5; }
 .manque { color: var(--rouge); }
 """
 
+# chapitres : (clé, titre fr, titre en, pages concernées) ; pages = index des pages de interface.py (le manuel du
+# profil ne garde que les chapitres dont une page est permise ; aucune page = chapitre pour tous)
 CHAPITRES = [
-    ("presentation", "Présentation", "Overview"),
-    ("installation", "Installation et premier lancement", "Installation and first start"),
-    ("interface", "Découvrir l'interface", "Getting to know the interface"),
-    ("configuration", "Configuration (pages 1 à 4)", "Setup (pages 1 to 4)"),
-    ("correspondance", "Correspondance des articles (Articles > Correspondance)", "Item mapping (Items > Mapping)"),
-    ("tableau", "Tableau de bord et traitement de nuit", "Dashboard and nightly run"),
-    ("encaissements", "Encaissements des dépôts Clover (Comptabilité > Encaissements)", "Receipts for Clover deposits (Accounting > Receipts)"),
-    ("fournisseurs", "Factures fournisseurs (Fournisseur > Factures fournisseurs)", "Supplier invoices (Supplier > Supplier invoices)"),
-    ("paiements", "Paiements fournisseurs (Comptabilité > Paiements fournisseur)", "Supplier payments (Accounting > Supplier payments)"),
-    ("rapprochement", "Rapprochement bancaire (Comptabilité > Rapprochement)", "Bank reconciliation (Accounting > Reconciliation)"),
-    ("rapports", "Rapports et recherches (État)", "Reports and searches (Reports)"),
-    ("mode", "Mode opératoire", "Operating procedure"),
-    ("regles", "Règles de gestion", "Business rules"),
-    ("faq", "Questions fréquentes et dépannage", "Frequently asked questions and troubleshooting"),
+    ("presentation", "Présentation", "Overview", ()),
+    ("installation", "Installation et premier lancement", "Installation and first start", ()),
+    ("interface", "Découvrir l'interface", "Getting to know the interface", ()),
+    ("configuration", "Configuration (Administration)", "Setup (Administration)", (1, 2, 3, 4)),
+    ("correspondance", "Correspondance des articles (Articles > Correspondance)", "Item mapping (Items > Mapping)", (5,)),
+    ("tableau", "Tableau de bord et traitement de nuit", "Dashboard and nightly run", (6,)),
+    ("encaissements", "Encaissements des dépôts Clover (Comptabilité > Encaissements)", "Receipts for Clover deposits (Accounting > Receipts)", (7,)),
+    ("fournisseurs", "Factures fournisseurs (Fournisseur > Factures fournisseurs)", "Supplier invoices (Supplier > Supplier invoices)", (8,)),
+    ("paiements", "Paiements fournisseurs (Comptabilité > Paiements fournisseur)", "Supplier payments (Accounting > Supplier payments)", (9,)),
+    ("rapprochement", "Rapprochement bancaire (Comptabilité > Rapprochement)", "Bank reconciliation (Accounting > Reconciliation)", (10,)),
+    ("rapports", "Rapports et recherches (État)", "Reports and searches (Reports)", (11,)),
+    ("gestion", "Gestion des ventes, des achats et des stocks", "Sales, purchasing and stock management", (5, 7, 8)),
+    ("commercial", "Gestion commerciale (bons de commande, prix et marges)", "Business management (purchase orders, prices and margins)", (5, 8)),
+    ("comptabilite", "Comptabilité (âge des comptes, taxes, trésorerie, clôture)", "Accounting (aging, taxes, cash flow, month-end)", (10,)),
+    ("paie", "Paie (pointage, feuilles de temps, retenues à la source)", "Payroll (time clock, timesheets, source deductions)", (9, 10)),
+    ("mode", "Mode opératoire", "Operating procedure", ()),
+    ("regles", "Règles de gestion", "Business rules", ()),
+    ("faq", "Questions fréquentes et dépannage", "Frequently asked questions and troubleshooting", ()),
 ]
 
 
-def titre(numero: int) -> str:
-    cle, fr, en = CHAPITRES[numero - 1]
+def titre(cle: str) -> str:
+    numero = next(i for i, c in enumerate(CHAPITRES, 1) if c[0] == cle)
+    _cle, fr, en, _pages = CHAPITRES[numero - 1]
     return (f"<h1 id='{cle}'><span class='num'>{numero}</span>{e(x(fr, en))}</h1>"
             "<div class='filet-titre'><span style='width:60px;background:#f6b81a'></span>"
             "<span style='width:18px;background:#d7263d'></span></div>")
@@ -214,11 +221,12 @@ def contenu() -> str:
   {e(EDITEUR)}<br>{e(COPYRIGHT)} — {x("Tous droits réservés.", "All rights reserved.")}</div>
 </div>
 <div class="toc"><h2 style="font-size:18pt">{x("Sommaire", "Contents")}</h2><ol>
-{''.join(f"<li><span>{i}</span>{e(x(fr, en))}</li>" for i, (_, fr, en) in enumerate(CHAPITRES, 1))}
+{''.join(f"<li data-pages='{','.join(map(str, pages))}'><span>{i}</span>{e(x(fr, en))}</li>"
+         for i, (_, fr, en, pages) in enumerate(CHAPITRES, 1))}
 </ol></div>""")
 
     # ------------------------------------------------------------------ 1. Présentation
-    parties.append(titre(1) + x("""
+    parties.append(titre("presentation") + x("""
 <p>MVOGMBI_Sync relie le point de vente <b>Clover</b> du Marché MVOG-MBI Sherbrooke à la comptabilité
 <b>Sage 50 Comptabilité, Édition canadienne</b>. L'application travaille seule chaque nuit et vous envoie un compte
 rendu par courriel le matin. Elle couvre cinq domaines :</p>
@@ -293,7 +301,7 @@ the other days continue and the blocked day is retried first the next night.</li
 </ul>"""))
 
     # ------------------------------------------------------------------ 2. Installation
-    parties.append(titre(2) + x("""
+    parties.append(titre("installation") + x("""
 <ol class="etapes">
 <li>Lancez <b>Installer_MVOGMBI_Sync_x.y.z.exe</b> (aucun droit d'administrateur n'est demandé). Chaque version a son
 propre fichier d'installation ; une mise à jour conserve votre configuration et vos données.</li>
@@ -317,7 +325,7 @@ application, this manual, the run log and the uninstaller.</li>
 choose the old folder: the validated item mapping, the logs and the configuration are copied over.</div>"""))
 
     # ------------------------------------------------------------------ 3. Interface
-    parties.append(titre(3) + figure("00_accueil", x("Page d'accueil : liste « Mise en route » et présentation",
+    parties.append(titre("interface") + figure("00_accueil", x("Page d'accueil : liste « Mise en route » et présentation",
                                                      "Home page: “Getting started” list and overview")) + x("""
 <ul>
 <li><b>Bandeau vert</b> : nom du marché et rôle de l'application.</li>
@@ -367,7 +375,7 @@ profile sees (an unticked page disappears from the menu). They can also create o
 active administrator always remains. Passwords are never kept, only an encrypted fingerprint.</p>"""))
 
     # ------------------------------------------------------------------ 4. Configuration
-    parties.append(titre(4) + blocs("Avant de commencer") + "<h2>" + x("Administration > Clover",
+    parties.append(titre("configuration") + blocs("Avant de commencer") + "<h2>" + x("Administration > Clover",
 "Administration > Clover") + "</h2>"
                    + figure("01_clover", x("Administration > Clover : identifiant marchand et jeton API",
                                            "Administration > Clover: merchant ID and API token"))
@@ -385,7 +393,7 @@ active administrator always remains. Passwords are never kept, only an encrypted
                    + blocs("Étape 4") + blocs("Mise en production"))
 
     # ------------------------------------------------------------------ 5. Correspondance
-    parties.append(titre(5) + figure("05_correspondance", x("Articles > Correspondance des articles Clover et Sage",
+    parties.append(titre("correspondance") + figure("05_correspondance", x("Articles > Correspondance des articles Clover et Sage",
                                                             "Items > Mapping of Clover and Sage items"))
                    + blocs("Étape 5") + x("""
 <table class="simple"><tr><th>Statut</th><th>Signification</th><th>Action</th></tr>
@@ -404,7 +412,7 @@ active administrator always remains. Passwords are never kept, only an encrypted
 <td>Create the item in Sage, then “Update from Clover and Sage”</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 6. Tableau de bord
-    parties.append(titre(6) + figure("06_tableau_de_bord", x("Vente > Ventes Clover → factures Sage — Tableau de bord : dernier import, tâche, journal",
+    parties.append(titre("tableau") + figure("06_tableau_de_bord", x("Vente > Ventes Clover → factures Sage — Tableau de bord : dernier import, tâche, journal",
                                                              "Sales > Clover sales → Sage invoices — Dashboard: last import, task, log"))
                    + x("""
 <ul>
@@ -430,7 +438,7 @@ weekend always starts on Friday).</li>
                    + "</p><div class='courriel'>" + courriel_exemple() + "</div>")
 
     # ------------------------------------------------------------------ 7. Encaissements
-    parties.append(titre(7) + figure("07_encaissements", x("Comptabilité > Encaissements des dépôts Clover",
+    parties.append(titre("encaissements") + figure("07_encaissements", x("Comptabilité > Encaissements des dépôts Clover",
                                                            "Accounting > Receipts for Clover deposits"))
                    + blocs("Encaissements des dépôts Clover") + x("""
 <table class="simple"><tr><th>État</th><th>Signification</th></tr>
@@ -455,7 +463,7 @@ finds no invoice: record it yourself in Sage.</td></tr>
 deposit has not arrived yet.</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 8. Factures fournisseurs
-    parties.append(titre(8) + figure("08_factures_fournisseurs", x("Fournisseur > Factures fournisseurs — Liste des factures fournisseurs",
+    parties.append(titre("fournisseurs") + figure("08_factures_fournisseurs", x("Fournisseur > Factures fournisseurs — Liste des factures fournisseurs",
                                                                    "Supplier > Supplier invoices — List of supplier invoices"))
                    + blocs("Factures fournisseurs")
                    + figure("08b_facture_detail", x("Fournisseur > Factures fournisseurs — Une facture ouverte : en-tête, lignes et article Sage",
@@ -477,7 +485,7 @@ saisissent. La touche Entrée applique la ligne et passe à la suivante.</div>""
 Enter key applies the line and moves to the next one.</div>"""))
 
     # ------------------------------------------------------------------ 9. Paiements fournisseurs
-    parties.append(titre(9) + figure("09_paiements", x("Comptabilité > Paiements fournisseur — Virements Interac reliés aux factures fournisseurs",
+    parties.append(titre("paiements") + figure("09_paiements", x("Comptabilité > Paiements fournisseur — Virements Interac reliés aux factures fournisseurs",
                                                        "Accounting > Supplier payments — Interac transfers linked to supplier invoices"))
                    + blocs("Paiements fournisseurs") + x("""
 <table class="simple"><tr><th>État</th><th>Signification</th></tr>
@@ -510,7 +518,7 @@ newest; only the last one can be partly paid. Example: a $910.00 transfer on two
 $905.00 on the first and $5.00 on the second.</p>"""))
 
     # ------------------------------------------------------------------ 10. Rapprochement bancaire
-    parties.append(titre(10) + figure("10_rapprochement", x("Comptabilité > Rapprochement — Relevés Desjardins rapprochés du compte 1055",
+    parties.append(titre("rapprochement") + figure("10_rapprochement", x("Comptabilité > Rapprochement — Relevés Desjardins rapprochés du compte 1055",
                                                             "Accounting > Reconciliation — Desjardins statements reconciled with account 1055"))
                    + blocs("Rapprochement bancaire") + x("""
 <table class="simple"><tr><th>Chiffre</th><th>Signification</th></tr>
@@ -528,7 +536,7 @@ load).</td></tr>
 other.</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 11. Mode opératoire
-    parties.append(titre(11) + figure("14_rapports", x("État > Suivi des ventes : suivi complet de chaque vente",
+    parties.append(titre("rapports") + figure("14_rapports", x("État > Suivi des ventes : suivi complet de chaque vente",
                                                         "Reports > Sales tracking: complete tracking of each sale"))
                    + figure("15_statistiques", x("État > Statistiques Clover : cartes, courbes, anneaux et menu des "
                                                  "états, comme le tableau de bord de Clover",
@@ -553,7 +561,28 @@ other.</td></tr></table>"""))
                                                    "Right-click a chart: PDF or PNG image. “📕 Page PDF” button: the "
                                                    "whole page (indicators, charts, table).") + "</div>")
 
-    parties.append(titre(12) + "<p>" + x("Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.",
+    parties.append(titre("gestion") + "<p>" + x(
+        "Les menus Vente, Fournisseur et Articles reprennent la gestion commerciale de Sage : listes lues dans Sage, "
+        "interrogations de compte et saisies de documents.", "The Sales, Supplier and Items menus follow Sage's "
+        "business management: lists read from Sage, account inquiries and document entry.") + "</p>"
+        + questions("Comment sont rangés les menus", "Comment saisir une facture"))
+    parties.append(titre("commercial") + "<p>" + x(
+        "Deux outils pour acheter au bon moment et vendre au bon prix ; rien n'est envoyé ni changé sans votre clic.",
+        "Two tools to buy at the right time and sell at the right price; nothing is sent or changed without your "
+        "click.") + "</p>" + questions("Comment préparer mes commandes", "Comment vérifier mes marges",
+                                       "Que contient le résumé du matin"))
+    parties.append(titre("comptabilite") + "<p>" + x(
+        "Ces états sont lus dans Sage (lecture seule) ; ils aident à suivre l'argent dû, les taxes et la trésorerie, "
+        "et à clôturer chaque mois.", "These reports are read from Sage (read only); they help follow money owed, "
+        "taxes and cash, and close each month.") + "</p>" + questions("Quelles fonctions de comptabilité"))
+    parties.append(titre("paie") + "<p>" + x(
+        "Les employés pointent au magasin avec leur NIP ; le gérant corrige et approuve les feuilles de temps ; Sage "
+        "Paie calcule la paie et les retenues ; l'application présente les retenues à remettre.",
+        "Employees clock in at the store with their PIN; the manager corrects and approves the timesheets; Sage "
+        "Payroll calculates pay and deductions; the application shows the deductions to remit.") + "</p>"
+        + questions("Comment les employés pointent", "Comment préparer le planning", "Comment préparer la paie",
+                    "Où voir les retenues"))
+    parties.append(titre("mode") + "<p>" + x("Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.",
                                          "What to do, and when, to keep everything up to date in Sage.") + "</p>"
                    + blocs("Mode opératoire — chaque matin") + blocs("Mode opératoire — chaque semaine")
                    + blocs("Mode opératoire — chaque mois")
@@ -563,7 +592,7 @@ other.</td></tr></table>"""))
                                                       "import fails (it is retried the next night).") + "</div>")
 
     # ------------------------------------------------------------------ 12. Règles
-    parties.append(titre(13) + blocs("Règles de facturation") + x("""
+    parties.append(titre("regles") + blocs("Règles de facturation") + x("""
 <h3>Encaissements et paiements</h3>
 <ul>
 <li>Dépôt Clover = ventes encaissées moins les espèces ; ventes du lundi au jeudi déposées le lendemain, du vendredi
@@ -596,10 +625,27 @@ of the chosen invoices.</li>
 </ul>""") + blocs("Fichiers et sauvegarde"))
 
     # ------------------------------------------------------------------ 13. FAQ
-    parties.append(titre(14) + faq() + blocs("Dépannage")
+    parties.append(titre("faq") + faq() + blocs("Dépannage")
                    + f"<p class='pied'>MVOGMBI_Sync {VERSION} — {e(COPYRIGHT)} — "
                      f"{x('Tous droits réservés.', 'All rights reserved.')}</p>")
-    return "\n".join(parties)
+    # chaque chapitre dans une section qui porte ses pages (manuel du profil : mvogmbi_sync/manuel.py)
+    sections = [parties[0]]
+    for partie in parties[1:]:
+        cle = partie[partie.index("<h1 id='") + 8:].split("'", 1)[0]
+        pages = next(c[3] for c in CHAPITRES if c[0] == cle)
+        sections.append(f"<section class='chapitre' data-pages='{','.join(map(str, pages))}'>{partie}</section>")
+    return "\n".join(sections)
+
+
+def questions(*debuts: str) -> str:
+    """Questions et réponses de la FAQ dont la question FRANÇAISE commence par l'un des `debuts`, dans la langue
+    en cours (même rang : les deux langues ont la même structure)."""
+    sortie = []
+    for i, (genre, texte) in enumerate(FAQ["fr"]):
+        if genre == "question" and any(texte.startswith(d) for d in debuts):
+            sortie.append(f"<p class='question'>{e(FAQ[LANGUE][i][1])}</p>"
+                          f"<p class='reponse'>{e(FAQ[LANGUE][i + 1][1])}</p>")
+    return "\n".join(sortie)
 
 
 def fabriquer(langue: str = "fr") -> Path:

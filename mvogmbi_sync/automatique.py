@@ -90,6 +90,7 @@ class CompteRendu:
     seulement_encaissements: bool = False  # compte rendu du bouton « Encaisser dans Sage » (sans import)
     paiements: list[str] = field(default_factory=list)  # paiements fournisseurs saisis par le robot
     seulement_paiements: bool = False  # compte rendu du bouton « Payer dans Sage » (sans import)
+    resume: object = None  # résumé du matin (resume_matin.ResumeMatin), en tête du courriel
 
     def note(self, texte: str) -> None:
         horodate = f"{datetime.now():%H:%M:%S} {texte}"
@@ -624,6 +625,19 @@ def prechauffer_statistiques(racine: Path, cr: CompteRendu) -> None:
         cr.note(f"Statistiques Clover non préparées : {exc}")
 
 
+def preparer_resume(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Résumé du matin du courriel ([courriel] resume_matin, vrai par défaut) ; une erreur ne touche pas le
+    traitement."""
+    if not config_toml.get("courriel", {}).get("resume_matin", True):
+        return
+    try:
+        from .resume_matin import calculer
+
+        cr.resume = calculer(racine, config_toml)
+    except Exception as exc:
+        cr.note(f"Résumé du matin non préparé : {exc}")
+
+
 def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,
            depuis: date | None = None, point_vente: str | None = None) -> CompteRendu:
     """Point d'entrée de la tâche planifiée : n'échoue jamais sans journal ni alerte."""
@@ -649,6 +663,7 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
         recevoir_factures_fournisseurs(racine, config_toml, cr)
         archiver_factures_deja_dans_sage(racine, config_toml, cr)
         prechauffer_statistiques(racine, cr)
+        preparer_resume(racine, config_toml, cr)
     ecrire_journal(racine, cr)
     if not simulation or config_toml.get("courriel", {}).get("envoyer_si_simulation", False):
         try:

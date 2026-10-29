@@ -38,18 +38,52 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
 MENU_GROUPES = [
     (None, "", [ACCUEIL]),
     ("Administration", "⚙", [CLOVER, SAGE, COURRIEL, AUTOMATISATION, UTILISATEURS]),
-    ("Articles", "🏷", [CORRESPONDANCE,
+    # rubriques Articles, Vente et Fournisseur rangées comme les menus de gestion de Sage (demande du propriétaire
+    # du 2026-10-29 ; noms des rubriques gardés)
+    ("Articles", "🏷", [("📚", "Liste des articles", CORRESPONDANCE, "ouvrir_liste", "articles"),
                        ("📄", "Articles Clover", CORRESPONDANCE, "ouvrir_articles_clover"),
                        ("🆕", "Créer un article", CORRESPONDANCE, "ouvrir_creation_article"),
-                       ("📋", "Inventaire Clover et Sage", CORRESPONDANCE, "ouvrir_inventaire"),
+                       ("🗂", "Liste des documents de stock", CORRESPONDANCE, "ouvrir_liste", "documents_stock"),
+                       ("✏", "Saisir un document de stock", CORRESPONDANCE, "ouvrir_documents", "stock"),
                        ("🔁", "Transferts entre magasins", CORRESPONDANCE, "ouvrir_transferts"),
-                       ("💲", "Coûts Clover depuis Sage", CORRESPONDANCE, "ouvrir_couts_clover")]),
-    ("Vente", "🛒", [TABLEAU]),
-    ("Fournisseur", "🚚", [FOURNISSEURS,
+                       ("🔎", "Interrogation de compte article", RAPPORTS, "ouvrir_interrogation", "Article"),
+                       ("📋", "Inventaire Clover et Sage", CORRESPONDANCE, "ouvrir_inventaire"),
+                       ("📒", "Livre d'inventaire", CORRESPONDANCE, "ouvrir_liste", "livre"),
+                       CORRESPONDANCE,
+                       ("💲", "Coûts Clover depuis Sage", CORRESPONDANCE, "ouvrir_couts_clover"),
+                       ("💹", "Prix et marges", CORRESPONDANCE, "ouvrir_prix_marges")]),
+    ("Vente", "🛒", [("👥", "Liste des clients", ENCAISSEMENTS, "ouvrir_liste", "clients"),
+                    ("🗂", "Liste des documents de vente", ENCAISSEMENTS, "ouvrir_liste", "documents_vente"),
+                    ("✏", "Saisir une facture de vente", ENCAISSEMENTS, "ouvrir_documents", "facture"),
+                    ("📝", "Saisir une commande client", ENCAISSEMENTS, "ouvrir_documents", "commande"),
+                    ("🔎", "Interrogation de compte client", RAPPORTS, "ouvrir_interrogation", "Client"),
+                    TABLEAU]),
+    ("Fournisseur", "🚚", [("🏭", "Liste des fournisseurs", FOURNISSEURS, "ouvrir_liste", "fournisseurs"),
+                          ("🗂", "Liste des documents d'achat", FOURNISSEURS, "ouvrir_liste", "documents_achat"),
+                          FOURNISSEURS,
+                          ("✏", "Saisir une facture d'achat", FOURNISSEURS, "ouvrir_saisie_achat"),
+                          ("🛍", "Bons de commande", FOURNISSEURS, "ouvrir_bons_commande"),
+                          ("📝", "Saisir une commande fournisseur", FOURNISSEURS, "ouvrir_saisie_bon"),
+                          ("📦", "Réceptions fournisseurs", FOURNISSEURS, "ouvrir_receptions"),
+                          ("🔎", "Interrogation de compte fournisseur", RAPPORTS, "ouvrir_interrogation",
+                           "Fournisseur"),
                           ("🗄", "Factures fournisseurs archivées", RAPPORTS, "ouvrir_rapports",
                            "Factures fournisseurs archivées")]),
     ("Comptabilité", "🏦", [ENCAISSEMENTS, PAIEMENTS, RAPPROCHEMENT,
-                           ("🧾", "Comptes Sage par catégorie", CORRESPONDANCE, "ouvrir_comptes_sage")]),
+                           ("🧾", "Comptes Sage par catégorie", CORRESPONDANCE, "ouvrir_comptes_sage"),
+                           ("⏳", "Âge des comptes", RAPPROCHEMENT, "ouvrir_comptabilite", "Âge des comptes"),
+                           ("🧮", "Déclaration TPS/TVQ", RAPPROCHEMENT, "ouvrir_comptabilite", "Déclaration TPS/TVQ"),
+                           ("💧", "Prévision de trésorerie", RAPPROCHEMENT, "ouvrir_comptabilite",
+                            "Prévision de trésorerie"),
+                           ("📅", "Clôture du mois", RAPPROCHEMENT, "ouvrir_comptabilite", "Clôture du mois")]),
+    # paie (demande du propriétaire du 2026-10-29) : pointage pour tous ; feuilles de temps et NIP pour qui voit
+    # les paiements fournisseurs (administrateur, comptable)
+    ("Paie", "🕑", [("⏱", "Pointage des employés", ACCUEIL, "ouvrir_pointage"),
+                   ("🗓", "Feuilles de temps", PAIEMENTS, "ouvrir_feuilles_temps"),
+                   ("📅", "Planning mensuel", PAIEMENTS, "ouvrir_planning"),
+                   ("🗓", "Mon horaire", ACCUEIL, "ouvrir_mon_horaire"),
+                   ("👥", "Employés et NIP", PAIEMENTS, "ouvrir_employes_paie"),
+                   ("🏛", "Retenues à la source", RAPPROCHEMENT, "ouvrir_comptabilite", "Retenues à la source")]),
     ("État", "📊", [("📈", "Suivi des ventes", RAPPORTS, "ouvrir_rapports", "Suivi des ventes"),
                     ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
                     ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover"),
@@ -383,6 +417,72 @@ class Application(tk.Tk):
         from .page_inventaire import FenetreInventaire
         FenetreInventaire(self, self.racine)
 
+    def ouvrir_prix_marges(self) -> None:
+        from .fenetre_prix_marges import ouvrir
+        ouvrir(self, self.racine)
+
+    def ouvrir_planning(self) -> None:
+        from .fenetre_planning import FenetrePlanning
+        FenetrePlanning(self, self.racine)
+
+    def ouvrir_mon_horaire(self) -> None:
+        from .fenetre_planning import FenetreMonHoraire
+        FenetreMonHoraire(self, self.racine, self.session.nom if self.session is not None else "")
+
+    def ouvrir_liste(self, genre: str) -> None:
+        from .fenetre_gestion import ouvrir_liste
+        ouvrir_liste(self, self.racine, genre)
+
+    def ouvrir_documents(self, genre: str) -> None:
+        from .fenetre_gestion import FenetreDocuments
+        FenetreDocuments(self, self.racine, genre, self._auteur())
+
+    def ouvrir_interrogation(self, type_: str) -> None:
+        """Interrogation de compte (client, fournisseur, article) : recherche dans l'historique de ce type."""
+        self.ouvrir_rapports("Recherche dans l'historique")
+        self.page_rapports.type_recherche.set(t(type_))
+        self.page_rapports._preparer_recherche()
+
+    def ouvrir_saisie_achat(self) -> None:
+        from .fenetre_gestion import saisir_facture_achat
+        saisir_facture_achat(self, self.racine)
+
+    def ouvrir_saisie_bon(self) -> None:
+        from .fenetre_gestion import saisir_bon_commande
+        saisir_bon_commande(self, self.racine)
+
+    def ouvrir_receptions(self) -> None:
+        from .fenetre_bons_commande import FenetreBons
+        FenetreBons(self, self.racine)
+
+    def ouvrir_comptabilite(self, onglet: str) -> None:
+        from .fenetre_comptabilite import FenetreComptabilite
+        fenetre = getattr(self, "_fenetre_comptabilite", None)
+        if fenetre is not None and fenetre.winfo_exists():
+            fenetre.choisir(onglet)
+            fenetre.lift()
+            return
+        self._fenetre_comptabilite = FenetreComptabilite(self, self.racine, onglet)
+
+    def ouvrir_pointage(self) -> None:
+        from .fenetre_pointage import ouvrir
+        ouvrir(self, self.racine)
+
+    def _auteur(self) -> str:
+        return self.session.nom if self.session is not None else "Administrateur"
+
+    def ouvrir_feuilles_temps(self) -> None:
+        from .fenetre_feuilles_temps import ouvrir
+        ouvrir(self, self.racine, self._auteur())
+
+    def ouvrir_employes_paie(self) -> None:
+        from .fenetre_feuilles_temps import FenetreEmployes
+        FenetreEmployes(self, self.racine, lambda: None)
+
+    def ouvrir_bons_commande(self) -> None:
+        from .fenetre_bons_commande import ouvrir
+        ouvrir(self, self.racine)
+
     def ouvrir_transferts(self) -> None:
         from .fenetre_transferts import FenetreTransferts
         FenetreTransferts(self, self.racine)
@@ -398,13 +498,26 @@ class Application(tk.Tk):
     def ouvrir_manuel(self) -> None:
         """Manuel illustré dans la langue de l'application (sinon en français) : à côté du programme installé, sinon
         dans documentation/ (poste de développement)."""
-        noms = (["User_Manual_MVOGMBI_Sync.pdf"] if langues.courante() == "en" else []) + ["Manuel_MVOGMBI_Sync.pdf"]
-        dossiers = (self.racine, self.racine / "documentation", Path(__file__).resolve().parent.parent / "documentation")
-        for chemin in (d / n for n in noms for d in dossiers):
-            if chemin.exists():
-                os.startfile(chemin)
+        # manuel du profil (demande du propriétaire du 2026-10-29) : seulement les chapitres des pages permises
+        from .manuel import manuel_du_profil
+
+        permises = None if self._permises is None else {i for i in range(len(self._pages)) if self.permis(i)}
+        profil = t(self.session.profil) if self.session is not None else ""
+
+        def travail():
+            try:
+                chemin = manuel_du_profil(self.racine, permises, profil, langues.courante())
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: messagebox.showerror(TITRE, texte))
                 return
-        messagebox.showinfo(TITRE, t("Le manuel d'utilisation est introuvable : réinstallez l'application."))
+            if chemin is None:
+                self.after(0, lambda: messagebox.showinfo(
+                    TITRE, t("Le manuel d'utilisation est introuvable : réinstallez l'application.")))
+            else:
+                os.startfile(chemin)
+
+        threading.Thread(target=travail, daemon=True).start()  # manuel du profil : quelques secondes la 1re fois
 
     def _survol_menu(self, index: int, survol: bool) -> None:
         if self.boutons_menu[index] is None or self.boutons_menu[index] is self._actif:

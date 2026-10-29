@@ -22,7 +22,7 @@ class FenetreACocher(tk.Toplevel):
     sont lancés dans un fil (jamais dans la fenêtre)."""
 
     def __init__(self, parent, titre: str, explication: str, colonnes, valeurs, lire, traiter, action: str,
-                 confirmation: str, etat_initial: str | None = None):
+                 confirmation: str, etat_initial: str | None = None, ajouts=None):
         super().__init__(parent)
         self.valeurs, self.lire, self.traiter = valeurs, lire, traiter
         self.confirmation = confirmation
@@ -54,6 +54,8 @@ class FenetreACocher(tk.Toplevel):
         barre.ajouter(Bouton(barre, VIDE + "  " + t("Tout décocher"), lambda: self.tout(False), "secondaire",
                              fond=CARTE, petit=True))
         barre.ajouter(Bouton(barre, "🔄  " + t("Actualiser"), self.charger, "secondaire", fond=CARTE, petit=True))
+        if ajouts:  # réglages propres à la fenêtre (ex. horizon des bons de commande), avant le tableau
+            ajouts(self, barre)
         cadre = cadre_tableau(self)
         cadre.pack(fill="both", expand=True)
         cles = ["coche"] + [f"c{i}" for i in range(len(colonnes))]
