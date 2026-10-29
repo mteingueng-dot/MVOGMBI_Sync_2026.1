@@ -330,7 +330,11 @@ def ouvrir_session(config_toml: dict, journal=print):
             raise ErreurRobot("Sage50Accounting.exe introuvable.")
         session = SessionSage(exe, journal)
         utilisateur = str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin"))
-        session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
+        try:
+            session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
+        except Exception:
+            session.fermer()  # jamais de Sage laissé ouvert (bloqué sur un avertissement) après un échec
+            raise
     return session
 
 

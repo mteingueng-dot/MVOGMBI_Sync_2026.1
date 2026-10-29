@@ -368,6 +368,12 @@ class Application(tk.Tk):
         from .fenetre_articles_clover import FenetreArticlesClover
         FenetreArticlesClover(self, self.racine)
 
+    def corriger_comptes_sage(self) -> None:
+        """Articles Sage dont les comptes manquent ou ne suivent pas la table catégorie -> comptes ; les comptes
+        manquants (qui bloquent l'import) d'abord."""
+        from .fenetre_couts import FenetreComptesSage
+        FenetreComptesSage(self, self.racine, manquants_d_abord=True)
+
     def ouvrir_inventaire(self) -> None:
         from .page_inventaire import FenetreInventaire
         FenetreInventaire(self, self.racine)
@@ -1055,6 +1061,9 @@ class Application(tk.Tk):
                    "secondaire").pack(side="left")
         Bouton(haut, "📁  " + t("Dossier des données"), lambda: self.ouvrir(self.racine / "donnees"),
                "secondaire").pack(side="left", padx=8)
+        # « article Sage sans compte de produits » bloque l'import : correction dans Sage depuis ici
+        Bouton(haut, "🧾  " + t("Corriger les comptes dans Sage…"), self.corriger_comptes_sage, "secondaire").pack(
+            side="left")
         Bouton(haut, "⟳", self.actualiser_tableau, "secondaire", largeur=40).pack(side="right")
         # point de vente à traiter : un seul, ou tous à la suite (chacun dans son dépôt Sage)
         # une date ou une période choisie (rattrapage) au lieu de « dernière facture de Sage jusqu'à hier »

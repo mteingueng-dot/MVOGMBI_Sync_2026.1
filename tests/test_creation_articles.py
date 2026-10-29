@@ -130,14 +130,14 @@ def test_comptes_a_corriger_selon_la_table(tmp_path):
     sage = [art("C1", 1532, 4032, 5032, 5032),  # conforme
             art("C2", 1532, 4032, 5032, 0),     # écart vide
             art("C3", 1513, 4013, 5013, 5013),  # relié à « Riz » dans Clover : tout est à changer
-            art("C4", 1527, 4011, 5027, 5027),  # sans lien : catégorie du compte d'actif
+            art("C4", 1527, 4011, 5027, 5027),  # sans lien : catégorie qui s'accorde avec le plus de comptes
             art("C5", 1999, 4999, 5999, 5999)]  # catégorie inconnue
     corrections, inconnus = comptes_a_corriger(sage, table, [corr(CONFIRME, "C3", "x", "Riz")])
     assert inconnus == 1
     assert [(c.numero, c.categorie, c.source, c.changements) for c in corrections] == [
-        ("C2", "Conserves", "compte d'actif", ["Écart"]),
-        ("C3", "Riz", "catégorie Clover", ["Actif", "Produits", "CMV", "Écart"]),
-        ("C4", "Riz", "compte d'actif", ["Produits"])]
+        ("C2", "Conserves", "comptes de l'article", ["Écart"]),
+        ("C3", "Riz", "catégorie Clover", ["Actif", "Produits", "CMV", "Écart"]),  # seul indice : Clover
+        ("C4", "Riz", "comptes de l'article", ["Produits"])]  # actif et CMV de Riz : seul le produit change
     assert corrections[0].attendu == ("1532", "4032", "5032", "5032")
 
 
@@ -163,3 +163,14 @@ def test_couts_clover_sans_valeur_aberrante():
     ok = next(p for p in propositions if p.id_clover == "ok")
     assert ok.cump == D("5.43") and ok.permis and ok.cochee_par_defaut
     assert not any(p.permis for p in propositions if p.etat in (ABERRANT, SANS_CUMP))
+
+
+
+def test_categorie_selon_la_majorite_des_comptes(tmp_path):
+    table = TableCategories(tmp_path)
+    table.lignes = {"Fruits & Légumes": ComptesCategorie("Fruits & Légumes", "B", "1517", "4017", "5017"),
+                    "Jus & Bières": ComptesCategorie("Jus & Bières", "C", "1520", "4020", "5020")}
+    oignon = {"sPartCode": "O1", "sName": "Oignon", "lAcNAsset": 15200000, "lAcNRev": 40170000,
+              "lAcNExp": 50170000, "lAcNVar": 50170000}
+    (c,), _ = comptes_a_corriger([oignon], table, [corr(CONFIRME, "O1", "x", "Fruits & Légumes")])
+    assert (c.categorie, c.changements, c.attendu[0]) == ("Fruits & Légumes", ["Actif"], "1517")

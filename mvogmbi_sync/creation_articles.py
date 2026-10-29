@@ -136,9 +136,12 @@ class CorrectionComptes:
 
 def comptes_a_corriger(articles_sage: list[dict], table: TableCategories, correspondances=()) -> tuple[list, int]:
     """Articles de stock Sage (lignes tinvent : sPartCode, sName, lAcNAsset, lAcNRev, lAcNExp, lAcNVar) dont un
-    compte diffère de la table catégorie -> comptes. Catégorie = celle des articles Clover reliés (Confirmé ou
-    Automatique, la plus fréquente qui est complète dans la table), sinon la ligne de la table qui a le même compte
-    d'actif (si elle est seule). Renvoie (corrections, nombre d'articles sans catégorie reconnue)."""
+    compte diffère de la table catégorie -> comptes. Catégorie = celle qui s'accorde le mieux avec l'article : un
+    point par compte de l'article (actif, produits, CMV) égal à celui de la catégorie, un point de plus si c'est la
+    catégorie Clover de ses articles reliés (Confirmé ou Automatique). Ex. « Oignon » 1520 / 4017 / 5017, Clover
+    « Fruits & Légumes » : Fruits & Légumes (3 points) et non Jus & Bières (1 point) ; seul l'actif est corrigé.
+    En cas d'égalité, l'article n'est pas proposé (catégorie à décider). Renvoie (corrections, nombre d'articles sans
+    catégorie reconnue)."""
     from .articles_sage import reparer_texte
     from .correspondance import AUTOMATIQUE, CONFIRME
 
@@ -147,23 +150,28 @@ def comptes_a_corriger(articles_sage: list[dict], table: TableCategories, corres
     for c in correspondances:
         if c.statut in (CONFIRME, AUTOMATIQUE) and c.categorie_clover in completes and c.numero_sage:
             clover[" ".join(c.numero_sage.split())][c.categorie_clover] += 1
-    par_actif = defaultdict(list)
-    for nom, c in completes.items():
-        par_actif[c.actif].append(nom)
     corrections, inconnus = [], 0
     for r in articles_sage:
         numero = " ".join(str(r.get("sPartCode") or "").split())
         if not numero:
             continue
         actuel = tuple(compte4(r.get(k)) for k in ("lAcNAsset", "lAcNRev", "lAcNExp", "lAcNVar"))
-        if clover.get(numero):
-            categorie, source = clover[numero].most_common(1)[0][0], "catégorie Clover"
-        else:
-            noms = par_actif.get(actuel[0], [])
-            if len({(completes[n].produits, completes[n].cmv, completes[n].ecart) for n in noms}) != 1:
-                inconnus += 1
-                continue
-            categorie, source = noms[0], "compte d'actif"
+        favorite = clover[numero].most_common(1)[0][0] if clover.get(numero) else None
+        points = {}
+        for nom, c in completes.items():
+            n = sum(1 for a, b in zip(actuel[:3], (c.actif, c.produits, c.cmv)) if a and a == b)
+            if nom == favorite:
+                n += 1
+            if n:
+                points[nom] = n
+        meilleur = max(points.values(), default=0)
+        gagnants = [n for n, p in points.items() if p == meilleur]
+        if not gagnants or len({(completes[n].actif, completes[n].produits, completes[n].cmv) for n in gagnants}) != 1:
+            inconnus += 1  # aucune catégorie, ou plusieurs à égalité : à décider à la main
+            continue
+        categorie = favorite if favorite in gagnants else gagnants[0]
+        source = "comptes et Clover" if categorie == favorite and meilleur > 1 else (
+            "catégorie Clover" if categorie == favorite else "comptes de l'article")
         c = completes[categorie]
         attendu = (c.actif, c.produits, c.cmv, c.ecart or c.cmv)
         if actuel != attendu:

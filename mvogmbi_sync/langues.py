@@ -1101,7 +1101,7 @@ EN: dict[str, str] = {
     'Clover : {c} stock(s), Sage : {s} ajustement(s). Rapport : {f}': 'Clover: {c} stock(s), Sage: {s} adjustment(s). Report: {f}',
     "Saisie de l'inventaire (Clover puis Sage)…": 'Entering the inventory (Clover, then Sage)…',
     'Articles Sage à corriger…': 'Sage items to correct…',
-    "Articles de Sage dont un compte (actif, produits, CMV, écart) diffère de la table « Comptes Sage par catégorie Clover ». Catégorie = celle des articles Clover reliés, sinon celle du compte d'actif. Cochez les lignes à corriger, puis lancez la correction : l'application ouvre Sage elle-même s'il est fermé ; s'il est ouvert, ne touchez ni au clavier ni à la souris pendant la correction.": 'Sage items with an account (asset, revenue, COGS, variance) that differs from the “Sage accounts by Clover category” table. Category = that of the linked Clover items, otherwise that of the asset account. Check the rows to correct, then start the correction: the application opens Sage itself if it is closed; if it is open, do not touch the keyboard or mouse during the correction.',
+    "Articles de Sage dont un compte (actif, produits, CMV, écart) diffère de la table « Comptes Sage par catégorie Clover ». Catégorie = celle qui s'accorde avec le plus de comptes de l'article (actif, produits, CMV) et avec sa catégorie Clover ; seuls les comptes différents sont changés. Cochez les lignes à corriger, puis lancez la correction : l'application ouvre Sage elle-même s'il est fermé ; s'il est ouvert, ne touchez ni au clavier ni à la souris pendant la correction.": "Sage items with an account (asset, revenue, COGS, variance) that differs from the “Sage accounts by Clover category” table. Category = the one that agrees with most of the item's accounts (asset, revenue, COGS) and with its Clover category; only the differing accounts are changed. Check the rows to correct, then start the correction: the application opens Sage itself if it is closed; if it is open, do not touch the keyboard or mouse during the correction.",
     'Cochez au moins une ligne.': 'Check at least one row.',
     'Comptes Sage par catégorie': 'Sage accounts by category',
     'Comptes Sage à corriger': 'Sage accounts to correct',
@@ -1224,4 +1224,8 @@ EN: dict[str, str] = {
     'Catégorie par jour': 'Category by day',
     'UGS actuelle': 'Current SKU',
     "UGS qui n'est pas une date": 'SKU that is not a date',
+    'Corriger les comptes dans Sage…': 'Correct the accounts in Sage…',
+    'Compte manquant (import bloqué)': 'Missing account (import blocked)',
+    "comptes de l'article": "item's accounts",
+    'comptes et Clover': 'accounts and Clover',
 }

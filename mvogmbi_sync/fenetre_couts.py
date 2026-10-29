@@ -53,19 +53,23 @@ class FenetreCoutsClover(FenetreACocher):
             t("Le coût Clover de {n} article(s) sera remplacé par le coût moyen de Sage.\n\nContinuer ?"))
 
 
+COMPTE_MANQUANT = "Compte manquant (import bloqué)"
+
+
 class LigneComptes:
     """Une correction proposée, vue par la liste à cocher."""
 
     def __init__(self, c):
         self.c = c
         self.permis = True
-        self.cochee_par_defaut = "Actif" not in c.changements  # changer le compte d'actif : à décider
-        self.etat = "Écart vide" if c.changements == ["Écart"] and not c.actuel[3] else (
-            "Compte d'actif différent" if "Actif" in c.changements else "Comptes différents")
+        manquant = any(not compte for compte in c.actuel[:3])  # actif, produits ou CMV vide : import bloqué
+        self.cochee_par_defaut = manquant or "Actif" not in c.changements  # changer l'actif : à décider
+        self.etat = (COMPTE_MANQUANT if manquant else "Écart vide" if c.changements == ["Écart"] and not c.actuel[3]
+                     else "Compte d'actif différent" if "Actif" in c.changements else "Comptes différents")
 
 
 class FenetreComptesSage(FenetreACocher):
-    def __init__(self, parent, racine: Path):
+    def __init__(self, parent, racine: Path, manquants_d_abord: bool = False):
         from .correspondance import lire_correspondances
         from .creation_articles import TableCategories, comptes_a_corriger, creer_dans_sage, lire_comptes_sage
         from .robot_articles import ArticleACreer
@@ -82,7 +86,8 @@ class FenetreComptesSage(FenetreACocher):
             corrections, inconnus = comptes_a_corriger(
                 lire_comptes_sage(self.racine, config), TableCategories(self.racine),
                 lire_correspondances(self.racine / "donnees" / "correspondance_articles.xlsx"))
-            return [LigneComptes(c) for c in corrections], t(
+            lignes = sorted((LigneComptes(c) for c in corrections), key=lambda l: l.etat != COMPTE_MANQUANT)
+            return lignes, t(
                 "{n} article(s) Sage dont les comptes ne suivent pas la table ; {i} sans catégorie reconnue. Un "
                 "changement du compte d'actif est proposé décoché.", n=len(corrections), i=inconnus)
 
@@ -97,10 +102,12 @@ class FenetreComptesSage(FenetreACocher):
         super().__init__(
             parent, t("Comptes Sage à corriger"),
             t("Articles de Sage dont un compte (actif, produits, CMV, écart) diffère de la table « Comptes Sage par "
-              "catégorie Clover ». Catégorie = celle des articles Clover reliés, sinon celle du compte d'actif. "
+              "catégorie Clover ». Catégorie = celle qui s'accorde avec le plus de comptes de l'article (actif, produits, CMV) et "
+              "avec sa catégorie Clover ; seuls les comptes différents sont changés. "
               "Cochez les lignes à corriger, puis lancez la correction : l'application ouvre Sage elle-même s'il est "
               "fermé ; s'il est ouvert, ne touchez ni au clavier ni à la souris pendant la correction."),
             [("N° Sage", 120), ("Description Sage", 280), ("Catégorie", 150), ("Selon", 120),
              ("Comptes actuels", 190), ("Comptes de la table", 190), ("À changer", 190), ("État", 180)],
             valeurs, lire, traiter, t("Corriger dans Sage"),
-            t("Les comptes de {n} article(s) seront corrigés dans Sage.\n\nContinuer ?"))
+            t("Les comptes de {n} article(s) seront corrigés dans Sage.\n\nContinuer ?"),
+            etat_initial=COMPTE_MANQUANT if manquants_d_abord else None)

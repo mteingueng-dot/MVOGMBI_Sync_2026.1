@@ -22,11 +22,12 @@ class FenetreACocher(tk.Toplevel):
     sont lancés dans un fil (jamais dans la fenêtre)."""
 
     def __init__(self, parent, titre: str, explication: str, colonnes, valeurs, lire, traiter, action: str,
-                 confirmation: str):
+                 confirmation: str, etat_initial: str | None = None):
         super().__init__(parent)
         self.valeurs, self.lire, self.traiter = valeurs, lire, traiter
         self.confirmation = confirmation
         self.lignes, self.cochees, self.en_cours, self.bilan = [], set(), False, ""
+        self.etat_initial = etat_initial  # filtre « Afficher » au premier chargement (s'il a des lignes)
         self.title(titre)
         self.configure(background=CARTE, padx=14, pady=10)
         self.transient(parent)
@@ -111,7 +112,8 @@ class FenetreACocher(tk.Toplevel):
         self.cochees = {i for i, l in enumerate(self.lignes) if l.permis and l.cochee_par_defaut}
         etats = sorted({l.etat for l in self.lignes})
         self.liste_filtre.configure(values=[t(TOUS)] + [t(e) for e in etats])
-        self.filtre.set(t(TOUS))
+        self.filtre.set(t(self.etat_initial) if self.etat_initial in etats else t(TOUS))
+        self.etat_initial = None
         self.etat.configure(text=resume + ("\n✔ " + self.bilan if self.bilan else ""),
                             foreground=VERT_FONCE if self.bilan else TEXTE_DOUX)
         self.afficher()

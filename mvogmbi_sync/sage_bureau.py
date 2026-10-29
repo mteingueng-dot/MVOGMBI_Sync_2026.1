@@ -26,6 +26,9 @@ user32 = ctypes.windll.user32 if hasattr(ctypes, "windll") else None
 kernel32 = ctypes.windll.kernel32 if hasattr(ctypes, "windll") else None
 
 BUREAU = "MVOGMBI_Robot"
+ENTREPRISE_OCCUPEE = ("Sage refuse d'ouvrir {nom} : « d'autres utilisateurs travaillent avec cette entreprise ». Elle "
+                      "est encore ouverte ailleurs (un Sage arrêté de force, ou ouvert sur un autre poste). Fermez Sage "
+                      "partout ; au besoin redémarrez l'ordinateur, puis relancez.")
 BM_CLICK, WM_SETTEXT, WM_COMMAND, WM_CLOSE = 0x00F5, 0x000C, 0x0111, 0x0010
 WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP = 0x0200, 0x0201, 0x0202
 TITRE_OUVRIR = "Sage 50 - Ouvrir un fichier"
@@ -179,6 +182,16 @@ class SessionSage:
         return False
 
     # ------------------------------------------------------------ ouverture
+    def _messages(self) -> list[str]:
+        """Texte des fenêtres de message de Sage ouvertes (avertissements, erreurs)."""
+        textes = []
+        for h in self.fenetres():
+            texte = " ".join(_texte(e) for e in _descendants(h) if self._classe(e) in ("Static", "SimplyStat")
+                             and user32.IsWindowVisible(e) and _texte(e).strip())
+            if texte:
+                textes.append(texte)
+        return textes
+
     def ouvrir(self, fichier_sai: Path, utilisateur: str, mot_de_passe: str, delai: int = 180) -> None:
         self.processus = subprocess.Popen([str(self.exe)])
         self.journal("Sage lancé.")
@@ -210,7 +223,11 @@ class SessionSage:
 
         connexion = _attendre(lambda: user32.FindWindowW("#32770", TITRE_CONNEXION), 90)
         if not connexion:
-            raise ErreurSage(f"Fenêtre de connexion de Sage absente ({[_texte(h) for h in self.fenetres()]}).")
+            messages = self._messages()
+            if any("autres utilisateurs" in m.lower() or "other users" in m.lower() for m in messages):
+                raise ErreurSage(ENTREPRISE_OCCUPEE.format(nom=Path(fichier_sai).name))
+            raise ErreurSage(f"Fenêtre de connexion de Sage absente ({[_texte(h) for h in self.fenetres()]}"
+                             + (f" ; message : {' | '.join(messages)}" if messages else "") + ").")
         user32.SendMessageW(user32.GetDlgItem(connexion, 21), WM_SETTEXT, 0, ctypes.c_wchar_p(utilisateur))
         user32.SendMessageW(user32.GetDlgItem(connexion, 20), WM_SETTEXT, 0, ctypes.c_wchar_p(mot_de_passe))
         user32.SendMessageW(user32.GetDlgItem(connexion, 24), BM_CLICK, 0, 0)  # mono-utilisateur
@@ -220,8 +237,12 @@ class SessionSage:
         self.principale = _attendre(lambda: next((h for h in self.fenetres() if _texte(h).upper() == nom), None), delai)
         if not self.principale:
             autres = [_texte(h) for h in self.fenetres()]
-            raise ErreurSage(f"Sage n'a pas ouvert {Path(fichier_sai).name} (fenêtres : {autres}) — "
-                             "mot de passe de sysadmin refusé ou fichier utilisé par quelqu'un d'autre ?")
+            messages = self._messages()  # texte des avertissements de Sage : la vraie raison
+            if any("autres utilisateurs" in m.lower() or "other users" in m.lower() for m in messages):
+                raise ErreurSage(ENTREPRISE_OCCUPEE.format(nom=Path(fichier_sai).name))
+            raise ErreurSage(f"Sage n'a pas ouvert {Path(fichier_sai).name} (fenêtres : {autres}"
+                             + (f" ; message : {' | '.join(m for m in messages if m)}" if any(messages) else "")
+                             + ") — mot de passe de sysadmin refusé ou fichier utilisé par quelqu'un d'autre ?")
         self.journal(f"Sage ouvert sur {Path(fichier_sai).name}.")
 
     @staticmethod

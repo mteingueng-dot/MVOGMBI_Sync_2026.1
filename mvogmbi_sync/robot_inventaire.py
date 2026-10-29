@@ -137,8 +137,12 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
         if not exe:
             raise ErreurRobot("Sage50Accounting.exe introuvable.")
         session = SessionSage(exe, journal)
-        session.ouvrir(fichier, str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin")),
-                       coffre.lire(coffre.SAGE_IMPORT, ""))
+        try:
+            session.ouvrir(fichier, str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin")),
+                           coffre.lire(coffre.SAGE_IMPORT, ""))
+        except Exception:
+            session.fermer()  # jamais de Sage laissé ouvert après un échec
+            raise
 
     def ouvrir_fenetre() -> FenetreAjustement:
         h = user32.FindWindowW("#32770", TITRE)
