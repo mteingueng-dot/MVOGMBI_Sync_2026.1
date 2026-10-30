@@ -34,4 +34,8 @@ documentation/User_Manual_MVOGMBI_Sync.pdf
 
 # Document d architecture : page intermediaire du generateur (le PDF, sans donnee reelle, est publie)
 documentation/Architecture_MVOGMBI_Sync.html
+documentation/*_MVOGMBI_Sync.html
 documentation/*_nouveau.pdf
+
+# fichiers de verrouillage de Microsoft Office (nom d utilisateur)
+~$*

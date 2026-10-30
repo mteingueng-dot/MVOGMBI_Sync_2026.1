@@ -72,6 +72,16 @@ def test_controles_et_donnees_clover():
     assert (s.numero, s.actif, s.produits, s.cmv, s.ecart) == ("C0001161", "1527", "4027", "5027", "5027")
 
 
+def test_service_cree_seulement_dans_sage():
+    """Règle du propriétaire (2026-10-30) : un service se crée dans Sage seulement, jamais dans Clover."""
+    service = dict(nom="Livraison", numero_sage="S0000001", description_sage="Livraison", service=True,
+                   compte_charges="5700", comptes=None, peremption=None)
+    assert "un service se crée seulement dans Sage, pas dans Clover" in article(**service).problemes(set())
+    assert article(**service, creer_clover=False).problemes(set()) == []
+    a = article(**service, creer_clover=False).article_sage()
+    assert (a.numero, a.service, a.cmv) == ("S0000001", True, "5700")
+
+
 def test_lien_ajoute_a_la_correspondance(tmp_path):
     chemin = tmp_path / "correspondance_articles.xlsx"
     a = article(id_clover="NEW1")

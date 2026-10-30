@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.46.3"
+#define Version "1.0.1"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -49,6 +49,8 @@ fr.Manuel=Manuel d'utilisation
 en.Manuel=User manual
 fr.Architecture=Document d'architecture
 en.Architecture=Architecture document (French)
+fr.Documents=Documents du projet
+en.Documents=Project documents (French)
 fr.Pointage=Pointage des employés
 en.Pointage=Employee time clock
 fr.Desinstaller=Désinstaller MVOGMBI_Sync
@@ -67,6 +69,13 @@ Source: "..\dist\MVOGMBI_Sync\*"; DestDir: "{app}"; Flags: recursesubdirs create
 Source: "..\documentation\Manuel_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\User_Manual_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Architecture_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; documents du projet (version 1.0.0) : documentation fonctionnelle, tests, projet, workflows, processus, présentation
+Source: "..\documentation\Documentation_fonctionnelle_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Plan_de_test_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Diagramme_de_projet_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Workflows_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Processus_BPM_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Presentation_MVOGMBI_Sync.pptx"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 ; manuel du profil : page HTML du manuel et captures (l'application en retire les chapitres non permis)
 Source: "..\documentation\Manuel_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\User_Manual_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist
@@ -82,6 +91,7 @@ Name: "{group}\{cm:Pointage}"; Filename: "{app}\MVOGMBI_Sync.exe"; Parameters: "
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\Manuel_MVOGMBI_Sync.pdf"; Languages: fr
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\User_Manual_MVOGMBI_Sync.pdf"; Languages: en
 Name: "{group}\{cm:Architecture}"; Filename: "{app}\Architecture_MVOGMBI_Sync.pdf"
+Name: "{group}\{cm:Documents}"; Filename: "{app}\documentation"
 Name: "{group}\{cm:JournalTraitement}"; Filename: "{app}\donnees\journal_automatique.log"
 Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"
 

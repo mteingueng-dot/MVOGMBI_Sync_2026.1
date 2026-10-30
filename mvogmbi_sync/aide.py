@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.46.3"
+VERSION = "1.0.1"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -277,6 +277,31 @@ FAQ = {
                     "(lectures suivantes immédiates) et elle est relâchée dès que vous lancez Sage ou qu'un traitement "
                     "doit importer. « Actualiser » relit toujours, et toute écriture dans Sage ou dans Clover (import, "
                     "ajustement, prix, coûts) vide cette mémoire."),
+        ("question", "Pourquoi Sage refuse-t-il la lecture ou le mode multi-utilisateur ?"),
+        ("reponse", "Deux réglages à vérifier. 1) Le service Windows « Sage 50 Gestionnaire de connexion de base de "
+                    "données » doit être démarré (Services de Windows ; il démarre normalement avec Windows) : sans lui, "
+                    "Sage refuse le multi-utilisateur. 2) Dans chaque fichier d'entreprise, l'utilisateur Sage "
+                    "« mvogmbi_sync » doit exister avec le même mot de passe que dans « Administration > Sage 50 », "
+                    "« Accès par des tiers » en consultation et « Vue » sur les modules (Stocks & Services, Clients & "
+                    "Ventes, Fournisseurs & Achats, Employés & Paie)."),
+        ("question", "Puis-je garder Sage ouvert pendant que l'application travaille ?"),
+        ("reponse", "Oui pour les saisies (encaissements, paiements, journal, stock, fiches, paie) : l'application ouvre "
+                    "Sage en multi-utilisateur. Non pour l'import des factures, qui exige Sage fermé (mono-utilisateur) : "
+                    "fermez Sage avant « Importer » ; la nuit, rien à faire. Sage fermé, l'application garde la base "
+                    "ouverte 10 minutes pour lire vite, et la relâche dès que vous lancez Sage."),
+        ("question", "Où voir les rapports des pertes, de la caisse, des dépenses ou de la main-d'œuvre ?"),
+        ("reponse", "« État > Statistiques Clover », section « Gestion » du menu de gauche : Pertes et démarque, "
+                    "Contrôle de la caisse, Petite caisse et dépenses, Main-d'œuvre, Promotions, Retours fournisseurs, "
+                    "Bons de commande. Chacun montre, pour la période choisie en haut : des cartes d'indicateurs, un "
+                    "graphique d'évolution (par jour, ou par mois au-delà de 62 jours), une carte graphique de "
+                    "répartition et le rapport détaillé, exportable. La caisse et la main-d'œuvre reprennent les "
+                    "ventes Clover de la période : calculez d'abord les statistiques."),
+        ("question", "Comment créer un article ou un service ?"),
+        ("reponse", "« Articles > Créer un article », puis le type dans la partie Sage. Stock : créé dans Clover et dans "
+                    "Sage en une fois (catégorie, prix = coût + 40 %, date de péremption, comptes de la catégorie), "
+                    "relié « Confirmé ». Service : créé dans Sage SEULEMENT, jamais dans Clover (la case « Créer dans "
+                    "Clover » est alors grisée) ; n° commençant par S, compte de charges (5xxx) obligatoire, compte de "
+                    "produits (4xxx) facultatif."),
         ("question", "Comment limiter les fonctions d'un profil ?"),
         ("reponse", "« Administration > Utilisateurs », choisissez le profil : la carte « Profils et fonctions "
                     "permises » montre le menu, rubrique par rubrique. Cochez fonction par fonction : cocher seulement "
@@ -762,6 +787,28 @@ FAQ = {
                     "instant) and is released as soon as you start Sage or a process must import. “Refresh” always "
                     "reads again, and any write to Sage or Clover (import, adjustment, prices, costs) clears this "
                     "memory."),
+        ("question", "Why does Sage refuse reading or multi-user mode?"),
+        ("reponse", "Two settings to check. 1) The Windows service “Sage 50 Database Connection Manager” must be "
+                    "running (Windows Services; it normally starts with Windows): without it, Sage refuses multi-user "
+                    "mode. 2) In each company file, the Sage user “mvogmbi_sync” must exist with the same password as in "
+                    "“Administration > Sage 50”, “Third-party access” read-only and “View” on the modules (Inventory & "
+                    "Services, Customers & Sales, Vendors & Purchases, Employees & Payroll)."),
+        ("question", "Can I keep Sage open while the application works?"),
+        ("reponse", "Yes for entries (receipts, payments, journal, stock, records, payroll): the application opens Sage "
+                    "in multi-user mode. No for importing invoices, which needs Sage closed (single-user): close Sage "
+                    "before “Import”; at night, nothing to do. With Sage closed, the application keeps the database open "
+                    "10 minutes for fast reads and releases it as soon as you start Sage."),
+        ("question", "Where can I see reports on losses, cash, expenses or labour?"),
+        ("reponse", "“Status > Clover statistics”, “Management” section of the left menu: Losses and shrinkage, Cash "
+                    "control, Petty cash and expenses, Labour, Promotions, Supplier returns, Purchase orders. Each "
+                    "shows, for the period chosen at the top: indicator cards, a trend chart (per day, or per month "
+                    "beyond 62 days), a breakdown chart and the detailed report, which can be exported. Cash and labour "
+                    "use the period's Clover sales: calculate the statistics first."),
+        ("question", "How do I create an item or a service?"),
+        ("reponse", "“Items > Create an item”, then the type in the Sage part. Stock: created in Clover and Sage at once "
+                    "(category, price = cost + 40 %, expiry date, category accounts), linked “Confirmed”. Service: "
+                    "created in Sage ONLY, never in Clover (the “Create in Clover” box is then greyed out); number "
+                    "starting with S, expense account (5xxx) required, revenue account (4xxx) optional."),
         ("question", "How do I limit a profile's functions?"),
         ("reponse", "“Administration > Users”, choose the profile: the “Profiles and allowed functions” card shows the "
                     "menu, section by section. Tick function by function: ticking only “Item list” gives that list, "

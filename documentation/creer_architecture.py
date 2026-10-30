@@ -81,9 +81,16 @@ def convertir(markdown: str) -> str:
                 i += 1
             html_.append("<ul>" + "".join(elements) + "</ul>")
             continue
+        elif re.match(r"\d+\. ", ligne):  # liste numérotée
+            elements = []
+            while i < len(lignes) and re.match(r"\d+\. ", lignes[i]):
+                elements.append(f"<li>{en_ligne(re.sub(r'^\d+\. ', '', lignes[i]))}</li>")
+                i += 1
+            html_.append("<ol>" + "".join(elements) + "</ol>")
+            continue
         elif ligne.strip():
             paragraphe = [ligne]
-            while i + 1 < len(lignes) and lignes[i + 1].strip() and not re.match(r"(#|```|\||- |---)", lignes[i + 1]):
+            while i + 1 < len(lignes) and lignes[i + 1].strip() and not re.match(r"(#|```|\||- |---|\d+\. )", lignes[i + 1]):
                 i += 1
                 paragraphe.append(lignes[i])
             html_.append(f"<p>{en_ligne(' '.join(paragraphe))}</p>")
@@ -114,10 +121,12 @@ pre.mermaid { background: none; font-family: inherit; }
 """
 
 
-def creer(sortie: Path | None = None) -> Path:
+def creer(sortie: Path | None = None, source: Path = SOURCE, titre: str = "Architecture MVOGMBI_Sync") -> Path:
+    """Markdown `source` (titres, listes, tableaux, diagrammes Mermaid) -> PDF `sortie` ; sert aussi aux autres
+    documents (creer_documents.py)."""
     sortie = sortie or ICI / "Architecture_MVOGMBI_Sync.pdf"
-    corps = convertir(SOURCE.read_text(encoding="utf-8"))
-    page = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Architecture MVOGMBI_Sync</title>
+    corps = convertir(Path(source).read_text(encoding="utf-8"))
+    page = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>{e(titre)}</title>
 <style>{STYLE}</style></head><body><div class="bandeau"></div>{corps}
 <script type="module">
 import mermaid from "{MERMAID}";

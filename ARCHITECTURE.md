@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.9.26 — Marché MVOG-MBI Sherbrooke.
+Version 1.0.0 (30 octobre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -8,7 +8,11 @@ MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabili
 - encaissement des dépôts ;
 - factures et paiements fournisseurs ;
 - rapprochement bancaire Desjardins ;
-- rapports et statistiques.
+- rapports et statistiques ;
+- gestion des articles, des stocks, des ventes et des achats comme dans Sage ;
+- comptabilité (caisse, dépenses, taxes, remises, budget) ;
+- paie (pointage, planning, feuilles de temps, chèques de paie dans Sage, bulletins) ;
+- utilisateurs, profils et droits par fonction.
 
 L'application est écrite en Python 3.13, a une interface tkinter et tourne sur le poste Windows du marché. Elle n'utilise aucun service d'IA ni d'API externe autre que Clover : c'est le choix du propriétaire.
 
@@ -396,9 +400,35 @@ Sage 50 CA n'a pas d'API ouverte. L'application passe par trois voies :
 
 | Voie | Utilisée pour | Sage | Vérification |
 |---|---|---|---|
-| MySQL en lecture seule (`base_sage.py`) | Tout ce qui se lit | ouvert, ou base ouverte par l'outil d'import pendant la fenêtre de mot de passe | — |
-| `Sage_SA_import.exe` (`sage_auto.py`) | Factures de vente `<SalInvoice>` et d'achat `<PurInvoice>` | fermé (accès exclusif) | présence dans `tcustr` / `tventr` |
-| Fenêtres de Sage (`sage_bureau.py` + `robot_*.py`) | Encaissements, paiements, journal général (non importables) | lancé par l'application sur un bureau Windows séparé ; fonctionne session verrouillée | baisse des soldes, écriture au 1055 |
+| MySQL en lecture seule (`base_sage.py`) | Tout ce qui se lit | ouvert ; sinon base ouverte par l'outil d'import ; refusée : Sage ouvert par l'application (`garder-sage`) | — |
+| `Sage_SA_import.exe` (`sage_auto.py`) | Factures de vente `<SalInvoice>` et d'achat `<PurInvoice>` (retours compris) | fermé, **mono-utilisateur** (accès exclusif) | présence dans `tcustr` / `tventr` |
+| Fenêtres de Sage (`sage_bureau.py` + `robot_*.py`) | Encaissements, paiements, journal général, dépenses, documents de stock, inventaire, transferts, articles, clients, fournisseurs, employés, paie | lancé par l'application sur un bureau Windows séparé, **multi-utilisateur** ; fonctionne session verrouillée | baisse des soldes, écriture présente, stock relu |
+
+Règles d'ouverture de Sage :
+
+- **Mono-utilisateur pour l'import, multi-utilisateur pour les saisies et la lecture** (règle du propriétaire). Le multi-utilisateur exige le service Windows « Sage 50 Gestionnaire de connexion de base de données ».
+- Le fichier réel est une **entreprise partagée** : Sage demande comment l'ouvrir ; `SessionSage._repondre_entreprise_partagee` répond selon la règle.
+- Sur le bureau séparé, une page du menu de gauche s'ouvre par le **cadre** de son libellé (`robot_articles.afficher_page`), une tâche par le cadre de son libellé (`cible_tache`) ; un clic sur le libellé seul est ignoré.
+- Sage refuse l'accès MySQL des applications tant que l'entreprise n'est pas ouverte par Sage ou par l'outil d'import : l'utilisateur `mvogmbi_sync` (« Accès par des tiers ») doit exister avec le même mot de passe dans chaque fichier d'entreprise.
+
+### 5.1 Base gardée ouverte
+
+```mermaid
+flowchart TD
+    L["lire_sage(fonction)"] --> O{"Sage ouvert ?"}
+    O -- oui --> Q["requête directe<br/>(connexion réutilisée)"]
+    O -- non --> G{"base déjà gardée ?"}
+    G -- oui --> Q
+    G -- non --> I["outil d'import : base ouverte<br/>sur sa fenêtre de mot de passe (~10 s)"]
+    I -- "refusée" --> S["Sage ouvert par l'application<br/>(bureau séparé, multi-utilisateur)"]
+    I -- "acceptée" --> K["base gardée 10 min<br/>après la dernière lecture"]
+    S --> K
+    K --> Q
+    K -. "la personne lance Sage<br/>ou un autre programme doit importer" .-> R["base relâchée<br/>(marque base_gardee.pid,<br/>signal liberer_base.signal)"]
+```
+
+- Une erreur de la fonction de lecture (calcul, requête fautive) remonte tout de suite ; seules les erreurs de connexion déclenchent un autre moyen d'ouverture.
+- Une lecture automatique (démarrage, préchargement) n'ouvre jamais Sage lui-même (`ouvrir=False`, `OUVERTURE_SAGE`).
 
 ```mermaid
 sequenceDiagram
@@ -424,7 +454,8 @@ sequenceDiagram
 | Sujet | Mesure |
 |---|---|
 | Secrets | Coffre-fort Windows (keyring `MVOGMBI_Sync`) : `clover_jeton`, `sage_lecture`, `sage_import`, `courriel`, boîte des paiements. Jamais dans `config.toml` ni dans le dépôt. |
-| Comptes | `utilisateurs.json` : empreintes de mots de passe, profils et pages permises ; journal des connexions. |
+| Comptes | `utilisateurs.json` : empreintes de mots de passe (PBKDF2), profils ; journal des connexions. |
+| Droits | Par profil : fonctions du menu permises une à une (`fonctions_permises` : « Liste des articles » sans le reste de la rubrique), actions refusées dans les fenêtres (`fonctions_refusees` : traiter la paie, restaurer une sauvegarde…), « Supprimer des éléments » (tous les boutons Supprimer / 🗑 et la touche Suppr), « Exporter les données », points de vente permis. L'administrateur a tout. |
 | Verrouillage | Après `[general] verrouillage_minutes` (5 par défaut ; 0 = jamais) sans activité. La fenêtre est cachée et le mot de passe est redemandé. |
 | Sage | Utilisateur MySQL en consultation seule ; imports et saisies uniquement après contrôle des doublons. |
 | Banque | Relevés chargés à la main : aucune connexion à AccèsD. |
@@ -447,7 +478,8 @@ flowchart TD
 
 - `installation/fabriquer.cmd` enchaîne tout. Chaque livraison a son propre numéro de version : `aide.VERSION`, `version_info.txt` et `MVOGMBI_Sync.iss`.
 - RACINE est le dossier de l'exe ; la variable `MVOGMBI_RACINE` en force un autre.
-- Tests : `tests/`, environ 110 tests sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI`.
+- Tests : `tests/`, 212 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
+- Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, de la documentation fonctionnelle, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
 
 ---
 
@@ -460,3 +492,7 @@ flowchart TD
 | Filtres globaux | recalcul en mémoire, sans relire Clover | environ 1 s |
 | Recherches dans l'historique Sage | historique gardé 10 min | 0,3 s après la première |
 | Ouverture des statistiques le matin | cache des 7 derniers jours préchauffé la nuit | immédiat |
+| Requêtes Sage | index utilisés (pas de TRIM dans les conditions), connexion réutilisée | 0,01 à 0,6 s |
+| 1re lecture, Sage fermé | outil d'import, puis base gardée 10 min | ~10 s, puis immédiat |
+| Listes Sage au démarrage | préchargement en arrière-plan (clients, fournisseurs, articles) | 0,1 à 0,4 s au clic |
+| Ventes par article sur 365 jours | résumés par jour sur disque | 0,3 s (4,6 s au 1er appel du jour) |

@@ -109,8 +109,10 @@ class FenetreCreationArticle(tk.Toplevel):
         ligne(clover, 8, "Stock", ttk.Entry(clover, textvariable=self.v["stock"], width=10))
         tk.Label(clover, text=t("Couleur : aucune • groupes de modificateurs : aucun"), background=CARTE,
                  foreground=TEXTE_DOUX, font=("Segoe UI", 8)).grid(row=9, column=0, columnspan=2, sticky="w")
-        ttk.Checkbutton(clover, text=t("Créer dans Clover"), variable=self.creer_clover,
-                        style="Carte.TCheckbutton").grid(row=10, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.case_clover = ttk.Checkbutton(clover, text=t("Créer dans Clover"), variable=self.creer_clover,
+                                           style="Carte.TCheckbutton")
+        self.case_clover.grid(row=10, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.creer_clover_stock = self.creer_clover.get()  # choix gardé pour le retour à « Stock »
 
         sage = tk.LabelFrame(self, text=" Sage 50 ", background=CARTE, padx=10, pady=6, font=("Segoe UI Semibold", 10))
         sage.grid(row=0, column=1, sticky="nsew")
@@ -165,14 +167,24 @@ class FenetreCreationArticle(tk.Toplevel):
             else:
                 etiquette.grid_remove()
                 champ.grid_remove()
-        self.aide_comptes.configure(text=t("Service : n° commençant par S ; comptes de produits et de charges seulement.")
+        self.aide_comptes.configure(text=t("Service : créé dans Sage seulement, n° commençant par S ; comptes de produits "
+                                           "et de charges seulement.")
                                     if service else t("Comptes et préfixe du n° viennent de la catégorie Clover."))
         if service:
+            # règle du propriétaire (2026-10-30) : un service se crée seulement dans Sage, jamais dans Clover
+            if hasattr(self, "case_clover"):
+                if "disabled" not in self.case_clover.state():
+                    self.creer_clover_stock = self.creer_clover.get()
+                self.creer_clover.set(False)
+                self.case_clover.state(["disabled"])
             self.bouton_table.grid_remove()
             for cle in ("actif", "ecart", "produits", "cmv"):
                 self.v[cle].set("")
             self.v["numero"].set(prochain_numero(self.numeros_sage, "S"))
         else:
+            if hasattr(self, "case_clover") and "disabled" in self.case_clover.state():
+                self.case_clover.state(["!disabled"])
+                self.creer_clover.set(self.creer_clover_stock)
             self.bouton_table.grid()
             if not initial:
                 self._categorie_choisie()

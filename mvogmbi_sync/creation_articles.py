@@ -263,6 +263,8 @@ class NouvelArticle:
         p = []
         if not self.nom.strip():
             p.append("nom obligatoire")
+        if self.service and self.creer_clover:  # règle du propriétaire (2026-10-30)
+            p.append("un service se crée seulement dans Sage, pas dans Clover")
         if self.creer_clover:
             if self.prix <= 0:
                 p.append("prix de vente obligatoire")

@@ -17,6 +17,9 @@ from .design import (CARTE, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE, TE
 from .export_tableau import bouton_exporter, export_permis, placer_a_droite
 from .statistiques_clover import SEUIL_CUMP_DOUTEUX
 from .langues import t
+from .rapports_gestion import TEXTES as _TEXTES_GESTION
+
+TEXTES_GESTION = set(_TEXTES_GESTION)  # états, motifs, notes des rapports de gestion : traduits à l'affichage
 
 # couleurs des lignes du suivi : vente bloquée, à encaisser, encaissée mais pas retrouvée sur les relevés
 COULEURS = {"bloquee": "#fde2e4", "a_encaisser": "#fff4d6", "a_rapprocher": "#eaf2fb"}
@@ -41,6 +44,10 @@ NAVIGATION = [
     ("👥", "Clients", [("Liste des clients", "Par client")]),
     ("📈", "Prévisions", [("Prévision des ventes", "prev_ventes"), ("Prévision des achats", "prev_achats"),
                          ("Articles à commander", "prev_commande")]),
+    # rapports des fonctions de gestion (demande du propriétaire du 2026-10-30) : cartes, évolution, répartition,
+    # rapport détaillé, sur la période choisie (rapports_gestion.py)
+    ("🧩", "Gestion", [(libelle, cle) for libelle, cle, _f in __import__(
+        "mvogmbi_sync.rapports_gestion", fromlist=["ETATS"]).ETATS]),
 ]
 PREVISIONS = ("prev_ventes", "prev_achats", "prev_commande")
 HORIZONS = (7, 10, 14, 21, 28, 30, 45, 60, 90)  # jours : horizon des prévisions et période des articles à commander
@@ -755,6 +762,33 @@ class PageRapports(ttk.Frame):
         self.page_peremption = tk.Frame(self.contenu_stats, background=fond_de(cadre))
         self._onglet_peremption(self.page_peremption)
 
+        # page « Gestion » : rapport d'une fonction de gestion (cartes, évolution, répartition, tableau)
+        self.page_gestion = tk.Frame(self.contenu_stats, background=fond_de(cadre))
+        ligne_g = tk.Frame(self.page_gestion, background=fond_de(cadre))
+        ligne_g.pack(fill="x")
+        self.titre_gestion = tk.Label(ligne_g, text="", font=("Segoe UI Semibold", 13), foreground=VERT_FONCE,
+                                      background=fond_de(cadre))
+        self.titre_gestion.pack(side="left")
+        self.note_gestion = ttk.Label(self.page_gestion, text="", foreground=TEXTE_DOUX, wraplength=900,
+                                      justify="left")
+        self.note_gestion.pack(fill="x", pady=(4, 0))
+        self.cartes_gestion = tk.Frame(self.page_gestion, background=fond_de(cadre))
+        self.cartes_gestion.pack(fill="x", pady=(6, 0))
+        graphiques_g = tk.Frame(self.page_gestion, background=fond_de(cadre))
+        graphiques_g.pack(fill="x", pady=(6, 0))
+        graphiques_g.columnconfigure(0, weight=3, uniform="g")
+        graphiques_g.columnconfigure(1, weight=2, uniform="g")
+        self.g_gestion_evolution = Graphique(graphiques_g, 200)
+        self.g_gestion_evolution.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        self.g_gestion_repartition = Graphique(graphiques_g, 200)
+        self.g_gestion_repartition.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        tk.Label(self.page_gestion, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 10), foreground=TEXTE,
+                 background=fond_de(cadre), anchor="w").pack(fill="x", pady=(8, 0))
+        self.tableau_gestion = tableau_simple(self.page_gestion, 10)
+        placer_a_droite(bouton_exporter(ligne_g, self.tableau_gestion,
+                                        lambda: self.titre_gestion.cget("text") or t("Gestion")))
+        self._calcul_gestion = 0
+
         self.vue_courante = "accueil"
         self.section_ouverte = "Accueil"
         self._construire_nav()
@@ -924,6 +958,10 @@ class PageRapports(ttk.Frame):
             self.after(10, self.recalculer)
         self.vues_stats = r["vues"]
         self.moyens_stats = r["moyens"]
+        from .rapports_gestion import CLES as CLES_GESTION
+
+        if self.vue_courante in CLES_GESTION:  # nouvelle période : le rapport de gestion affiché suit
+            self.after(0, self.afficher_gestion)
         completes = self.brut_stats["completes"]  # choix des filtres : toutes les valeurs de la période
         for nom, vue, colonne in (("Article", "Par article", 0), ("Client", "Par client", 0),
                                   ("Employé", "Par employé", 0), ("Catégorie", "Par catégorie", 0),
@@ -1050,9 +1088,15 @@ class PageRapports(ttk.Frame):
 
     def _montrer(self, cle: str, section: str) -> None:
         self.vue_courante, self.section_ouverte = cle, section
-        for page in (self.page_accueil, self.page_apercu, self.page_tableau, self.page_peremption):
+        for page in (self.page_accueil, self.page_apercu, self.page_tableau, self.page_peremption,
+                     self.page_gestion):
             page.pack_forget()
-        if cle == "accueil":
+        from .rapports_gestion import CLES as CLES_GESTION
+
+        if cle in CLES_GESTION:
+            self.page_gestion.pack(fill="both", expand=True)
+            self.afficher_gestion()
+        elif cle == "accueil":
             self.page_accueil.pack(fill="both", expand=True)
         elif cle == "apercu":
             self.page_apercu.pack(fill="both", expand=True)
@@ -1077,6 +1121,86 @@ class PageRapports(ttk.Frame):
             self.titre_etat.configure(text=t(libelle))
             self.afficher_statistiques()
         self._surligner()
+
+    # ---------------------------------------------------------------- rapports de gestion
+    def afficher_gestion(self) -> None:
+        """Rapport de la fonction de gestion choisie sur la période des statistiques (calcul dans un fil : les
+        registres sont locaux, la caisse et la main-d'œuvre reprennent les ventes Clover déjà lues)."""
+        import tomllib
+
+        from .rapports_gestion import ETATS, calculer
+
+        cle = self.vue_courante
+        libelle = next((l for l, c, _f in ETATS if c == cle), cle)
+        self.titre_gestion.configure(text=t(libelle))
+        try:
+            du, au = date.fromisoformat(self.stat_du.get()), date.fromisoformat(self.stat_au.get())
+        except ValueError:
+            return
+        brut = getattr(self, "brut_stats", None) or {}
+        contexte = {"ventes_par_jour": {}, "donnees": None}
+        if brut and brut.get("du") == du and brut.get("au") == au:
+            contexte["donnees"] = brut.get("donnees")
+            for l in brut.get("completes", {}).get("Par jour", ([], []))[1]:
+                try:
+                    contexte["ventes_par_jour"][date.fromisoformat(str(l[0])[:10])] = Decimal(str(l[3]))
+                except (ValueError, IndexError, ArithmeticError):
+                    pass
+        try:
+            contexte["config"] = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            contexte["config"] = {}
+        self._calcul_gestion += 1
+        numero = self._calcul_gestion
+        self.note_gestion.configure(text=t("Calcul…"))
+
+        def travail():
+            try:
+                rapport = calculer(cle, self.racine, du, au, contexte)
+                self.after(0, lambda: numero == self._calcul_gestion and self._remplir_gestion(rapport))
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: self.note_gestion.configure(text="✘ " + texte))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _remplir_gestion(self, r) -> None:
+        from .graphiques import BLEU, BLEU_PALE, PALETTE
+
+        self.note_gestion.configure(text=t(r.note) if r.note else "")
+        for enfant in self.cartes_gestion.winfo_children():
+            enfant.destroy()
+        for i, (titre, genre, valeur) in enumerate(r.cartes):  # cartes d'indicateurs
+            carte = tk.Frame(self.cartes_gestion, background=CARTE, highlightthickness=1,
+                             highlightbackground="#e2e8e4")
+            carte.grid(row=0, column=i, sticky="nsew", padx=3)
+            self.cartes_gestion.columnconfigure(i, weight=1, uniform="cg")
+            texte = (montant(valeur) if genre == "$" else f"{valeur} %".replace(".", ",") if genre == "%"
+                     else f"{valeur} h".replace(".", ",") if genre == "h" else str(valeur))
+            tk.Label(carte, text=t(titre), background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 9),
+                     anchor="w").pack(fill="x", padx=8, pady=(6, 0))
+            tk.Label(carte, text=texte, background=CARTE, foreground=VERT_FONCE, font=("Segoe UI Semibold", 15),
+                     anchor="w").pack(fill="x", padx=8, pady=(0, 6))
+        vide = t("Aucune donnée pour la période")
+        # graphique d'évolution (courbe ; barres pour un seul jour)
+        self.g_gestion_evolution.titre = t(r.titre_evolution)
+        couleurs = [BLEU, "#f6b81a", *PALETTE]
+        if len(r.etiquettes) <= 1:
+            self.g_gestion_evolution.barres(r.etiquettes, [(t(n), v, couleurs[k]) for k, (n, v) in enumerate(r.series)],
+                                            vide)
+        else:
+            self.g_gestion_evolution.courbes(r.etiquettes, [(t(n), v, couleurs[k], k > 0)
+                                                            for k, (n, v) in enumerate(r.series)], vide)
+        # carte graphique (répartition)
+        self.g_gestion_repartition.titre = t(r.titre_repartition)
+        format_ = montant if r.argent_repartition else (lambda v: f"{v:.0f}" if v == int(v) else f"{v:.1f}")
+        valeurs = [(t(n), v) for n, v in r.repartition]
+        if r.genre_repartition == "anneau":
+            self.g_gestion_repartition.anneau(valeurs, vide, format_valeur=format_)
+        else:
+            self.g_gestion_repartition.classement(valeurs, vide=vide, format_valeur=format_, couleur=BLEU_PALE)
+        remplir(self.tableau_gestion, r.entetes, [[t(x) if isinstance(x, str) and x in TEXTES_GESTION else x
+                                                   for x in l] for l in r.lignes])
 
     def afficher_apercu(self) -> None:
         """Aperçu des ventes : évolution brutes / nettes, composition, jour de la semaine, heure."""
