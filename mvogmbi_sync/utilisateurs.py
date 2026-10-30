@@ -37,6 +37,18 @@ PROFILS_DEFAUT = {
                   "rapprochement", "rapports", "guide", "faq"],
     "Employé": ["accueil", "tableau", "guide", "faq"],
 }
+# Actions sensibles DANS les fenêtres (demande du propriétaire du 2026-10-29 : « au niveau fonction ou fenêtre ») :
+# retirées à un profil comme les fonctions du menu (fonctions_refusees) ; une fenêtre ouverte n'y donne plus accès
+ACTIONS_FENETRES = {
+    "Administration": ["Enregistrer la configuration", "Lancer le traitement maintenant", "Restaurer une sauvegarde",
+                       "Changer le dossier des sauvegardes"],
+    "Paie": ["Traiter la paie dans Sage", "Envoyer les bulletins par courriel", "Créer un employé dans Sage",
+             "Désactiver un employé"],
+    "Comptabilité": ["Enregistrer un comptage de caisse", "Saisir les dépenses dans Sage",
+                     "Envoyer une relance par courriel", "Enregistrer le budget"],
+    "Articles": ["Sortir des pertes du stock", "Changer les prix Clover (promotions)", "Imprimer des étiquettes"],
+    "Fournisseur": ["Importer un retour dans Sage"],
+}
 SANS_EXPORT_DEFAUT = ["Employé"]  # profils sans le droit d'exporter (règle du propriétaire du 2026-10-28)
 LONGUEUR_MIN = 6
 ITERATIONS = 200_000

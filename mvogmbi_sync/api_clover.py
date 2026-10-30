@@ -115,7 +115,8 @@ class ClientClover:
                 break
             time.sleep(min(2 ** tentative, 60))
         if reponse.status_code == 401:
-            raise PermissionError("Clover refuse l'écriture : le jeton doit avoir le droit « Inventaire » en écriture.")
+            raise PermissionError("Clover refuse l'écriture : le jeton doit avoir le droit en écriture de ce module "
+                                  "(« Inventaire » pour les articles, « Employés » pour les employés).")
         reponse.raise_for_status()
         return reponse.json() if reponse.content else {}
 
@@ -169,6 +170,22 @@ class ClientClover:
 
     def supprimer_article(self, id_article: str) -> None:
         self._ecrire("DELETE", f"items/{id_article}")
+
+    def creer_employe(self, nom: str, surnom: str = "", role: str = "EMPLOYEE", courriel: str = "",
+                      nip: str = "") -> dict:
+        """Employé Clover (demande du propriétaire du 2026-10-29) ; rôle EMPLOYEE, MANAGER ou ADMIN ; courriel et
+        NIP de la caisse facultatifs (sans courriel, Clover n'envoie aucune invitation)."""
+        donnees = {"name": nom, "role": role}
+        if surnom:
+            donnees["nickname"] = surnom
+        if courriel:
+            donnees["email"] = courriel
+        if nip:
+            donnees["pin"] = nip
+        return self._ecrire("POST", "employees", donnees)
+
+    def supprimer_employe(self, id_employe: str) -> None:
+        self._ecrire("DELETE", f"employees/{id_employe}")
 
     def commandes(self, debut: date, fin: date, expansion: str | None = None,
                   paiements: list[dict] | None = None) -> Iterator[dict]:

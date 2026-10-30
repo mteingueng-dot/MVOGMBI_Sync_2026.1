@@ -191,6 +191,10 @@ CHAPITRES = [
     ("commercial", "Gestion commerciale (bons de commande, prix et marges)", "Business management (purchase orders, prices and margins)", (5, 8)),
     ("comptabilite", "Comptabilité (âge des comptes, taxes, trésorerie, clôture)", "Accounting (aging, taxes, cash flow, month-end)", (10,)),
     ("paie", "Paie (pointage, feuilles de temps, retenues à la source)", "Payroll (time clock, timesheets, source deductions)", (9, 10)),
+    ("paie2", "Paie dans Sage, congés, fin d'emploi et main-d'œuvre", "Payroll in Sage, leave, end of employment and labour cost", (9, 10)),
+    ("tresorerie", "Caisse, dépenses, remises et budget", "Cash, expenses, remittances and budget", (9, 10)),
+    ("magasin", "Pertes, retours, étiquettes, promotions et inventaire tournant", "Losses, returns, labels, promotions and cycle count", (5, 8)),
+    ("securite", "Sauvegarde, journal des opérations et tableau du gérant", "Backup, operations log and manager dashboard", (4, 14)),
     ("mode", "Mode opératoire", "Operating procedure", ()),
     ("regles", "Règles de gestion", "Business rules", ()),
     ("faq", "Questions fréquentes et dépannage", "Frequently asked questions and troubleshooting", ()),
@@ -582,6 +586,38 @@ other.</td></tr></table>"""))
         "Payroll calculates pay and deductions; the application shows the deductions to remit.") + "</p>"
         + questions("Comment les employés pointent", "Comment préparer le planning", "Comment préparer la paie",
                     "Où voir les retenues"))
+    parties.append(titre("paie2") + "<p>" + x(
+        "De la feuille de temps approuvée au bulletin envoyé à chaque employé : l'application ouvre Sage elle-même et "
+        "vérifie chaque paie.", "From the approved timesheet to the pay stub sent to each employee: the application "
+        "opens Sage itself and checks each pay.") + "</p>"
+        + figure("22_traitement_paie", x("Paie > Traitement de la paie", "Payroll > Payroll processing"))
+        + questions("Comment traiter la paie dans Sage", "Comment créer un employé", "Comment gérer les jours fériés",
+                    "Comment préparer une fin d'emploi", "Comment suivre le coût de la main-d'œuvre")
+        + figure("23_conges", x("Paie > Jours fériés et congés", "Payroll > Holidays and leave")))
+    parties.append(titre("tresorerie") + "<p>" + x(
+        "Suivre l'argent au jour le jour : tiroir-caisse, petite caisse, remises aux gouvernements et budget.",
+        "Follow money day by day: cash drawer, petty cash, government remittances and budget.") + "</p>"
+        + figure("24_caisse", x("Comptabilité > Contrôle de la caisse", "Accounting > Cash control"))
+        + questions("Comment contrôler la caisse", "Comment noter les dépenses", "Comment suivre les remises",
+                    "Comment relancer les clients")
+        + figure("25_depenses", x("Comptabilité > Petite caisse et dépenses", "Accounting > Petty cash and expenses")))
+    parties.append(titre("magasin") + "<p>" + x(
+        "Garder un stock juste et des prix à jour dans Clover et dans Sage, pour chaque point de vente.",
+        "Keep accurate stock and up-to-date prices in Clover and Sage, for each point of sale.") + "</p>"
+        + figure("26_pertes", x("Articles > Pertes et démarque", "Items > Losses and shrinkage"))
+        + questions("Comment déclarer des pertes", "Comment faire un retour", "Comment imprimer des étiquettes",
+                    "Comment programmer une promotion", "Comment faire l'inventaire tournant",
+                    "Comment ces outils fonctionnent")
+        + figure("27_promotions", x("Articles > Promotions", "Items > Promotions"))
+        + figure("28_etiquettes", x("Articles > Étiquettes de prix", "Items > Price labels")))
+    parties.append(titre("securite") + "<p>" + x(
+        "Vos données sont copiées chaque nuit ; chaque opération est notée ; le résumé du jour vous suit sur le "
+        "téléphone.", "Your data is copied every night; every operation is logged; the daily summary follows you on "
+        "your phone.") + "</p>"
+        + figure("29_sauvegarde", x("Administration > Sauvegarde des données", "Administration > Data backup"))
+        + questions("Comment mes données sont-elles sauvegardées", "Où voir qui a fait quoi",
+                    "Comment voir le tableau du gérant")
+        + figure("30_journal", x("Administration > Journal des opérations", "Administration > Operations log")))
     parties.append(titre("mode") + "<p>" + x("Les gestes à faire, au bon rythme, pour que tout reste à jour dans Sage.",
                                          "What to do, and when, to keep everything up to date in Sage.") + "</p>"
                    + blocs("Mode opératoire — chaque matin") + blocs("Mode opératoire — chaque semaine")

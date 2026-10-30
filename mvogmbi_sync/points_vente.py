@@ -130,3 +130,29 @@ def problemes_configuration(points: list[PointDeVente]) -> list[str]:
             problemes.append(f"Point de vente {p.libelle} : préfixe « {p.prefixe} » de {LONGUEUR_PREFIXE} caractères "
                              "au plus, sans espace (le n° de facture Sage est limité à 20 caractères).")
     return problemes
+
+
+# --------------------------------------------------------------------------------------------- aides (2026-10-29)
+def client(racine: Path, pv: "PointDeVente | None" = None):
+    """Connexion Clover du point de vente (n° 1 par défaut)."""
+    from .__main__ import charger_config
+    from .api_clover import ClientClover
+
+    return ClientClover(charger_config(Path(racine) / "config.toml", pv))
+
+
+def cache_clover(racine: Path, pv: "PointDeVente | None" = None) -> Path:
+    """Cache des jours Clover du point de vente (donnees/cache_clover pour le n° 1)."""
+    donnees = Path(racine) / "donnees"
+    return (pv.dossier(donnees) if pv else donnees) / "cache_clover"
+
+
+def fichier_correspondance(racine: Path, pv: "PointDeVente | None" = None) -> Path:
+    donnees = Path(racine) / "donnees"
+    return (pv.dossier(donnees) if pv else donnees) / "correspondance_articles.xlsx"
+
+
+def visibles(widget, config_toml: dict) -> list["PointDeVente"]:
+    """Points de vente que la personne connectée peut traiter (Application.points_visibles), sinon tous les actifs."""
+    app = widget.nametowidget(".")
+    return app.points_visibles() if hasattr(app, "points_visibles") else points_de_vente(config_toml, actifs=True)

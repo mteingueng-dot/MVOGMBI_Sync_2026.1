@@ -309,7 +309,7 @@ def nom_fichier(prefixe: str) -> str:
 # ----------------------------------------------------------------------------- saisie complète
 @vide_apres  # mémoire des lectures vidée après une écriture
 def ajuster_sage(racine: Path, config_toml: dict, ajustements: list[AjustementSage], jour: str, source: str = "",
-                 remarque: str = "") -> dict[str, dict]:
+                 remarque: str = "", depot: str = "") -> dict[str, dict]:
     """Ajustements Sage par le Sage ouvert sur le fichier configuré, sinon l'application ouvre Sage elle-même.
     Renvoie {n° Sage : {texte, montant}}."""
     import json
@@ -326,13 +326,14 @@ def ajuster_sage(racine: Path, config_toml: dict, ajustements: list[AjustementSa
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
     if fenetre_principale_ouverte(fichier):
         return {l.numero: resume(l) for l in ajuster_dans_sage(config_toml, demandes, jour, source=source,
-                                                               remarque=remarque)}
+                                                               remarque=remarque, depot=depot)}
     if sage_ouvert():
         raise RuntimeError("Sage est ouvert sur un autre fichier d'entreprise : fermez-le, l'application l'ouvrira "
                            "elle-même.")
     with tempfile.TemporaryDirectory() as dossier:
         entree, bilan = Path(dossier) / "ajustements.json", Path(dossier) / "bilan.json"
-        entree.write_text(json.dumps({"jour": jour, "lignes": demandes, "source": source, "remarque": remarque}),
+        entree.write_text(json.dumps({"jour": jour, "lignes": demandes, "source": source, "remarque": remarque,
+                                     "depot": depot}),
                           encoding="utf-8")
         executer_sur_bureau_cache(commande_moteur() + ["inventaire-bureau", "--ajustements", str(entree),
                                                       "--resultat", str(bilan)], racine)
@@ -343,12 +344,12 @@ def ajuster_sage(racine: Path, config_toml: dict, ajustements: list[AjustementSa
 
 
 def ajuster_dans_sage(config_toml: dict, demandes: list[dict], jour: str, journal=print, source: str = "",
-                      remarque: str = ""):
+                      remarque: str = "", depot: str = ""):
     from .robot_inventaire import LigneAjustement, appliquer
 
     lignes = [LigneAjustement(d["numero"], Decimal(d["cible"]), Decimal(d["cout"]) if d.get("cout") else None)
               for d in demandes]
-    return appliquer(config_toml, lignes, jour, journal, source, remarque)
+    return appliquer(config_toml, lignes, jour, journal, source, remarque, depot)
 
 
 def resume(l) -> dict:

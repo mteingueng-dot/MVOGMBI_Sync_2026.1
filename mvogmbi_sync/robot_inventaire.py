@@ -21,7 +21,7 @@ from .robot_encaissements import (WM_SETTEXT, ErreurRobot, FenetreEncaissements,
 
 TITRE = "Ajustements des Stocks & Transferts"
 TACHE = "Ajuster l'inventaire"
-ID_SOURCE, ID_REMARQUE, ID_TOTAL = 21, 24, 100
+ID_SOURCE, ID_REMARQUE, ID_TOTAL, ID_EMPLACEMENT = 21, 24, 100, 37
 X_ARTICLE, X_QTE, X_COUT = 40, 120, 338
 LIGNES_PAR_SAISIE = 7  # lignes visibles de la grille : un « Traiter » par groupe
 LONGUEUR_SOURCE = 20
@@ -87,8 +87,15 @@ class FenetreAjustement(FenetreEncaissements):
         user32.SendMessageW(user32.GetDlgItem(self.h, ident), WM_SETTEXT, 0, ctypes.c_wchar_p(texte))
 
     def saisir(self, lignes: list[tuple[str, Decimal, Decimal | None]], jour: str, source: str, remarque: str,
-               resultat: ResultatEncaissement) -> bool:
-        """Une saisie : [(n° Sage, écart, coût unitaire)] ; « Traiter » ; True si Sage n'a rien refusé."""
+               resultat: ResultatEncaissement, depot: str = "") -> bool:
+        """Une saisie : [(n° Sage, écart, coût unitaire)] ; « Traiter » ; True si Sage n'a rien refusé. `depot` :
+        emplacement d'où sort ou entre la marchandise (liste 37, présente si Sage gère plusieurs emplacements)."""
+        from .points_vente import DEPOT_DEFAUT
+
+        if depot and user32.GetDlgItem(self.h, ID_EMPLACEMENT):
+            self.choisir(ID_EMPLACEMENT, depot)
+        elif depot and depot.strip().lower() != DEPOT_DEFAUT.lower():
+            raise ErreurRobot(f"Sage n'affiche pas de liste d'emplacements : impossible de choisir « {depot} ».")
         self.ecrire(ID_SOURCE, source[:LONGUEUR_SOURCE])
         self.ecrire(ID_REMARQUE, remarque[:60])
         self.regler_date(jour)
@@ -108,7 +115,7 @@ def _texte_fenetre(h) -> str:
 
 
 def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journal=print, source: str = "",
-              remarque: str = "") -> list[LigneAjustement]:
+              remarque: str = "", depot: str = "") -> list[LigneAjustement]:
     """Ramène le stock Sage de chaque article à sa cible (Sage ouvert sur le fichier configuré, sinon l'application
     l'ouvre elle-même : appelé alors par la commande interne `inventaire-bureau`)."""
     from . import coffre
@@ -196,8 +203,11 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
                 if not session.processus:
                     premier_plan(fenetre.h)
                 r = ResultatEncaissement(jour, Decimal(0))
-                fenetre.saisir(saisies, jour, source or f"Inv. {jour}", remarque or "Saisie d'inventaire MVOGMBI_Sync",
-                               r)
+                try:
+                    fenetre.saisir(saisies, jour, source or f"Inv. {jour}",
+                                   remarque or "Saisie d'inventaire MVOGMBI_Sync", r, depot)
+                except ErreurRobot as exc:
+                    r.messages.append(str(exc))
                 time.sleep(1.5)
                 if r.messages:
                     journal("Sage : " + " ; ".join(r.messages))

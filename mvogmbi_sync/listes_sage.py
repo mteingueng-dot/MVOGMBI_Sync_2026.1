@@ -131,21 +131,21 @@ def articles(base, categories: dict[str, str] | None = None, liens: dict[str, li
     lignes = []
     for l in base.requete(
             "SELECT TRIM(i.sPartCode) n, TRIM(i.sName) nom, i.bService s, i.bInactive a, i.lAcNAsset ac, "
-            "i.lAcNRev r, COALESCE(SUM(y.dInStock), 0) q, COALESCE(SUM(y.dCostStk), 0) v FROM tinvent i "
+            "i.lAcNRev r, i.lAcNExp x, COALESCE(SUM(y.dInStock), 0) q, COALESCE(SUM(y.dCostStk), 0) v FROM tinvent i "
             "LEFT JOIN tinvbyln y ON y.lInventId = i.lId GROUP BY i.lId, i.sPartCode, i.sName, i.bService, "
-            "i.bInactive, i.lAcNAsset, i.lAcNRev"):
+            "i.bInactive, i.lAcNAsset, i.lAcNRev, i.lAcNExp"):
         quantite, valeur = _q(l["q"]), _d(l["v"])
-        compte = l["ac"] or l["r"]
+        compte = l["ac"] or l["r"] or l["x"]  # un service n'a souvent qu'un compte de charges
         lignes.append([l["n"], reparer_texte(l["nom"] or ""), "Service" if l["s"] else "Stock",
                        "Inactif" if l["a"] else "Actif",
                        categories.get(str(compte or "")[:4]) or nom_categorie(comptes.get(compte, "")),
                        None if l["s"] else quantite,
                        (valeur / quantite).quantize(Decimal("0.0001")) if quantite > 0 and valeur > 0 else None,
                        None if l["s"] else valeur, str(l["ac"] or "")[:4], str(l["r"] or "")[:4],
-                       ", ".join(liens.get(l["n"], []))])
+                       str(l["x"] or "")[:4], ", ".join(liens.get(l["n"], []))])
     lignes.sort(key=lambda l: l[0].casefold())
     return ["N° Sage", "Description", "Type", "État", "Catégorie", "Stock", "CUMP", "Valeur du stock",
-            "Compte d'actif", "Compte de produits", "Articles Clover"], lignes
+            "Compte d'actif", "Compte de produits", "Compte de charges / CMV", "Articles Clover"], lignes
 
 
 def livre_inventaire(base, au: date, categories: dict[str, str] | None = None) -> tuple[list[str], list[list], dict]:

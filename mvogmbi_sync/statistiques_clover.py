@@ -132,24 +132,45 @@ def lire(client, debut: date, fin: date, cache: Path | None = None, progression=
         d.commandes += donnees.get("commandes", [])
         d.paiements += donnees.get("paiements", [])
         d.remboursements += donnees.get("remboursements", [])
-    d.employes, d.clients, d.appareils, d.categories = referentiels(client)
+    d.employes, d.clients, d.appareils, d.categories = referentiels(client, cache)
     return d
 
 
-def referentiels(client) -> tuple:
-    """Employés, clients, appareils et catégories d'articles de Clover, relus au plus une fois par heure."""
+DUREE_REFERENTIELS_DISQUE = 6 * 3600  # noms gardés sur disque : 1,3 s de Clover évitées à chaque lecture
+
+
+def referentiels(client, cache: Path | None = None) -> tuple:
+    """Employés, clients, appareils et catégories d'articles de Clover, relus au plus une fois par heure (mémoire)
+    et gardés 6 heures dans `cache`/referentiels.json (un nouvel employé apparaît au plus tard 6 heures après)."""
     import time
 
     cle = client.config.merchant_id
     deja = _REFERENTIELS.get(cle)
     if deja and time.time() - deja[0] < DUREE_REFERENTIELS:
         return deja[1:]
+    fichier = Path(cache) / "referentiels.json" if cache else None
+    if fichier is not None:
+        try:
+            garde = json.loads(fichier.read_text(encoding="utf-8"))
+            if garde.get("marchand") == cle and time.time() - garde["moment"] < DUREE_REFERENTIELS_DISQUE:
+                _REFERENTIELS[cle] = (time.time(), *garde["donnees"])
+                return _REFERENTIELS[cle][1:]
+        except (OSError, ValueError, KeyError):
+            pass
     employes = {e["id"]: e.get("name") or e.get("nickname") or e["id"] for e in client._pages("employees", {})}
     clients = {c["id"]: " ".join(x for x in (c.get("firstName"), c.get("lastName")) if x).strip() or c["id"]
                for c in client._pages("customers", {})}
     appareils = {a["id"]: f"{a.get('productName') or a.get('model') or 'Appareil'} ({a.get('serial') or a['id'][:8]})"
                  for a in client._pages("devices", {})}
     _REFERENTIELS[cle] = (time.time(), employes, clients, appareils, client.categories_par_article())
+    if fichier is not None:
+        try:
+            fichier.parent.mkdir(parents=True, exist_ok=True)
+            fichier.write_text(json.dumps({"marchand": cle, "moment": time.time(),
+                                           "donnees": list(_REFERENTIELS[cle][1:])}, ensure_ascii=False),
+                               encoding="utf-8")
+        except (OSError, TypeError):
+            pass
     return _REFERENTIELS[cle][1:]
 
 

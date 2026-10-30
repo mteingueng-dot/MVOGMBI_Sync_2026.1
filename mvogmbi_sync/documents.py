@@ -61,6 +61,7 @@ class Document:
     messages: list[str] = field(default_factory=list)
     cree: str = ""
     auteur: str = ""
+    depot: str = ""           # document de stock : emplacement Sage (dépôt d'un point de vente) ; vide = par défaut
 
     @property
     def sous_total(self) -> Decimal:
@@ -106,7 +107,7 @@ class Registre:
         return sorted((d for d in self.documents if d.genre == genre), key=lambda d: (d.date, d.numero), reverse=True)
 
     def ajouter(self, genre: str, tiers: str, jour: str, lignes: list[LigneDocument], remarque: str = "",
-                sens: str = "", auteur: str = "") -> Document:
+                sens: str = "", auteur: str = "", depot: str = "") -> Document:
         if not lignes:
             raise ValueError("Ajoutez au moins une ligne.")
         if genre in (COMMANDE, FACTURE) and not tiers:
@@ -117,7 +118,7 @@ class Registre:
         date.fromisoformat(jour)
         doc = Document(self.prochain_numero(genre), genre, tiers, jour, lignes, remarque, sens,
                        OUVERTE if genre == COMMANDE else BROUILLON, cree=datetime.now().isoformat(timespec="seconds"),
-                       auteur=auteur)
+                       auteur=auteur, depot=depot)
         self.documents.append(doc)
         self.enregistrer()
         return doc
@@ -127,7 +128,7 @@ class Registre:
         return doc.etat in (BROUILLON, OUVERTE, ECHEC) and not (doc.genre == STOCK and any(l.cible for l in doc.lignes))
 
     def modifier(self, numero: str, tiers: str, jour: str, lignes: list[LigneDocument], remarque: str = "",
-                 sens: str = "") -> Document:
+                 sens: str = "", depot: str = "") -> Document:
         doc = self.document(numero)
         if not self.modifiable(doc):
             raise ValueError(f"{numero} ({doc.etat}) ne peut plus être modifié.")
@@ -136,6 +137,7 @@ class Registre:
         date.fromisoformat(jour)
         doc.tiers, doc.date, doc.lignes, doc.remarque = tiers, jour, lignes, remarque
         doc.sens = sens or doc.sens
+        doc.depot = depot or doc.depot
         doc.messages = []
         self.enregistrer()
         return doc
@@ -290,6 +292,17 @@ def importer_factures(racine: Path, config_toml: dict, numeros: list[str], journ
 
 
 # --------------------------------------------------------------------------------------------- documents de stock
+def depots(config_toml: dict) -> dict[str, str]:
+    """Dépôts proposés à un document de stock (règle du propriétaire du 2026-10-29 : tout document de stock part d'un
+    dépôt, rattaché aux points de vente) : {« dépôt (points de vente) » : emplacement Sage}."""
+    from .points_vente import points_de_vente
+
+    par_depot: dict[str, list[str]] = {}
+    for p in points_de_vente(config_toml, actifs=True):
+        par_depot.setdefault(p.depot_sage, []).append(p.libelle)
+    return {f"{d} ({', '.join(noms)})": d for d, noms in par_depot.items()}
+
+
 @vide_apres  # mémoire des lectures vidée après une écriture
 def passer_stock(racine: Path, config_toml: dict, numero: str, journal=print) -> dict[str, str]:
     """Entrée ou sortie de stock dans Sage ; renvoie {n° Sage : résultat}."""
@@ -313,7 +326,7 @@ def passer_stock(racine: Path, config_toml: dict, numero: str, journal=print) ->
         ajustements.append(AjustementSage(l.numero_sage, l.description, avant, Decimal(l.cible), cout))
     registre.enregistrer()
     resultats = ajuster_sage(racine, config_toml, ajustements, doc.date, source=doc.numero,
-                             remarque=(doc.remarque or f"{doc.sens} de stock MVOGMBI_Sync")[:60])
+                             remarque=(doc.remarque or f"{doc.sens} de stock MVOGMBI_Sync")[:60], depot=doc.depot)
     textes = {n: r.get("texte", "") for n, r in resultats.items()}
     if not textes:
         doc.etat, doc.messages = ECHEC, ["Sage n'a rien renvoyé : ouvrez Sage sur le fichier de l'entreprise, puis "

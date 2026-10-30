@@ -170,6 +170,20 @@ def main(origine: Path, langue: str = "fr") -> None:
                                      ("20_liste_articles", "liste_articles", "Articles", 25000),
                                      ("21_previsions", "prev_ventes", "Prévisions", 25000)):
         page(i.RAPPORTS, nom, etat(cle, section), delai=delai)
+    # fenêtres de travail ajoutées le 2026-10-29 (affichées DANS la fenêtre principale)
+    def outil(methode):
+        return lambda: app._lancer_action(methode)
+
+    for nom, methode, delai in (("22_traitement_paie", "ouvrir_traitement_paie", 3000),
+                                ("23_conges", "ouvrir_conges", 3000),
+                                ("24_caisse", "ouvrir_caisse", 8000),
+                                ("25_depenses", "ouvrir_depenses", 2500),
+                                ("26_pertes", "ouvrir_pertes", 6000),
+                                ("27_promotions", "ouvrir_promotions", 6000),
+                                ("28_etiquettes", "ouvrir_etiquettes", 6000),
+                                ("29_sauvegarde", "ouvrir_sauvegarde", 2500),
+                                ("30_journal", "ouvrir_journal_operations", 3000)):
+        page(i.ACCUEIL, nom, outil(methode), delai=delai)
     app.after(2500, suivant)
     app.mainloop()
     shutil.rmtree(copie, ignore_errors=True)

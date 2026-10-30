@@ -47,3 +47,17 @@ def test_commande_facturee_et_imp(tmp_path):
     texte = chemin.read_bytes().decode("cp1252")
     assert '<SalInvoice>\r\n"Client A"' in texte and '"A1","2.0000","10.0000","20.00"' in texte
     assert texte.count('"0","1"') == 2  # TPS et TVQ sur la ligne taxable seulement
+
+
+def test_document_de_stock_part_d_un_depot(tmp_path):
+    config = {"clover": {}, "points_vente": [{"code": "2", "nom": "Marché 2", "merchant_id": "X", "client_sage": "V2",
+                                              "depot_sage": "Magasin 2", "prefixe": "V2", "actif": True}]}
+    depots = dc.depots(config)
+    assert list(depots.values()) == ["Emplacement par défaut", "Magasin 2"]
+    assert any("Marché 2" in libelle for libelle in depots)
+    registre = dc.Registre(tmp_path)
+    doc = registre.ajouter(dc.STOCK, "", "2026-10-29", [dc.LigneDocument("A1", "Article", "2", "1.50")], "Casse",
+                           dc.SORTIE, "essai", "Magasin 2")
+    assert dc.Registre(tmp_path).document(doc.numero).depot == "Magasin 2"
+    registre.modifier(doc.numero, "", "2026-10-29", doc.lignes, "Casse", dc.SORTIE)
+    assert dc.Registre(tmp_path).document(doc.numero).depot == "Magasin 2"  # garde son dépôt

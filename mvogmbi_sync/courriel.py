@@ -71,7 +71,28 @@ def preparer_message(c: dict, sujet: str, corps: str, corps_html: str | None = N
 def envoyer(config_toml: dict, sujet: str, corps: str, corps_html: str | None = None,
             pieces: list[tuple[str, bytes]] | None = None) -> None:
     c = parametres(config_toml)
-    message = preparer_message(c, sujet, corps, corps_html, pieces)
+    _expedier(c, preparer_message(c, sujet, corps, corps_html, pieces))
+
+
+def envoyer_a(config_toml: dict, destinataire: str, sujet: str, corps: str,
+              pdf: list[tuple[str, bytes]] | None = None) -> None:
+    """Courriel personnel (bulletin de paie) : UN seul destinataire, jamais de copie, pièces jointes PDF."""
+    c = parametres(config_toml)
+    if not c.get("serveur"):
+        raise RuntimeError("Courriel non configuré (serveur manquant).")
+    if adresses_invalides(destinataire) or len(adresses(destinataire)) != 1:
+        raise ValueError(f"Adresse de courriel invalide : « {destinataire} ».")
+    message = EmailMessage()
+    message["Subject"] = sujet
+    message["From"] = c.get("expediteur") or c.get("utilisateur")
+    message["To"] = destinataire.strip()
+    message.set_content(corps)
+    for nom, contenu in pdf or []:
+        message.add_attachment(contenu, maintype="application", subtype="pdf", filename=nom)
+    _expedier(c, message)
+
+
+def _expedier(c: dict, message: EmailMessage) -> None:
     port = int(c.get("port", 587))
     securite = str(c.get("securite", "starttls")).lower()
     contexte = ssl.create_default_context()

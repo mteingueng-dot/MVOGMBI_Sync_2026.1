@@ -94,15 +94,13 @@ class _Onglet(ttk.Frame):
             try:
                 from .__main__ import charger_config
                 from .api_clover import ClientClover
-                from .previsions import ventes_par_article
-                from .statistiques_clover import lire
+                from .previsions import ventes_par_article_rapide
 
                 client = ClientClover(charger_config(racine / "config.toml"))
-                donnees = lire(client, du, au, racine / "donnees" / "cache_clover")
                 from .cache_lectures import inventaire_clover
 
                 items = inventaire_clover(racine)  # catalogue gardé quelques minutes
-                ventes = ventes_par_article(donnees, du, au)
+                ventes = ventes_par_article_rapide(client, du, au, racine / "donnees" / "cache_clover")
                 self.after(0, lambda: fin(items, ventes))
             except BaseException as exc:  # SystemExit compris (jeton absent)
                 texte = str(exc) or type(exc).__name__

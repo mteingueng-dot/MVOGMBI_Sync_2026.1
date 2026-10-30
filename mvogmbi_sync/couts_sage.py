@@ -46,15 +46,17 @@ def lire_couts(base) -> dict[str, CoutSage]:
     return couts
 
 
-def correspondance(racine: Path) -> dict[str, str]:
-    """ID Clover -> n° d'article Sage (lignes « Confirmé » ou « Automatique » de la correspondance)."""
-    import openpyxl
+def correspondance(racine: Path, pv=None) -> dict[str, str]:
+    """ID Clover -> n° d'article Sage (lignes « Confirmé » ou « Automatique » de la correspondance du point de
+    vente, n° 1 par défaut)."""
+    from .points_vente import fichier_correspondance
 
-    chemin = Path(racine) / "donnees" / "correspondance_articles.xlsx"
+    chemin = fichier_correspondance(racine, pv)
     if not chemin.exists():
         return {}
-    feuille = openpyxl.load_workbook(chemin, read_only=True, data_only=True)["Correspondance"]
-    lignes = feuille.iter_rows(values_only=True)
+    from .correspondance import lire_feuille
+
+    lignes = iter(lire_feuille(chemin))  # lue une fois tant que le fichier ne change pas
     entete = list(next(lignes))
     i_statut, i_sage, i_id = entete.index("Statut"), entete.index("N° article Sage"), entete.index("ID Clover")
     return {str(l[i_id]): str(l[i_sage]).strip() for l in lignes

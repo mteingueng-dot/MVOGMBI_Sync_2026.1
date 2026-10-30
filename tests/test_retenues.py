@@ -38,3 +38,24 @@ def test_etat_du_mois():
     assert rrq[2:] == [Decimal(150), Decimal(80), Decimal(150), Decimal(80), Decimal(80)]
     assert info["a_remettre"] == {rt.ARC: Decimal(40), rt.RQ: Decimal(80)}  # vacances jamais remises
     assert info["salaires"] == Decimal(1000) and info["echeance"] == date(2026, 10, 15)
+
+
+def test_suivi_des_remises():
+    from datetime import date
+    from decimal import Decimal as D
+
+    from mvogmbi_sync import retenues as re_
+
+    ech = date(2026, 10, 15)
+    assert re_.etat_remise(D("500"), [(date(2026, 10, 10), D("500"))], ech, date(2026, 10, 29))[:1] == (re_.REMIS,)
+    assert re_.etat_remise(D("500"), [(date(2026, 10, 10), D("200")), (date(2026, 10, 20), D("300"))], ech,
+                           date(2026, 10, 29)) == (re_.REMIS_EN_RETARD, D("500"), date(2026, 10, 20))
+    assert re_.etat_remise(D("500"), [], ech, date(2026, 10, 12))[0] == re_.A_REMETTRE
+    assert re_.etat_remise(D("500"), [(date(2026, 10, 10), D("100"))], ech, date(2026, 10, 16))[0] == re_.EN_RETARD
+    assert re_.etat_remise(D("0"), [], ech, date(2026, 10, 16))[0] == re_.RIEN
+    lignes = [["2026-09", re_.RQ, D("500"), D(0), "", "2026-10-15", re_.A_REMETTRE],
+              ["2026-08", re_.ARC, D("300"), D(0), "", "2026-09-15", re_.EN_RETARD],
+              ["2026-09", re_.ARC, D("200"), D(200), "2026-10-01", "2026-10-15", re_.REMIS]]
+    a = re_.alertes(lignes, date(2026, 10, 12))
+    assert len(a) == 2 and "EN RETARD" in a[0] + a[1]
+    assert re_.alertes(lignes[:1], date(2026, 10, 1)) == []   # échéance dans plus de 5 jours : pas encore d'alerte

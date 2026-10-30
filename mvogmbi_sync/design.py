@@ -360,7 +360,16 @@ def styler(style: ttk.Style) -> None:
     if racine is not None:
         _couleurs_listes(racine)
         # Sun Valley repeint toutes les listes en bleu (tk_setPalette) quand le thème s'applique : on repasse après
-        racine.bind("<<ThemeChanged>>", lambda _e: racine.after(50, lambda: _couleurs_listes(racine)), add="+")
+        # <<ThemeChanged>> arrive à CHAQUE élément de l'écran (459 fois au démarrage, 5,6 s perdues, mesuré le
+        # 2026-10-30) : un seul passage, 50 ms après le dernier
+        attente = {"id": None}
+
+        def plus_tard(_e=None):
+            if attente["id"] is not None:
+                racine.after_cancel(attente["id"])
+            attente["id"] = racine.after(50, lambda: (attente.update(id=None), _couleurs_listes(racine)))
+
+        racine.bind("<<ThemeChanged>>", plus_tard, add="+")
     style.configure("TLabelframe", background=CARTE, bordercolor=BORDURE, relief="solid", borderwidth=1)
     style.configure("TLabelframe.Label", background=CARTE, foreground=VERT_FONCE, font=("Segoe UI Semibold", 10))
 
@@ -496,11 +505,12 @@ class FenetreOutil(tk.Frame):
     l'application (outils, essais), elle s'ouvre dans une fenêtre à part. Les appels propres aux fenêtres de Windows
     (title, geometry, transient…) restent possibles : ils sont transmis à la fenêtre à part, ou ignorés."""
 
-    def __init__(self, parent, **options):
+    def __init__(self, parent, a_part: bool = False, **options):
+        """a_part : fenêtre à part même dans l'application (choix demandé depuis une fenêtre de création)."""
         self._racine = parent.nametowidget(".")
         self._seule = None
         self._titre = ""
-        if hasattr(self._racine, "nouvel_outil"):
+        if hasattr(self._racine, "nouvel_outil") and not a_part:
             conteneur = self._racine.nouvel_outil(self)
         else:
             self._seule = conteneur = tk.Toplevel(parent)
@@ -554,3 +564,17 @@ class FenetreOutil(tk.Frame):
 def dans_application(parent, fenetre, empiler: bool = True):
     """Compatibilité : une FenetreOutil s'affiche déjà d'elle-même dans la fenêtre principale."""
     return fenetre
+
+
+def action_permise(widget, action: str) -> bool:
+    """Action sensible d'une fenêtre (utilisateurs.ACTIONS_FENETRES) : permise au profil de la personne connectée ?
+    Sinon un message l'explique. Hors de l'application (outils, essais) : toujours permise."""
+    from tkinter import messagebox
+
+    from .langues import t
+
+    app = widget.nametowidget(".")
+    if not hasattr(app, "permis_fenetre") or app.permis_fenetre(action):
+        return True
+    messagebox.showwarning(t("Accès refusé"), t("Votre profil ne permet pas : {a}.", a=t(action)), parent=widget)
+    return False

@@ -100,8 +100,9 @@ class TableCorrespondance:
 
 def lire_correspondance(chemin: Path) -> TableCorrespondance:
     """Correspondance des lignes « Confirmé » ou « Automatique »."""
-    feuille = openpyxl.load_workbook(chemin, read_only=True, data_only=True)["Correspondance"]
-    lignes = feuille.iter_rows(values_only=True)
+    from .correspondance import lire_feuille
+
+    lignes = iter(lire_feuille(chemin))  # lue une fois tant que le fichier ne change pas
     entete = list(next(lignes))
     i_statut, i_nom, i_num, i_id = (entete.index(n) for n in ("Statut", "Nom Clover", "N° article Sage", "ID Clover"))
     table = TableCorrespondance({}, {})

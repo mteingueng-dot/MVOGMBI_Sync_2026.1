@@ -114,17 +114,31 @@ class FenetreCreationArticle(tk.Toplevel):
 
         sage = tk.LabelFrame(self, text=" Sage 50 ", background=CARTE, padx=10, pady=6, font=("Segoe UI Semibold", 10))
         sage.grid(row=0, column=1, sticky="nsew")
-        ligne(sage, 0, "N° d'article", ttk.Entry(sage, textvariable=self.v["numero"], width=20), True)
-        description = ligne(sage, 1, "Description", ttk.Entry(sage, textvariable=self.v["description"], width=34), True)
+        # stock ou service (demande du propriétaire du 2026-10-29) : un service (n° « S… ») n'a que des comptes de
+        # produits (facultatif) et de charges ; un article de stock : actif, produits, CMV, écart
+        self.type_sage = tk.StringVar(value="stock")
+        types_sage = tk.Frame(sage, background=CARTE)
+        for valeur, libelle in (("stock", "Stock"), ("service", "Service")):
+            ttk.Radiobutton(types_sage, text=t(libelle), value=valeur, variable=self.type_sage,
+                            command=self._type_change).pack(side="left", padx=(0, 12))
+        ligne(sage, 0, "Type", types_sage, True)
+        ligne(sage, 1, "N° d'article", ttk.Entry(sage, textvariable=self.v["numero"], width=20), True)
+        description = ligne(sage, 2, "Description", ttk.Entry(sage, textvariable=self.v["description"], width=34), True)
         description.bind("<Key>", lambda _e: setattr(self, "_description_tapee", True))
-        for rang, (cle, libelle) in enumerate((("actif", "Compte d'actif (15xx)"), ("produits", "Compte de produits (40xx)"),
-                                               ("cmv", "Compte CMV (50xx)"), ("ecart", "Compte d'écart")), start=2):
-            ligne(sage, rang, libelle, ttk.Entry(sage, textvariable=self.v[cle], width=8), cle != "ecart")
-        tk.Label(sage, text=t("Comptes et préfixe du n° viennent de la catégorie Clover."), background=CARTE,
-                 foreground=TEXTE_DOUX, font=("Segoe UI", 8), wraplength=260, justify="left").grid(
-            row=6, column=0, columnspan=2, sticky="w")
-        Bouton(sage, t("Comptes par catégorie…"), self.ouvrir_table, "secondaire", fond=CARTE, petit=True).grid(
-            row=7, column=0, columnspan=2, sticky="w", pady=4)
+        self.lignes_comptes = {}
+        for rang, cle in enumerate(("actif", "produits", "cmv", "ecart"), start=3):
+            etiquette = tk.Label(sage, background=CARTE, font=("Segoe UI", 9))
+            etiquette.grid(row=rang, column=0, sticky="w", pady=3, padx=(0, 8))
+            champ = ttk.Entry(sage, textvariable=self.v[cle], width=8)
+            champ.grid(row=rang, column=1, sticky="we", pady=3)
+            self.lignes_comptes[cle] = (etiquette, champ)
+        self.aide_comptes = tk.Label(sage, background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 8),
+                                     wraplength=260, justify="left")
+        self.aide_comptes.grid(row=7, column=0, columnspan=2, sticky="w")
+        self.bouton_table = Bouton(sage, t("Comptes par catégorie…"), self.ouvrir_table, "secondaire", fond=CARTE,
+                                   petit=True)
+        self.bouton_table.grid(row=8, column=0, columnspan=2, sticky="w", pady=4)
+        self._type_change(initial=True)
         ttk.Checkbutton(sage, text=t("Créer dans Sage"), variable=self.creer_sage,
                         style="Carte.TCheckbutton").grid(row=10, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
@@ -136,6 +150,32 @@ class FenetreCreationArticle(tk.Toplevel):
         Bouton(boutons, "✖  " + t("Fermer"), self.destroy, "secondaire", fond=CARTE).pack(side="right", padx=(8, 0))
         self.bouton_creer = Bouton(boutons, "🆕  " + t("Créer l'article"), self.creer, fond=CARTE)
         self.bouton_creer.pack(side="right")
+
+    def _type_change(self, initial: bool = False) -> None:
+        """Libellés et champs des comptes selon le type ; n° proposé : « S » + suivant libre pour un service."""
+        service = self.type_sage.get() == "service"
+        libelles = ({"produits": "Compte de produits (4xxx, facultatif)", "cmv": "Compte de charges (5xxx) *"}
+                    if service else {"actif": "Compte d'actif (15xx) *", "produits": "Compte de produits (40xx) *",
+                                     "cmv": "Compte CMV (50xx) *", "ecart": "Compte d'écart"})
+        for cle, (etiquette, champ) in self.lignes_comptes.items():
+            if cle in libelles:
+                etiquette.configure(text=t(libelles[cle].rstrip(" *")) + (" *" if libelles[cle].endswith("*") else ""))
+                etiquette.grid()
+                champ.grid()
+            else:
+                etiquette.grid_remove()
+                champ.grid_remove()
+        self.aide_comptes.configure(text=t("Service : n° commençant par S ; comptes de produits et de charges seulement.")
+                                    if service else t("Comptes et préfixe du n° viennent de la catégorie Clover."))
+        if service:
+            self.bouton_table.grid_remove()
+            for cle in ("actif", "ecart", "produits", "cmv"):
+                self.v[cle].set("")
+            self.v["numero"].set(prochain_numero(self.numeros_sage, "S"))
+        else:
+            self.bouton_table.grid()
+            if not initial:
+                self._categorie_choisie()
 
     # ---------------------------------------------------------------- valeurs automatiques
     def _prix_auto(self) -> None:
@@ -151,6 +191,8 @@ class FenetreCreationArticle(tk.Toplevel):
             self.v["description"].set(self.v["nom"].get())
 
     def _categorie_choisie(self) -> None:
+        if getattr(self, "type_sage", None) is not None and self.type_sage.get() == "service":
+            return  # un service garde ses comptes de produits et de charges
         comptes = self.table.pour(self.v["categorie"].get())
         for cle in ("actif", "produits", "cmv", "ecart"):
             self.v[cle].set(getattr(comptes, cle) if comptes else "")
@@ -191,9 +233,19 @@ class FenetreCreationArticle(tk.Toplevel):
                             foreground=ROUGE if erreur else TEXTE_DOUX)
 
     def ouvrir_table(self) -> None:
+        """Fenêtre à part : choisir (ou compléter) une catégorie puis « Valider la sélection » remplit l'article
+        (demande du propriétaire du 2026-10-29)."""
         FenetreCategories(self, self.racine, [c["name"] for c in self.categories],
                           au_retour=lambda: (setattr(self, "table", TableCategories(self.racine)),
-                                             self._categorie_choisie() if self.v["categorie"].get() else None))
+                                             self._categorie_choisie() if self.v["categorie"].get() else None),
+                          selection=self.categorie_selectionnee, actuelle=self.v["categorie"].get())
+
+    def categorie_selectionnee(self, nom: str) -> None:
+        self.table = TableCategories(self.racine)
+        self.v["categorie"].set(nom)
+        self._categorie_choisie()
+        if self.table.pour(nom):
+            self.etat.configure(text="✔ " + t("Comptes de « {n} » repris.", n=nom), foreground=VERT_FONCE)
 
     # ---------------------------------------------------------------- création
     def article(self) -> NouvelArticle:
@@ -210,7 +262,9 @@ class FenetreCreationArticle(tk.Toplevel):
             stock=nombre(self.v["stock"].get()), numero_sage=self.v["numero"].get().strip(),
             description_sage=self.v["description"].get().strip(), comptes=comptes,
             creer_sage=self.creer_sage.get(), creer_clover=self.creer_clover.get(),
-            id_clover="" if self.creer_clover.get() else self.id_clover_existant)
+            id_clover="" if self.creer_clover.get() else self.id_clover_existant,
+            service=self.type_sage.get() == "service", compte_charges=self.v["cmv"].get().strip(),
+            compte_produits=self.v["produits"].get().strip())
 
     def creer(self) -> None:
         if getattr(self, "_en_cours", False):
@@ -293,9 +347,11 @@ class FenetreCategories(FenetreOutil):
     COLONNES = (("categorie", "Catégorie Clover", 200), ("prefixe", "Préfixe n° Sage", 90), ("actif", "Actif", 70),
                 ("produits", "Produits", 70), ("cmv", "CMV", 70), ("ecart", "Écart", 70))
 
-    def __init__(self, parent, racine: Path, categories_clover=(), au_retour=None):
-        super().__init__(parent)
-        self.racine, self.au_retour = Path(racine), au_retour
+    def __init__(self, parent, racine: Path, categories_clover=(), au_retour=None, selection=None, actuelle: str = ""):
+        """selection : fonction(nom de catégorie) appelée par « Valider la sélection » ; la table s'ouvre alors
+        dans une fenêtre à part, au-dessus de la fenêtre de création."""
+        super().__init__(parent, a_part=selection is not None)
+        self.racine, self.au_retour, self.selection = Path(racine), au_retour, selection
         self.table = TableCategories(self.racine)
         for nom in categories_clover:
             self.table.lignes.setdefault(nom, ComptesCategorie(nom))
@@ -332,8 +388,21 @@ class FenetreCategories(FenetreOutil):
         Bouton(boutons, t("Proposer depuis Sage"), self.proposer, "secondaire", fond=CARTE).pack(side="left")
         Bouton(boutons, "🔎  " + t("Articles Sage à corriger…"), self.verifier_articles, "secondaire",
                fond=CARTE).pack(side="left", padx=8)
-        Bouton(boutons, t("Enregistrer"), self.enregistrer, fond=CARTE).pack(side="right")
+        if selection:
+            Bouton(boutons, "✔  " + t("Valider la sélection"), self.valider, fond=CARTE).pack(side="right")
+            Bouton(boutons, "✖  " + t("Fermer"), self.destroy, "secondaire", fond=CARTE).pack(side="right", padx=8)
+            self.arbre.bind("<Double-1>", lambda _e: self.valider())
+            self.etat.configure(text=t("Choisissez la catégorie de l'article (double-clic ou « Valider la "
+                                       "sélection »). Comptes modifiables : « Appliquer » avant de valider."))
+        else:
+            Bouton(boutons, t("Enregistrer"), self.enregistrer, fond=CARTE).pack(side="right")
         self.afficher()
+        if actuelle in self.table.lignes:
+            self.arbre.selection_set(actuelle)
+            self.arbre.see(actuelle)
+        if selection:
+            self.geometry("820x560")
+            self.grab_set()
 
     def afficher(self) -> None:
         self.arbre.delete(*self.arbre.get_children())
@@ -421,6 +490,22 @@ class FenetreCategories(FenetreOutil):
 
         self.table.enregistrer()
         FenetreComptesSage(self, self.racine)
+
+    def valider(self) -> None:
+        """Table enregistrée, catégorie choisie renvoyée à la fenêtre de création ; refusé si ses comptes sont
+        incomplets."""
+        choix = self.arbre.selection()
+        if not choix:
+            self.etat.configure(text=t("Choisissez une catégorie dans la liste."), foreground=ROUGE)
+            return
+        problemes = self.table.lignes[choix[0]].problemes()
+        if problemes:
+            self.etat.configure(text="⚠ " + " ; ".join(problemes), foreground=ROUGE)
+            return
+        self.table.enregistrer()
+        nom, selection = choix[0], self.selection
+        self.destroy()
+        selection(nom)
 
     def enregistrer(self) -> None:
         self.table.enregistrer()

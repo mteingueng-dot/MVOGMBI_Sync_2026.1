@@ -11,12 +11,12 @@ from pathlib import Path
 from tkinter import ttk
 
 from . import comptabilite as cp
-from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, Bouton, ChampDate, Rangee
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee
 from .export_tableau import bouton_exporter
 from .langues import t
 
 ONGLETS = ["Âge des comptes", "Déclaration TPS/TVQ", "Prévision de trésorerie", "Retenues à la source",
-           "Clôture du mois"]
+           "Suivi des remises", "Budget et écarts", "Clôture du mois"]
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre",
         "décembre"]
 
@@ -44,7 +44,8 @@ class FenetreComptabilite(FenetreOutil):
         self.onglets = ttk.Notebook(self)
         self.onglets.pack(fill="both", expand=True)
         self.cadres = {}
-        for nom, construire in zip(ONGLETS, (self._age, self._taxes, self._tresorerie, self._retenues, self._cloture)):
+        for nom, construire in zip(ONGLETS, (self._age, self._taxes, self._tresorerie, self._retenues, self._suivi,
+                                             self._budget, self._cloture)):
             cadre = ttk.Frame(self.onglets, padding=(0, 8, 0, 0))
             self.onglets.add(cadre, text="  " + t(nom) + "  ")
             self.cadres[nom] = cadre
@@ -239,6 +240,137 @@ class FenetreComptabilite(FenetreOutil):
         self.tableau_salaires = tableau_simple(cadre, hauteur=6)
         self.tableau_retenues.configure(height=10)
         self.etat_retenues.configure(text=t("Choisissez le mois puis « Calculer »."))
+
+    def _suivi(self, cadre) -> None:
+        barre, self.etat_suivi, self.titre_suivi, self.tableau_suivi = self._zone(
+            cadre, "Suivi des remises des retenues (12 derniers mois)")
+        barre.ajouter(Bouton(barre, "🔍  " + t("Calculer"), self.calculer_suivi, fond=CARTE, petit=True), 10)
+        barre.ajouter(bouton_exporter(barre, self.tableau_suivi, lambda: self.titre_suivi.cget("text")))
+        self.etat_suivi.configure(text=t("Versements cherchés sur les comptes de retenues (hors paie), du mois suivant "
+                                         "jusqu'à 60 jours après l'échéance du 15. « Calculer » lit Sage."))
+
+    def calculer_suivi(self) -> None:
+        from .page_rapports import remplir
+        from .retenues import A_REMETTRE, EN_RETARD, ENTETES_SUIVI, REMIS_EN_RETARD, alertes, suivi
+
+        def fin(lignes):
+            remplir(self.tableau_suivi, ENTETES_SUIVI, [l[:6] + [t(l[6])] for l in lignes],
+                    {"Organisme": 220, "État": 160},
+                    lambda i: ("retard",) if lignes[i][6] in (EN_RETARD, REMIS_EN_RETARD) else (
+                        ("attente",) if lignes[i][6] == A_REMETTRE else ()))
+            self.tableau_suivi.tag_configure("retard", foreground=ROUGE)
+            self.tableau_suivi.tag_configure("attente", foreground="#9a6700")
+            a = alertes(lignes, date.today())
+            self.etat_suivi.configure(text=("⚠ " + " ; ".join(a)) if a else t("✔ Aucune remise en retard ni à faire "
+                                                                                "dans les 5 prochains jours."),
+                                      foreground=ROUGE if a else VERT_FONCE)
+
+        self._lire(lambda: self._sage(lambda b: suivi(b, date.today())), fin, self.etat_suivi,
+                   "Lecture des remises dans Sage…")
+
+    def _budget(self, cadre) -> None:
+        from .budget import POSTES
+
+        barre, self.etat_budget, self.titre_budget, self.tableau_budget = self._zone(cadre, "Budget et écarts")
+        groupe = barre.ajouter(barre.groupe(), 10)
+        tk.Label(groupe, text=t("Mois"), background=CARTE).pack(side="left")
+        self.mois_budget = tk.StringVar(value=_mois_proposes()[1])
+        choix = ttk.Combobox(groupe, textvariable=self.mois_budget, values=_mois_proposes(), state="readonly", width=9)
+        choix.pack(side="left", padx=4)
+        choix.bind("<<ComboboxSelected>>", lambda _e: self.charger_budget())
+        self.v_budget = {}
+        for poste in POSTES:
+            g = barre.ajouter(barre.groupe(), 8)
+            tk.Label(g, text=t(poste), background=CARTE).pack(side="left", padx=(0, 4))
+            self.v_budget[poste] = tk.StringVar()
+            ttk.Entry(g, textvariable=self.v_budget[poste], width=10).pack(side="left")
+        barre.ajouter(Bouton(barre, "✔  " + t("Enregistrer le budget"), self.enregistrer_budget, "secondaire",
+                             fond=CARTE, petit=True), 8)
+        g = barre.ajouter(barre.groupe(), 8)
+        tk.Label(g, text=t("Croissance (%)"), background=CARTE).pack(side="left", padx=(0, 4))
+        self.croissance = tk.StringVar(value="5")
+        ttk.Entry(g, textvariable=self.croissance, width=5).pack(side="left")
+        barre.ajouter(Bouton(barre, "💡  " + t("Proposer d'après l'an dernier"), self.proposer_budget, "secondaire",
+                             fond=CARTE, petit=True), 8)
+        barre.ajouter(Bouton(barre, "🔍  " + t("Comparer au réel"), self.comparer_budget, fond=CARTE, petit=True), 8)
+        barre.ajouter(bouton_exporter(barre, self.tableau_budget, lambda: self.titre_budget.cget("text")))
+        self.etat_budget.configure(text=t("Réel lu dans Sage (produits 4xxx, CMV 50xx, autres charges 51xx-59xx)."))
+        self.charger_budget()
+
+    def _mois_budget(self) -> tuple[int, int]:
+        a, m = (int(x) for x in self.mois_budget.get().split("-"))
+        return a, m
+
+    def charger_budget(self) -> None:
+        from .budget import Budget
+
+        valeurs = Budget(self.racine).mois(*self._mois_budget())
+        for poste, v in self.v_budget.items():
+            v.set(str(valeurs[poste]).replace(".", ",") if valeurs[poste] else "")
+
+    def enregistrer_budget(self) -> None:
+        from .design import action_permise
+
+        if not action_permise(self, "Enregistrer le budget"):
+            return
+        from decimal import Decimal, InvalidOperation
+
+        from .budget import Budget
+
+        try:
+            valeurs = {p: Decimal(v.get().replace(" ", "").replace(",", ".") or 0) for p, v in self.v_budget.items()}
+        except InvalidOperation:
+            self.etat_budget.configure(text="✘ " + t("Montants en chiffres."), foreground=ROUGE)
+            return
+        Budget(self.racine).definir(*self._mois_budget(), valeurs)
+        self.etat_budget.configure(text=t("✔ Budget de {m} enregistré.", m=self.mois_budget.get()),
+                                   foreground=VERT_FONCE)
+
+    def proposer_budget(self) -> None:
+        from decimal import Decimal
+
+        from .budget import proposer, reel
+
+        annee, mois = self._mois_budget()
+
+        def fin(lignes):
+            try:
+                croissance = Decimal(self.croissance.get().replace(",", "."))
+            except Exception:
+                croissance = Decimal(0)
+            for poste, v in proposer(reel(lignes, 3), croissance).items():
+                self.v_budget[poste].set(str(v))
+            self.etat_budget.configure(text=t("Proposé d'après {a}-{m:02d} : vérifiez puis « Enregistrer le budget ».",
+                                              a=annee - 1, m=mois), foreground=TEXTE_DOUX)
+
+        self._lire(lambda: self._sage(lambda b: cp.etat_resultats(b, annee, mois)), fin, self.etat_budget,
+                   "Lecture de l'état des résultats dans Sage…")
+
+    def comparer_budget(self) -> None:
+        from decimal import Decimal
+
+        from .budget import ENTETES_BUDGET, POSTES, Budget, ecarts, reel
+        from .page_rapports import remplir
+
+        annee, mois = self._mois_budget()
+        budget = Budget(self.racine)
+
+        def travail():
+            def lire(b):
+                return [reel(cp.etat_resultats(b, annee, m)) for m in range(1, mois + 1)]
+            return self._sage(lire)
+
+        def fin(reels):
+            cumul_r = {p: sum((r[p] for r in reels), Decimal(0)) for p in POSTES}
+            cumul_b = {p: sum((budget.mois(annee, m)[p] for m in range(1, mois + 1)), Decimal(0)) for p in POSTES}
+            lignes = ecarts(reels[-1], budget.mois(annee, mois), cumul_r, cumul_b)
+            remplir(self.tableau_budget, ENTETES_BUDGET, [[t(l[0])] + l[1:] for l in lignes], {"Poste": 260},
+                    decroissant=False)
+            self.titre_budget.configure(text=t("Budget et écarts de {m}", m=self.mois_budget.get()))
+            self.etat_budget.configure(text=t("Écart = réel − budget ; depuis janvier = cumul de l'année."),
+                                       foreground=TEXTE_DOUX)
+
+        self._lire(travail, fin, self.etat_budget, "Lecture de l'état des résultats dans Sage…")
 
     def calculer_retenues(self) -> None:
         from .page_rapports import remplir

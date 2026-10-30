@@ -176,6 +176,56 @@ COLONNES = {"frais": "frais", "retrait": "retrait", "retraits": "retrait", "déb
 FIN_DU_COMPTE = re.compile(r"^(compte d'[ée]pargne et de placement|sommaire des frais|part de qualification)")
 
 
+_RELEVES_LUS: dict[str, tuple] = {}
+
+
+def _releve_en_dict(r: Releve) -> dict:
+    from dataclasses import asdict
+
+    return json.loads(json.dumps(asdict(r), default=str))
+
+
+def _releve_depuis_dict(d: dict) -> Releve:
+    def dec(v):
+        return None if v is None else Decimal(v)
+
+    mouvements = [MouvementBanque(m["date"], m["description"], Decimal(m["montant"]), dec(m["solde"]), m["releve"],
+                                  m["rang"], m["etat"], list(m["sage"]), m["compte"], m["remarque"])
+                  for m in d["mouvements"]]
+    return Releve(d["fichier"], d["debut"], d["fin"], dec(d["solde_ouverture"]), dec(d["solde_fermeture"]),
+                  mouvements, list(d["remarques"]))
+
+
+def lire_releve_garde(chemin: Path) -> Releve:
+    """Relevé lu une seule fois tant que le fichier ne change pas (date et taille) : gardé en mémoire et dans
+    « releves_lus.cache.json » du dossier des relevés. Lire les PDF prenait environ 3 s à chaque suivi des ventes
+    ou rapprochement (mesuré le 2026-10-30). Chaque appel rend une copie neuve (les décisions s'y appliquent)."""
+    chemin = Path(chemin)
+    etat = chemin.stat()
+    signature = [etat.st_mtime_ns, etat.st_size]
+    deja = _RELEVES_LUS.get(str(chemin))
+    if deja and deja[0] == signature:
+        return _releve_depuis_dict(deja[1])
+    cache = chemin.parent / "releves_lus.cache.json"
+    try:
+        tous = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        tous = {}
+    entree = tous.get(chemin.name)
+    if entree and entree.get("signature") == signature:
+        _RELEVES_LUS[str(chemin)] = (signature, entree["releve"])
+        return _releve_depuis_dict(entree["releve"])
+    releve = lire_releve(chemin)
+    donnees = _releve_en_dict(releve)
+    _RELEVES_LUS[str(chemin)] = (signature, donnees)
+    tous[chemin.name] = {"signature": signature, "releve": donnees}
+    try:
+        cache.write_text(json.dumps(tous, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    return _releve_depuis_dict(donnees)
+
+
 def lire_releve(chemin: Path) -> Releve:
     """Relevé Desjardins : colonnes Date, Code, Description, Frais, Retrait, Dépôt, Solde ; « 6 840.89 » ;
     description parfois sur deux lignes (les montants sont alors sur la seconde)."""
@@ -462,7 +512,7 @@ class RegistreReleves:
         releves = []
         for chemin in self.fichiers():
             try:
-                r = lire_releve(chemin)
+                r = lire_releve_garde(chemin)
             except Exception as exc:
                 r = Releve(chemin.name, remarques=[f"lecture impossible : {exc}"])
             for m in r.mouvements:

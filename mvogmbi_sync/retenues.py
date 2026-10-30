@@ -99,3 +99,87 @@ def etat(base, annee: int, mois: int) -> tuple[list[list], dict]:
 def _echeance(annee: int, mois: int) -> date:
     _du, au = bornes_mois(annee, mois)
     return (au + timedelta(days=1)).replace(day=15)
+
+
+# --------------------------------------------------------------------------------------------- suivi des remises
+REMIS, REMIS_EN_RETARD, A_REMETTRE, EN_RETARD, RIEN = (
+    "Remis à temps", "Remis en retard", "À remettre", "EN RETARD", "Rien à remettre")
+JOURS_ALERTE = 5  # le résumé du matin prévient 5 jours avant l'échéance
+ENTETES_SUIVI = ["Mois", "Organisme", "À remettre", "Versé", "Versé le", "Échéance", "État"]
+
+
+def versements(base, passifs_par_organisme: dict[str, list[int]], du: date, au: date) -> dict[str, list]:
+    """Versements aux organismes (débits des comptes de retenues hors écritures de paie) : {organisme: [(date,
+    montant)]}, du plus ancien au plus récent."""
+    tous = [c for comptes in passifs_par_organisme.values() for c in comptes]
+    if not tous:
+        return {}
+    lignes = base.requete(
+        f"SELECT a.lAcctId c, e.dtJourDate d, ROUND(SUM(a.dAmount), 2) s FROM tjentact a JOIN tjourent e "
+        f"ON e.lId = a.lJEntId WHERE a.lAcctId IN ({', '.join(str(int(c)) for c in tous)}) AND e.nModule <> 3 "
+        f"AND e.nType NOT IN {CORRIGEES} AND e.dtJourDate BETWEEN %s AND %s GROUP BY a.lAcctId, e.dtJourDate "
+        f"ORDER BY e.dtJourDate", (du.isoformat(), au.isoformat()))
+    organisme_de = {c: org for org, comptes in passifs_par_organisme.items() for c in comptes}
+    resultat: dict[str, list] = defaultdict(list)
+    for l in lignes:
+        montant = -_d(l["s"])  # un versement diminue le passif (sens normal : crédit positif)
+        if montant > 0:
+            jour = l["d"].date() if hasattr(l["d"], "date") else l["d"]
+            resultat[organisme_de[l["c"]]].append((jour, montant))
+    return resultat
+
+
+def etat_remise(a_remettre: Decimal, verses: list[tuple[date, Decimal]], echeance: date,
+                aujourdhui: date) -> tuple[str, Decimal, date | None]:
+    """(état, versé, date où le montant dû est couvert)."""
+    if a_remettre <= CENT / 2:
+        return RIEN, Decimal(0), None
+    cumul, couvert = Decimal(0), None
+    for jour, montant in verses:
+        cumul += montant
+        if couvert is None and cumul >= a_remettre - CENT:
+            couvert = jour
+    if couvert:
+        return (REMIS if couvert <= echeance else REMIS_EN_RETARD), cumul, couvert
+    return (EN_RETARD if aujourdhui > echeance else A_REMETTRE), cumul, None
+
+
+def suivi(base, aujourdhui: date, mois: int = 12) -> list[list]:
+    """Suivi des remises des `mois` derniers mois terminés (le plus récent d'abord) : versements cherchés du 1er
+    du mois suivant jusqu'à 60 jours après l'échéance."""
+    comptes = {r["lId"]: r["sName"] or "" for r in base.requete("SELECT lId, sName FROM taccount")}
+    touches = [r["c"] for r in base.requete(
+        f"SELECT DISTINCT a.lAcctId c FROM tjentact a JOIN tjourent e ON e.lId = a.lJEntId WHERE e.nModule = 3 "
+        f"AND e.nType NOT IN {CORRIGEES}")]
+    par_org: dict[str, list[int]] = defaultdict(list)
+    for c in touches:
+        org = organisme(comptes.get(c, ""))
+        if str(c).startswith("2") and org and org != VACANCES:
+            par_org[org].append(c)
+    lignes = []
+    annee, m = aujourdhui.year, aujourdhui.month
+    for _ in range(mois):
+        m -= 1
+        if m == 0:
+            annee, m = annee - 1, 12
+        _lignes, info = etat(base, annee, m)
+        echeance = info["echeance"]
+        _du, au = bornes_mois(annee, m)
+        verses = versements(base, par_org, au + timedelta(days=1), echeance + timedelta(days=60))
+        for org, a_remettre in sorted(info.get("a_remettre", {}).items()):
+            etat_, verse, le = etat_remise(a_remettre, verses.get(org, []), echeance, aujourdhui)
+            lignes.append([f"{annee}-{m:02d}", org, a_remettre, verse, le.isoformat() if le else "",
+                           echeance.isoformat(), etat_])
+    return lignes
+
+
+def alertes(lignes_suivi: list[list], aujourdhui: date) -> list[str]:
+    """Remises en retard, ou à faire d'ici JOURS_ALERTE jours."""
+    resultat = []
+    for mois, org, a_remettre, _verse, _le, echeance, etat_ in lignes_suivi:
+        jours = (date.fromisoformat(echeance) - aujourdhui).days
+        if etat_ == EN_RETARD:
+            resultat.append(f"Retenues de {mois} à {org} EN RETARD ({a_remettre} $, échéance {echeance})")
+        elif etat_ == A_REMETTRE and jours <= JOURS_ALERTE:
+            resultat.append(f"Retenues de {mois} à remettre à {org} d'ici le {echeance} ({a_remettre} $)")
+    return resultat

@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.29.1"
+VERSION = "1.45.1"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -261,6 +261,15 @@ FAQ = {
                     "factures et documents de stock pas encore dans Sage, bons de commande non reçus, employés sans "
                     "pointage) ; les fiches et documents de Sage se créent, se modifient ou s'annulent dans Sage (Sage "
                     "n'accepte pas l'import des fiches) : le bouton l'explique et ouvre la fiche."),
+        ("question", "Comment créer un client ou un fournisseur ?"),
+        ("reponse", "« Vente > Liste des clients » ou « Fournisseur > Liste des fournisseurs », bouton « Ajouter » : nom "
+                    "(obligatoire), contact, adresse, téléphones, courriel, site Web (fournisseur : n° d'inscription aux "
+                    "taxes, 9 chiffres + RP, RT ou RZ + 4 chiffres). « Créer dans Sage » : l'application remplit la "
+                    "fiche dans Sage (le Sage ouvert sur le fichier de l'entreprise, sinon elle ouvre Sage elle-même), "
+                    "coche « utilise mes numéros d'articles » (nécessaire aux imports de factures) et vérifie la "
+                    "fiche dans Sage. Si Sage pose une question (n° de taxe douteux…), rien n'est forcé : la fiche "
+                    "n'est pas créée et la question est affichée. Les employés se créent dans « Paie > Employés et "
+                    "NIP »."),
         ("question", "Pourquoi les listes s'ouvrent-elles plus vite la deuxième fois ?"),
         ("reponse", "Les lectures de Sage et du catalogue Clover sont gardées en mémoire quelques minutes et partagées "
                     "par toutes les pages ; au démarrage, les listes des clients, fournisseurs et articles sont lues "
@@ -508,6 +517,89 @@ FAQ = {
         ("question", "Comment désinstaller ?"),
         ("reponse", "Paramètres Windows > Applications > MVOGMBI_Sync > Désinstaller. La tâche planifiée est "
                     "retirée ; vos données et votre configuration restent dans le dossier d'installation."),
+        ("sous_titre", 'Nouveautés : paie, caisse, stocks, ventes et sécurité'),
+        ("question", 'Comment traiter la paie dans Sage et envoyer les bulletins ?'),
+        ("reponse", "« Paie > Traitement de la paie » : l'onglet « Heures validées » montre les heures approuvées (avec "
+                    'les jours fériés et les congés payés). « Traiter la paie dans Sage… » : choisissez la date des '
+                    "chèques ; Sage étant fermé, l'application l'ouvre elle-même, tape les heures de chaque employé "
+                    'relié à Sage, clique « Traiter » et vérifie la paie (n° « PAYjjmmaaaa », comme les dépôts '
+                    "Desjardins). Ensuite, l'onglet « Paies dans Sage » imprime les bulletins et propose de les envoyer "
+                    ": chaque employé reçoit SON bulletin à son adresse, sans copie. Une paie n'est jamais traitée deux "
+                    'fois.'),
+        ("question", "Comment créer un employé dans l'application, Clover et Sage ?"),
+        ("reponse", '« Paie > Employés et NIP » > « Ajouter » : nom, rôle Clover, courriel (obligatoire pour la paie), '
+                    "NIP du poste, et pour Sage Paie : adresse, NAS (jamais gardé par l'application), dates de naissance "
+                    "et d'embauche, taux horaire. L'employé est créé dans Clover, dans Sage (Sage fermé) et relié aux "
+                    'deux.'),
+        ("question", 'Comment gérer les jours fériés et les congés ?'),
+        ("reponse", '« Paie > Jours fériés et congés » : jours fériés du Québec et indemnité de chaque employé (1/20 des '
+                    "heures des 4 semaines d'avant), saisie des congés (vacances, maladie ou famille payée ou non, sans "
+                    "solde) et soldes (2 ou 3 semaines de vacances selon l'ancienneté, 2 jours de maladie payés). Les "
+                    "heures payées s'ajoutent toutes seules à la paie."),
+        ("question", "Comment préparer une fin d'emploi et la fin d'année (T4, Relevé 1) ?"),
+        ("reponse", "« Paie > Fin d'emploi et relevé d'emploi » : choisissez l'employé, son dernier jour et le motif ; "
+                    "l'application prépare les heures assurables et la rémunération de chaque paie, à reporter dans RE "
+                    "Web dans les 5 jours, et peut désactiver l'employé. L'onglet « Fin d'année (T4 / RL-1) » de "
+                    "Traitement de la paie montre les cumuls de l'année de chaque employé à comparer aux feuillets de "
+                    'Sage.'),
+        ("question", "Comment suivre le coût de la main-d'œuvre ?"),
+        ("reponse", "« Paie > Coût de la main-d'œuvre » : par jour, ventes nettes Clover (tous les points de vente), "
+                    'heures pointées et planifiées, coût estimé (taux moyen [paie] taux_moyen + charges) et part des '
+                    'ventes.'),
+        ("question", 'Comment contrôler la caisse ?'),
+        ("reponse", "« Comptabilité > Contrôle de la caisse » : choisissez le point de vente ; l'application calcule les "
+                    'espèces attendues (fond du matin + ventes en espèces − remboursements − argent remis), le gérant '
+                    "compte le tiroir par coupures le soir, l'écart s'affiche. Les onglets montrent les écarts par jour "
+                    "et les dépôts d'espèces des relevés Desjardins. Le résumé du matin signale une caisse non comptée."),
+        ("question", 'Comment noter les dépenses de la petite caisse ?'),
+        ("reponse", '« Comptabilité > Petite caisse et dépenses » : date, fournisseur, montant payé, taxes, compte de '
+                    'charge, payée par (petite caisse, carte, employé), photo du reçu. « Saisir dans Sage » passe '
+                    "l'écriture au journal général (Sage fermé) : charge, TPS et TVQ payées, crédit du moyen de paiement."),
+        ("question", 'Comment suivre les remises des retenues et le budget ?'),
+        ("reponse", '« Comptabilité > Suivi des remises » : chaque mois et chaque organisme (Revenu Québec, ARC, CNESST) '
+                    ': remis à temps, en retard ou à remettre avant le 15 ; le résumé du matin prévient 5 jours avant. « '
+                    'Comptabilité > Budget et écarts » : budget mensuel (ventes, coût des marchandises, autres charges) '
+                    "comparé au réel de Sage, avec le cumul de l'année."),
+        ("question", 'Comment déclarer des pertes (périmés, casse) ?'),
+        ("reponse", '« Articles > Pertes et démarque » : choisissez le point de vente, le motif et les articles (bouton '
+                    '« Ajouter les produits périmés en stock ») ; la valeur est au coût. Le stock Clover baisse tout de '
+                    'suite et un document de stock « Sortie » est préparé pour Sage. Le rapport donne les pertes par '
+                    'motif, catégorie, article ou mois, en % des ventes.'),
+        ("question", 'Comment faire un retour à un fournisseur ?'),
+        ("reponse", "« Fournisseur > Retours fournisseurs » : fournisseur Sage, n° de la facture d'origine (« Reprendre "
+                    'les lignes de la facture »), articles et quantités rendus. Le retour est importé dans Sage comme '
+                    "une facture d'achat négative « R-n° » (Sage fermé) et le stock Clover du point de vente baisse."),
+        ("question", 'Comment imprimer des étiquettes de prix ?'),
+        ("reponse", '« Articles > Étiquettes de prix » : choisissez le point de vente, ajoutez des articles (ou ceux '
+                    'dont le prix a changé depuis une date), puis « Imprimer les étiquettes » : feuilles de 30 '
+                    'étiquettes (Avery 5160 / 8160) avec nom, prix et code-barres.'),
+        ("question", 'Comment programmer une promotion ?'),
+        ("reponse", '« Articles > Promotions » : point de vente, article, prix promotionnel, du … au …. La nuit, le prix '
+                    "promotionnel est mis le premier jour et le prix normal remis après le dernier (sauf si quelqu'un "
+                    "l'a changé entre-temps). « Calculer l'effet » compare les ventes pendant et avant."),
+        ("question", "Comment faire l'inventaire tournant ?"),
+        ("reponse", '« Articles > Inventaire tournant » : chaque semaine, « Feuille de comptage de la semaine » donne '
+                    'les articles de quelques catégories ; toutes sont comptées une fois par cycle de 8 semaines. La '
+                    'feuille remplie se saisit dans Articles > Inventaire.'),
+        ("question", 'Comment relancer les clients professionnels ?'),
+        ("reponse", '« Vente > Clients professionnels et relances » : soldes, retards et limite de crédit des clients de '
+                    'Sage ; « Imprimer la lettre de relance » ou « Envoyer la relance par courriel » (au seul client).'),
+        ("question", 'Comment mes données sont-elles sauvegardées ?'),
+        ("reponse", "Chaque nuit, une copie vérifiée des données de l'application va dans le dossier de « Administration "
+                    '> Sauvegarde des données » (OneDrive par défaut) ; 14 jours, 8 semaines et 12 mois sont gardés. « '
+                    "Restaurer la sauvegarde choisie » remet les données en gardant d'abord une copie de l'état actuel."),
+        ("question", 'Où voir qui a fait quoi ?'),
+        ("reponse", '« Administration > Journal des opérations » : imports, prix et stocks changés, paies, bulletins '
+                    'envoyés, pertes, comptages de caisse, connexions… avec la date, la personne et le détail.'),
+        ("question", 'Comment voir le tableau du gérant sur mon téléphone ?'),
+        ("reponse", "Chaque nuit, une page légère (ventes d'hier, marge, factures à payer, alertes) est écrite dans "
+                    "OneDrive (« Administration > Tableau du gérant (téléphone) ») : ouvrez-la avec l'application "
+                    "OneDrive. Elle contient des données de l'entreprise : ne la partagez pas."),
+        ("question", 'Comment ces outils fonctionnent-ils avec plusieurs points de vente ?'),
+        ("reponse", 'Caisse, pertes, promotions, étiquettes et retours ont une liste « Point de vente » : chaque point '
+                    'de vente utilise son Clover, sa correspondance des articles et son dépôt Sage ; le tiroir-caisse '
+                    "est compté par point de vente. Le coût de la main-d'œuvre additionne les ventes de tous les points "
+                    "de vente. Les dépôts d'espèces des relevés Desjardins vont au point de vente n° 1."),
     ],
     "en": [
         ("titre", "Help / Frequently asked questions"),
@@ -649,6 +741,14 @@ FAQ = {
                     "received, employees without punches); Sage records and documents are created, changed or "
                     "reversed in Sage (Sage does not accept importing records): the button explains it and opens the "
                     "record."),
+        ("question", "How do I create a customer or a supplier?"),
+        ("reponse", "“Sales > Customer list” or “Supplier > Supplier list”, “Add” button: name (required), contact, "
+                    "address, phones, email, website (supplier: tax registration number, 9 digits + RP, RT or RZ + 4 "
+                    "digits). “Create in Sage”: the application fills in the record in Sage (the Sage open on the "
+                    "company file, otherwise it opens Sage itself), ticks “uses my item numbers” (needed for invoice "
+                    "imports) and checks the record in Sage. If Sage asks a question (doubtful tax number…), nothing "
+                    "is forced: the record is not created and the question is shown. Employees are created in "
+                    "“Payroll > Employees and PINs”."),
         ("question", "Why do lists open faster the second time?"),
         ("reponse", "Reads from Sage and the Clover catalogue are kept in memory for a few minutes and shared by all "
                     "pages; at start-up, the customer, supplier and item lists are read ahead if Sage already answers. "
@@ -882,6 +982,83 @@ FAQ = {
         ("question", "How do I uninstall?"),
         ("reponse", "Windows Settings > Apps > MVOGMBI_Sync > Uninstall. The scheduled task is removed; your data "
                     "and configuration stay in the installation folder."),
+        ("sous_titre", "What's new: payroll, cash, stock, sales and security"),
+        ("question", 'How do I process payroll in Sage and send pay stubs?'),
+        ("reponse", '“Payroll > Payroll processing”: the “Approved hours” tab shows approved hours (with holidays and '
+                    'paid leave). “Process payroll in Sage…”: choose the cheque date; with Sage closed, the application '
+                    "opens it itself, enters each linked employee's hours, clicks “Process” and checks the pay (no. "
+                    '“PAYddmmyyyy”, like Desjardins deposits). Then the “Pays in Sage” tab prints the pay stubs and '
+                    'offers to send them: each employee receives THEIR own stub at their address, with no copy. A pay is '
+                    'never processed twice.'),
+        ("question", 'How do I create an employee in the application, Clover and Sage?'),
+        ("reponse", '“Payroll > Employees and PINs” > “Add”: name, Clover role, email (required for payroll), time clock '
+                    'PIN, and for Sage Payroll: address, SIN (never kept by the application), birth and hire dates, '
+                    'hourly rate. The employee is created in Clover, in Sage (Sage closed) and linked to both.'),
+        ("question", 'How do I manage holidays and leave?'),
+        ("reponse", "“Payroll > Holidays and leave”: Quebec statutory holidays and each employee's holiday pay (1/20 of "
+                    'the hours of the 4 weeks before), leave entry (vacation, paid or unpaid sickness or family, unpaid '
+                    'leave) and balances (2 or 3 vacation weeks by seniority, 2 paid sick days). Paid hours are added to '
+                    'payroll automatically.'),
+        ("question", 'How do I prepare an end of employment and year end (T4, RL-1)?'),
+        ("reponse", '“Payroll > End of employment and ROE”: choose the employee, last day and reason; the application '
+                    "prepares insurable hours and each pay's earnings, to enter in ROE Web within 5 days, and can "
+                    "deactivate the employee. The “Year end (T4 / RL-1)” tab of Payroll processing shows each employee's "
+                    "year totals to compare with Sage's slips."),
+        ("question", 'How do I follow labour cost?'),
+        ("reponse", '“Payroll > Labour cost”: by day, Clover net sales (all points of sale), punched and scheduled '
+                    'hours, estimated cost (average rate [paie] taux_moyen + payroll costs) and share of sales.'),
+        ("question", 'How do I control the cash drawer?'),
+        ("reponse", '“Accounting > Cash control”: choose the point of sale; the application computes expected cash '
+                    '(morning float + cash sales − refunds − cashback), the manager counts the drawer by denomination in '
+                    'the evening, the difference is shown. The tabs show daily differences and cash deposits from '
+                    'Desjardins statements. The morning summary flags a drawer not counted.'),
+        ("question", 'How do I record petty cash expenses?'),
+        ("reponse", '“Accounting > Petty cash and expenses”: date, supplier, amount paid, taxes, expense account, paid '
+                    'by (petty cash, card, employee), receipt photo. “Enter in Sage” posts the general journal entry '
+                    '(Sage closed): expense, GST and QST paid, credit of the payment method.'),
+        ("question", 'How do I follow deduction remittances and the budget?'),
+        ("reponse", '“Accounting > Remittance tracking”: each month and agency (Revenu Québec, CRA, CNESST): remitted on '
+                    'time, late or to remit before the 15th; the morning summary warns 5 days ahead. “Accounting > '
+                    'Budget and variances”: monthly budget (sales, cost of goods, other expenses) compared with Sage '
+                    'actuals, with the year to date.'),
+        ("question", 'How do I declare losses (expired, broken)?'),
+        ("reponse", '“Items > Losses and shrinkage”: choose the point of sale, the reason and the items (“Add expired '
+                    'products in stock” button); the value is at cost. Clover stock decreases right away and an “Out” '
+                    'stock document is prepared for Sage. The report gives losses by reason, category, item or month, as '
+                    'a % of sales.'),
+        ("question", 'How do I return goods to a supplier?'),
+        ("reponse", '“Supplier > Supplier returns”: Sage supplier, original invoice no. (“Copy the invoice lines”), '
+                    'items and quantities returned. The return is imported into Sage as a negative purchase invoice '
+                    "“R-no.” (Sage closed) and the point of sale's Clover stock decreases."),
+        ("question", 'How do I print price labels?'),
+        ("reponse", '“Items > Price labels”: choose the point of sale, add items (or those whose price changed since a '
+                    'date), then “Print labels”: sheets of 30 labels (Avery 5160 / 8160) with name, price and barcode.'),
+        ("question", 'How do I schedule a promotion?'),
+        ("reponse", '“Items > Promotions”: point of sale, item, promotional price, from … to …. At night, the '
+                    'promotional price is set on the first day and the regular price restored after the last (unless '
+                    'someone changed it in between). “Compute effect” compares sales during and before.'),
+        ("question", 'How do I do the cycle count?'),
+        ("reponse", "“Items > Cycle count”: each week, “This week's count sheet” gives the items of a few categories; "
+                    'all are counted once per 8-week cycle. The filled sheet is entered in Items > Inventory.'),
+        ("question", 'How do I remind business customers?'),
+        ("reponse", '“Sales > Business customers and reminders”: balances, overdue amounts and credit limit of Sage '
+                    'customers; “Print reminder letter” or “Email the reminder” (to that customer only).'),
+        ("question", 'How is my data backed up?'),
+        ("reponse", 'Every night, a verified copy of the application data goes to the “Administration > Data backup” '
+                    'folder (OneDrive by default); 14 days, 8 weeks and 12 months are kept. “Restore selected backup” '
+                    'restores the data after keeping a copy of the current state.'),
+        ("question", 'Where can I see who did what?'),
+        ("reponse", '“Administration > Operations log”: imports, changed prices and stock, pays, stubs sent, losses, '
+                    'cash counts, logins… with the date, the person and the detail.'),
+        ("question", 'How do I see the manager dashboard on my phone?'),
+        ("reponse", "Every night, a light page (yesterday's sales, margin, bills to pay, alerts) is written to OneDrive "
+                    '(“Administration > Manager dashboard (phone)”): open it with the OneDrive app. It contains company '
+                    'data: do not share it.'),
+        ("question", 'How do these tools work with several points of sale?'),
+        ("reponse", 'Cash control, losses, promotions, labels and returns have a “Point of sale” list: each point of '
+                    'sale uses its own Clover, item mapping and Sage location; the cash drawer is counted per point of '
+                    'sale. Labour cost adds up the sales of all points of sale. Cash deposits from Desjardins statements '
+                    'go to point of sale no. 1.'),
     ],
 }
 

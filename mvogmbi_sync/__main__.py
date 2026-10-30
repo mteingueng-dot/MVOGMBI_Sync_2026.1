@@ -11,6 +11,7 @@ Exemples :
 from __future__ import annotations
 
 import argparse
+import atexit
 import sys
 import threading
 import tomllib
@@ -185,6 +186,60 @@ def commande_creer_articles_bureau(args: argparse.Namespace) -> None:
     sys.exit(1 if bilan["erreur"] or not all(r["cree"] for r in bilan["resultats"]) else 0)
 
 
+def commande_tiers_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : crée dans Sage les clients ou fournisseurs de `--demande`."""
+    import json
+    from dataclasses import asdict
+
+    from .robot_tiers import FicheTiers, creer_tiers
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    demande = json.loads(Path(args.demande).read_text(encoding="utf-8"))
+    notes, bilan = [], {"resultats": [], "erreur": ""}
+    try:
+        bilan["resultats"] = [asdict(r) for r in creer_tiers(config_toml, demande["genre"],
+                                                             [FicheTiers(**f) for f in demande["fiches"]],
+                                                             journal=notes.append)]
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or not all(r["cree"] for r in bilan["resultats"]) else 0)
+
+
+def commande_depenses_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : écritures des dépenses (petite caisse) dans Sage."""
+    import json
+
+    from .depenses import saisir_sur_bureau_cache
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    notes = []
+    bilan = saisir_sur_bureau_cache(RACINE, config_toml, notes.append)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] else 0)
+
+
+def commande_paie_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : crée des employés dans Sage Paie et traite leurs chèques."""
+    import json
+
+    from .robot_paie import EmployeSage, PaieATraiter, executer
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    demande = json.loads(Path(args.demande).read_text(encoding="utf-8"))
+    notes, bilan = [], {"employes": [], "paies": [], "erreur": ""}
+    try:
+        bilan.update(executer(config_toml, [EmployeSage(**e) for e in demande.get("employes", [])],
+                              [PaieATraiter(**x) for x in demande.get("paies", [])], journal=notes.append))
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] else 0)
+
+
 def commande_inventaire(args: argparse.Namespace) -> None:
     """Export de l'inventaire Clover + Sage en un fichier, ou saisie d'un inventaire compté dans les deux."""
     from .inventaire import ecrire, lire, nom_fichier, saisir
@@ -209,7 +264,8 @@ def commande_inventaire_bureau(args: argparse.Namespace) -> None:
     notes, bilan = [], {"resultats": {}, "erreur": ""}
     try:
         lignes = ajuster_dans_sage(config_toml, entree["lignes"], entree["jour"], journal=notes.append,
-                                   source=entree.get("source", ""), remarque=entree.get("remarque", ""))
+                                   source=entree.get("source", ""), remarque=entree.get("remarque", ""),
+                                   depot=entree.get("depot", ""))
         bilan["resultats"] = {l.numero: resume(l) for l in lignes}
     except Exception as exc:
         bilan["erreur"] = str(exc)
@@ -311,14 +367,41 @@ COPIE_ARTICLES_SAGE = "articles_sage.csv"
 
 _BASES: dict = {}  # (fichier, utilisateur) -> BaseSage ouverte, réutilisée par toutes les lectures
 _VERROU_BASES = threading.RLock()
+# connexion gardée refermée après INACTIVITE_BASE secondes sans lecture : sinon, Sage fermé par la personne, sa base
+# reste ouverte pour l'application et la prochaine ouverture de Sage est refusée (« d'autres utilisateurs travaillent
+# avec cette entreprise », constat du 2026-10-29)
+INACTIVITE_BASE = 60
+_DERNIER_USAGE: dict = {}
+_SURVEILLANCE = {"fil": None}
+
+
+def _fermer_bases_inactives() -> None:
+    import time
+
+    while True:
+        time.sleep(10)
+        with _VERROU_BASES:
+            for cle in [c for c, t in _DERNIER_USAGE.items() if time.time() - t > INACTIVITE_BASE and c in _BASES]:
+                try:
+                    _BASES.pop(cle).connexion.close()
+                except Exception:
+                    pass
+                _DERNIER_USAGE.pop(cle, None)
 
 
 def base_partagee(config_toml: dict, fichier):
     """Connexion à la base Sage du fichier, ouverte une fois puis réutilisée (1,2 s gagnées par lecture : coffre,
     recherche du port, connexion). Vérifiée avant chaque usage (Sage fermé ou rouvert : nouvelle connexion) ; en
     autocommit, chaque requête voit les dernières écritures de Sage."""
+    import time
+
     cle = (str(fichier or ""), config_toml.get("sage_base", {}).get("utilisateur", ""))
     with _VERROU_BASES:
+        _DERNIER_USAGE[cle] = time.time()
+        if _SURVEILLANCE["fil"] is None:
+            _SURVEILLANCE["fil"] = threading.Thread(target=_fermer_bases_inactives, daemon=True,
+                                                    name="bases-inactives")
+            _SURVEILLANCE["fil"].start()
         base = _BASES.get(cle)
         if base is not None:
             try:
@@ -332,14 +415,106 @@ def base_partagee(config_toml: dict, fichier):
                     pass
         base = ouvrir_base_sage(config_toml, fichier)
         base.connexion.autocommit(True)
+        requete = base.requete
+
+        def requete_suivie(*args, **kwargs):  # chaque requête compte : une longue lecture garde sa connexion
+            _DERNIER_USAGE[cle] = time.time()
+            return requete(*args, **kwargs)
+
+        base.requete = requete_suivie
         _BASES[cle] = base
         return base
+
+
+# Sage fermé : l'outil d'import ouvre la base ; elle reste ouverte DUREE_GARDE secondes après la dernière lecture
+# pour que les lectures suivantes passent par la même connexion (11,6 s par lecture avant, mesuré le 2026-10-30)
+DUREE_GARDE = 120
+_GARDE = {"fil": None, "arret": threading.Event(), "dernier": 0.0}
+
+
+def _garder_base_ouverte(fichier: Path, exe: Path) -> None:
+    """Fil qui tient l'outil d'import sur sa fenêtre de mot de passe (base lisible, aucun import) jusqu'à
+    DUREE_GARDE secondes sans lecture, ou jusqu'à `fermer_bases`."""
+    import tempfile
+    import time
+
+    from .sage_auto import executer
+
+    def attendre() -> bool:
+        while not _GARDE["arret"].is_set() and time.time() - _GARDE["dernier"] < DUREE_GARDE:
+            _GARDE["arret"].wait(1)
+        return False  # connexion annulée : rien n'est importé
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
+        vide = Path(dossier) / "lecture.IMP"
+        vide.write_text('<Version>\r\n"12001","1"\r\n</Version>\r\n', encoding="cp1252", newline="")
+        try:
+            executer(exe, vide, fichier, mot_de_passe=None, pendant_connexion=attendre, delai=24 * 3600)
+        except Exception:
+            pass
+
+
+def _base_gardee(config_toml: dict, fichier, fonction):
+    """Lecture avec la base ouverte par l'outil d'import et gardée ouverte (voir DUREE_GARDE)."""
+    import time
+
+    exe = executable_import()
+    if not fichier or not exe:
+        return None
+    with _VERROU_BASES:
+        _GARDE["dernier"] = time.time()
+        fil = _GARDE["fil"]
+        if fil is None or not fil.is_alive():
+            _GARDE["arret"].clear()
+            fil = threading.Thread(target=_garder_base_ouverte, args=(Path(fichier), exe), daemon=True,
+                                   name="garde-base-sage")
+            _GARDE["fil"] = fil
+            fil.start()
+    derniere = None
+    for _ in range(45):  # la base s'ouvre quelques secondes après le lancement de l'outil
+        try:
+            resultat = fonction(base_partagee(config_toml, fichier))
+            _GARDE["dernier"] = time.time()
+            return resultat
+        except PermissionError as exc:
+            # constat du 2026-10-29 : une AUTRE base Sage ouverte (port 13540) refuse l'utilisateur pendant que celle
+            # de l'outil d'import démarre sur le port suivant : le refus n'est retenu qu'à la fin de l'attente
+            if not fil.is_alive():
+                break
+            derniere = exc
+            time.sleep(1)
+        except Exception as exc:
+            derniere = exc
+            if not fil.is_alive():
+                break
+            time.sleep(1)
+    fermer_bases()  # échec : l'outil d'import n'est jamais laissé ouvert sur l'entreprise
+    if isinstance(derniere, PermissionError):
+        raise derniere
+    raise RuntimeError(f"Lecture de la base Sage impossible : {derniere}")
+
+
+def _fermer_a_la_sortie() -> None:
+    """Le fil de garde est un fil « daemon » : sans cela, la sortie du programme le coupe et laisse l'outil d'import
+    ouvert sur l'entreprise (constat du 2026-10-29)."""
+    try:
+        fermer_bases()
+    except Exception:
+        pass
+
+
+atexit.register(_fermer_a_la_sortie)
 
 
 def fermer_bases() -> None:
     """Ferme les connexions gardées : à faire AVANT d'ouvrir Sage, d'importer ou de refermer Sage. Sinon Sage voit
     un autre utilisateur dans l'entreprise et refuse le mode mono-utilisateur (« D'autres utilisateurs travaillent
-    maintenant avec cette entreprise », constat du 2026-10-28)."""
+    maintenant avec cette entreprise », constat du 2026-10-28). La base gardée ouverte par l'outil d'import est
+    refermée aussi (sauf depuis son propre fil)."""
+    fil = _GARDE["fil"]
+    if fil is not None and fil.is_alive() and threading.current_thread() is not fil:
+        _GARDE["arret"].set()
+        fil.join(timeout=60)
     with _VERROU_BASES:
         for base in _BASES.values():
             try:
@@ -366,7 +541,20 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None):
 
     try:
         return lecture()
+    except PermissionError:
+        raise
     except Exception:
+        from .sage_bureau import sage_ouvert
+
+        if not sage_ouvert():  # Sage fermé : base ouverte par l'outil d'import et gardée une minute
+            try:
+                resultat = _base_gardee(config_toml, fichier, fonction)
+                if resultat is not None or (fichier and executable_import()):
+                    return resultat
+            except PermissionError:
+                raise
+            except Exception:
+                pass
         fermer_bases()
         exe = executable_import()
         if not fichier or not exe:
@@ -997,6 +1185,23 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--comptes", action="store_true", help="Corriger les comptes d'articles existants")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_creer_articles_bureau)
+
+    p = sous.add_parser("tiers-bureau", help="(interne) Créer des clients ou fournisseurs dans Sage sur le bureau caché")
+    p.add_argument("--demande", required=True)
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_tiers_bureau)
+
+    p = sous.add_parser("depenses-bureau", help="(interne) Dépenses de la petite caisse dans Sage sur le bureau caché")
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_depenses_bureau)
+
+    p = sous.add_parser("paie-bureau", help="(interne) Employés et chèques de paie dans Sage sur le bureau caché")
+    p.add_argument("--demande", required=True)
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_paie_bureau)
 
     p = sous.add_parser("transfert-bureau", help="(interne) Transfert entre deux dépôts Sage sur le bureau caché")
     p.add_argument("--demande", required=True, help="Fichier JSON du transfert")

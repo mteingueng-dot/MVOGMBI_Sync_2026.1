@@ -143,17 +143,15 @@ def lire_donnees(racine: Path, config_toml: dict) -> dict:
     from .__main__ import charger_config
     from .api_clover import ClientClover
     from .couts_sage import charger, correspondance
-    from .previsions import ventes_par_article
-    from .statistiques_clover import lire as lire_clover
+    from .previsions import ventes_par_article_rapide
 
     client = ClientClover(charger_config(Path(racine) / "config.toml"))
     hier = date.today() - timedelta(days=1)
     debut = hier - timedelta(days=JOURS_VENTES - 1)
-    donnees = lire_clover(client, debut, hier, Path(racine) / "donnees" / "cache_clover")
     from .cache_lectures import inventaire_clover
 
     return {"articles": inventaire_clover(racine), "liens": correspondance(racine),
-            "couts": charger(racine, config_toml, forcer=True), "ventes": ventes_par_article(donnees, debut, hier)}
+            "couts": charger(racine, config_toml, forcer=True), "ventes": ventes_par_article_rapide(client, debut, hier, Path(racine) / "donnees" / "cache_clover")}
 
 
 @vide_apres  # mémoire des lectures vidée après une écriture

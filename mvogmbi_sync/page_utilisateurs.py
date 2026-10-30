@@ -298,6 +298,21 @@ class PageUtilisateurs(ttk.Frame):
                 cases[e[1]] = tk.BooleanVar(value=e[1] not in refusees)
                 ttk.Checkbutton(cadre, text=t(e[1]), variable=cases[e[1]], style="Carte.TCheckbutton").pack(
                     anchor="w", pady=1)
+        from .utilisateurs import ACTIONS_FENETRES
+
+        tk.Label(boite, text=t("Actions dans les fenêtres (la fenêtre s'ouvre, mais l'action est refusée si elle est "
+                               "décochée)"), font=("Segoe UI Semibold", 10), background=CARTE).pack(anchor="w",
+                                                                                                pady=(6, 0))
+        grille2 = tk.Frame(boite, background=CARTE)
+        grille2.pack(fill="both", expand=True, pady=(4, 8))
+        for colonne2, (nom, actions_fenetre) in enumerate(ACTIONS_FENETRES.items()):
+            cadre = tk.Frame(grille2, background=CARTE)
+            cadre.grid(row=0, column=colonne2, sticky="nw", padx=(0, 18))
+            tk.Label(cadre, text=t(nom), font=("Segoe UI Semibold", 9), background=CARTE).pack(anchor="w")
+            for action in actions_fenetre:
+                cases[action] = tk.BooleanVar(value=action not in refusees)
+                ttk.Checkbutton(cadre, text=t(action), variable=cases[action], style="Carte.TCheckbutton").pack(
+                    anchor="w", pady=1)
         bas = tk.Frame(boite, background=CARTE)
         bas.pack(anchor="e")
 

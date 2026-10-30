@@ -65,18 +65,32 @@ def vide_apres(fonction):
     return enveloppe
 
 
-def inventaire_clover(racine: Path):
-    """Catalogue Clover (stock, coût, prix, catégories), lu au plus une fois par période de DUREE secondes."""
-    from .__main__ import charger_config
-    from .api_clover import ClientClover
+def inventaire_clover(racine: Path, pv=None):
+    """Catalogue Clover (stock, coût, prix, catégories) du point de vente (n° 1 par défaut), lu au plus une fois par
+    période de DUREE secondes."""
+    from .points_vente import PRINCIPAL, client
 
-    return lire("clover:inventaire",
-                lambda: ClientClover(charger_config(Path(racine) / "config.toml")).inventaire())
+    cle = "clover:inventaire" if pv is None or pv.principal else f"clover:inventaire:{pv.code}"
+    return lire(cle, lambda: client(racine, pv).inventaire())
 
 
 def precharger(racine: Path) -> None:
-    """Listes principales lues d'avance, seulement si Sage répond déjà (connexion gardée) : jamais d'ouverture de
-    Sage pour cela. Silencieux en cas d'échec."""
+    """Au démarrage : catalogue Clover et ventes par article des 365 derniers jours (résumés par jour) lus d'avance
+    — le premier clic n'attend plus Clover (1,7 s et 1,5 s, mesuré le 2026-10-30) — puis listes principales de Sage,
+    seulement si Sage répond déjà (jamais d'ouverture de Sage pour cela). Silencieux en cas d'échec."""
+    try:
+        from datetime import date, timedelta
+
+        from .__main__ import charger_config
+        from .api_clover import ClientClover
+        from .previsions import ventes_par_article_rapide
+
+        inventaire_clover(racine)
+        aujourdhui = date.today()
+        ventes_par_article_rapide(ClientClover(charger_config(Path(racine) / "config.toml")),
+                                  aujourdhui - timedelta(days=365), aujourdhui, Path(racine) / "donnees" / "cache_clover")
+    except BaseException:  # SystemExit compris (jeton absent)
+        pass
     try:
         import tomllib
 

@@ -491,8 +491,9 @@ def mettre_a_jour_correspondance(client, articles_sage: list, donnees: Path, cr:
     anciennes_ventes: dict[str, Decimal] = {}
     anciens_statuts: dict[str, str] = {}
     if chemin.exists():
-        feuille = openpyxl.load_workbook(chemin, read_only=True, data_only=True)["Correspondance"]
-        lignes = feuille.iter_rows(values_only=True)
+        from .correspondance import lire_feuille
+
+        lignes = iter(lire_feuille(chemin))
         entete = list(next(lignes))
         i_id, i_v, i_s = entete.index("ID Clover"), entete.index("Ventes 30 j ($)"), entete.index("Statut")
         for r in lignes:
@@ -638,6 +639,41 @@ def preparer_resume(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
         cr.note(f"Résumé du matin non préparé : {exc}")
 
 
+def promotions_et_tableau(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Promotions du jour dans Clover (début / fin), puis page du tableau du gérant pour le téléphone (paquet3)."""
+    from . import paquet3 as p3
+
+    try:
+        from .points_vente import client, points_de_vente
+
+        for pv in points_de_vente(config_toml, actifs=True):  # chaque point de vente : son Clover
+            for fait in p3.appliquer_promotions(racine, client(racine, pv), code=pv.code):
+                cr.note(f"Promotion ({pv.libelle}) : {fait}")
+    except BaseException as exc:  # SystemExit compris (jeton absent)
+        cr.note(f"Promotions non appliquées : {exc}")
+    try:
+        p3.ecrire_tableau(racine, config_toml, getattr(cr, "resume", None), list(cr.problemes))
+    except Exception as exc:
+        cr.note(f"Tableau du gérant non mis à jour : {exc}")
+
+
+def sauvegarder_donnees(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Dernière étape de la nuit : copie vérifiée des données de l'application (sauvegarde.py)."""
+    from .sauvegarde import sauvegarder
+
+    try:
+        e = sauvegarder(racine, config_toml)
+    except Exception as exc:  # jamais d'arrêt du compte rendu
+        cr.problemes.append(f"Sauvegarde des données non faite : {exc}")
+        return
+    if e.ok:
+        cr.note(f"Sauvegarde des données : {Path(e.fichier).name} ({e.fichiers} fichiers)")
+        if "même disque" in e.message:
+            cr.problemes.append(f"Sauvegarde : {e.message.split(' Choisissez')[0]}")
+    else:
+        cr.problemes.append(f"Sauvegarde des données non faite : {e.message}")
+
+
 def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,
            depuis: date | None = None, point_vente: str | None = None) -> CompteRendu:
     """Point d'entrée de la tâche planifiée : n'échoue jamais sans journal ni alerte."""
@@ -664,6 +700,8 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
         archiver_factures_deja_dans_sage(racine, config_toml, cr)
         prechauffer_statistiques(racine, cr)
         preparer_resume(racine, config_toml, cr)
+        promotions_et_tableau(racine, config_toml, cr)
+        sauvegarder_donnees(racine, config_toml, cr)
     ecrire_journal(racine, cr)
     if not simulation or config_toml.get("courriel", {}).get("envoyer_si_simulation", False):
         try:

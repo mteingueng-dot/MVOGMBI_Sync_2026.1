@@ -117,13 +117,15 @@ def mettre_a_jour(client, facture, correspondances, journal: Journal) -> list[st
 
 
 @vide_apres  # mémoire des lectures vidée après une écriture
-def mettre_a_jour_factures(racine: Path, config_toml_chemin: Path, factures) -> dict[str, list[str]]:
-    """Après l'import : met Clover à jour pour chaque facture importée ; {fichier : messages}."""
+def mettre_a_jour_factures(racine: Path, config_toml_chemin: Path, factures, point_vente=None) -> dict[str, list[str]]:
+    """Après l'import : met à jour le Clover du point de vente (n° 1 par défaut) pour chaque facture importée ;
+    {fichier : messages}."""
     from .__main__ import charger_config
     from .api_clover import ClientClover
     from .correspondance import lire_correspondances
+    from .points_vente import fichier_correspondance
 
-    client = ClientClover(charger_config(Path(config_toml_chemin)))
-    correspondances = lire_correspondances(Path(racine) / "donnees" / "correspondance_articles.xlsx")
+    client = ClientClover(charger_config(Path(config_toml_chemin), point_vente))
+    correspondances = lire_correspondances(fichier_correspondance(racine, point_vente))
     journal = Journal(racine)
     return {f.fichier: mettre_a_jour(client, f, correspondances, journal) for f in factures}

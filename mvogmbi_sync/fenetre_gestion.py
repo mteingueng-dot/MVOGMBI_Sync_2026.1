@@ -162,10 +162,8 @@ class FenetreListe(FenetreOutil):
             saisir_document(self, self.racine, dc.STOCK, auteur)
         elif self.genre == "documents_achat":
             saisir_facture_achat(self, self.racine)
-        else:
-            messagebox.showinfo(self.title(), t("Un nouveau client ou fournisseur se crée dans Sage (fiche du client "
-                                                "ou du fournisseur) : Sage n'accepte pas leur import. Il apparaît "
-                                                "ici dès qu'il existe dans Sage."), parent=self)
+        elif self.genre in ("clients", "fournisseurs"):
+            DialogueTiers(self, self.racine, self.genre, apres=lambda: self.charger(forcer=True))
 
     def modifier(self) -> None:
         ligne = self._ligne()
@@ -315,12 +313,15 @@ class FenetreDocuments(FenetreOutil):
     def afficher(self) -> None:
         from .page_rapports import remplir
 
+        from .points_vente import DEPOT_DEFAUT
+
         self.docs = dc.Registre(self.racine).du_genre(self.genre)
         entetes = ["N°", "Date", "Client" if self.genre != dc.STOCK else "Mouvement", "Lignes", "Sous-total",
-                   "Total", "État", "Lien", "Messages"]
+                   "Total", "État", "Lien" if self.genre != dc.STOCK else "Dépôt", "Messages"]
         remplir(self.tableau, entetes,
                 [[d.numero, d.date, d.tiers if self.genre != dc.STOCK else t(d.sens), len(d.lignes), d.sous_total,
-                  d.total, t(d.etat), d.lien, " ; ".join(d.messages)] for d in self.docs],
+                  d.total, t(d.etat), d.lien if self.genre != dc.STOCK else (d.depot or DEPOT_DEFAUT),
+                  " ; ".join(d.messages)] for d in self.docs],
                 {"Client": 220, "Messages": 300},
                 lambda i: ("echec",) if self.docs[i].etat == dc.ECHEC else (
                     ("fait",) if self.docs[i].etat in (dc.IMPORTEE, dc.PASSE, dc.FACTUREE) else ()), decroissant=False)
@@ -425,6 +426,7 @@ def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, n
     """Nouveau document (commande client, facture de vente, document de stock), ou modification de `numero`."""
     from .fenetre_saisie import SaisieDocument
     from .inventaire import lire_sage as stocks
+    from .points_vente import DEPOT_DEFAUT
 
     def lecture(base):
         articles = stocks(base)
@@ -446,6 +448,7 @@ def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, n
         if numero:
             d = dc.Registre(racine).document(numero)
             initial = {"tiers": d.tiers, "date": d.date, "remarque": d.remarque, "sens": d.sens,
+                       "depot": d.depot or DEPOT_DEFAUT,
                        "lignes": [{"numero_sage": l.numero_sage, "description": l.description,
                                    "quantite": Decimal(l.quantite), "prix": Decimal(l.prix or 0),
                                    "taxable": l.taxable, "taxe": l.taxe} for l in d.lignes]}
@@ -456,10 +459,10 @@ def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, n
                                            l["taxable"], taxe=l.get("taxe", "")) for l in lignes]
             if numero:
                 doc = registre.modifier(numero, entete["tiers"], entete["date"], lignes_doc, entete["remarque"],
-                                        entete["sens"])
+                                        entete["sens"], entete.get("depot", ""))
             else:
                 doc = registre.ajouter(genre, entete["tiers"], entete["date"], lignes_doc, entete["remarque"],
-                                       entete["sens"], auteur)
+                                       entete["sens"], auteur, entete.get("depot", ""))
             if apres:
                 apres()
             return t("{n} enregistré.", n=doc.numero)
@@ -470,11 +473,102 @@ def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, n
         titre = t(titres[genre]) + (f" — {numero}" if numero else "")
         if genre == dc.STOCK:
             SaisieDocument(parent, titre, proposes, valider, libelle_prix="Coût unitaire",
-                           sens=[dc.ENTREE, dc.SORTIE], initial=initial)
+                           sens=[dc.ENTREE, dc.SORTIE], initial=initial, depots=dc.depots(_config(racine)))
         else:
             SaisieDocument(parent, titre, proposes, valider, tiers=clients, taxable=True, initial=initial)
 
     lire_sage_dans_un_fil(parent, racine, lecture, fin, cle=f"saisie:{genre}")
+
+
+class DialogueTiers(tk.Toplevel):
+    """Nouveau client ou fournisseur créé dans Sage : l'application remplit la fiche de Sage (robot_tiers), dans le
+    Sage ouvert sur le fichier de l'entreprise, sinon elle ouvre Sage elle-même ; vérifié dans la base."""
+
+    CREATION = True  # fenêtre de création : reste une fenêtre à part (avec « Fermer »)
+
+    def __init__(self, parent, racine: Path, genre: str, apres=None):
+        from tkinter import ttk
+
+        from .robot_tiers import FicheTiers, LIBELLES
+
+        super().__init__(parent)
+        self.racine, self.genre, self.apres = Path(racine), genre, apres
+        self.title(t("Nouveau client") if genre == "clients" else t("Nouveau fournisseur"))
+        self.configure(background=CARTE, padx=16, pady=12)
+        self.transient(parent.winfo_toplevel())
+        defaut = FicheTiers("")
+        self.v: dict[str, tk.StringVar] = {}
+        grille = tk.Frame(self, background=CARTE)
+        grille.pack(fill="x")
+        cles = [c for c in LIBELLES if c != "no_taxe" or genre == "fournisseurs"]
+        for i, cle in enumerate(cles):
+            rang, colonne = i % 7, (i // 7) * 2
+            tk.Label(grille, text=t(LIBELLES[cle]) + (" *" if cle == "nom" else ""), background=CARTE,
+                     anchor="w").grid(row=rang, column=colonne, sticky="w", padx=(0 if colonne == 0 else 16, 6), pady=3)
+            self.v[cle] = tk.StringVar(value=getattr(defaut, cle))
+            ttk.Entry(grille, textvariable=self.v[cle], width=34 if cle in ("nom", "rue1", "rue2", "courriel", "site")
+                      else 24).grid(row=rang, column=colonne + 1, sticky="w", pady=3)
+        if genre == "fournisseurs":
+            tk.Label(self, text=t("N° d'inscription aux taxes : 9 chiffres + RP, RT ou RZ + 4 chiffres "
+                                  "(ex. 123456789RT0001), ou vide."), background=CARTE, foreground=TEXTE_DOUX,
+                     anchor="w").pack(fill="x", pady=(6, 0))
+        self.etat = tk.Label(self, text=t("La fiche est créée dans Sage, avec « utilise mes numéros d'articles » coché "
+                                          "(nécessaire aux imports de factures)."), background=CARTE,
+                             foreground=TEXTE_DOUX, anchor="w", justify="left", wraplength=640)
+        self.etat.pack(fill="x", pady=(8, 0))
+        bas = tk.Frame(self, background=CARTE)
+        bas.pack(anchor="e", pady=(10, 0))
+        Bouton(bas, "✖  " + t("Fermer"), self.destroy, "secondaire", fond=CARTE).pack(side="right")
+        self.bouton = Bouton(bas, "✔  " + t("Créer dans Sage"), self.creer, fond=CARTE)
+        self.bouton.pack(side="right", padx=8)
+
+    def creer(self) -> None:
+        import re
+
+        from .robot_tiers import FicheTiers
+
+        valeurs = {c: " ".join(v.get().split()) for c, v in self.v.items()}
+        if not valeurs["nom"]:
+            self.etat.configure(text="✘ " + t("Le nom est obligatoire."), foreground=ROUGE)
+            return
+        if valeurs.get("courriel") and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", valeurs["courriel"]):
+            self.etat.configure(text="✘ " + t("Courriel invalide."), foreground=ROUGE)
+            return
+        if valeurs.get("no_taxe") and not re.fullmatch(r"\d{9}(RP|RT|RZ)\d{4}", valeurs["no_taxe"].replace(" ", "").upper()):
+            self.etat.configure(text="✘ " + t("N° d'inscription aux taxes invalide (ex. 123456789RT0001)."),
+                                foreground=ROUGE)
+            return
+        if "no_taxe" in valeurs:
+            valeurs["no_taxe"] = valeurs["no_taxe"].replace(" ", "").upper()
+        fiche = FicheTiers(**valeurs)
+        self.etat.configure(text=t("Création dans Sage… (l'application ouvre Sage elle-même s'il est fermé : environ "
+                                   "une minute)"), foreground=TEXTE_DOUX)
+
+        def travail():
+            try:
+                from .robot_tiers import creer_dans_sage
+
+                r = creer_dans_sage(self.racine, _config(self.racine), self.genre, [fiche])[0]
+                texte = (t("« {n} » est créé dans Sage.", n=fiche.nom) if r["cree"] else
+                         "✘ " + t("Non créé : {m}", m=" ; ".join(r["messages"])))
+                if r["cree"] and not r["mes_numeros"]:
+                    texte += " " + t("Cochez « utilise mes numéros d'articles » dans sa fiche de Sage.")
+                self.after(0, lambda: self._fin(texte, r["cree"]))
+            except Exception as exc:
+                message = str(exc)
+                self.after(0, lambda: self._fin("✘ " + message, False))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _fin(self, texte: str, cree: bool) -> None:
+        if not self.winfo_exists():
+            return
+        self.etat.configure(text=texte, foreground=VERT_FONCE if cree else ROUGE)
+        if cree:
+            if self.apres:
+                self.apres()
+            messagebox.showinfo(self.title(), texte, parent=self)
+            self.destroy()
 
 
 # --------------------------------------------------------------------------------------------- achats saisis

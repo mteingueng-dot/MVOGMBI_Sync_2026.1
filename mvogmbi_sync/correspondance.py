@@ -269,12 +269,49 @@ def lire_a_relier(chemin: Path) -> list[tuple[str, str, str]]:
     return resultat
 
 
+_FEUILLES: dict[str, tuple] = {}
+
+
+def lire_feuille(chemin: Path) -> list[tuple]:
+    """Lignes (en-tête compris) de la feuille « Correspondance », relue seulement si le fichier a changé (date et
+    taille) : gardée en mémoire et dans « <nom>.cache.json » à côté du fichier. Lire le classeur prend environ 4 s
+    (mesuré le 2026-10-30) et il servait à 5 endroits (page Correspondance, coûts, prix, bons, import, nuit)."""
+    import json
+
+    chemin = Path(chemin)
+    etat = chemin.stat()
+    signature = [etat.st_mtime_ns, etat.st_size]
+    deja = _FEUILLES.get(str(chemin))
+    if deja and deja[0] == signature:
+        return deja[1]
+    cache = chemin.with_name(chemin.stem + ".cache.json")
+    try:
+        donnees = json.loads(cache.read_text(encoding="utf-8"))
+        if donnees.get("signature") == signature:
+            lignes = [tuple(l) for l in donnees["lignes"]]
+            _FEUILLES[str(chemin)] = (signature, lignes)
+            return lignes
+    except (OSError, ValueError):
+        pass
+    classeur = openpyxl.load_workbook(chemin, read_only=True, data_only=True)
+    try:
+        lignes = [tuple(l) for l in classeur["Correspondance"].iter_rows(values_only=True)]
+    finally:
+        classeur.close()
+    _FEUILLES[str(chemin)] = (signature, lignes)
+    try:
+        cache.write_text(json.dumps({"signature": signature, "lignes": lignes}, ensure_ascii=False, default=str),
+                         encoding="utf-8")
+    except OSError:
+        pass
+    return lignes
+
+
 def lire_correspondances(chemin: Path) -> list[Correspondance]:
     """Toutes les lignes du fichier de correspondance (pour l'affichage et la modification dans l'application)."""
     if not chemin.exists():
         return []
-    feuille = openpyxl.load_workbook(chemin, read_only=True, data_only=True)["Correspondance"]
-    lignes = feuille.iter_rows(values_only=True)
+    lignes = iter(lire_feuille(chemin))  # lue une fois tant que le fichier ne change pas
     entete = list(next(lignes))
     i = {nom: entete.index(nom) for nom in ENTETES}
     texte = lambda r, nom: str(r[i[nom]] or "").strip()
@@ -298,8 +335,7 @@ def lire_confirmes(chemin: Path) -> dict[str, Correspondance]:
     """Lignes marquées « Confirmé » dans un fichier de correspondance existant, par ID Clover."""
     if not chemin.exists():
         return {}
-    feuille = openpyxl.load_workbook(chemin, read_only=True, data_only=True)["Correspondance"]
-    lignes = feuille.iter_rows(values_only=True)
+    lignes = iter(lire_feuille(chemin))  # lue une fois tant que le fichier ne change pas
     entete = list(next(lignes))
     i = {nom: entete.index(nom) for nom in ENTETES}
     confirmes = {}

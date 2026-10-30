@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, timedelta  # noqa: F401 (timedelta : résumés par jour)
 from decimal import Decimal
 
 from .statistiques_clover import JOURS, DonneesClover, preparer
@@ -80,6 +80,76 @@ def ventes_par_article(d: DonneesClover, depuis: date, jusqua: date) -> dict[str
             v.nettes += l.ventes_nettes
             v.derniere = max(v.derniere or jour, jour)
             v.jours.add(jour)
+    return resultat
+
+
+_RESUMES: dict[str, dict] = {}  # fichier du résumé d'un jour -> {clé article: [nom, catégorie, qté, ventes]}
+DUREE_JOUR_EN_COURS = 300  # secondes
+
+
+def ventes_par_article_rapide(client, depuis: date, jusqua: date, cache) -> dict[str, VenteArticle]:
+    """Comme ventes_par_article, mais à partir d'un résumé par jour gardé dans `cache`/articles/AAAA-MM-JJ.json : un
+    jour terminé n'est calculé qu'une fois (90 jours : 2,3 s avant, quelques centièmes ensuite ; mesuré le
+    2026-10-30). La journée en cours est toujours recalculée."""
+    import json
+    from pathlib import Path
+
+    from .statistiques_clover import lire
+
+    dossier = Path(cache) / "articles"
+    aujourdhui = date.today()
+    jours = [depuis + timedelta(days=i) for i in range((jusqua - depuis).days + 1)]
+
+    def chemin(j: date) -> Path:
+        return dossier / f"{j.isoformat()}.json"
+
+    import time
+
+    par_jour: dict[date, dict] = {}
+    manquants = []
+    for j in jours:
+        fichier = chemin(j)
+        en_cours = _RESUMES.get(f"en cours:{j}")
+        if j >= aujourdhui and en_cours and time.time() - en_cours[0] < DUREE_JOUR_EN_COURS:
+            par_jour[j] = en_cours[1]  # journée en cours relue au plus toutes les 5 minutes
+        elif j < aujourdhui and str(fichier) in _RESUMES:
+            par_jour[j] = _RESUMES[str(fichier)]
+        elif j < aujourdhui and fichier.exists():
+            try:
+                par_jour[j] = _RESUMES[str(fichier)] = json.loads(fichier.read_text(encoding="utf-8"))
+                continue
+            except (OSError, ValueError):
+                manquants.append(j)
+        else:
+            manquants.append(j)
+    if manquants:
+        donnees = lire(client, min(manquants), max(manquants), Path(cache))
+        calcules: dict[date, dict] = {j: {} for j in manquants}
+        for c in preparer(donnees):
+            jour = c.moment.date()
+            if jour not in calcules:
+                continue
+            for l in c.lignes:
+                cle = l.id_article or l.nom
+                v = calcules[jour].setdefault(cle, [l.nom, l.categorie, "0", "0"])
+                v[2] = str(Decimal(v[2]) + l.quantite_nette)
+                v[3] = str(Decimal(v[3]) + l.ventes_nettes)
+        dossier.mkdir(parents=True, exist_ok=True)
+        for j, resume in calcules.items():
+            par_jour[j] = resume
+            if j < aujourdhui:  # jour terminé : gardé
+                _RESUMES[str(chemin(j))] = resume
+                chemin(j).write_text(json.dumps(resume, ensure_ascii=False), encoding="utf-8")
+            else:
+                _RESUMES[f"en cours:{j}"] = (time.time(), resume)
+    resultat: dict[str, VenteArticle] = {}
+    for j in jours:
+        for cle, (nom, categorie, quantite, nettes) in par_jour.get(j, {}).items():
+            v = resultat.setdefault(cle, VenteArticle(nom, categorie))
+            v.quantite += Decimal(quantite)
+            v.nettes += Decimal(nettes)
+            v.derniere = max(v.derniere or j, j)
+            v.jours.add(j)
     return resultat
 
 

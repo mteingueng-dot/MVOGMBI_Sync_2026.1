@@ -34,7 +34,7 @@ class SaisieDocument(tk.Toplevel):
                  tiers: list[str] | None = None, libelle_tiers: str = "Client", libelle_prix: str = "Prix (HT)",
                  taxable: bool = False, sens: list[str] | None = None, action: str = "Enregistrer",
                  libelle_remarque: str = "Remarque", initial: dict | None = None, remarque_obligatoire: bool = False,
-                 facteurs: dict | None = None):
+                 facteurs: dict | None = None, depots: dict[str, str] | None = None):
         """`initial` (« Modifier ») : {"tiers", "date", "remarque", "sens", "lignes": [dict comme self.lignes]}."""
         super().__init__(parent)
         self.articles, self.valider_document, self.avec_taxes = articles, valider, taxable
@@ -60,6 +60,14 @@ class SaisieDocument(tk.Toplevel):
             tk.Label(g, text=t("Mouvement"), background=CARTE).pack(side="left", padx=(0, 4))
             ttk.Combobox(g, textvariable=self.sens, values=[t(s) for s in sens], state="readonly",
                          width=10).pack(side="left")
+        # documents de stock : dépôt (emplacement Sage d'un point de vente) d'où sort ou entre la marchandise
+        self.depots = depots or {}
+        self.depot = tk.StringVar(value=next(iter(self.depots)) if len(self.depots) == 1 else "")
+        if depots is not None:
+            g = entete.ajouter(entete.groupe(), 12)
+            tk.Label(g, text=t("Dépôt") + " *", background=CARTE).pack(side="left", padx=(0, 4))
+            ttk.Combobox(g, textvariable=self.depot, values=list(self.depots), state="readonly",
+                         width=34).pack(side="left")
         g = entete.ajouter(entete.groupe(), 12)
         tk.Label(g, text=t("Date"), background=CARTE).pack(side="left", padx=(0, 4))
         self.date = tk.StringVar(value=date.today().isoformat())
@@ -132,6 +140,9 @@ class SaisieDocument(tk.Toplevel):
             self.remarque.set(initial.get("remarque", ""))
             if initial.get("sens"):
                 self.sens.set(t(initial["sens"]))
+            if initial.get("depot") is not None and self.depots:
+                self.depot.set(next((k for k, v in self.depots.items() if v == initial["depot"]),
+                                    self.depot.get()))
             self.lignes = [dict(l) for l in initial.get("lignes", [])]
         self._afficher()
 
@@ -210,9 +221,13 @@ class SaisieDocument(tk.Toplevel):
         except ValueError:
             self.etat.configure(text="✘ " + t("Date au format AAAA-MM-JJ."), foreground=ROUGE)
             return
+        if self.depots and self.depot.get() not in self.depots:
+            self.etat.configure(text="✘ " + t("Choisissez le dépôt."), foreground=ROUGE)
+            return
         sens = next((s for s in self._sens if t(s) == self.sens.get()), "")
         entete = {"tiers": self.tiers.get().strip(), "date": self.date.get().strip(),
-                  "remarque": self.remarque.get().strip(), "sens": sens}
+                  "remarque": self.remarque.get().strip(), "sens": sens,
+                  "depot": self.depots.get(self.depot.get(), "")}
         try:
             message = self.valider_document(entete, self.lignes)
         except Exception as exc:

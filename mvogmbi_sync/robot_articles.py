@@ -25,7 +25,7 @@ from .robot_encaissements import (CB_SETCURSEL, CBN_SELCHANGE, EN_CHANGE, EN_KIL
                                   ErreurRobot, FenetreEncaissements, _classe, user32)
 
 TITRE = "Enregistrements des stocks & services"
-ID_NUMERO, ID_DESCRIPTION, ID_STOCK = 23, 24, 30
+ID_NUMERO, ID_DESCRIPTION, ID_STOCK, ID_SERVICE = 23, 24, 30, 31
 ID_ACTIF, ID_PRODUITS, ID_CMV, ID_ECART = 77, 73, 74, 78
 ID_ENREGISTRER_FERMER = 1002
 ID_NAVIGATION = 504  # liste de la barre d'outils : article affiché dans la fiche
@@ -39,8 +39,9 @@ class ArticleACreer:
     description: str
     actif: str      # « 1513 »
     produits: str   # « 4013 »
-    cmv: str        # « 5013 »
+    cmv: str        # « 5013 » ; pour un service : compte de CHARGES (5xxx)
     ecart: str = ""  # vide = même compte que le CMV
+    service: bool = False  # article de service (n° « S… ») : comptes Produits (facultatif) et Charges seulement
 
 
 @dataclass
@@ -84,12 +85,21 @@ class FenetreArticle(FenetreEncaissements):
             raise ErreurRobot(f"La fenêtre affiche déjà l'article « {self.lire(ID_NUMERO)} » : rien n'est modifié.")
         self.ecrire(ID_NUMERO, a.numero)
         self.ecrire(ID_DESCRIPTION, a.description[:LONGUEUR_DESCRIPTION])
-        user32.SendMessageW(user32.GetDlgItem(self.h, ID_STOCK), BM_CLICK, 0, 0)
-        time.sleep(0.5)
-        self.compte(ID_ACTIF, a.actif)
-        self.compte(ID_PRODUITS, a.produits)
-        self.compte(ID_CMV, a.cmv)
-        self.compte(ID_ECART, a.ecart or a.cmv)
+        if a.service:
+            # relevé du 2026-10-29 : « Service » = bouton 31 ; l'onglet « Associé » n'a plus que Produits (73) et
+            # Charges (74, le même champ que le CMV d'un article de stock)
+            user32.SendMessageW(user32.GetDlgItem(self.h, ID_SERVICE), BM_CLICK, 0, 0)
+            time.sleep(0.8)
+            if a.produits:
+                self.compte(ID_PRODUITS, a.produits)
+            self.compte(ID_CMV, a.cmv)
+        else:
+            user32.SendMessageW(user32.GetDlgItem(self.h, ID_STOCK), BM_CLICK, 0, 0)
+            time.sleep(0.5)
+            self.compte(ID_ACTIF, a.actif)
+            self.compte(ID_PRODUITS, a.produits)
+            self.compte(ID_CMV, a.cmv)
+            self.compte(ID_ECART, a.ecart or a.cmv)
         if self.lire(ID_NUMERO) != a.numero:
             raise ErreurRobot(f"Le numéro n'a pas pu être saisi (lu : « {self.lire(ID_NUMERO)} »).")
 

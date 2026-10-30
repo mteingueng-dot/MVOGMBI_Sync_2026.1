@@ -25,6 +25,7 @@ from tkinter import filedialog, messagebox, ttk
 from . import coffre, entreprise, export_tableau, langues
 from .design import (BORDURE, CARTE, FOND, ICONE, ID_APPLICATION, JAUNE, LOGO, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE,
                      TEXTE_DOUX, VERT, VERT_FONCE, Bouton, ChampDate, fond_de, image_filigrane, styler)
+from .design import action_permise
 from .langues import t
 
 TITRE = "MVOGMBI_Sync — Clover → Sage 50"
@@ -37,7 +38,10 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
 # profil donne l'accès, méthode qui ouvre la fenêtre)
 MENU_GROUPES = [
     (None, "", [ACCUEIL]),
-    ("Administration", "⚙", [CLOVER, SAGE, COURRIEL, AUTOMATISATION, UTILISATEURS]),
+    ("Administration", "⚙", [CLOVER, SAGE, COURRIEL, AUTOMATISATION,
+                             ("💾", "Sauvegarde des données", AUTOMATISATION, "ouvrir_sauvegarde"),
+                             ("🧭", "Journal des opérations", UTILISATEURS, "ouvrir_journal_operations"),
+                             ("📱", "Tableau du gérant (téléphone)", AUTOMATISATION, "ouvrir_tableau"), UTILISATEURS]),
     # rubriques Articles, Vente et Fournisseur rangées comme les menus de gestion de Sage (demande du propriétaire
     # du 2026-10-29 ; noms des rubriques gardés)
     ("Articles", "🏷", [("📚", "Liste des articles", CORRESPONDANCE, "ouvrir_liste", "articles"),
@@ -46,6 +50,10 @@ MENU_GROUPES = [
                        ("🗂", "Liste des documents de stock", CORRESPONDANCE, "ouvrir_liste", "documents_stock"),
                        ("✏", "Saisir un document de stock", CORRESPONDANCE, "ouvrir_documents", "stock"),
                        ("🔁", "Transferts entre magasins", CORRESPONDANCE, "ouvrir_transferts"),
+                       ("🗑", "Pertes et démarque", CORRESPONDANCE, "ouvrir_pertes"),
+                       ("🏷", "Étiquettes de prix", CORRESPONDANCE, "ouvrir_etiquettes"),
+                       ("🏷", "Promotions", CORRESPONDANCE, "ouvrir_promotions"),
+                       ("🔄", "Inventaire tournant", CORRESPONDANCE, "ouvrir_inventaire_tournant"),
                        ("🔎", "Interrogation de compte article", RAPPORTS, "ouvrir_interrogation", "Article"),
                        ("📋", "Inventaire Clover et Sage", CORRESPONDANCE, "ouvrir_inventaire"),
                        ("📒", "Livre d'inventaire", CORRESPONDANCE, "ouvrir_liste", "livre"),
@@ -56,6 +64,7 @@ MENU_GROUPES = [
                     ("🗂", "Liste des documents de vente", ENCAISSEMENTS, "ouvrir_liste", "documents_vente"),
                     ("✏", "Saisir une facture de vente", ENCAISSEMENTS, "ouvrir_documents", "facture"),
                     ("📝", "Commandes clients", ENCAISSEMENTS, "ouvrir_documents", "commande"),
+                    ("📨", "Clients professionnels et relances", RAPPROCHEMENT, "ouvrir_relances"),
                     ("🔎", "Interrogation de compte client", RAPPORTS, "ouvrir_interrogation", "Client"),
                     TABLEAU]),
     ("Fournisseur", "🚚", [("🏭", "Liste des fournisseurs", FOURNISSEURS, "ouvrir_liste", "fournisseurs"),
@@ -66,14 +75,18 @@ MENU_GROUPES = [
                           ("🛍", "Bons de commande", FOURNISSEURS, "ouvrir_receptions"),
                           ("🔎", "Interrogation de compte fournisseur", RAPPORTS, "ouvrir_interrogation",
                            "Fournisseur"),
+                          ("↩", "Retours fournisseurs", FOURNISSEURS, "ouvrir_retours"),
                           ("🗄", "Factures fournisseurs archivées", RAPPORTS, "ouvrir_rapports",
                            "Factures fournisseurs archivées")]),
-    ("Comptabilité", "🏦", [ENCAISSEMENTS, PAIEMENTS, RAPPROCHEMENT,
+    ("Comptabilité", "🏦", [("💵", "Contrôle de la caisse", PAIEMENTS, "ouvrir_caisse"),
+                        ("🧾", "Petite caisse et dépenses", PAIEMENTS, "ouvrir_depenses"),
+                        ENCAISSEMENTS, PAIEMENTS, RAPPROCHEMENT,
                            ("🧾", "Comptes Sage par catégorie", CORRESPONDANCE, "ouvrir_comptes_sage"),
                            ("⏳", "Âge des comptes", RAPPROCHEMENT, "ouvrir_comptabilite", "Âge des comptes"),
                            ("🧮", "Déclaration TPS/TVQ", RAPPROCHEMENT, "ouvrir_comptabilite", "Déclaration TPS/TVQ"),
                            ("💧", "Prévision de trésorerie", RAPPROCHEMENT, "ouvrir_comptabilite",
                             "Prévision de trésorerie"),
+                           ("📐", "Budget et écarts", RAPPROCHEMENT, "ouvrir_comptabilite", "Budget et écarts"),
                            ("📅", "Clôture du mois", RAPPROCHEMENT, "ouvrir_comptabilite", "Clôture du mois")]),
     # paie (demande du propriétaire du 2026-10-29) : pointage pour tous ; feuilles de temps et NIP pour qui voit
     # les paiements fournisseurs (administrateur, comptable)
@@ -82,7 +95,12 @@ MENU_GROUPES = [
                    ("📅", "Planning mensuel", PAIEMENTS, "ouvrir_planning"),
                    ("🗓", "Mon horaire", ACCUEIL, "ouvrir_mon_horaire"),
                    ("👥", "Employés et NIP", PAIEMENTS, "ouvrir_employes_paie"),
-                   ("🏛", "Retenues à la source", RAPPROCHEMENT, "ouvrir_comptabilite", "Retenues à la source")]),
+                   ("🏖", "Jours fériés et congés", PAIEMENTS, "ouvrir_conges"),
+                   ("💵", "Traitement de la paie", RAPPROCHEMENT, "ouvrir_traitement_paie"),
+                   ("🚪", "Fin d'emploi et relevé d'emploi", PAIEMENTS, "ouvrir_fin_emploi"),
+                   ("👷", "Coût de la main-d'œuvre", RAPPROCHEMENT, "ouvrir_main_oeuvre"),
+                   ("🏛", "Retenues à la source", RAPPROCHEMENT, "ouvrir_comptabilite", "Retenues à la source"),
+                   ("📬", "Suivi des remises", RAPPROCHEMENT, "ouvrir_comptabilite", "Suivi des remises")]),
     ("État", "📊", [("📈", "Suivi des ventes", RAPPORTS, "ouvrir_rapports", "Suivi des ventes"),
                     ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
                     ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover"),
@@ -155,8 +173,9 @@ class Application(tk.Tk):
         export_tableau.RACINE_ENTETE = Path(racine)  # en-tête des impressions : informations Clover de l'entreprise
         threading.Thread(target=lambda: entreprise.actualiser(Path(racine)), daemon=True).start()  # 1 fois/jour
         # listes principales lues d'avance si Sage répond déjà (jamais d'ouverture de Sage pour cela)
-        threading.Thread(target=lambda: __import__("mvogmbi_sync.cache_lectures", fromlist=["x"]).precharger(
-            Path(racine)), daemon=True).start()
+        # lancé 3 s après l'affichage : il ne ralentit plus la construction de la fenêtre (GIL partagé)
+        self.after(3000, lambda: threading.Thread(target=lambda: __import__(
+            "mvogmbi_sync.cache_lectures", fromlist=["x"]).precharger(Path(racine)), daemon=True).start())
         self.chemin_config = racine / "config.toml"
         self.config_toml = lire_config(self.chemin_config)
         langues.depuis_config(self.config_toml)
@@ -192,7 +211,8 @@ class Application(tk.Tk):
         bas = ttk.Frame(contenu, padding=(0, 10, 0, 0))
         bas.pack(side="bottom", fill="x")
         if any(self.permis(i) for i in (CLOVER, SAGE, COURRIEL, AUTOMATISATION)):
-            Bouton(bas, "💾  " + t("Enregistrer la configuration"), self.enregistrer).pack(side="right")
+            Bouton(bas, "💾  " + t("Enregistrer la configuration"),
+                   lambda: action_permise(self, "Enregistrer la configuration") and self.enregistrer()).pack(side="right")
         self.etat = ttk.Label(bas, text="", foreground=TEXTE_DOUX)
         self.etat.pack(side="left")
         self.onglets = ttk.Notebook(contenu, style="Pages.TNotebook")
@@ -386,6 +406,10 @@ class Application(tk.Tk):
         bouton.bind("<Enter>", lambda _e: bouton.configure(background=MENU_SURVOL))
         bouton.bind("<Leave>", lambda _e: bouton.configure(background=MENU_FOND))
 
+    def permis_fenetre(self, action: str) -> bool:
+        """Action sensible d'une fenêtre (utilisateurs.ACTIONS_FENETRES) non retirée au profil."""
+        return action not in getattr(self, "_refusees", set())
+
     def permis_action(self, element: tuple) -> bool:
         """Entrée du menu permise : sa page l'est, et le profil n'a pas retiré cette fonction."""
         return self.permis(element[2]) and element[1] not in getattr(self, "_refusees", set())
@@ -550,6 +574,66 @@ class Application(tk.Tk):
     def ouvrir_feuilles_temps(self) -> None:
         from .fenetre_feuilles_temps import ouvrir
         ouvrir(self, self.racine, self._auteur())
+
+    def ouvrir_promotions(self) -> None:
+        from .fenetres_gestion4 import FenetrePromotions
+        FenetrePromotions(self, self.racine, self._auteur())
+
+    def ouvrir_inventaire_tournant(self) -> None:
+        from .fenetres_gestion4 import FenetreInventaireTournant
+        FenetreInventaireTournant(self, self.racine)
+
+    def ouvrir_relances(self) -> None:
+        from .fenetres_gestion4 import FenetreRelances
+        FenetreRelances(self, self.racine)
+
+    def ouvrir_tableau(self) -> None:
+        from .fenetres_gestion4 import FenetreTableau
+        FenetreTableau(self, self.racine)
+
+    def ouvrir_retours(self) -> None:
+        from .fenetres_gestion3 import FenetreRetours
+        FenetreRetours(self, self.racine, self._auteur())
+
+    def ouvrir_etiquettes(self) -> None:
+        from .fenetres_gestion3 import FenetreEtiquettes
+        FenetreEtiquettes(self, self.racine)
+
+    def ouvrir_main_oeuvre(self) -> None:
+        from .fenetres_gestion3 import FenetreMainOeuvre
+        FenetreMainOeuvre(self, self.racine)
+
+    def ouvrir_depenses(self) -> None:
+        from .fenetres_gestion2 import FenetreDepenses
+        FenetreDepenses(self, self.racine, self._auteur())
+
+    def ouvrir_fin_emploi(self) -> None:
+        from .fenetres_gestion2 import FenetreFinEmploi
+        FenetreFinEmploi(self, self.racine)
+
+    def ouvrir_journal_operations(self) -> None:
+        from .fenetres_gestion2 import FenetreJournalOperations
+        FenetreJournalOperations(self, self.racine)
+
+    def ouvrir_conges(self) -> None:
+        from .fenetre_conges import FenetreConges
+        FenetreConges(self, self.racine, self._auteur())
+
+    def ouvrir_pertes(self) -> None:
+        from .fenetre_pertes import FenetrePertes
+        FenetrePertes(self, self.racine, self._auteur())
+
+    def ouvrir_caisse(self) -> None:
+        from .fenetre_caisse import FenetreCaisse
+        FenetreCaisse(self, self.racine, self._auteur())
+
+    def ouvrir_sauvegarde(self) -> None:
+        from .fenetre_sauvegarde import FenetreSauvegarde
+        FenetreSauvegarde(self, self.racine)
+
+    def ouvrir_traitement_paie(self) -> None:
+        from .fenetre_paie import FenetrePaie
+        FenetrePaie(self, self.racine, ouvrir_feuilles=self.ouvrir_feuilles_temps)
 
     def ouvrir_employes_paie(self) -> None:
         from .fenetre_feuilles_temps import FenetreEmployes
@@ -1250,7 +1334,8 @@ class Application(tk.Tk):
         choix.pack(side="left", padx=(6, 0))
         haut = ttk.Frame(f)
         haut.grid(row=3, column=0, columnspan=3, sticky="we")
-        Bouton(haut, "▶  " + t("Lancer maintenant"), lambda: self.lancer(False)).pack(side="left")
+        Bouton(haut, "▶  " + t("Lancer maintenant"),
+               lambda: action_permise(self, "Lancer le traitement maintenant") and self.lancer(False)).pack(side="left")
         Bouton(haut, "🧪  " + t("Simulation (sans import)"), lambda: self.lancer(True), "accent").pack(side="left", padx=8)
         if export_tableau.export_permis():
             Bouton(haut, "📗  Excel", lambda: self.ouvrir(self.racine / "donnees" / "correspondance_articles.xlsx"),

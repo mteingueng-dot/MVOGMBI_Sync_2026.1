@@ -31,6 +31,9 @@ class ResumeMatin:
     ruptures_a: list[str] = field(default_factory=list)
     a_commander: int | None = None
     peremption: list[str] = field(default_factory=list)
+    alertes: list[str] = field(default_factory=list)   # retenues à remettre, caisse non comptée ou en écart
+    infos: list[str] = field(default_factory=list)     # jours fériés et congés des 7 prochains jours
+    especes_hier: Decimal | None = None                 # espèces nettes attendues d'hier (caisse.py)
     erreurs: list[str] = field(default_factory=list)
 
     @property
@@ -102,6 +105,13 @@ def calculer(racine: Path, config_toml: dict, aujourdhui: date | None = None) ->
         return r
     par_jour = ventes_par_jour(donnees)
     r.ventes = par_jour.get(hier, Decimal(0)).quantize(CENT)
+    try:
+        from .caisse import attendus
+
+        attendu = attendus(donnees).get(hier)
+        r.especes_hier = attendu.net if attendu else Decimal(0)
+    except Exception:
+        r.especes_hier = None
     r.ventes_semaine_passee = par_jour.get(hier - timedelta(days=7), Decimal(0)).quantize(CENT)
     ventes_90 = ventes_par_article(donnees, debut, hier)
     try:
@@ -129,6 +139,42 @@ def calculer(racine: Path, config_toml: dict, aujourdhui: date | None = None) ->
             config_toml.get("sage_import", {}).get("fichier_entreprise"))
     except Exception as exc:
         r.erreurs.append(f"Sage : {exc}")
+    try:  # remises des retenues à la source (retenues.suivi)
+        from .retenues import alertes, suivi
+
+        r.alertes += alertes(lire_sage(config_toml, lambda b: suivi(b, aujourdhui, 2),
+                                       config_toml.get("sage_import", {}).get("fichier_entreprise")), aujourdhui)
+    except Exception as exc:
+        r.erreurs.append(f"Retenues : {exc}")
+    try:  # jours fériés et congés des 7 prochains jours (conges.py)
+        from . import conges as co
+        from . import paie_temps as pt
+
+        fin = aujourdhui + timedelta(days=7)
+        registre_conges = co.Registre(racine)
+        r.infos += [f"Jour férié le {j:%Y-%m-%d} : {n}" for j, n in co.feries_entre(aujourdhui, fin,
+                                                                                     registre_conges.paques)]
+        noms = {e.id: e.nom for e in pt.Registre(racine).employes}
+        absents: dict[str, list[str]] = {}
+        for c in registre_conges.conges:
+            if aujourdhui.isoformat() <= c.jour <= fin.isoformat():
+                absents.setdefault(noms.get(c.employe, c.employe), []).append(c.jour[5:])
+        r.infos += [f"Congé : {nom} ({', '.join(sorted(jours))})" for nom, jours in sorted(absents.items())]
+    except Exception as exc:
+        r.erreurs.append(f"Congés : {exc}")
+    try:  # caisse d'hier : comptée ? écart ? (caisse.py)
+        from . import caisse as ca
+
+        comptage = ca.Registre(racine).comptage(hier)
+        if comptage is None:
+            r.alertes.append(f"Caisse du {hier:%Y-%m-%d} non comptée (Comptabilité > Contrôle de la caisse)")
+        elif r.especes_hier is not None:
+            ecart = Decimal(comptage.compte) - (ca.fond_du_matin(ca.Registre(racine), hier, config_toml)
+                                                + r.especes_hier)
+            if abs(ecart) > ca.SEUIL_ECART:
+                r.alertes.append(f"Écart de caisse du {hier:%Y-%m-%d} : {argent(ecart)}")
+    except Exception as exc:
+        r.erreurs.append(f"Caisse : {exc}")
     return r
 
 
@@ -153,6 +199,8 @@ def texte(r: ResumeMatin) -> list[str]:
     if r.peremption:
         lignes.append("  ● " + t("{n} produit(s) en stock périmé(s) ou qui périment dans le mois : {l}", n=len(r.peremption),
                                  l=_liste(r.peremption)))
+    lignes += ["  ● " + a for a in r.alertes]
+    lignes += ["  ○ " + x for x in r.infos]
     lignes += ["  " + t("Non calculé : {e}", e=e) for e in r.erreurs]
     return lignes
 
@@ -189,6 +237,8 @@ def html(r: ResumeMatin) -> str:
     if r.peremption:
         alertes.append(("#9a6700", t("{n} produit(s) en stock périmé(s) ou qui périment dans le mois : {l}", n=len(r.peremption),
                                      l=_liste(r.peremption))))
+    alertes += [("#b3261e", a) for a in r.alertes]
+    alertes += [("#1f5f99", x) for x in r.infos]
     alertes += [("#5a6b60", t("Non calculé : {e}", e=x)) for x in r.erreurs]
     return (f"<h3 style='margin:4px 0'>{e(t('Résumé du {d}', d=f'{r.jour:%Y-%m-%d}'))}</h3>{cartes}"
             + "".join(f"<div style='color:{c};margin:2px 0'>● {e(x)}</div>" for c, x in alertes)

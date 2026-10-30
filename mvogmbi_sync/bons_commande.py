@@ -178,13 +178,12 @@ def lire(racine: Path, config_toml: dict, jours: int) -> list[Proposition]:
     from .__main__ import charger_config, lire_sage
     from .api_clover import ClientClover
     from .couts_sage import correspondance
-    from .previsions import ventes_par_article
-    from .statistiques_clover import lire as lire_clover
+    from .previsions import ventes_par_article_rapide
 
     client = ClientClover(charger_config(Path(racine) / "config.toml"))
     hier = date.today() - timedelta(days=1)
-    donnees = lire_clover(client, hier - timedelta(days=jours - 1), hier, Path(racine) / "donnees" / "cache_clover")
-    ventes = ventes_par_article(donnees, hier - timedelta(days=jours - 1), hier)
+    ventes = ventes_par_article_rapide(client, hier - timedelta(days=jours - 1), hier,
+                                       Path(racine) / "donnees" / "cache_clover")  # résumés par jour gardés
     achats, descriptions = lire_sage(config_toml, lambda b: (derniers_achats(b), descriptions_sage(b)),
                                      config_toml.get("sage_import", {}).get("fichier_entreprise"))
     from .cache_lectures import inventaire_clover

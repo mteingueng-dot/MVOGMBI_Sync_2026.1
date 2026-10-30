@@ -255,6 +255,9 @@ class NouvelArticle:
     creer_clover: bool = True
     id_clover: str = ""
     messages: list[str] = field(default_factory=list)
+    service: bool = False              # service Sage (n° « S… ») : compte de charges, produits facultatif
+    compte_charges: str = ""           # service : 5xxx
+    compte_produits: str = ""          # service : 4xxx, facultatif (service vendu)
 
     def problemes(self, numeros_sage: set[str] | None = None) -> list[str]:
         p = []
@@ -263,7 +266,7 @@ class NouvelArticle:
         if self.creer_clover:
             if self.prix <= 0:
                 p.append("prix de vente obligatoire")
-            if self.peremption is None:
+            if self.peremption is None and not self.service:
                 p.append("UGS : date de péremption obligatoire")
             if not self.id_categorie:
                 p.append("catégorie Clover à choisir")
@@ -279,7 +282,14 @@ class NouvelArticle:
                 p.append(f"le n° Sage « {self.numero_sage} » existe déjà")
             if not self.description_sage.strip():
                 p.append("description Sage obligatoire")
-            if self.comptes is None:
+            if self.service:  # règle du propriétaire : les services Sage commencent par « S »
+                if not self.numero_sage.upper().startswith("S"):
+                    p.append("le n° d'un service commence par S")
+                if not re.fullmatch(r"5\d{3}", self.compte_charges or ""):
+                    p.append("compte de charges (5xxx) obligatoire pour un service")
+                if self.compte_produits and not re.fullmatch(r"4\d{3}", self.compte_produits):
+                    p.append("compte de produits : un 4xxx est attendu")
+            elif self.comptes is None:
                 p.append("comptes Sage de la catégorie à renseigner")
             else:
                 p.extend(self.comptes.problemes())
@@ -299,6 +309,9 @@ class NouvelArticle:
 
     def article_sage(self):
         from .robot_articles import ArticleACreer
+        if self.service:
+            return ArticleACreer(self.numero_sage.strip(), self.description_sage.strip(), "", self.compte_produits,
+                                 self.compte_charges, "", service=True)
         c = self.comptes
         return ArticleACreer(self.numero_sage.strip(), self.description_sage.strip(), c.actif, c.produits, c.cmv, c.ecart)
 
