@@ -132,12 +132,38 @@ def proposer_comptes(base) -> dict[str, str]:
         return unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
 
     noms = {str(r["lId"])[:4]: simple(r["sName"]) for r in base.requete("SELECT lId, sName FROM taccount")}
-    regles = {"tps": lambda n: ("tps" in n or "federal" in n) and "paye" in n,
-              "tvq": lambda n: ("tvq" in n or "quebec" in n) and "paye" in n,
+    # « payee » en entier : « Impôt fédéral à payer » / « Québec à payer » sont des retenues de paie (constat du
+    # 2026-10-30 : DP-0001 et DP-0002 de la copie d'essai y avaient mis leurs taxes)
+    regles = {"tps": lambda n: "tps" in n and "payee" in n,
+              "tvq": lambda n: "tvq" in n and "payee" in n,
               "petite_caisse": lambda n: "petite caisse" in n,
               "carte": lambda n: "carte" in n and "credit" in n,
               "banque": lambda n: "desjardins" in n or n.startswith("banque") or "compte courant" in n}
-    return {cle: next((numero for numero, nom in sorted(noms.items()) if test(nom)), "") for cle, test in regles.items()}
+    comptes = {cle: next((numero for numero, nom in sorted(noms.items()) if test(nom)), "")
+               for cle, test in regles.items()}
+    # le compte de taxe sur les achats de la table des taxes de Sage passe avant le nom
+    try:
+        for r in base.requete("SELECT sName, lAcPurTax FROM ttaxauth"):
+            nom, compte = simple(r["sName"]), str(r["lAcPurTax"] or "")[:4]
+            if compte and compte != "0":
+                if nom.startswith("tps"):
+                    comptes["tps"] = compte
+                elif nom.startswith("tvq"):
+                    comptes["tvq"] = compte
+    except Exception:
+        pass  # table illisible : les noms suffisent
+    return comptes
+
+
+def comptes_douteux(comptes: dict[str, str], noms: dict[str, str]) -> list[str]:
+    """Comptes de taxes enregistrés qui sont en fait des retenues de paie (« … à payer » sans TPS ni TVQ)."""
+    resultat = []
+    for cle in ("tps", "tvq"):
+        nom = (noms.get(comptes.get(cle, ""), "") or "").lower()
+        if nom and cle not in nom:
+            resultat.append(f"{cle.upper()} : le compte {comptes[cle]} « {noms[comptes[cle]]} » n'est pas un compte de "
+                            f"{cle.upper()}")
+    return resultat
 
 
 # --------------------------------------------------------------------------------------------- Sage
@@ -196,6 +222,12 @@ def saisir_sur_bureau_cache(racine: Path, config_toml: dict, journal=print) -> d
     try:
         session.ouvrir(fichier, str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin")),
                        coffre.lire(coffre.SAGE_IMPORT, ""))
+        noms = lire_sage(config_toml, lambda b: {str(r["lId"])[:4]: r["sName"] or "" for r in b.requete(
+            "SELECT lId, sName FROM taccount")}, fichier)
+        douteux = comptes_douteux(registre.comptes, noms)
+        if douteux:
+            bilan["erreur"] = "Comptes Sage à corriger : " + " ; ".join(douteux)
+            return bilan
         session.ouvrir_journal()
         f = FenetreJournalDepense()
         for d in a_faire:

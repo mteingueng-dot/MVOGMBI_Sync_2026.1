@@ -92,6 +92,11 @@ class FenetreAjustement(FenetreEncaissements):
         emplacement d'où sort ou entre la marchandise (liste 37, présente si Sage gère plusieurs emplacements)."""
         from .points_vente import DEPOT_DEFAUT
 
+        if depot and depot.strip().lower() != DEPOT_DEFAUT.lower():
+            # la liste des emplacements arrive parfois après la fenêtre (constat du 2026-10-29, 2e ouverture)
+            fin = time.time() + 5
+            while not user32.GetDlgItem(self.h, ID_EMPLACEMENT) and time.time() < fin:
+                time.sleep(0.25)
         if depot and user32.GetDlgItem(self.h, ID_EMPLACEMENT):
             self.choisir(ID_EMPLACEMENT, depot)
         elif depot and depot.strip().lower() != DEPOT_DEFAUT.lower():
@@ -180,6 +185,11 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
                 return FenetreAjustement(h)
             if session.processus:
                 session.fermer_message_chargement()
+        if not session.processus and user32.GetForegroundWindow() != session.principale:
+            # constat du 2026-10-29 : Windows refuse le premier plan quand la personne travaille dans une autre
+            # application (réunion, Word) ; le clic sur l'icône est alors perdu
+            raise ErreurSage("Sage n'a pas pu passer au premier plan : cliquez dans la fenêtre de Sage, ne touchez "
+                             "plus à la souris, puis recommencez.")
         raise ErreurSage("La fenêtre « Ajustements des Stocks & Transferts » de Sage ne s'ouvre pas.")
 
     try:

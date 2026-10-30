@@ -524,6 +524,10 @@ def fermer_bases() -> None:
         _BASES.clear()
 
 
+# codes MySQL d'une requête fautive (colonne ou table inconnue, syntaxe) : la base a répondu
+ERREURS_DE_REQUETE = {1054, 1064, 1146}
+
+
 def lire_sage(config_toml: dict, fonction, fichier_sai=None):
     """Exécute fonction(base) sur la base Sage du fichier ; si Sage est fermé, la base est ouverte par l'outil
     d'import le temps de la lecture, puis refermée (aucun import)."""
@@ -543,8 +547,11 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None):
         return lecture()
     except PermissionError:
         raise
-    except Exception:
+    except Exception as exc:
         from .sage_bureau import sage_ouvert
+
+        if getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE:
+            raise  # requête fautive : la base répond, inutile de l'ouvrir autrement
 
         if not sage_ouvert():  # Sage fermé : base ouverte par l'outil d'import et gardée une minute
             try:

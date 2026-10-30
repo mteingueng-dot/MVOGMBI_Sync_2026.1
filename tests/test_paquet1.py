@@ -13,7 +13,7 @@ def test_depense_taxes_et_ecriture(tmp_path):
     assert dp.taxes_de(D("11.50"), "GQ") == (D("10.00"), D("0.50"), D("1.00"))
     assert dp.taxes_de(D("21.00"), "G") == (D("20.00"), D("1.00"), D(0))
     assert dp.taxes_de(D("8.00"), "") == (D("8.00"), D(0), D(0))
-    comptes = {"tps": "2190", "tvq": "2205", "petite_caisse": "1050", "carte": "1086", "banque": "1055"}
+    comptes = {"tps": "2315", "tvq": "2345", "petite_caisse": "1050", "carte": "1086", "banque": "1055"}
     d = dp.Depense("DP-0001", "2026-11-30", "ESSAI", "x", "11.50", "GQ", "5700", dp.PETITE_CAISSE)
     lignes = d.lignes(comptes)
     assert lignes[0] == ("1050", D(0), D("11.50"))                      # le crédit d'abord
@@ -26,6 +26,23 @@ def test_depense_taxes_et_ecriture(tmp_path):
     assert dp.Registre(tmp_path).comptes_manquants() == []
     assert dp.Registre(tmp_path).comptes_manquants([dp.Depense("", "", "", "", "1", moyen=dp.EMPLOYE)]) == \
         ["Employé à rembourser"]
+
+class _BaseComptes:
+    def requete(self, sql, *_a):
+        if "ttaxauth" in sql:
+            return [{"sName": "TPS/TVH", "lAcPurTax": 23150000}, {"sName": "TVQ", "lAcPurTax": 23450000}]
+        return [{"lId": 21900000, "sName": "Impôt fédéral à payer"}, {"lId": 22050000, "sName": "Québec à payer"},
+                {"lId": 23150000, "sName": "TPS/TVH payée sur les achats"},
+                {"lId": 23450000, "sName": "TVQ payée sur les achats"}, {"lId": 10500000, "sName": "Petite caisse"}]
+
+
+def test_comptes_de_taxes_jamais_les_retenues_de_paie():
+    comptes = dp.proposer_comptes(_BaseComptes())
+    assert (comptes["tps"], comptes["tvq"], comptes["petite_caisse"]) == ("2315", "2345", "1050")
+    noms = {"2190": "Impôt fédéral à payer", "2205": "Québec à payer", "2315": "TPS/TVH payée sur les achats",
+            "2345": "TVQ payée sur les achats"}
+    assert len(dp.comptes_douteux({"tps": "2190", "tvq": "2205"}, noms)) == 2
+    assert dp.comptes_douteux({"tps": "2315", "tvq": "2345"}, noms) == []
 
 
 def test_releve_emploi_et_concordance(tmp_path):
