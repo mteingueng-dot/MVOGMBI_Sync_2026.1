@@ -101,6 +101,8 @@ def main(origine: Path, langue: str = "fr") -> None:
             app.destroy()
 
     def page(index, nom, apres=None, delai=1800):
+        if SEULEMENT and nom not in SEULEMENT:
+            return  # --seulement : les autres captures sont gardées telles quelles
         def montrer():
             app.aller(index)
             if apres:
@@ -190,8 +192,15 @@ def main(origine: Path, langue: str = "fr") -> None:
     print("Captures :", ", ".join(sorted(p.name for p in SORTIE.glob("*.png"))))
 
 
+SEULEMENT: set[str] = set()  # --seulement 13_utilisateurs,22_traitement_paie : ne refaire que ces captures
+
 if __name__ == "__main__":
     arguments = [a for a in sys.argv[1:] if not a.startswith("--")]
     langue = sys.argv[sys.argv.index("--langue") + 1] if "--langue" in sys.argv else "fr"
-    arguments = [a for a in arguments if a != langue]
+    valeurs = {langue}
+    if "--seulement" in sys.argv:
+        liste = sys.argv[sys.argv.index("--seulement") + 1]
+        SEULEMENT.update(liste.split(","))
+        valeurs.add(liste)
+    arguments = [a for a in arguments if a not in valeurs]
     main(Path(arguments[0]) if arguments else INSTALLEE, langue)

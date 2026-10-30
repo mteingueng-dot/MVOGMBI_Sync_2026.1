@@ -300,6 +300,32 @@ def icone_tache(session, libelle: str):
     return None
 
 
+def cible_tache(session, libelle: str):
+    """Élément à cliquer pour une tâche de l'accueil. Sage ouvert par l'application (bureau caché) : le CADRE du
+    libellé (constat du 2026-10-30 : le clic sur l'icône y est sans effet, « Ajuster l'inventaire » / « Transfert
+    des stocks » ne s'ouvraient pas) ; Sage de la personne : l'icône, par un vrai clic."""
+    if session.processus:
+        etiquette = session._visible(libelle)
+        if etiquette:
+            return user32.GetParent(etiquette)
+    return icone_tache(session, libelle)
+
+
+def afficher_page(session, page: str, tache: str) -> bool:
+    """Page du menu de gauche de l'accueil (ex. « Stocks & Services ») jusqu'à voir la tâche voulue. Bureau caché :
+    le clic sur le libellé est ignoré, celui sur son cadre marche (constat du 2026-10-30, comme `ouvrir_tache`)."""
+    from .sage_bureau import _attendre
+
+    lien = session._visible(page)
+    if not lien:
+        return False
+    for cible in (lien, user32.GetParent(lien)):
+        (cliquer_vrai if not session.processus else session._cliquer)(cible)
+        if _attendre(lambda: session._visible(tache), 4):
+            return True
+    return False
+
+
 def cliquer_vrai(cible: int) -> None:
     """Vrai clic de souris au centre de `cible` (Sage de la personne, au premier plan : WinForms n'y accepte pas les
     clics simulés), puis la souris revient où elle était."""

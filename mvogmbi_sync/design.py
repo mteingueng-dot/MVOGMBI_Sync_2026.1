@@ -98,7 +98,18 @@ class Bouton(tk.Label):
 
     def _clic(self, evenement) -> None:
         if 0 <= evenement.x < self.winfo_width() and 0 <= evenement.y < self.winfo_height() and self._commande:
+            # droit « Supprimer » du profil (demande du propriétaire du 2026-10-30) : tous les boutons Supprimer / 🗑
+            if est_suppression(self.cget("text")) and not action_permise(self, "Supprimer"):
+                return
             self._commande()
+
+
+def est_suppression(texte: str) -> bool:
+    """Bouton qui supprime : « 🗑 », « Supprimer… » ou « Delete… »."""
+    from .langues import t
+
+    texte = (texte or "").strip()
+    return "🗑" in texte or any(mot in texte for mot in ("Supprimer", "Delete", t("Supprimer")))
 
 
 class ChampDate(tk.Frame):

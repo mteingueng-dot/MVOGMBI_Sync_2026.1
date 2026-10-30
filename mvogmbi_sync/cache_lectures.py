@@ -76,8 +76,9 @@ def inventaire_clover(racine: Path, pv=None):
 
 def precharger(racine: Path) -> None:
     """Au démarrage : catalogue Clover et ventes par article des 365 derniers jours (résumés par jour) lus d'avance
-    — le premier clic n'attend plus Clover (1,7 s et 1,5 s, mesuré le 2026-10-30) — puis listes principales de Sage,
-    seulement si Sage répond déjà (jamais d'ouverture de Sage pour cela). Silencieux en cas d'échec."""
+    — le premier clic n'attend plus Clover (1,7 s et 1,5 s, mesuré le 2026-10-30) — puis listes principales de Sage
+    (Sage fermé : base ouverte par l'outil d'import et gardée ; jamais d'ouverture de Sage lui-même pour cela).
+    Silencieux en cas d'échec."""
     try:
         from datetime import date, timedelta
 
@@ -94,14 +95,19 @@ def precharger(racine: Path) -> None:
     try:
         import tomllib
 
-        from .__main__ import base_partagee
+        from .__main__ import lire_sage
         from .fenetre_gestion import LECTURES
 
         chemin = Path(racine) / "config.toml"
         config = tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
         fichier = config.get("sage_import", {}).get("fichier_entreprise")
-        base = base_partagee(config, fichier)  # erreur si Sage ne sert pas le fichier : rien n'est lu
-        for genre, lecture in LECTURES.items():
-            garder(f"liste:{genre}:None:None", lecture(Path(racine))(base, None, None))
+
+        def tout(base):
+            return {genre: lecture(Path(racine))(base, None, None) for genre, lecture in LECTURES.items()}
+
+        # Sage fermé : base ouverte par l'outil d'import et gardée (DUREE_GARDE) -> le premier clic n'attend plus
+        # les ~10 s d'ouverture (2026-10-30) ; jamais d'ouverture de Sage lui-même pour cela (ouvrir=False)
+        for genre, lu in lire_sage(config, tout, fichier, ouvrir=False).items():
+            garder(f"liste:{genre}:None:None", lu)
     except Exception:
         pass

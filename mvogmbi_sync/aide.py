@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.45.3"
+VERSION = "1.46.3"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -273,13 +273,19 @@ FAQ = {
         ("question", "Pourquoi les listes s'ouvrent-elles plus vite la deuxième fois ?"),
         ("reponse", "Les lectures de Sage et du catalogue Clover sont gardées en mémoire quelques minutes et partagées "
                     "par toutes les pages ; au démarrage, les listes des clients, fournisseurs et articles sont lues "
-                    "d'avance si Sage répond déjà. « Actualiser » relit toujours, et toute écriture dans Sage ou dans "
-                    "Clover (import, ajustement, prix, coûts) vide cette mémoire."),
+                    "d'avance, même Sage fermé. Sage fermé, la base reste ouverte 10 minutes après la dernière lecture "
+                    "(lectures suivantes immédiates) et elle est relâchée dès que vous lancez Sage ou qu'un traitement "
+                    "doit importer. « Actualiser » relit toujours, et toute écriture dans Sage ou dans Clover (import, "
+                    "ajustement, prix, coûts) vide cette mémoire."),
         ("question", "Comment limiter les fonctions d'un profil ?"),
-        ("reponse", "« Administration > Utilisateurs », choisissez le profil, puis « Fonctions permises… » : chaque "
-                    "fonction du menu, rubrique par rubrique ; une fonction décochée disparaît du menu de ce profil, "
-                    "même si sa page est permise. Les changements s'appliquent à la prochaine connexion. "
-                    "L'administrateur a toujours tout."),
+        ("reponse", "« Administration > Utilisateurs », choisissez le profil : la carte « Profils et fonctions "
+                    "permises » montre le menu, rubrique par rubrique. Cochez fonction par fonction : cocher seulement "
+                    "« Liste des articles » donne cette liste, pas le reste de la rubrique Articles ; un clic sur une "
+                    "rubrique coche ou décoche toutes ses fonctions. En bas, « Actions dans les fenêtres » : une action "
+                    "décochée est refusée dans sa fenêtre. Section « Droits » : « Exporter les données » et "
+                    "« Supprimer des éléments », qui vaut pour tous les boutons Supprimer / 🗑 et la touche Suppr des listes. "
+                    "« Enregistrer les accès » ; les changements "
+                    "s'appliquent à la prochaine connexion. L'administrateur a toujours tout."),
         ("question", "Comment saisir une facture, une commande ou un document de stock ?"),
         ("reponse", "« Nouveau… » dans la fenêtre du document : client (ou fournisseur), date, remarque, puis chaque "
                     "ligne (article Sage, quantité, prix, taxes : aucune, TPS + TVQ, TPS seulement ou TVQ "
@@ -751,13 +757,19 @@ FAQ = {
                     "“Payroll > Employees and PINs”."),
         ("question", "Why do lists open faster the second time?"),
         ("reponse", "Reads from Sage and the Clover catalogue are kept in memory for a few minutes and shared by all "
-                    "pages; at start-up, the customer, supplier and item lists are read ahead if Sage already answers. "
-                    "“Refresh” always reads again, and any write to Sage or Clover (import, adjustment, prices, costs) "
-                    "clears this memory."),
+                    "pages; at start-up, the customer, supplier and item lists are read ahead, even with Sage closed. "
+                    "With Sage closed, the database stays open 10 minutes after the last read (next reads are "
+                    "instant) and is released as soon as you start Sage or a process must import. “Refresh” always "
+                    "reads again, and any write to Sage or Clover (import, adjustment, prices, costs) clears this "
+                    "memory."),
         ("question", "How do I limit a profile's functions?"),
-        ("reponse", "“Administration > Users”, choose the profile, then “Allowed functions…”: each menu function, "
-                    "section by section; an unticked function disappears from that profile's menu, even if its page "
-                    "is allowed. Changes apply at the next sign-in. The administrator always has everything."),
+        ("reponse", "“Administration > Users”, choose the profile: the “Profiles and allowed functions” card shows the "
+                    "menu, section by section. Tick function by function: ticking only “Item list” gives that list, "
+                    "not the rest of the Items section; a click on a section ticks or unticks all its functions. At "
+                    "the bottom, “Actions in windows”: an unticked action is refused in its window. “Rights” section: "
+                    "“Export data” and “Delete items”, which covers every Delete / 🗑 button and the Del key in lists. "
+                    "“Save access”; changes "
+                    "apply at the next sign-in. The administrator always has everything."),
         ("question", "How do I enter an invoice, an order or a stock document?"),
         ("reponse", "“New…” in the document window: customer (or supplier), date, note, then each row (Sage item, "
                     "quantity, price, taxes: none, GST + QST, GST only or QST only). Sales invoice: “Import into Sage” (Sage closed); the customer must "

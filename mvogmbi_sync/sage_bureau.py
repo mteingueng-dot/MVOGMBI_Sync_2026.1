@@ -54,11 +54,13 @@ class _PROCESS_INFORMATION(ctypes.Structure):
     _fields_ = [("hProcess", wt.HANDLE), ("hThread", wt.HANDLE), ("dwProcessId", wt.DWORD), ("dwThreadId", wt.DWORD)]
 
 
-def executer_sur_bureau_cache(commande: list[str], dossier: Path | None = None, delai: int = 1800) -> int:
+def executer_sur_bureau_cache(commande: list[str], dossier: Path | None = None, delai: int = 1800,
+                              fermer: bool = True) -> int:
     """Exécute `commande` sur le bureau caché du robot et renvoie son code de sortie (-1 si délai dépassé)."""
     from .__main__ import fermer_bases
 
-    fermer_bases()  # sinon Sage, lancé par la commande, voit « d'autres utilisateurs »
+    if fermer:
+        fermer_bases()  # sinon Sage, lancé par la commande, voit « d'autres utilisateurs »
     user32.CreateDesktopW.restype = wt.HANDLE
     kernel32.CreateProcessW.argtypes = [wt.LPCWSTR, wt.LPWSTR, ctypes.c_void_p, ctypes.c_void_p, wt.BOOL, wt.DWORD,
                                         ctypes.c_void_p, wt.LPCWSTR, ctypes.c_void_p, ctypes.c_void_p]
@@ -119,6 +121,11 @@ def _attendre(condition, delai: float, pas: float = 0.5):
     return None
 
 
+# Sage ouverts par l'application pour lire la base (`__main__._sage_garde`) : ils ne comptent pas comme un Sage de
+# la personne ; ils sont refermés par `fermer_bases` avant toute saisie
+PIDS_GARDES: set[int] = set()
+
+
 def sage_ouvert() -> bool:
     """Sage 50 tourne-t-il ? Un processus arrêté de force peut rester listé (« zombie », 32 Ko) : il ne compte pas."""
     import csv
@@ -127,6 +134,8 @@ def sage_ouvert() -> bool:
                             capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
     for ligne in csv.reader(sortie.splitlines()):
         if len(ligne) < 5 or not ligne[0].lower().startswith("sage50accounting"):
+            continue
+        if ligne[1].isdigit() and int(ligne[1]) in PIDS_GARDES:
             continue
         poignee = kernel32.OpenProcess(0x1000, False, int(ligne[1]))  # PROCESS_QUERY_LIMITED_INFORMATION
         if poignee:
@@ -157,7 +166,7 @@ def _est_mise_a_jour(titre: str) -> bool:
 
 
 class SessionSage:
-    """Sage 50 ouvert par le robot sur un fichier d'entreprise, en mono-utilisateur (à utiliser sur le bureau caché)."""
+    """Sage 50 ouvert par le robot sur un fichier d'entreprise, en multi-utilisateur (à utiliser sur le bureau caché)."""
 
     def __init__(self, exe: Path, journal=print):
         self.exe, self.journal = Path(exe), journal
@@ -202,7 +211,11 @@ class SessionSage:
                 textes.append(texte)
         return textes
 
-    def ouvrir(self, fichier_sai: Path, utilisateur: str, mot_de_passe: str, delai: int = 180) -> None:
+    def ouvrir(self, fichier_sai: Path, utilisateur: str, mot_de_passe: str, delai: int = 180,
+               mono: bool = False) -> None:
+        """Règle du propriétaire du 2026-10-29 : les saisies (et les lectures) se font en MULTI-utilisateur, la
+        personne peut ouvrir Sage en même temps ; seul l'import par l'outil d'import exige le mono-utilisateur
+        (`mono=True`). Case « mono-utilisateur » de la connexion et question « entreprise partagée »."""
         from .__main__ import fermer_bases
 
         fermer_bases()  # aucune connexion de l'application ouverte quand Sage ouvre l'entreprise
@@ -234,7 +247,11 @@ class SessionSage:
             raise ErreurSage("Le nom du fichier d'entreprise n'a pas pu être saisi dans « Ouvrir un fichier ».")
         user32.SendMessageW(user32.GetDlgItem(ouvrir, 1), BM_CLICK, 0, 0)  # « Ouvrir »
 
-        connexion = _attendre(lambda: user32.FindWindowW("#32770", TITRE_CONNEXION), 90)
+        def connexion_ou_partage():
+            self._repondre_entreprise_partagee(mono)
+            return user32.FindWindowW("#32770", TITRE_CONNEXION)
+
+        connexion = _attendre(connexion_ou_partage, max(90, delai), pas=1)
         if not connexion:
             messages = self._messages()
             if any("autres utilisateurs" in m.lower() or "other users" in m.lower() for m in messages):
@@ -243,7 +260,9 @@ class SessionSage:
                              + (f" ; message : {' | '.join(messages)}" if messages else "") + ").")
         user32.SendMessageW(user32.GetDlgItem(connexion, 21), WM_SETTEXT, 0, ctypes.c_wchar_p(utilisateur))
         user32.SendMessageW(user32.GetDlgItem(connexion, 20), WM_SETTEXT, 0, ctypes.c_wchar_p(mot_de_passe))
-        user32.SendMessageW(user32.GetDlgItem(connexion, 24), BM_CLICK, 0, 0)  # mono-utilisateur
+        case = user32.GetDlgItem(connexion, 24)  # mono-utilisateur
+        if case and bool(user32.SendMessageW(case, 0x00F0, 0, 0)) != mono:  # BM_GETCHECK
+            user32.SendMessageW(case, BM_CLICK, 0, 0)
         user32.PostMessageW(connexion, WM_COMMAND, 1, user32.GetDlgItem(connexion, 1))
 
         nom = Path(fichier_sai).name.upper()
@@ -258,6 +277,34 @@ class SessionSage:
                              + ") — mot de passe de sysadmin refusé ou fichier utilisé par quelqu'un d'autre ?")
         self.journal(f"Sage ouvert sur {Path(fichier_sai).name}.")
         self.fermer_mise_a_jour(attente=15)
+
+    def _repondre_entreprise_partagee(self, mono: bool) -> bool:
+        """Entreprise partagée (le vrai fichier, constat du 2026-10-29) : Sage demande « Comment voulez-vous ouvrir
+        cette entreprise partagée? » (WinForms : Mono-utilisateur / Multi-utilisateur / Lecture seule, OK).
+        Règle du propriétaire : mono-utilisateur pour l'import, multi-utilisateur pour les saisies et la lecture."""
+        for h in self.fenetres():
+            elements = _descendants(h)
+            if not any("entreprise partag" in _texte(e).lower() or "shared company" in _texte(e).lower()
+                       for e in elements):
+                continue
+            mot = "mono" if mono else "multi"
+            choix = next((e for e in elements if mot in _texte(e).replace("&", "").lower()), None)
+            ok = next((e for e in elements if _texte(e).replace("&", "") == "OK"), None)
+            if not choix or not ok:
+                raise ErreurSage("Sage demande comment ouvrir l'entreprise partagée, mais ses boutons sont introuvables.")
+            for _ in range(3):
+                user32.SendMessageW(choix, BM_CLICK, 0, 0)
+                time.sleep(0.3)
+                if user32.SendMessageW(choix, 0x00F0, 0, 0):  # BM_GETCHECK
+                    break
+                self._cliquer(choix, h)
+            self.journal(f"Entreprise partagée : mode {'mono' if mono else 'multi'}-utilisateur choisi.")
+            user32.SendMessageW(ok, BM_CLICK, 0, 0)
+            time.sleep(1)
+            if user32.IsWindow(h) and user32.IsWindowVisible(h):
+                self._cliquer(ok, h)
+            return True
+        return False
 
     def fermer_mise_a_jour(self, attente: float = 0) -> bool:
         """Fenêtre « Sage 50 - Mise à jour » (proposition de mise à jour au démarrage, constat du 2026-10-29) :
@@ -313,18 +360,23 @@ class SessionSage:
         return next(e for e in _descendants(panneau)
                     if user32.GetParent(e) == panneau and e != user32.GetParent(etiquette))
 
-    def _cliquer(self, cible) -> None:
-        """Clic accepté par WinForms hors écran : fenêtre active et bouton gauche marqué enfoncé (état partagé)."""
-        fil = user32.GetWindowThreadProcessId(self.principale, None)
+    def _cliquer(self, cible, fenetre=None) -> None:
+        """Clic accepté par WinForms hors écran : fenêtre active et bouton gauche marqué enfoncé (état partagé).
+        `fenetre` : fenêtre à activer (par défaut la fenêtre principale de Sage)."""
+        fenetre = fenetre or self.principale
+        fil = user32.GetWindowThreadProcessId(fenetre, None)
         moi = kernel32.GetCurrentThreadId()
         user32.AttachThreadInput(moi, fil, True)
         try:
-            user32.SetActiveWindow(self.principale)
+            user32.SetActiveWindow(fenetre)
             etat = (ctypes.c_ubyte * 256)()
             user32.GetKeyboardState(etat)
             etat[1] = 0x80  # VK_LBUTTON
             user32.SetKeyboardState(etat)
-            position = (20 << 16) | 20
+            r = wt.RECT()
+            user32.GetClientRect(cible, ctypes.byref(r))
+            y = min(20, max(1, (r.bottom - r.top) // 2))  # bouton radio bas : clic au milieu de sa hauteur
+            position = (y << 16) | min(20, max(1, (r.right - r.left) // 2))
             user32.PostMessageW(cible, WM_MOUSEMOVE, 1, position)
             user32.PostMessageW(cible, WM_LBUTTONDOWN, 1, position)
             time.sleep(0.3)

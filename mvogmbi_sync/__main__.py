@@ -428,7 +428,7 @@ def base_partagee(config_toml: dict, fichier):
 
 # Sage fermé : l'outil d'import ouvre la base ; elle reste ouverte DUREE_GARDE secondes après la dernière lecture
 # pour que les lectures suivantes passent par la même connexion (11,6 s par lecture avant, mesuré le 2026-10-30)
-DUREE_GARDE = 120
+DUREE_GARDE = 600  # 10 min (2026-10-30, « temps réel ») : relâchée dès que la personne lance Sage
 _GARDE = {"fil": None, "arret": threading.Event(), "dernier": 0.0}
 
 
@@ -440,18 +440,81 @@ def _garder_base_ouverte(fichier: Path, exe: Path) -> None:
 
     from .sage_auto import executer
 
+    from .sage_bureau import sage_ouvert
+
+    debut = time.time()
+
     def attendre() -> bool:
+        controle = 0.0
         while not _GARDE["arret"].is_set() and time.time() - _GARDE["dernier"] < DUREE_GARDE:
             _GARDE["arret"].wait(1)
+            if time.time() - controle >= 2:
+                controle = time.time()
+                if sage_ouvert():  # la personne lance Sage : la base est relâchée tout de suite
+                    break
+                try:  # un autre programme (traitement de nuit, import) demande la base
+                    if SIGNAL_LIBERER.stat().st_mtime > debut:
+                        break
+                except OSError:
+                    pass
         return False  # connexion annulée : rien n'est importé
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
         vide = Path(dossier) / "lecture.IMP"
         vide.write_text('<Version>\r\n"12001","1"\r\n</Version>\r\n', encoding="cp1252", newline="")
         try:
+            MARQUE_GARDE.parent.mkdir(parents=True, exist_ok=True)
+            MARQUE_GARDE.write_text(str(os.getpid()), encoding="utf-8")
+        except OSError:
+            pass
+        try:
             executer(exe, vide, fichier, mot_de_passe=None, pendant_connexion=attendre, delai=24 * 3600)
         except Exception:
             pass
+        finally:
+            try:
+                if MARQUE_GARDE.read_text(encoding="utf-8").strip() == str(os.getpid()):
+                    MARQUE_GARDE.unlink()
+            except OSError:
+                pass
+
+
+# base gardée par un AUTRE programme (fenêtre de l'application) : marque = son PID ; un programme qui a besoin de
+# Sage (traitement de nuit, import, saisie) écrit le signal et attend que la marque disparaisse (2026-10-30)
+MARQUE_GARDE = RACINE / "donnees" / "base_gardee.pid"
+SIGNAL_LIBERER = RACINE / "donnees" / "liberer_base.signal"
+
+
+def _processus_vivant(pid: int) -> bool:
+    import ctypes
+
+    noyau = ctypes.windll.kernel32
+    poignee = noyau.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not poignee:
+        return False
+    code = ctypes.c_ulong()
+    vivant = noyau.GetExitCodeProcess(poignee, ctypes.byref(code)) and code.value == 259  # STILL_ACTIVE
+    noyau.CloseHandle(poignee)
+    return bool(vivant)
+
+
+def _liberer_base_des_autres(delai: float = 20) -> None:
+    import time
+
+    try:
+        pid = int(MARQUE_GARDE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return
+    if pid == os.getpid() or not _processus_vivant(pid):
+        return
+    try:
+        SIGNAL_LIBERER.write_text(str(os.getpid()), encoding="utf-8")
+    except OSError:
+        return
+    fin = time.time() + delai
+    while time.time() < fin and MARQUE_GARDE.exists():
+        time.sleep(0.5)
+    time.sleep(1)  # l'outil d'import de l'autre programme finit de se refermer
 
 
 def _base_gardee(config_toml: dict, fichier, fonction):
@@ -470,28 +533,153 @@ def _base_gardee(config_toml: dict, fichier, fonction):
                                    name="garde-base-sage")
             _GARDE["fil"] = fil
             fil.start()
-    derniere = None
+    derniere, refus = None, 0
     for _ in range(45):  # la base s'ouvre quelques secondes après le lancement de l'outil
         try:
             resultat = fonction(base_partagee(config_toml, fichier))
             _GARDE["dernier"] = time.time()
             return resultat
+        except _ErreurLecture:
+            raise  # la base répond : erreur de la lecture elle-même
         except PermissionError as exc:
             # constat du 2026-10-29 : une AUTRE base Sage ouverte (port 13540) refuse l'utilisateur pendant que celle
-            # de l'outil d'import démarre sur le port suivant : le refus n'est retenu qu'à la fin de l'attente
-            if not fil.is_alive():
+            # de l'outil d'import démarre sur le port suivant : le refus n'est retenu qu'après quelques essais
+            refus += 1
+            if not fil.is_alive() or refus >= REFUS_AVANT_ABANDON:
+                derniere = exc
                 break
             derniere = exc
             time.sleep(1)
         except Exception as exc:
+            if getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE:
+                raise  # requête fautive : la base répond
             derniere = exc
             if not fil.is_alive():
                 break
             time.sleep(1)
     fermer_bases()  # échec : l'outil d'import n'est jamais laissé ouvert sur l'entreprise
     if isinstance(derniere, PermissionError):
+        _GARDE["refuse"] = True  # les lectures suivantes passent directement par Sage
         raise derniere
     raise RuntimeError(f"Lecture de la base Sage impossible : {derniere}")
+
+
+# Constat du 2026-10-29 (après redémarrage) : la base ouverte par l'outil d'import refuse `mvogmbi_sync` ; elle
+# ne l'acceptait que grâce aux accès laissés par un Sage arrêté de force. Sage crée les accès des applications à
+# l'ouverture de l'entreprise et les retire à la fermeture : Sage fermé, l'application l'ouvre donc elle-même sur
+# le bureau caché (commande interne `garder-sage`, ~70 s) et le garde ouvert DUREE_GARDE secondes après la
+# dernière lecture ; `fermer_bases` le referme avant toute saisie, tout import ou toute ouverture de Sage.
+REFUS_AVANT_ABANDON = 5
+_SAGE_GARDE = {"fil": None, "dossier": None, "fichier": None, "pid": None}
+ATTENTE_SAGE_GARDE = 420
+
+
+def _signal_garde(nom: str) -> None:
+    dossier = _SAGE_GARDE["dossier"]
+    if dossier:
+        try:
+            (Path(dossier) / nom).write_text("1", encoding="utf-8")
+        except OSError:
+            pass
+
+
+_VERROU_GARDE = threading.Lock()  # une seule ouverture de Sage à la fois (deux lectures simultanées)
+# fenêtre de l'application : faux jusqu'au premier clic ou à la première touche de la personne ; les lectures
+# lancées d'elles-mêmes au démarrage n'ouvrent donc jamais Sage (commandes et traitement de nuit : toujours vrai)
+OUVERTURE_SAGE = {"permise": True}
+
+
+def _sage_garde(config_toml: dict, fichier) -> None:
+    """Ouvre Sage sur le fichier (bureau caché) s'il ne l'est pas déjà par l'application ; lève une erreur sinon."""
+    with _VERROU_GARDE:
+        _ouvrir_sage_garde(config_toml, fichier)
+
+
+def _ouvrir_sage_garde(config_toml: dict, fichier) -> None:
+    import json
+    import tempfile
+    import time
+
+    from . import sage_bureau
+
+    fil = _SAGE_GARDE["fil"]
+    if fil is not None and fil.is_alive() and _SAGE_GARDE["fichier"] == str(fichier):
+        _signal_garde("lecture")
+        return
+    fermer_bases()  # un autre fichier, ou l'outil d'import : refermés d'abord
+    if sage_bureau.sage_ouvert():
+        raise RuntimeError("Sage est ouvert sur un autre fichier d'entreprise : sa base ne peut pas être lue.")
+    dossier = Path(tempfile.mkdtemp(prefix="mvogmbi_garde_"))
+    _SAGE_GARDE.update(dossier=str(dossier), fichier=str(fichier), pid=None)
+    commande = commande_moteur() + ["garder-sage", "--fichier", str(fichier), "--dossier", str(dossier),
+                                    "--duree", str(DUREE_GARDE)]
+    fil = threading.Thread(target=sage_bureau.executer_sur_bureau_cache,
+                           args=(commande, RACINE, 24 * 3600, False), daemon=True, name="garde-sage")
+    _SAGE_GARDE["fil"] = fil
+    fil.start()
+    pret = dossier / "pret.json"
+    fin = time.time() + ATTENTE_SAGE_GARDE
+    while time.time() < fin and fil.is_alive() and not pret.exists():
+        time.sleep(1)
+    etat = {}
+    if pret.exists():
+        try:
+            etat = json.loads(pret.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            etat = {}
+    if etat.get("pid"):
+        _SAGE_GARDE["pid"] = etat["pid"]
+        sage_bureau.PIDS_GARDES.add(int(etat["pid"]))
+        return
+    fermer_bases()
+    raise RuntimeError("Lecture de Sage impossible : l'application n'a pas pu ouvrir Sage. "
+                       + str(etat.get("erreur", "délai dépassé")))
+
+
+def _fermer_sage_garde() -> None:
+    fil = _SAGE_GARDE["fil"]
+    if fil is None or threading.current_thread() is fil:
+        return
+    if fil.is_alive():
+        _signal_garde("arret")
+        fil.join(timeout=120)
+    from . import sage_bureau
+
+    if _SAGE_GARDE["pid"]:
+        sage_bureau.PIDS_GARDES.discard(int(_SAGE_GARDE["pid"]))
+    _SAGE_GARDE.update(fil=None, fichier=None, pid=None)
+
+
+def commande_garder_sage(args) -> None:
+    """(interne) Ouvre Sage sur le fichier, écrit pret.json, puis le referme après `duree` secondes sans lecture
+    (fichier « lecture » touché par l'application) ou au signal « arret »."""
+    import json
+    import time
+
+    from . import coffre
+    from .sage_bureau import SessionSage, executable_sage
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    dossier = Path(args.dossier)
+    session = SessionSage(executable_sage(executable_import()), lambda *a: None)
+    try:
+        try:
+            # multi-utilisateur : la personne peut ouvrir Sage en même temps (demande du propriétaire, 2026-10-29)
+            session.ouvrir(args.fichier, str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin")),
+                           coffre.lire(coffre.SAGE_IMPORT, ""), delai=240, mono=False)
+        except Exception as exc:
+            (dossier / "pret.json").write_text(json.dumps({"erreur": str(exc)}, ensure_ascii=False), encoding="utf-8")
+            return
+        (dossier / "pret.json").write_text(json.dumps({"pid": session.processus.pid}), encoding="utf-8")
+        lecture = dossier / "lecture"
+        debut = time.time()
+        while not (dossier / "arret").exists():
+            derniere = lecture.stat().st_mtime if lecture.exists() else debut
+            if time.time() - max(derniere, debut) > args.duree:
+                break
+            time.sleep(1)
+    finally:
+        session.fermer()
 
 
 def _fermer_a_la_sortie() -> None:
@@ -515,6 +703,15 @@ def fermer_bases() -> None:
     if fil is not None and fil.is_alive() and threading.current_thread() is not fil:
         _GARDE["arret"].set()
         fil.join(timeout=60)
+    _liberer_base_des_autres()  # base gardée par la fenêtre de l'application (autre programme)
+    with _VERROU_BASES:  # connexions fermées avant Sage : sinon il voit encore un utilisateur à la fermeture
+        for base in _BASES.values():
+            try:
+                base.connexion.close()
+            except Exception:
+                pass
+        _BASES.clear()
+    _fermer_sage_garde()
     with _VERROU_BASES:
         for base in _BASES.values():
             try:
@@ -526,18 +723,60 @@ def fermer_bases() -> None:
 
 # codes MySQL d'une requête fautive (colonne ou table inconnue, syntaxe) : la base a répondu
 ERREURS_DE_REQUETE = {1054, 1064, 1146}
+# codes MySQL d'une connexion perdue ou impossible : seuls ceux-là (et l'absence de base) justifient de rouvrir
+ERREURS_DE_CONNEXION = {2003, 2006, 2013, 2055}
 
 
-def lire_sage(config_toml: dict, fonction, fichier_sai=None):
+class _ErreurLecture(Exception):
+    """Erreur dans la fonction de lecture elle-même (calcul, requête fautive) : la base a répondu, elle remonte
+    telle quelle sans rouvrir la base (constat du 2026-10-30 : une faute de nom coûtait 88 s de réouvertures)."""
+
+    def __init__(self, origine: BaseException):
+        super().__init__(str(origine))
+        self.origine = origine
+
+
+def _lecture_sure(fonction):
+    def appel(base):
+        try:
+            return fonction(base)
+        except _ErreurLecture:
+            raise
+        except Exception as exc:
+            code = exc.args[0] if getattr(exc, "args", None) else None
+            if type(exc).__module__.startswith("pymysql") and code in ERREURS_DE_CONNEXION:
+                raise  # connexion perdue : les autres moyens d'ouverture s'appliquent
+            raise _ErreurLecture(exc) from exc
+    return appel
+
+
+def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True):
     """Exécute fonction(base) sur la base Sage du fichier ; si Sage est fermé, la base est ouverte par l'outil
-    d'import le temps de la lecture, puis refermée (aucun import)."""
+    d'import le temps de la lecture, puis refermée (aucun import) ; refusée, l'application ouvre Sage elle-même
+    (multi-utilisateur), sauf `ouvrir=False` (lectures automatiques : démarrage, préchargement)."""
     from .sage_auto import lire_pendant_connexion
 
     fichier = fichier_sai or config_toml.get("sage_base", {}).get("fichier_entreprise") \
         or config_toml.get("sage_import", {}).get("fichier_entreprise")
+    fonction = _lecture_sure(fonction)
+    try:
+        return _lire_sage(config_toml, fonction, fichier, ouvrir, lire_pendant_connexion)
+    except _ErreurLecture as exc:
+        raise exc.origine from None
 
+
+def _lire_sage(config_toml: dict, fonction, fichier, ouvrir: bool, lire_pendant_connexion):
     def lecture():
-        return fonction(base_partagee(config_toml, fichier))
+        resultat = fonction(base_partagee(config_toml, fichier))
+        if _SAGE_GARDE["fichier"] == str(fichier):
+            _signal_garde("lecture")  # Sage ouvert par l'application : gardé encore DUREE_GARDE secondes
+        return resultat
+
+    def par_sage_garde():
+        if not ouvrir or not OUVERTURE_SAGE["permise"]:
+            raise RuntimeError("Sage est fermé : ouvrez-le, ou lancez la lecture à la main.")
+        _sage_garde(config_toml, fichier)
+        return lecture()
 
     def lecture_ponctuelle():  # base ouverte par l'outil d'import le temps de la lecture : jamais gardée
         with ouvrir_base_sage(config_toml, fichier) as base:
@@ -545,23 +784,35 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None):
 
     try:
         return lecture()
-    except PermissionError:
+    except _ErreurLecture:
         raise
+    except PermissionError:
+        from .sage_bureau import sage_ouvert
+
+        # Sage fermé : base laissée par une session précédente, sans les accès des applications -> Sage ouvert
+        # par l'application ; Sage ouvert par la personne : vrai refus
+        if sage_ouvert() or not fichier or not executable_import() or _SAGE_GARDE["fichier"] == str(fichier):
+            raise
+        return par_sage_garde()
     except Exception as exc:
         from .sage_bureau import sage_ouvert
 
         if getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE:
             raise  # requête fautive : la base répond, inutile de l'ouvrir autrement
 
-        if not sage_ouvert():  # Sage fermé : base ouverte par l'outil d'import et gardée une minute
+        if not sage_ouvert() and fichier and executable_import():
+            # Sage fermé : base ouverte par l'outil d'import ; refusée -> Sage ouvert par l'application
+            if _GARDE.get("refuse"):
+                return par_sage_garde()
             try:
-                resultat = _base_gardee(config_toml, fichier, fonction)
-                if resultat is not None or (fichier and executable_import()):
-                    return resultat
-            except PermissionError:
+                return _base_gardee(config_toml, fichier, fonction)
+            except _ErreurLecture:
                 raise
-            except Exception:
-                pass
+            except PermissionError:
+                return par_sage_garde()
+            except Exception as autre:
+                if getattr(autre, "args", None) and autre.args[0] in ERREURS_DE_REQUETE:
+                    raise
         fermer_bases()
         exe = executable_import()
         if not fichier or not exe:
@@ -1220,6 +1471,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_journal_bureau)
+
+    p = sous.add_parser("garder-sage", help="(interne) Sage ouvert sur le bureau caché le temps des lectures")
+    p.add_argument("--fichier", required=True)
+    p.add_argument("--dossier", required=True)
+    p.add_argument("--duree", type=int, default=DUREE_GARDE)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_garder_sage)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

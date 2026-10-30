@@ -14,6 +14,7 @@ from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
 from .correspondance import conflit_format, normaliser
+from .design import action_permise
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, apres_frappe, cadre_tableau,
                      entete_page, fond_de, rayer)
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
@@ -89,7 +90,7 @@ class PageFournisseurs(ttk.Frame):
         self.liste.pack(side="left", fill="both", expand=True)
         self.liste.bind("<<TreeviewSelect>>", lambda _e: self.choisir_facture())
         placer_a_droite(bouton_exporter(barre, self.liste, t("Factures fournisseurs")))
-        self.liste.bind("<Delete>", lambda _e: self.ecarter())
+        self.liste.bind("<Delete>", lambda _e: action_permise(self, "Supprimer") and self.ecarter())
         self.bind("<Map>", lambda _e: self.actualiser(silencieux=True))  # retour sur la page : liste à jour
         # départ de la page ou fermeture : la saisie en cours est gardée
         self.bind("<Unmap>", lambda e: self.sauvegarder_auto() if e.widget is self else None)
@@ -100,7 +101,7 @@ class PageFournisseurs(ttk.Frame):
         self._construire_detail(bas)
         self.afficher_liste()
         if not self.fournisseurs_sage or not self.articles_sage:
-            self.after(800, self.mettre_a_jour_sage)  # première ouverture : listes lues dans Sage
+            self.after(800, lambda: self.mettre_a_jour_sage(manuel=False))  # première ouverture : si Sage répond
 
     # ---------------------------------------------------------------- construction du détail
     def _construire_detail(self, parent) -> None:
@@ -462,7 +463,8 @@ class PageFournisseurs(ttk.Frame):
         self.registre.dossier.mkdir(parents=True, exist_ok=True)
         os.startfile(self.registre.dossier)
 
-    def mettre_a_jour_sage(self) -> None:
+    def mettre_a_jour_sage(self, manuel: bool = True) -> None:
+        """`manuel` faux : lecture automatique de la première ouverture, qui n'ouvre jamais Sage."""
         self.resume.configure(text=t("Lecture des fournisseurs et des articles dans Sage…"))
 
         def travail():
@@ -479,7 +481,7 @@ class PageFournisseurs(ttk.Frame):
                 pretes = [f for f in self.registre.factures if f.etat == PRETE]
                 noms, articles, deja = lire_sage(
                     config, lambda base: (fournisseurs_actifs(base), base.articles(), deja_dans_sage_fichiers(base, pretes)),
-                    config.get("sage_import", {}).get("fichier_entreprise"))
+                    config.get("sage_import", {}).get("fichier_entreprise"), ouvrir=manuel)
                 ecrire_copie_fournisseurs(self.racine, noms)
                 ecrire_copie(articles, self.racine / "donnees" / "articles_sage.csv")
                 self.after(0, lambda: self._fin_sage(noms, articles, deja))

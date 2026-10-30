@@ -110,6 +110,8 @@ MENU_GROUPES = [
 ]
 # libellés du menu (sans n° de page) ; la page « Tableau de bord » est la facturation des ventes Clover
 LIBELLES_MENU = {TABLEAU: "Ventes Clover → factures Sage"}
+TITRES_ONGLETS_RAPPORTS = ("Suivi des ventes", "Recherche dans l'historique", "Statistiques Clover",
+                           "Produits inactifs", "Articles 20/80", "Factures fournisseurs archivées")
 # pages ouvertes seulement par des entrées de fenêtre ou d'onglet : leur groupe
 GROUPE_DES_PAGES_SANS_LIGNE = {RAPPORTS: "État"}
 
@@ -166,10 +168,21 @@ class Application(tk.Tk):
             self.points_permis = Registre(racine).points_vente_permis(session)
             export_tableau.EXPORT_PERMIS = Registre(racine).peut_exporter(session)
             self._refusees = Registre(racine).refusees(session)
+            self._fonctions = Registre(racine).permises(session)  # accès par fonction (None = par pages)
         else:
             self._refusees = set()
+            self._fonctions = None
             self._permises = None
             self.points_permis = None  # None = tous les points de vente
+        from .__main__ import OUVERTURE_SAGE
+
+        OUVERTURE_SAGE["permise"] = False  # pas d'ouverture de Sage avant une action de la personne
+
+        def _action_de_la_personne(_e=None):
+            OUVERTURE_SAGE["permise"] = True
+
+        self.bind_all("<ButtonPress>", _action_de_la_personne, add="+")
+        self.bind_all("<KeyPress>", _action_de_la_personne, add="+")
         export_tableau.RACINE_ENTETE = Path(racine)  # en-tête des impressions : informations Clover de l'entreprise
         threading.Thread(target=lambda: entreprise.actualiser(Path(racine)), daemon=True).start()  # 1 fois/jour
         # listes principales lues d'avance si Sage répond déjà (jamais d'ouverture de Sage pour cela)
@@ -254,6 +267,16 @@ class Application(tk.Tk):
             return True
         return (PAGES[index] if index < len(PAGES) else CLE_UTILISATEURS) in self._permises
 
+    def au_menu(self, index: int) -> bool:
+        """Ligne de page affichée au menu. Accès par fonction : la page elle-même doit être cochée (une page ouverte
+        seulement pour une fenêtre permise reste hors du menu)."""
+        from .utilisateurs import PAGES, UTILISATEURS as CLE_UTILISATEURS
+
+        fonctions = getattr(self, "_fonctions", None)
+        if fonctions is None:
+            return self.permis(index)
+        return index == ACCUEIL or (PAGES[index] if index < len(PAGES) else CLE_UTILISATEURS) in fonctions
+
     # ---------------------------------------------------------------- apparence
     def _styles(self) -> None:
         style = ttk.Style(self)
@@ -316,7 +339,7 @@ class Application(tk.Tk):
         self.groupe_de_page: dict[int, str] = {}
         self.groupe_ouvert = None
         for nom, icone_groupe, elements in MENU_GROUPES:
-            visibles = [e for e in elements if isinstance(e, int) and e < n and self.permis(e)] + [
+            visibles = [e for e in elements if isinstance(e, int) and e < n and self.au_menu(e)] + [
                 e for e in elements if not isinstance(e, int) and self.permis_action(e)]
             if not visibles:
                 continue
@@ -382,7 +405,7 @@ class Application(tk.Tk):
         icone, titre = self._pages[index]
         titre = t(LIBELLES_MENU[index]) if index in LIBELLES_MENU else re.sub(r"^\d+\.\s*", "", titre)
         ligne = tk.Frame(parent, background=MENU_FOND)
-        if self.permis(index):  # page cachée : absente du menu
+        if self.au_menu(index):  # page cachée : absente du menu
             ligne.pack(fill="x", padx=(20 if decale else 8, 10), pady=1)
         barre = tk.Frame(ligne, width=4, background=MENU_FOND)
         barre.pack(side="left", fill="y")
@@ -411,7 +434,11 @@ class Application(tk.Tk):
         return action not in getattr(self, "_refusees", set())
 
     def permis_action(self, element: tuple) -> bool:
-        """Entrée du menu permise : sa page l'est, et le profil n'a pas retiré cette fonction."""
+        """Entrée du menu permise : cochée (accès par fonction) ; sinon sa page l'est et le profil n'a pas retiré
+        cette fonction."""
+        fonctions = getattr(self, "_fonctions", None)
+        if fonctions is not None:
+            return element[1] in fonctions
         return self.permis(element[2]) and element[1] not in getattr(self, "_refusees", set())
 
     def _lancer_action(self, methode: str, *arguments) -> None:
@@ -504,6 +531,16 @@ class Application(tk.Tk):
         """Page Rapports sur l'onglet voulu (Suivi, Recherche, Factures archivées, Statistiques)."""
         self.aller(RAPPORTS)
         onglets = self.page_rapports.onglets
+        if getattr(self, "_fonctions", None) is not None:  # accès par fonction : onglets non permis masqués
+            permis = set(self._fonctions)
+            if any(f.startswith("Interrogation de compte") for f in permis):
+                permis.add("Recherche dans l'historique")
+            for o in onglets.tabs():  # les onglets masqués y sont aussi
+                titre = next((x for x in TITRES_ONGLETS_RAPPORTS if t(x) == onglets.tab(o, "text").strip()), None)
+                if titre and titre not in permis:
+                    onglets.hide(o)
+                elif titre:
+                    onglets.add(o)  # réaffiche un onglet masqué
         for o in onglets.tabs():
             if onglets.tab(o, "text").strip() == t(onglet):
                 onglets.select(o)
@@ -1603,8 +1640,9 @@ class Application(tk.Tk):
             return
 
         def traitement():
-            from .__main__ import commande_moteur
+            from .__main__ import commande_moteur, fermer_bases
 
+            fermer_bases()  # base gardée par cette fenêtre relâchée : le traitement importe dans Sage
             commande = commande_moteur() + ["auto", "--point-de-vente", code]
             if simulation:
                 commande.append("--simulation")

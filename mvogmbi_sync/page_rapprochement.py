@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from .design import action_permise
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, cadre_tableau,
                      defilement, entete_page, fond_de, rayer)
 from .export_tableau import bouton_exporter, export_permis, placer_a_droite, rendre_exportable
@@ -82,7 +83,7 @@ class PageRapprochement(ttk.Frame):
         self.liste.tag_configure("erreur", background="#fde2e4")
         self.liste.pack(side="left", fill="x", expand=True)
         defilement(self.liste)
-        self.liste.bind("<Delete>", lambda _e: self.supprimer())
+        self.liste.bind("<Delete>", lambda _e: action_permise(self, "Supprimer") and self.supprimer())
 
         # chiffres du rapprochement
         self.cartes = tk.Frame(self, background=fond_de(self))

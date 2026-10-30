@@ -40,6 +40,8 @@ PROFILS_DEFAUT = {
 # Actions sensibles DANS les fenêtres (demande du propriétaire du 2026-10-29 : « au niveau fonction ou fenêtre ») :
 # retirées à un profil comme les fonctions du menu (fonctions_refusees) ; une fenêtre ouverte n'y donne plus accès
 ACTIONS_FENETRES = {
+    # « Supprimer » : tous les boutons Supprimer / 🗑 de l'application (demande du propriétaire du 2026-10-30)
+    "Général": ["Supprimer"],
     "Administration": ["Enregistrer la configuration", "Lancer le traitement maintenant", "Restaurer une sauvegarde",
                        "Changer le dossier des sauvegardes"],
     "Paie": ["Traiter la paie dans Sage", "Envoyer les bulletins par courriel", "Créer un employé dans Sage",
@@ -90,6 +92,10 @@ class Registre:
         self.sans_export: list[str] = list(SANS_EXPORT_DEFAUT)  # profils qui ne peuvent pas exporter de données
         # fonctions du menu retirées à un profil (titre français de l'entrée), en plus des pages (2026-10-29)
         self.fonctions_refusees: dict[str, list[str]] = {}
+        # accès PAR FONCTION (demande du propriétaire du 2026-10-30 : « l'accès uniquement à la liste des articles,
+        # pas à tout le répertoire ») : {profil: [entrées du menu permises : clé de page ou titre de fenêtre]} ;
+        # profil absent = ancien modèle (pages + fonctions retirées)
+        self.fonctions_permises: dict[str, list[str]] = {}
         self.utilisateurs: list[Utilisateur] = []
         if self.chemin.exists():
             donnees = json.loads(self.chemin.read_text(encoding="utf-8"))
@@ -100,6 +106,8 @@ class Registre:
             self.utilisateurs = [Utilisateur(**u) for u in donnees.get("utilisateurs", [])]
             self.sans_export = [p for p in donnees.get("sans_export", SANS_EXPORT_DEFAUT) if p != ADMIN]
             self.fonctions_refusees = {k: list(v) for k, v in donnees.get("fonctions_refusees", {}).items()
+                                       if k in self.profils and k != ADMIN}
+            self.fonctions_permises = {k: list(v) for k, v in donnees.get("fonctions_permises", {}).items()
                                        if k in self.profils and k != ADMIN}
 
     # ------------------------------------------------------------------ lecture
@@ -128,6 +136,20 @@ class Registre:
     def refusees(self, utilisateur: Utilisateur) -> set[str]:
         """Fonctions du menu retirées au profil de l'utilisateur ; l'administrateur a tout."""
         return set() if utilisateur.est_admin else set(self.fonctions_refusees.get(utilisateur.profil, []))
+
+    def permises(self, utilisateur: Utilisateur) -> set[str] | None:
+        """Entrées du menu permises une à une ; None = administrateur, ou profil réglé par pages (ancien modèle)."""
+        if utilisateur.est_admin or utilisateur.profil not in self.fonctions_permises:
+            return None
+        return set(self.fonctions_permises[utilisateur.profil]) | {"accueil"}
+
+    def definir_acces(self, profil: str, fonctions: list[str], pages: list[str]) -> None:
+        """Accès par fonction : `fonctions` = entrées du menu cochées (clés de page ou titres de fenêtre) ; `pages` =
+        pages que ces entrées doivent pouvoir afficher (page d'une fenêtre, onglets des Rapports)."""
+        if profil == ADMIN:
+            raise ErreurUtilisateur("Le profil Administrateur a toujours accès à tout.")
+        self.fonctions_permises[profil] = sorted(set(fonctions))
+        self.profils[profil] = [p for p in PAGES if p in set(pages) | {"accueil"}]
 
     def definir_fonctions(self, profil: str, refusees: list[str]) -> None:
         if profil == ADMIN:
@@ -246,6 +268,7 @@ class Registre:
         self.points_vente.pop(profil, None)
         self.sans_export = [p for p in self.sans_export if p != profil]
         self.fonctions_refusees.pop(profil, None)
+        self.fonctions_permises.pop(profil, None)
 
     # ------------------------------------------------------------------ fichier
     def enregistrer(self) -> None:
@@ -254,6 +277,7 @@ class Registre:
         temporaire.write_text(json.dumps({"profils": self.profils, "points_vente": self.points_vente,
                                           "sans_export": self.sans_export,
                                           "fonctions_refusees": self.fonctions_refusees,
+                                          "fonctions_permises": self.fonctions_permises,
                                           "utilisateurs": [asdict(u) for u in self.utilisateurs]},
                                          ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(temporaire, self.chemin)

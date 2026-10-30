@@ -76,6 +76,9 @@ class FenetreAjustement(FenetreEncaissements):
                 if QUESTION_DATE_ANTERIEURE in texte:
                     self.repondre(d, ("oui",))
                     resultat.messages.append("date antérieure à la session de Sage : confirmée")
+                elif any(q in texte for q in getattr(self, "questions_oui", ())):
+                    self.repondre(d, ("oui",))
+                    resultat.messages.append(f"Sage : {texte} -> Oui")
                 else:
                     resultat.messages.append(f"Sage : {texte}")
                     self.repondre(d, ("non", "annuler", "ok"))
@@ -125,7 +128,7 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
     l'ouvre elle-même : appelé alors par la commande interne `inventaire-bureau`)."""
     from . import coffre
     from .__main__ import executable_import, lire_sage
-    from .robot_articles import cliquer_vrai, fenetre_principale_ouverte, icone_tache, premier_plan
+    from .robot_articles import afficher_page, cible_tache, cliquer_vrai, fenetre_principale_ouverte, premier_plan
     from .sage_bureau import ErreurSage, SessionSage, _attendre, executable_sage, sage_ouvert
 
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
@@ -172,12 +175,10 @@ def appliquer(config_toml: dict, lignes: list[LigneAjustement], jour: str, journ
             else:
                 session.fermer_mise_a_jour()  # proposition de mise à jour de Sage : bloque les autres fenêtres
                 journal(f"Fenêtres de Sage : {[_texte_fenetre(h) for h in session.fenetres()]}")
-            icone = _attendre(lambda: icone_tache(session, TACHE), 30)
+            icone = _attendre(lambda: cible_tache(session, TACHE), 30)
             if not icone:
-                lien = session._visible("Stocks & Services")
-                if lien:
-                    (cliquer_vrai if not session.processus else session._cliquer)(lien)
-                time.sleep(3)
+                afficher_page(session, "Stocks & Services", TACHE)  # libellé, sinon son cadre
+                time.sleep(1)
                 continue
             (cliquer_vrai if not session.processus else session._cliquer)(icone)
             h = _attendre(lambda: user32.FindWindowW("#32770", TITRE), 10)

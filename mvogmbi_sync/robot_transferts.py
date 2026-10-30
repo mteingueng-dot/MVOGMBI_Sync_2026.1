@@ -54,7 +54,7 @@ def transferer(config_toml: dict, reference: str, de: str, vers: str, lignes: li
     """Transfère les lignes du dépôt `de` vers le dépôt `vers` (Sage ouvert sur le fichier configuré, sinon
     l'application l'ouvre elle-même : appelé alors par la commande interne `transfert-bureau`)."""
     from .__main__ import lire_sage
-    from .robot_articles import cliquer_vrai, icone_tache, ouvrir_session, premier_plan
+    from .robot_articles import afficher_page, cible_tache, cliquer_vrai, ouvrir_session, premier_plan
     from .sage_bureau import ErreurSage, _attendre
 
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
@@ -73,12 +73,10 @@ def transferer(config_toml: dict, reference: str, de: str, vers: str, lignes: li
         for _ in range(4):
             if not session.processus:
                 premier_plan(session.principale)
-            icone = _attendre(lambda: icone_tache(session, TACHE), 30)
+            icone = _attendre(lambda: cible_tache(session, TACHE), 30)
             if not icone:
-                lien = session._visible("Stocks & Services")
-                if lien:
-                    (cliquer_vrai if not session.processus else session._cliquer)(lien)
-                time.sleep(3)
+                afficher_page(session, "Stocks & Services", TACHE)  # libellé, sinon son cadre
+                time.sleep(1)
                 continue
             (cliquer_vrai if not session.processus else session._cliquer)(icone)
             h = _attendre(lambda: user32.FindWindowW("#32770", TITRE), 10)

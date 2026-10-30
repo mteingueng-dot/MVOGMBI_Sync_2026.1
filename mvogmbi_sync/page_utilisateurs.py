@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
@@ -20,7 +21,7 @@ class PageUtilisateurs(ttk.Frame):
         self.registre = Registre(self.racine)
 
         entete_page(self, "👥", t("Utilisateurs et accès"),
-                    t("comptes, profils et pages visibles par chaque profil")).pack(fill="x")
+                    t("comptes, profils et fonctions permises à chaque profil")).pack(fill="x")
         corps = ttk.Frame(self)
         corps.pack(fill="both", expand=True)
         corps.columnconfigure(0, weight=3)
@@ -74,7 +75,7 @@ class PageUtilisateurs(ttk.Frame):
         droite = tk.Frame(corps, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4", padx=16,
                           pady=12)
         droite.grid(row=0, column=1, sticky="nsew")
-        tk.Label(droite, text=t("Profils et pages visibles"), font=("Segoe UI Semibold", 12), foreground=TEXTE,
+        tk.Label(droite, text=t("Profils et fonctions permises"), font=("Segoe UI Semibold", 12), foreground=TEXTE,
                  background=CARTE).pack(anchor="w")
         ligne = tk.Frame(droite, background=CARTE)
         ligne.pack(fill="x", pady=(8, 6))
@@ -85,14 +86,27 @@ class PageUtilisateurs(ttk.Frame):
         Bouton(ligne, "➕", self.nouveau_profil, "secondaire", fond=CARTE, petit=True, largeur=34).pack(
             side="left", padx=6)
         Bouton(ligne, "🗑", self.supprimer_profil, "danger", fond=CARTE, petit=True, largeur=34).pack(side="left")
-        self.cases: dict[str, tk.BooleanVar] = {}
-        self.boites: dict[str, ttk.Checkbutton] = {}
-        for page in PAGES:
-            self.cases[page] = tk.BooleanVar()
-            boite = ttk.Checkbutton(droite, text=libelles.get(page, page), variable=self.cases[page],
-                                    style="Carte.TCheckbutton")
-            boite.pack(anchor="w", pady=1)
-            self.boites[page] = boite
+        # arbre du menu (demande du propriétaire du 2026-10-30) : rubriques -> fonctions, cochées une à une ; une
+        # fonction cochée seule (ex. « Liste des articles ») ne donne pas le reste de sa rubrique
+        tk.Label(droite, text=t("Cliquez pour cocher ou décocher ; une rubrique coche toutes ses fonctions."),
+                 font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=CARTE, wraplength=330,
+                 justify="left").pack(anchor="w")
+        cadre_arbre = cadre_tableau(droite)
+        cadre_arbre.pack(fill="both", expand=True, pady=(4, 0))
+        # hauteur demandée basse : l'arbre s'agrandit avec la place, sans pousser hors de la carte les droits et
+        # « Enregistrer les accès » (capture du 2026-10-30)
+        self.arbre = ttk.Treeview(cadre_arbre, show="tree", height=6, selectmode="none")
+        self.arbre.column("#0", width=320)
+        self.arbre.tag_configure("rubrique", font=("Segoe UI Semibold", 10))
+        self.arbre.tag_configure("fixe", foreground=TEXTE_DOUX)
+        self.arbre.pack(side="left", fill="both", expand=True)
+        defilement(self.arbre)
+        self.arbre.bind("<Button-1>", self._clic_arbre)
+        self.coches: dict[str, bool] = {}       # id du nœud -> coché
+        self.libelle_noeud: dict[str, str] = {}
+        self.pages_noeud: dict[str, str] = {}   # fonction -> clé de la page qu'elle doit pouvoir afficher
+        self.actions_fenetres: set[str] = set()
+        self._remplir_arbre()
         from .interface import lire_config
         from .points_vente import points_de_vente
 
@@ -115,6 +129,10 @@ class PageUtilisateurs(ttk.Frame):
         self.boite_exporter = ttk.Checkbutton(droite, text=t("Exporter les données (Excel, CSV, PDF, images)"),
                                               variable=self.exporter, style="Carte.TCheckbutton")
         self.boite_exporter.pack(anchor="w", pady=1)
+        self.supprimer_permis = tk.BooleanVar(value=True)
+        self.boite_supprimer = ttk.Checkbutton(droite, text=t("Supprimer des éléments"),
+                                               variable=self.supprimer_permis, style="Carte.TCheckbutton")
+        self.boite_supprimer.pack(anchor="w", pady=1)
         self.note = tk.Label(droite, text="", font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=CARTE,
                              wraplength=330, justify="left")
         self.note.pack(anchor="w", pady=(8, 4))
@@ -122,9 +140,72 @@ class PageUtilisateurs(ttk.Frame):
         rangee.pack(anchor="w")
         Bouton(rangee, "💾  " + t("Enregistrer les accès"), self.enregistrer_acces, "accent", fond=CARTE).pack(
             side="left")
-        Bouton(rangee, "🧩  " + t("Fonctions permises…"), self.fonctions, "secondaire", fond=CARTE).pack(
-            side="left", padx=8)
         self.afficher()
+
+    # ------------------------------------------------------------------ arbre des accès
+    def _remplir_arbre(self) -> None:
+        """Rubriques du menu et leurs fonctions (pages et fenêtres), puis les actions dans les fenêtres. Clé d'une
+        fonction : clé de la page (« correspondance ») ou titre de la fenêtre (« Liste des articles »)."""
+        from .interface import ACCUEIL, LIBELLES_MENU, MENU_GROUPES
+        from .utilisateurs import ACTIONS_FENETRES
+
+        def ajouter(parent, cle, libelle, tags=()):
+            self.arbre.insert(parent, "end", iid=cle, text=libelle, open=True, tags=tags)
+            self.libelle_noeud[cle] = libelle
+            self.coches[cle] = False
+
+        for nom, icone, elements in MENU_GROUPES:
+            parent = ""
+            if nom:
+                parent = f"rubrique:{nom}"
+                ajouter("", parent, f"{icone}  {t(nom)}", ("rubrique",))
+            for e in elements:
+                if isinstance(e, int):
+                    if e >= len(PAGES):
+                        continue  # page Utilisateurs : administrateurs seulement
+                    cle = PAGES[e]
+                    libelle = t(LIBELLES_MENU[e]) if e in LIBELLES_MENU else re.sub(
+                        r"^\d+\.\s*", "", self.libelles.get(cle, cle))
+                    ajouter(parent, cle, libelle, ("fixe",) if e == ACCUEIL else ())
+                    self.pages_noeud[cle] = cle
+                else:
+                    if e[1] in self.coches:
+                        continue
+                    ajouter(parent, e[1], f"{e[0]}  {t(e[1])}")
+                    self.pages_noeud[e[1]] = PAGES[e[2]] if e[2] < len(PAGES) else ""
+        racine_actions = "rubrique:actions"
+        ajouter("", racine_actions, "🔒  " + t("Actions dans les fenêtres"), ("rubrique",))
+        for groupe, actions in ACTIONS_FENETRES.items():
+            if groupe == "Général":
+                continue  # « Supprimer » : case de la section Droits (demande du propriétaire du 2026-10-30)
+            for action in actions:
+                ajouter(racine_actions, f"action:{action}", f"{t(action)}  ({t(groupe)})")
+                self.actions_fenetres.add(action)
+
+    def _dessiner(self) -> None:
+        for cle in self.coches:
+            if cle.startswith("rubrique:"):
+                enfants = self.arbre.get_children(cle)
+                self.coches[cle] = bool(enfants) and all(self.coches[e] for e in enfants)
+                partiel = any(self.coches[e] for e in enfants) and not self.coches[cle]
+                marque = "☑" if self.coches[cle] else ("◩" if partiel else "☐")
+            else:
+                marque = "☑" if self.coches[cle] else "☐"
+            self.arbre.item(cle, text=f"{marque}  {self.libelle_noeud[cle]}")
+
+    def _clic_arbre(self, evenement) -> str:
+        cle = self.arbre.identify_row(evenement.y)
+        profil = self._interne(self.profil_choisi.get())
+        if not cle or profil == ADMIN or cle == "accueil":
+            return "break"
+        if self.arbre.identify_element(evenement.x, evenement.y) == "Treeitem.indicator":
+            return ""  # flèche : déplier / replier
+        valeur = not self.coches[cle]
+        for c in [cle, *self.arbre.get_children(cle)]:
+            if c != "accueil":
+                self.coches[c] = valeur
+        self._dessiner()
+        return "break"
 
     # ------------------------------------------------------------------ affichage
     def afficher(self, choisi: str | None = None) -> None:
@@ -149,11 +230,24 @@ class PageUtilisateurs(ttk.Frame):
 
     def afficher_acces(self) -> None:
         profil = self._interne(self.profil_choisi.get())
-        pages = set(self.registre.profils.get(profil, []))
+        pages = set(self.registre.profils.get(profil, [])) | {"accueil"}
         admin = profil == ADMIN
-        for page, variable in self.cases.items():
-            variable.set(page in pages or page == "accueil")
-            self.boites[page].state(["disabled"] if admin or page == "accueil" else ["!disabled"])
+        refusees = set(self.registre.fonctions_refusees.get(profil, []))
+        permises = self.registre.fonctions_permises.get(profil)
+        for cle in self.coches:
+            if cle.startswith("rubrique:"):
+                continue
+            if admin:
+                self.coches[cle] = True
+            elif cle.startswith("action:"):
+                self.coches[cle] = cle[len("action:"):] not in refusees
+            elif permises is not None:  # accès par fonction
+                self.coches[cle] = cle in permises or cle == "accueil"
+            elif cle in PAGES:  # ancien modèle : la page elle-même
+                self.coches[cle] = cle in pages
+            else:  # fenêtre : sa page est permise et la fonction n'est pas retirée
+                self.coches[cle] = self.pages_noeud.get(cle) in pages and cle not in refusees
+        self._dessiner()
         codes = None if admin else self.registre.points_vente.get(profil)
         self.pdv_tous.set(codes is None)
         for code, variable in self.cases_pdv.items():
@@ -161,10 +255,13 @@ class PageUtilisateurs(ttk.Frame):
         self.boite_pdv_tous.state(["disabled"] if admin else ["!disabled"])
         self.exporter.set(admin or profil not in self.registre.sans_export)
         self.boite_exporter.state(["disabled"] if admin else ["!disabled"])
+        self.supprimer_permis.set(admin or "Supprimer" not in refusees)
+        self.boite_supprimer.state(["disabled"] if admin else ["!disabled"])
         self._etat_cases_pdv()
         n = sum(1 for u in self.registre.utilisateurs if u.profil == profil)
         self.note.configure(text=(t("L'administrateur voit toutes les pages et gère les utilisateurs.") if admin
-                                  else t("Accueil toujours visible. Une page non cochée disparaît du menu.")) + "\n"
+                                  else t("Accueil toujours visible. Une fonction non cochée disparaît du menu ; "
+                                         "une action non cochée est refusée dans sa fenêtre.")) + "\n"
                             + t("{n} compte(s) avec ce profil ; les changements s'appliquent à leur prochaine "
                                 "connexion.", n=n))
 
@@ -265,76 +362,23 @@ class PageUtilisateurs(ttk.Frame):
                                           parent=self):
             self._faire(lambda: self.registre.supprimer_profil(profil))
 
-    def fonctions(self) -> None:
-        """Fonctions du menu permises au profil choisi (cochées) ; une fonction décochée disparaît du menu, même
-        si sa page est permise."""
-        from .interface import MENU_GROUPES
-
-        profil = self._interne(self.profil_choisi.get())
-        if profil == ADMIN:
-            messagebox.showinfo(self.titre, t("Le profil Administrateur a toujours accès à tout."), parent=self)
-            return
-        refusees = set(self.registre.fonctions_refusees.get(profil, []))
-        boite = tk.Toplevel(self)
-        boite.title(t("Fonctions permises — {p}", p=t(profil)))
-        boite.configure(background=CARTE, padx=16, pady=12)
-        boite.transient(self.winfo_toplevel())
-        tk.Label(boite, text=t("Cochez les fonctions que ce profil peut utiliser. Une fonction n'apparaît que si sa page "
-                               "est aussi permise."), background=CARTE, foreground=TEXTE_DOUX, wraplength=640,
-                 justify="left").pack(anchor="w")
-        grille = tk.Frame(boite, background=CARTE)
-        grille.pack(fill="both", expand=True, pady=8)
-        cases: dict[str, tk.BooleanVar] = {}
-        colonne = 0
-        for nom, _icone, elements in MENU_GROUPES:
-            actions = [e for e in elements if not isinstance(e, int)]
-            if not nom or not actions:
-                continue
-            cadre = tk.Frame(grille, background=CARTE)
-            cadre.grid(row=0, column=colonne, sticky="nw", padx=(0, 18))
-            colonne += 1
-            tk.Label(cadre, text=t(nom), font=("Segoe UI Semibold", 10), background=CARTE).pack(anchor="w")
-            for e in actions:
-                cases[e[1]] = tk.BooleanVar(value=e[1] not in refusees)
-                ttk.Checkbutton(cadre, text=t(e[1]), variable=cases[e[1]], style="Carte.TCheckbutton").pack(
-                    anchor="w", pady=1)
-        from .utilisateurs import ACTIONS_FENETRES
-
-        tk.Label(boite, text=t("Actions dans les fenêtres (la fenêtre s'ouvre, mais l'action est refusée si elle est "
-                               "décochée)"), font=("Segoe UI Semibold", 10), background=CARTE).pack(anchor="w",
-                                                                                                pady=(6, 0))
-        grille2 = tk.Frame(boite, background=CARTE)
-        grille2.pack(fill="both", expand=True, pady=(4, 8))
-        for colonne2, (nom, actions_fenetre) in enumerate(ACTIONS_FENETRES.items()):
-            cadre = tk.Frame(grille2, background=CARTE)
-            cadre.grid(row=0, column=colonne2, sticky="nw", padx=(0, 18))
-            tk.Label(cadre, text=t(nom), font=("Segoe UI Semibold", 9), background=CARTE).pack(anchor="w")
-            for action in actions_fenetre:
-                cases[action] = tk.BooleanVar(value=action not in refusees)
-                ttk.Checkbutton(cadre, text=t(action), variable=cases[action], style="Carte.TCheckbutton").pack(
-                    anchor="w", pady=1)
-        bas = tk.Frame(boite, background=CARTE)
-        bas.pack(anchor="e")
-
-        def enregistrer():
-            if self._faire(lambda: self.registre.definir_fonctions(profil, [k for k, v in cases.items() if not v.get()]),
-                           t("Accès du profil {nom} enregistrés.", nom=t(profil))):
-                boite.destroy()
-
-        Bouton(bas, "✖  " + t("Fermer"), boite.destroy, "secondaire", fond=CARTE).pack(side="right")
-        Bouton(bas, "💾  " + t("Enregistrer"), enregistrer, "accent", fond=CARTE).pack(side="right", padx=8)
-
     def enregistrer_acces(self) -> None:
         profil = self._interne(self.profil_choisi.get())
         if profil == ADMIN:
             messagebox.showinfo(self.titre, t("Le profil Administrateur a toujours accès à tout."), parent=self)
             return
-        pages = [p for p, v in self.cases.items() if v.get()]
+        fonctions = [c for c, v in self.coches.items() if v and not c.startswith(("rubrique:", "action:"))]
+        # pages à pouvoir afficher : celles cochées et celles des fenêtres cochées (ex. onglets des Rapports)
+        pages = {self.pages_noeud.get(c, "") for c in fonctions} - {""}
+        refusees = [c[len("action:"):] for c, v in self.coches.items() if c.startswith("action:") and not v]
+        if not self.supprimer_permis.get():
+            refusees.append("Supprimer")
         codes = None if self.pdv_tous.get() else [c for c, v in self.cases_pdv.items() if v.get()]
 
         def enregistrer():
             self.registre.definir_export(profil, self.exporter.get())
             self.registre.definir_points_vente(profil, codes)
-            self.registre.definir_profil(profil, pages)
+            self.registre.definir_acces(profil, fonctions, sorted(pages))
+            self.registre.definir_fonctions(profil, refusees)
 
         self._faire(enregistrer, t("Accès du profil {nom} enregistrés.", nom=t(profil)))

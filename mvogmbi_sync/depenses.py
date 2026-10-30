@@ -207,6 +207,10 @@ def saisir_sur_bureau_cache(racine: Path, config_toml: dict, journal=print) -> d
         """« Traiter » qui attend la fenêtre « Traitement… » de Sage (sans texte) au lieu de la refuser."""
         message = staticmethod(FenetreAjustement.message)
         traiter = FenetreAjustement.traiter
+        # comptes de TPS / TVQ reliés aux taxes de Sage (2315, 2345) : Sage demande s'il traite sans le détail de
+        # la taxe (constat du 2026-10-29) -> Oui ; les montants vont dans les bons comptes (déclaration TPS/TVQ de
+        # l'application), seul le rapport de taxes propre à Sage ne les détaille pas
+        questions_oui = ("comptes de taxe associés", "associated tax accounts")
 
     registre = Registre(racine)
     bilan = {"saisies": [], "a_verifier": [], "erreur": ""}

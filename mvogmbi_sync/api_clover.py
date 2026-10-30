@@ -85,7 +85,8 @@ class ClientClover:
 
     def article(self, id_article: str) -> dict | None:
         """Un article Clover par son identifiant, même s'il a été supprimé du catalogue depuis."""
-        reponse = self.session.get(self._url(f"items/{id_article}"), params={"expand": "categories"}, timeout=30)
+        # _get réessaie un refus passager (429 : constat du 2026-10-29, l'article paraissait introuvable)
+        reponse = self._get(f"items/{id_article}", {"expand": "categories"})
         return reponse.json() if reponse.ok else None
 
     def articles(self) -> list[dict]:

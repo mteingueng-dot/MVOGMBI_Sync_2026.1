@@ -618,7 +618,7 @@ EN: dict[str, str] = {
     "Utilisateurs et accès": "Users and access",
     "Vous ne pouvez pas désactiver votre propre compte.": "You cannot disable your own account.",
     "Vous ne pouvez pas supprimer votre propre compte.": "You cannot delete your own account.",
-    "comptes, profils et pages visibles par chaque profil": "accounts, profiles and pages visible to each profile",
+    "comptes, profils et fonctions permises à chaque profil": "accounts, profiles and functions allowed to each profile",
     "{n} compte(s) avec ce profil ; les changements s'appliquent à leur prochaine connexion.": "{n} account(s) with this profile; changes apply at their next sign-in.",
     "Administrateur": "Administrator",
     "Comptable": "Accountant",
@@ -1102,6 +1102,15 @@ EN: dict[str, str] = {
     "Saisie de l'inventaire (Clover puis Sage)…": 'Entering the inventory (Clover, then Sage)…',
     'Articles Sage à corriger…': 'Sage items to correct…',
     'Valider la sélection': 'Confirm selection',
+    'Profils et fonctions permises': 'Profiles and allowed functions',
+    'Cliquez pour cocher ou décocher ; une rubrique coche toutes ses fonctions.':
+        'Click to check or uncheck; a section checks all its functions.',
+    'Actions dans les fenêtres': 'Actions in windows',
+    'Accueil toujours visible. Une fonction non cochée disparaît du menu ; une action non cochée est refusée dans '
+    'sa fenêtre.': 'Home is always visible. An unchecked function disappears from the menu; an unchecked action is '
+                   'refused in its window.',
+    'Général': 'General',
+    'Supprimer des éléments': 'Delete items',
     'Compte de charges / CMV': 'Expense / COGS account',
     'Compte de produits (4xxx, facultatif)': 'Revenue account (4xxx, optional)',
     'Compte de charges (5xxx)': 'Expense account (5xxx)',

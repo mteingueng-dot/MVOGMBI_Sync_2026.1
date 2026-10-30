@@ -349,7 +349,7 @@ passe » et « Se déconnecter ».</p>
 <tr><td><b>Administrateur</b></td><td>Toutes, y compris la configuration (pages 1 à 4) et la page « Utilisateurs ».</td></tr>
 <tr><td><b>Comptable</b></td><td>Accueil, pages 5 à 10, Guide et FAQ.</td></tr>
 <tr><td><b>Employé</b></td><td>Accueil, Tableau de bord, Guide et FAQ.</td></tr></table>
-""" + figure("13_utilisateurs", "Page Utilisateurs (administrateur) : comptes, profils et pages visibles")
+""" + figure("13_utilisateurs", "Page Utilisateurs (administrateur) : comptes, profils et fonctions permises")
                    + """
 <p>L'administrateur ajoute les comptes, change leur profil ou leur mot de passe, les désactive, et décide des pages
 de chaque profil (une page non cochée disparaît du menu). Il crée aussi d'autres profils (« ➕ »). Il reste toujours au
