@@ -17,9 +17,10 @@ JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanc
 
 
 class PostePointage(tk.Frame):
-    def __init__(self, parent, racine: Path):
+    def __init__(self, parent, racine: Path, filtre=None):
+        """`filtre` : employés visibles selon le login (application) ; poste du magasin sans login : tous."""
         super().__init__(parent, background=FOND)
-        self.racine = Path(racine)
+        self.racine, self.filtre = Path(racine), filtre
         self.registre = pt.Registre(racine)
         self.choisi: pt.Employe | None = None
         self.nip = ""
@@ -58,19 +59,24 @@ class PostePointage(tk.Frame):
         self.choisi, self.nip = None, ""
         self.registre.recharger_employes()
         self.registre.recharger()
-        employes = [e for e in self.registre.actifs() if e.nip]
+        # tous les employés actifs (règle du propriétaire du 2026-10-30) ; selon le login : le sien seulement
+        employes = self.registre.actifs()
+        if self.filtre:
+            employes = self.filtre(employes)
         tk.Label(self.zone, text=t("Touchez votre nom"), font=("Segoe UI Semibold", 14), background=FOND,
                  foreground=TEXTE).pack(anchor="w", pady=(0, 10))
         grille = tk.Frame(self.zone, background=FOND)
         grille.pack(fill="both", expand=True)
         if not employes:
-            tk.Label(grille, text=t("Aucun employé n'a de NIP : le gérant les crée dans « Paie > Employés et NIP »."),
+            tk.Label(grille, text=t("Aucun employé à afficher : votre compte doit être relié à un employé dans « Paie > "
+                                    "Employés et NIP »."),
                      background=FOND, foreground=TEXTE_DOUX, font=("Segoe UI", 11)).pack(anchor="w")
         colonnes = 4
         for i, e in enumerate(employes):
             present = self.registre.etat_actuel(e.id)
             texte = e.nom + ("\n● " + t("présent") if present in (pt.ARRIVEE, pt.FIN_PAUSE) else
-                             "\n● " + t("en pause") if present == pt.PAUSE else "")
+                             "\n● " + t("en pause") if present == pt.PAUSE else "\n" + t("NIP à créer") if not e.nip
+                             else "")
             b = tk.Button(grille, text=texte, font=("Segoe UI Semibold", 12), relief="flat", background=CARTE,
                           foreground=TEXTE, activebackground="#e3f1e7", height=3, cursor="hand2",
                           command=lambda x=e: self.demander_nip(x))
@@ -80,6 +86,11 @@ class PostePointage(tk.Frame):
 
     # ------------------------------------------------------------------ étape 2 : NIP
     def demander_nip(self, employe: pt.Employe) -> None:
+        if not employe.nip:
+            self.message.configure(text=t("{n} n'a pas encore de NIP : le gérant le crée dans « Paie > Employés et NIP ».",
+                                          n=employe.nom), foreground=ROUGE)
+            self.after(6000, lambda: self.message.configure(text=""))
+            return
         self._vider()
         self.choisi, self.nip = employe, ""
         self.message.configure(text="")
@@ -201,9 +212,15 @@ class PostePointage(tk.Frame):
 
 
 def reference(racine: Path) -> date:
-    """Premier jour d'une période de paie ([paie] debut_reference de config.toml, sinon DEBUT_REFERENCE)."""
+    """Premier jour d'une période de paie : calendrier de paie s'il est défini, sinon [paie] debut_reference de
+    config.toml, sinon DEBUT_REFERENCE."""
     import tomllib
 
+    from .calendrier_paie import Calendrier
+
+    ancre = Calendrier(racine).reference(date.today())
+    if ancre:
+        return ancre
     try:
         chemin = Path(racine) / "config.toml"
         texte = tomllib.loads(chemin.read_text(encoding="utf-8")).get("paie", {}).get("debut_reference", "")
@@ -212,12 +229,12 @@ def reference(racine: Path) -> date:
         return pt.DEBUT_REFERENCE
 
 
-def ouvrir(parent, racine: Path) -> tk.Toplevel:
+def ouvrir(parent, racine: Path, filtre=None) -> tk.Toplevel:
     fenetre = tk.Toplevel(parent)
     fenetre.title(t("Pointage des employés"))
     fenetre.geometry("980x680")
     fenetre.configure(background=FOND)
-    PostePointage(fenetre, racine).pack(fill="both", expand=True)
+    PostePointage(fenetre, racine, filtre).pack(fill="both", expand=True)
     return fenetre
 
 

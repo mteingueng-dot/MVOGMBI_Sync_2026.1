@@ -101,7 +101,24 @@ class Bouton(tk.Label):
             # droit « Supprimer » du profil (demande du propriétaire du 2026-10-30) : tous les boutons Supprimer / 🗑
             if est_suppression(self.cget("text")) and not action_permise(self, "Supprimer"):
                 return
+            _auditer(self, self.cget("text"))
             self._commande()
+
+
+def _auditer(widget, texte: str) -> None:
+    """Table d'audit (audit.py) : bouton cliqué et fenêtre où il se trouve."""
+    try:
+        from . import audit
+
+        fenetre, w = "", widget
+        while w is not None:
+            if isinstance(w, FenetreOutil) or isinstance(w, tk.Toplevel):
+                fenetre = w.title() if callable(getattr(w, "title", None)) else ""
+                break
+            w = w.master
+        audit.noter(None, " ".join(str(texte).split()), fenetre or "Fenêtre principale")
+    except Exception:
+        pass
 
 
 def est_suppression(texte: str) -> bool:
@@ -575,6 +592,171 @@ class FenetreOutil(tk.Frame):
 def dans_application(parent, fenetre, empiler: bool = True):
     """Compatibilité : une FenetreOutil s'affiche déjà d'elle-même dans la fenêtre principale."""
     return fenetre
+
+
+def employes_visibles(widget, employes: list) -> list:
+    """Employés que le login peut voir : tous (administrateur, gérant, hors application) ; sinon le sien seulement
+    (règle du propriétaire du 2026-10-30), aucun si son compte n'est relié à aucun employé."""
+    app = widget.nametowidget(".")
+    if not hasattr(app, "limite_employe") or not app.limite_employe():
+        return list(employes)
+    moi = app.employe_connecte()
+    return [e for e in employes if moi is not None and e.id == moi.id]
+
+
+def login_limite(widget) -> bool:
+    app = widget.nametowidget(".")
+    return hasattr(app, "limite_employe") and app.limite_employe()
+
+
+SEPARATEUR_CHOIX = " | "
+
+
+def choix_multiples(texte: str) -> list[str]:
+    """Valeurs d'un filtre ChoixMultiple (« A | B ») ; liste vide = tout."""
+    return [v.strip() for v in str(texte or "").split(SEPARATEUR_CHOIX.strip()) if v.strip()]
+
+
+class ChoixMultiple(tk.Frame):
+    """Filtre à choix multiples (demande du propriétaire du 2026-11-01) : champ qui résume le choix (« Tout »,
+    « Riz », « 3 choisis ») ; un clic ouvre la liste à cocher avec recherche, « Tout sélectionner » et « Tout
+    désélectionner ». La liste se referme dès qu'on clique ailleurs (aucun filtre ne reste ouvert). `variable`
+    reçoit les valeurs jointes par « | » (vide = tout) ; `au_choix` est appelé après « OK »."""
+
+    def __init__(self, parent, variable: tk.StringVar, valeurs=(), largeur: int = 16, au_choix=None):
+        super().__init__(parent, background=fond_de(parent))
+        self.variable, self.valeurs, self.au_choix = variable, list(valeurs), au_choix
+        self.affiche = tk.StringVar()
+        self.champ = ttk.Entry(self, textvariable=self.affiche, width=largeur, state="readonly", cursor="hand2")
+        self.champ.pack(side="left")
+        fleche = tk.Label(self, text="▾", background=fond_de(parent), cursor="hand2")
+        fleche.pack(side="left")
+        for w in (self.champ, fleche):
+            w.bind("<Button-1>", lambda _e: self.ouvrir())
+        self.variable.trace_add("write", lambda *_: self._resumer())
+        self.liste = None
+        self.actif = True
+        self._resumer()
+
+    def configurer_valeurs(self, valeurs) -> None:
+        self.valeurs = list(valeurs)
+
+    def desactiver(self) -> None:
+        self.actif = False
+        self.champ.state(["disabled"])
+
+    def _resumer(self) -> None:
+        from .langues import t
+
+        choisis = choix_multiples(self.variable.get())
+        self.affiche.set(t("Tout") if not choisis else choisis[0] if len(choisis) == 1
+                         else t("{n} choisis", n=len(choisis)))
+
+    def ouvrir(self) -> None:
+        from .langues import t
+
+        if not self.actif or (self.liste is not None and self.liste.winfo_exists()):
+            return
+        choisis = set(choix_multiples(self.variable.get()))
+        self.coches = {v: tk.BooleanVar(value=v in choisis) for v in self.valeurs}
+        haut = tk.Toplevel(self)
+        self.liste = haut
+        haut.overrideredirect(True)
+        haut.configure(background=BORDURE, padx=1, pady=1)
+        x, y = self.champ.winfo_rootx(), self.champ.winfo_rooty() + self.champ.winfo_height() + 2
+        haut.geometry(f"+{x}+{y}")
+        cadre = tk.Frame(haut, background=CARTE, padx=8, pady=6)
+        cadre.pack(fill="both", expand=True)
+        recherche = tk.StringVar()
+        champ = ttk.Entry(cadre, textvariable=recherche, width=32)
+        champ.pack(fill="x")
+        boutons = tk.Frame(cadre, background=CARTE)
+        boutons.pack(fill="x", pady=4)
+        toile = tk.Canvas(cadre, background=CARTE, highlightthickness=0, width=280, height=240)
+        barre = ttk.Scrollbar(cadre, orient="vertical", command=toile.yview)
+        toile.configure(yscrollcommand=barre.set)
+        barre.pack(side="right", fill="y")
+        toile.pack(side="left", fill="both", expand=True)
+        zone = tk.Frame(toile, background=CARTE)
+        toile.create_window((0, 0), window=zone, anchor="nw")
+        zone.bind("<Configure>", lambda _e: toile.configure(scrollregion=toile.bbox("all")))
+        toile.bind("<MouseWheel>", lambda e: toile.yview_scroll(-e.delta // 120, "units"))
+
+        def montrer(*_):
+            for enfant in zone.winfo_children():
+                enfant.destroy()
+            texte = recherche.get().strip().casefold()
+            for v in self.valeurs:
+                if not texte or texte in v.casefold():
+                    case = ttk.Checkbutton(zone, text=v, variable=self.coches[v])
+                    case.pack(anchor="w")
+                    case.bind("<MouseWheel>", lambda e: toile.yview_scroll(-e.delta // 120, "units"))
+
+        def tout(etat: bool) -> None:
+            texte = recherche.get().strip().casefold()
+            for v, var in self.coches.items():
+                if not texte or texte in v.casefold():
+                    var.set(etat)
+
+        tk.Button(boutons, text=t("Tout sélectionner"), relief="flat", background="#e8f3ea",
+                  command=lambda: tout(True)).pack(side="left")
+        tk.Button(boutons, text=t("Tout désélectionner"), relief="flat", background="#f3e8e8",
+                  command=lambda: tout(False)).pack(side="left", padx=4)
+        recherche.trace_add("write", montrer)
+        montrer()
+        bas = tk.Frame(haut, background=CARTE, padx=8, pady=6)
+        bas.pack(fill="x")
+
+        def valider() -> None:
+            choisis = [v for v in self.valeurs if self.coches[v].get()]
+            # tout coché = aucun filtre
+            self.variable.set("" if len(choisis) == len(self.valeurs) else SEPARATEUR_CHOIX.join(choisis))
+            self.fermer()
+            if self.au_choix:
+                self.au_choix()
+
+        tk.Button(bas, text="✔ OK", relief="flat", background="#1f7a3a", foreground="white",
+                  command=valider).pack(side="right")
+        tk.Button(bas, text=t("Annuler"), relief="flat", command=self.fermer).pack(side="right", padx=4)
+        haut.bind("<Escape>", lambda _e: self.fermer())
+        haut.bind("<Return>", lambda _e: valider())
+        champ.focus_set()
+        # clic ailleurs dans l'application : la liste se referme sans rien changer
+        self._liaison = self.winfo_toplevel().bind("<Button-1>", lambda e: self._clic_ailleurs(e), add="+")
+
+    def _clic_ailleurs(self, evenement) -> None:
+        if self.liste is None or not self.liste.winfo_exists():
+            return
+        w = evenement.widget
+        while w is not None:
+            if w is self.liste or w is self:
+                return
+            w = getattr(w, "master", None)
+        self.fermer()
+
+    def fermer(self) -> None:
+        if self.liste is not None and self.liste.winfo_exists():
+            self.liste.destroy()
+        self.liste = None
+
+
+def montant_saisi(texte) -> "Decimal":
+    """Montant tapé dans un champ : « 12,50 », « 12.50 $ », « 1 234,56 » (espaces normales ou insécables).
+    ValueError « Montant invalide. » sinon (jamais le message technique de decimal)."""
+    from decimal import Decimal, InvalidOperation
+
+    propre = str(texte or "").replace("$", "").replace("\u00a0", "").replace("\u202f", "").replace(" ", "").strip()
+    if propre.count(",") == 1 and "." not in propre:
+        propre = propre.replace(",", ".")
+    elif "," in propre and "." in propre:  # « 1,234.56 »
+        propre = propre.replace(",", "")
+    try:
+        valeur = Decimal(propre)
+    except InvalidOperation:
+        raise ValueError("Montant invalide.") from None
+    if not valeur.is_finite():
+        raise ValueError("Montant invalide.")
+    return valeur
 
 
 def action_permise(widget, action: str) -> bool:

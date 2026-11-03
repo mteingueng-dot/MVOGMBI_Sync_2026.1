@@ -121,9 +121,27 @@ def analyser(sujet: str, texte: str, identifiant: str = "", date_courriel: date 
                         etat=etat)
 
 
+def entetes_en_une_fois(boite, uids, champ: str = "MESSAGE-ID") -> dict[bytes, str]:
+    """UID -> valeur d'un en-tête, pour tous les messages en UNE demande au serveur IMAP (lecture rapide)."""
+    import re
+
+    if not uids:
+        return {}
+    _, donnees = boite.uid("fetch", b",".join(sorted(uids, key=int)), f"(BODY.PEEK[HEADER.FIELDS ({champ})])")
+    valeurs = {}
+    for d in donnees:
+        if isinstance(d, tuple):
+            m = re.search(rb"UID (\d+)", d[0])
+            v = re.search(rb"(?im)^" + champ.encode() + rb":\s*(\S+)", d[1] or b"")
+            if m:
+                valeurs[m.group(1)] = v.group(1).decode("ascii", "replace") if v else ""
+    return valeurs
+
+
 def lire_boite(serveur: str, utilisateur: str, mot_de_passe: str, depuis: date, port: int = 993,
-               dossier: str = "INBOX") -> list[AvisPaiement]:
-    """Avis Interac reçus depuis `depuis` (lecture seule : les courriels ne sont pas marqués comme lus)."""
+               dossier: str = "INBOX", connus: set[str] = frozenset()) -> list[AvisPaiement]:
+    """Avis Interac reçus depuis `depuis` (lecture seule : les courriels ne sont pas marqués comme lus). `connus` :
+    identifiants (Message-ID) déjà lus, jamais retéléchargés."""
     avis = []
     with imaplib.IMAP4_SSL(serveur, port, ssl_context=ssl.create_default_context(), timeout=60) as boite:
         boite.login(utilisateur, mot_de_passe)
@@ -133,6 +151,9 @@ def lire_boite(serveur: str, utilisateur: str, mot_de_passe: str, depuis: date, 
         for expediteur in EXPEDITEURS:
             _, donnees = boite.uid("search", None, "SINCE", depuis_imap, "FROM", expediteur)
             uids.update((donnees[0] or b"").split())
+        if connus:
+            identifiants = entetes_en_une_fois(boite, uids)
+            uids = {u for u in uids if identifiants.get(u, "") not in connus}
         for uid in sorted(uids, key=int):
             _, donnees = boite.uid("fetch", uid, "(BODY.PEEK[])")
             brut = next((d[1] for d in donnees if isinstance(d, tuple)), None)

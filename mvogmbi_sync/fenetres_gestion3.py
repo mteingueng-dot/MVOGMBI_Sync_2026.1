@@ -195,10 +195,20 @@ class FenetreEtiquettes(FenetreOutil):
                              petit=True), 8)
         bas = Rangee(self)
         bas.pack(fill="x", pady=(8, 0))
+        # format : imprimante de tickets du poste (largeur du papier lue dans son pilote), sinon 80 / 58 mm ou feuille
+        from .etiquettes import formats
+
+        self.formats = formats()
+        g = bas.ajouter(bas.groupe(), 8)
+        tk.Label(g, text=t("Format"), background=CARTE).pack(side="left", padx=(0, 4))
+        self.format = tk.StringVar(value=next(iter(self.formats)))
+        ttk.Combobox(g, textvariable=self.format, values=list(self.formats), state="readonly", width=46).pack(
+            side="left")
         bas.ajouter(Bouton(bas, "🖨  " + t("Imprimer les étiquettes"), self.imprimer, fond=CARTE), 8)
         bas.ajouter(Bouton(bas, "🗑  " + t("Vider la liste"), self.vider, "secondaire", fond=CARTE))
-        self.etat = tk.Label(self, text=t("Feuilles de 30 étiquettes (Avery 5160 / 8160, 3 × 10) : nom, prix, code-barres "
-                                          "du code produit."), background=CARTE, foreground=TEXTE_DOUX, anchor="w")
+        self.etat = tk.Label(self, text=t("Une étiquette par ticket sur l'imprimante de caisse (largeur de son rouleau), "
+                                          "ou feuilles Avery 5160 : nom, prix, code-barres du code produit."),
+                             background=CARTE, foreground=TEXTE_DOUX, anchor="w")
         self.etat.pack(fill="x", pady=(6, 0))
         self.tableau = tableau_simple(self, hauteur=16)
         self._charger()
@@ -221,8 +231,7 @@ class FenetreEtiquettes(FenetreOutil):
 
         lignes = [[e.nom, e.prix, e.unite, e.code] for e in (depuis_article(a) for a in self.choisis)]
         remplir(self.tableau, ["Article", "Prix", "Unité", "Code"], lignes, {"Article": 380}, decroissant=False)
-        self.etat.configure(text=t("{n} étiquette(s) — {f} feuille(s)", n=len(self.choisis),
-                                   f=(len(self.choisis) + 29) // 30), foreground=TEXTE_DOUX)
+        self.etat.configure(text=t("{n} étiquette(s)", n=len(self.choisis)), foreground=TEXTE_DOUX)
 
     def ajouter(self) -> None:
         a = self.articles.get(self.article.get())
@@ -259,7 +268,8 @@ class FenetreEtiquettes(FenetreOutil):
         dossier = Path(tempfile.gettempdir()) / "MVOGMBI_Sync_impression"
         dossier.mkdir(exist_ok=True)
         chemin = dossier / f"etiquettes_{datetime.now():%Y%m%d_%H%M%S}.html"
-        chemin.write_text(page([depuis_article(a) for a in self.choisis]), encoding="utf-8")
+        chemin.write_text(page([depuis_article(a) for a in self.choisis],
+                               largeur_ticket=self.formats.get(self.format.get())), encoding="utf-8")
         os.startfile(chemin)
 
 

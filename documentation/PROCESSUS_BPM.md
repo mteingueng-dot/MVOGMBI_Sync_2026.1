@@ -145,6 +145,28 @@ flowchart TB
 
 ---
 
+## 4 bis. Transferts d'argent RIA
+
+```mermaid
+flowchart LR
+    subgraph Client
+        A[Remet ou reçoit l'argent]
+    end
+    subgraph Marché
+        B[Encaisse ou paie]
+        C[Dépose les espèces]
+        D[Confirme la part RIA]
+        E[Saisit dans Sage]
+    end
+    subgraph RIA
+        F[Retire ou dépose le montant]
+        G[Dépose les commissions en fin de mois]
+    end
+    A --> B --> C --> D --> E
+    B --> F --> E
+    G --> E
+```
+
 ## 5. Gestion des stocks entre points de vente
 
 ```mermaid

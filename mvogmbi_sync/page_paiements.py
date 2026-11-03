@@ -169,8 +169,9 @@ class PagePaiements(ttk.Frame):
                 b = config.get("boite_paiements", {})
                 if not b.get("serveur") or not b.get("utilisateur"):
                     raise RuntimeError(t("Réglez la boîte des avis de paiement (page Courriel)."))
+                connus = {p.avis.identifiant for p in self.registre.paiements if getattr(p.avis, "identifiant", "")}
                 avis = lire_boite(b["serveur"], b["utilisateur"], coffre.lire(coffre.BOITE_PAIEMENTS), depuis,
-                                  int(b.get("port", 993)))
+                                  int(b.get("port", 993)), connus=connus)
                 compte = numero_compte_sage(str(config.get("encaissements", {}).get("compte_depot", "1055")))
                 ouvertes, existants, noms = lire_sage(
                     config, lambda base: (factures_ouvertes(base), paiements_existants(base, compte, depuis),

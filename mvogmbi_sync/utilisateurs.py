@@ -21,6 +21,7 @@ import hmac
 import json
 import os
 import secrets
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +34,8 @@ UTILISATEURS = "utilisateurs"  # page de gestion : administrateurs seulement
 ADMIN = "Administrateur"
 PROFILS_DEFAUT = {
     ADMIN: list(PAGES),
+    "Gérant": ["accueil", "correspondance", "tableau", "encaissements", "fournisseurs", "paiements",
+               "rapprochement", "rapports", "guide", "faq"],
     "Comptable": ["accueil", "correspondance", "tableau", "encaissements", "fournisseurs", "paiements",
                   "rapprochement", "rapports", "guide", "faq"],
     "Employé": ["accueil", "tableau", "guide", "faq"],
@@ -41,18 +44,25 @@ PROFILS_DEFAUT = {
 # retirées à un profil comme les fonctions du menu (fonctions_refusees) ; une fenêtre ouverte n'y donne plus accès
 ACTIONS_FENETRES = {
     # « Supprimer » : tous les boutons Supprimer / 🗑 de l'application (demande du propriétaire du 2026-10-30)
-    "Général": ["Supprimer"],
-    "Administration": ["Enregistrer la configuration", "Lancer le traitement maintenant", "Restaurer une sauvegarde",
+    # « Lancer le traitement maintenant » : boutons qui importent dans Sage (Tableau de bord, 2026-10-30)
+    "Général": ["Supprimer", "Lancer le traitement maintenant"],
+    "Administration": ["Enregistrer la configuration", "Restaurer une sauvegarde",
                        "Changer le dossier des sauvegardes"],
     "Paie": ["Traiter la paie dans Sage", "Envoyer les bulletins par courriel", "Créer un employé dans Sage",
              "Désactiver un employé"],
-    "Comptabilité": ["Enregistrer un comptage de caisse", "Saisir les dépenses dans Sage",
+    "Comptabilité": ["Modifier le plan comptable", "Enregistrer un comptage de caisse", "Saisir les dépenses dans Sage",
                      "Envoyer une relance par courriel", "Enregistrer le budget"],
-    "Articles": ["Sortir des pertes du stock", "Changer les prix Clover (promotions)", "Imprimer des étiquettes"],
+    "Articles": ["Sortir des pertes du stock", "Changer les prix Clover (promotions)", "Imprimer des étiquettes",
+                 "Modifier les articles dans Sage et Clover"],
     "Fournisseur": ["Importer un retour dans Sage"],
 }
 SANS_EXPORT_DEFAUT = ["Employé"]  # profils sans le droit d'exporter (règle du propriétaire du 2026-10-28)
+# profils qui ne voient que l'employé relié à leur compte (règle du propriétaire du 2026-10-30) : pointage, horaire,
+# heures, paies, congés, T4 / RL-1, statistiques ; l'administrateur et le gérant voient tous les employés
+LIMITES_DEFAUT = ["Employé"]
 LONGUEUR_MIN = 6
+ESSAIS_AVANT_VERROU = 3  # règle du propriétaire du 2026-11-01 : 3 mots de passe faux de suite = compte verrouillé
+BLOCAGE_DERNIER_ADMIN = 15 * 60  # s : le dernier administrateur n'est jamais verrouillé, seulement bloqué un moment
 ITERATIONS = 200_000
 
 
@@ -69,6 +79,8 @@ class Utilisateur:
     actif: bool = True
     cree_le: str = ""
     derniere_connexion: str = ""
+    echecs: int = 0            # mots de passe faux de suite
+    verrouille: bool = False   # après ESSAIS_AVANT_VERROU échecs : l'administrateur donne un nouveau mot de passe
 
     @property
     def est_admin(self) -> bool:
@@ -84,12 +96,15 @@ def _cle(nom: str) -> str:
 
 
 class Registre:
+    _blocages: dict[str, float] = {}  # dernier administrateur bloqué un moment (nom -> fin du blocage)
+
     def __init__(self, racine: Path):
         self.chemin = Path(racine) / "donnees" / "utilisateurs.json"
         self.journal = Path(racine) / "donnees" / "journal_connexions.log"
         self.profils: dict[str, list[str]] = {k: list(v) for k, v in PROFILS_DEFAUT.items()}
         self.points_vente: dict[str, list[str]] = {}  # profil -> codes permis ; absent = tous
         self.sans_export: list[str] = list(SANS_EXPORT_DEFAUT)  # profils qui ne peuvent pas exporter de données
+        self.limites: list[str] = list(LIMITES_DEFAUT)  # profils limités à l'employé de leur compte
         # fonctions du menu retirées à un profil (titre français de l'entrée), en plus des pages (2026-10-29)
         self.fonctions_refusees: dict[str, list[str]] = {}
         # accès PAR FONCTION (demande du propriétaire du 2026-10-30 : « l'accès uniquement à la liste des articles,
@@ -105,6 +120,7 @@ class Registre:
                                  if k in self.profils and k != ADMIN}
             self.utilisateurs = [Utilisateur(**u) for u in donnees.get("utilisateurs", [])]
             self.sans_export = [p for p in donnees.get("sans_export", SANS_EXPORT_DEFAUT) if p != ADMIN]
+            self.limites = [p for p in donnees.get("limites", LIMITES_DEFAUT) if p != ADMIN]
             self.fonctions_refusees = {k: list(v) for k, v in donnees.get("fonctions_refusees", {}).items()
                                        if k in self.profils and k != ADMIN}
             self.fonctions_permises = {k: list(v) for k, v in donnees.get("fonctions_permises", {}).items()
@@ -132,6 +148,17 @@ class Registre:
     def peut_exporter(self, utilisateur: Utilisateur) -> bool:
         """Droit d'exporter des données (Excel, CSV, PDF, images) : par profil ; l'administrateur l'a toujours."""
         return utilisateur.est_admin or utilisateur.profil not in self.sans_export
+
+    def voit_tous_employes(self, utilisateur: Utilisateur) -> bool:
+        """Administrateur et gérant : tous les employés ; les autres profils limités : seulement le leur."""
+        return utilisateur.est_admin or utilisateur.profil not in self.limites
+
+    def definir_tous_employes(self, profil: str, permis: bool) -> None:
+        if profil == ADMIN:
+            if not permis:
+                raise ErreurUtilisateur("Le profil Administrateur a toujours accès à tout.")
+            return
+        self.limites = [p for p in self.limites if p != profil] + ([] if permis else [profil])
 
     def refusees(self, utilisateur: Utilisateur) -> set[str]:
         """Fonctions du menu retirées au profil de l'utilisateur ; l'administrateur a tout."""
@@ -170,16 +197,41 @@ class Registre:
 
     # ------------------------------------------------------------------ connexion
     def verifier(self, nom: str, mot_de_passe: str) -> Utilisateur | None:
+        """Compte et mot de passe justes, compte actif et non verrouillé. ESSAIS_AVANT_VERROU mots de passe faux de
+        suite verrouillent le compte : seul un administrateur le rouvre, en lui donnant un nouveau mot de passe
+        (page Utilisateurs, après vérification). Le dernier administrateur actif n'est jamais verrouillé (personne
+        ne pourrait le rouvrir) : il est bloqué BLOCAGE_DERNIER_ADMIN secondes."""
         u = self.trouver(nom)
+        if u is not None and self.bloque(u):
+            self._noter(f"refus (compte verrouillé) : {u.nom}")
+            return None
         ok = bool(u and u.actif and u.sel and hmac.compare_digest(empreinte(mot_de_passe, u.sel), u.empreinte))
         self._noter(f"{'connexion' if ok else 'échec'} : {nom.strip()}")
         if ok:
             u.derniere_connexion = datetime.now().isoformat(timespec="seconds")
+            u.echecs = 0
             self.enregistrer()
             return u
+        if u is not None:
+            u.echecs += 1
+            if u.echecs >= ESSAIS_AVANT_VERROU:
+                if u.est_admin and [a for a in self.admins_actifs() if not a.verrouille] == [u]:
+                    self._blocages[u.nom] = time.time() + BLOCAGE_DERNIER_ADMIN
+                    self._noter(f"dernier administrateur bloqué {BLOCAGE_DERNIER_ADMIN // 60} min : {u.nom}")
+                    u.echecs = 0
+                else:
+                    u.verrouille = True
+                    self._noter(f"compte verrouillé après {ESSAIS_AVANT_VERROU} essais : {u.nom}")
+            self.enregistrer()
         return None
 
+    def bloque(self, u: Utilisateur) -> bool:
+        return u.verrouille or self._blocages.get(u.nom, 0) > time.time()
+
     def _noter(self, texte: str) -> None:
+        from . import audit
+
+        audit.noter(self.journal.parent.parent, texte, "Connexion", utilisateur="")
         try:
             self.journal.parent.mkdir(parents=True, exist_ok=True)
             with open(self.journal, "a", encoding="utf-8") as f:
@@ -211,6 +263,9 @@ class Registre:
             raise ErreurUtilisateur(f"Le mot de passe doit avoir au moins {LONGUEUR_MIN} caractères.")
         u.sel = secrets.token_hex(16)
         u.empreinte = empreinte(mot_de_passe, u.sel)
+        if u.verrouille:  # nouveau mot de passe donné par l'administrateur : le compte est rouvert
+            self._noter(f"compte déverrouillé : {u.nom}")
+        u.verrouille, u.echecs = False, 0
 
     def changer_profil(self, nom: str, profil: str) -> None:
         u = self._exige(nom)
@@ -267,6 +322,7 @@ class Registre:
         self.profils.pop(profil, None)
         self.points_vente.pop(profil, None)
         self.sans_export = [p for p in self.sans_export if p != profil]
+        self.limites = [p for p in self.limites if p != profil]
         self.fonctions_refusees.pop(profil, None)
         self.fonctions_permises.pop(profil, None)
 
@@ -275,7 +331,7 @@ class Registre:
         self.chemin.parent.mkdir(parents=True, exist_ok=True)
         temporaire = self.chemin.with_suffix(".tmp")
         temporaire.write_text(json.dumps({"profils": self.profils, "points_vente": self.points_vente,
-                                          "sans_export": self.sans_export,
+                                          "sans_export": self.sans_export, "limites": self.limites,
                                           "fonctions_refusees": self.fonctions_refusees,
                                           "fonctions_permises": self.fonctions_permises,
                                           "utilisateurs": [asdict(u) for u in self.utilisateurs]},

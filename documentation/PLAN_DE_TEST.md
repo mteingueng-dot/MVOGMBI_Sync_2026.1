@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 212 tests
+## 3. Tests automatiques — 227 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|

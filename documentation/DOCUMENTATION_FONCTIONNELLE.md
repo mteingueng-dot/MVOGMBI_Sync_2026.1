@@ -107,6 +107,7 @@ Règles d'accès :
 | Rapprochement bancaire | Relevé Desjardins comparé au compte 1055 ; écart expliqué ligne par ligne |
 | Contrôle de la caisse | Espèces attendues (fond + ventes en espèces − remboursements − remises) contre comptage par coupures ; alerte au-delà de 5 $ |
 | Petite caisse et dépenses | Dépense avec reçu, TPS / TVQ séparées dans les bons comptes, écriture dans Sage |
+| RIA | Mouvements RIA des relevés, surplus de dépôts d'espèces, paiements en espèces et commissions ; compte RIA de bilan qui revient à zéro, seules les commissions sont un revenu |
 | Âge des comptes, déclaration TPS/TVQ, prévision de trésorerie, budget, clôture du mois | Lus dans Sage, comparés aux taxes Clover et au budget |
 
 ### 3.7 Paie
@@ -118,9 +119,11 @@ Règles d'accès :
 | Feuilles de temps | Présence − pauses ; heures supplémentaires au-delà de 40 h par semaine ; une feuille changée revient « À approuver » |
 | Employés | Créés dans Clover et dans Sage Paie, courriel obligatoire pour le bulletin ; le NAS n'est jamais gardé |
 | Jours fériés et congés | Normes du travail du Québec : indemnité = 1/20 des 4 semaines précédentes, vacances 4 % / 6 % |
+| Calendrier de paie | Date de la première paie de l'année ; paies aux 14 jours, périodes et années à venir calculées |
 | Traitement de la paie | Heures **approuvées** de l'application → chèques de paie dans Sage ; bulletins imprimés ou envoyés, un destinataire par bulletin |
 | Retenues et remises | Montants à remettre par organisme, échéance le 15 du mois suivant, alerte de retard |
-| Fin d'emploi, concordance T4 / RL-1, coût de la main-d'œuvre | Préparés d'après les paies de Sage et les heures pointées |
+| T4 et Relevé 1 | Copies de l'employé d'après les paies de Sage, imprimées pour un, plusieurs ou tous, ou envoyées à chacun ; NAS non gardé ; feuillets officiels de Sage |
+| Fin d'emploi, concordance, coût de la main-d'œuvre | Préparés d'après les paies de Sage et les heures pointées |
 
 ### 3.8 État
 
@@ -146,7 +149,8 @@ Section **« Gestion »** des statistiques : un rapport par fonction de gestion 
 1. Dépôt Clover = encaissements par carte du lot du soir ; ventes du lundi au jeudi déposées le lendemain, fin de semaine déposée le lundi.
 2. Encaissement daté du dépôt, « Payé par : Comptant », appliqué sur la facture du jour ou de la fin de semaine.
 3. Virements Interac et dépôts d'espèces du relevé : répartis sur les factures qui ont encore des espèces dues.
-4. Un dépôt n'est jamais saisi deux fois ; le solde dû de la facture est vérifié après chaque saisie.
+4. Dépôt d'espèces supérieur aux espèces dues, même cumulé sur plusieurs journées : les factures sont couvertes de la plus ancienne à la plus récente, le surplus est la part de RIA à confirmer ; rien n'est encaissé avant sa confirmation.
+5. Un dépôt n'est jamais saisi deux fois ; le solde dû de la facture est vérifié après chaque saisie.
 
 ### 4.3 Sage
 

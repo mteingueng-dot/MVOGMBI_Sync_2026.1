@@ -75,6 +75,13 @@ class Depense:
         return lignes
 
 
+def _config(racine: Path) -> dict:
+    import tomllib
+
+    chemin = Path(racine) / "config.toml"
+    return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
+
+
 class Registre:
     def __init__(self, racine: Path):
         self.racine = Path(racine)
@@ -96,6 +103,10 @@ class Registre:
         date.fromisoformat(d.jour)
         if d.moyen != APPRO and not d.compte.isdigit():
             raise ValueError("Choisissez le compte de charge (ex. 5450).")
+        if d.moyen != APPRO:
+            from .plan_comptable import verifier
+
+            verifier(self.racine, _config(self.racine), [d.compte])
         n = max((int(x.numero.split("-")[1]) for x in self.depenses), default=0) + 1
         d.numero, d.cree = f"DP-{n:04d}", datetime.now().isoformat(timespec="seconds")
         if d.moyen == APPRO:

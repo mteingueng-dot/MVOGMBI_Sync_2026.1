@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal as D
 
-from mvogmbi_sync.encaissements import (A_SAISIR, A_VERIFIER, APPLIQUE, ECART, Depot, LigneEncaissement, evaluer,
+from mvogmbi_sync.encaissements import (A_RIA, A_SAISIR, A_VERIFIER, APPLIQUE, ECART, Depot, LigneEncaissement, evaluer,
                                         repartir_especes)
 from mvogmbi_sync.rapprochement import (A_ENCAISSER, A_PAIE, RAPPROCHE, MouvementBanque, MouvementSage, est_especes,
                                         facture_du_jour, jours_couverts, rapprocher)
@@ -52,13 +52,15 @@ def test_repartition_interac_et_especes():
     depots = repartir_especes(mouvements, factures, dus, clover)
     interac_21 = next(d for d in depots if d.montant == D("40.00"))
     especes = next(d for d in depots if d.montant == D("350.00"))
-    trop = next(d for d in depots if d.lignes[0].montant == D("999.00"))
+    trop = next(d for d in depots if d.montant == D("999.00"))
     interac_samedi = next(d for d in depots if d.montant == D("50.00"))
     assert [(l.facture, l.montant) for l in interac_21.lignes] == [("Vente 2026-10-21", D("40.00"))]
     # dépôt d'espèces : la facture la plus ancienne d'abord (300 $), puis ce qui reste sur le 21 (100 - 40 = 60 $)
     assert [(l.facture, l.montant) for l in especes.lignes] == [("Vente 2026-10-20", D("300.00")),
                                                                  ("Vente 2026-10-21", D("50.00"))]
-    assert trop.etat == A_VERIFIER and "de trop" in trop.remarque
+    # dépôt supérieur aux espèces dues : le reste des factures est couvert, le surplus attend sa confirmation RIA
+    assert trop.etat == A_RIA and trop.ria == D("989.00")
+    assert [(l.facture, l.montant) for l in trop.lignes] == [("Vente 2026-10-21", D("10.00")), ("RIA", D("989.00"))]
     # Interac du samedi : facture de fin de semaine, encaissement daté du dimanche (date de la facture)
     assert interac_samedi.lignes[0].facture == "Vente 2026-10-23/25"
     assert interac_samedi.date == date(2026, 10, 25) and interac_samedi.origine == "Interac JEAN EXEMPLE"

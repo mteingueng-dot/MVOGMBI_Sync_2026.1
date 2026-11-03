@@ -140,9 +140,10 @@ class FenetreCreationArticle(tk.Toplevel):
         self.bouton_table = Bouton(sage, t("Comptes par catégorie…"), self.ouvrir_table, "secondaire", fond=CARTE,
                                    petit=True)
         self.bouton_table.grid(row=8, column=0, columnspan=2, sticky="w", pady=4)
+        self.case_sage = ttk.Checkbutton(sage, text=t("Créer dans Sage"), variable=self.creer_sage,
+                                         style="Carte.TCheckbutton")
+        self.case_sage.grid(row=10, column=0, columnspan=2, sticky="w", pady=(6, 0))
         self._type_change(initial=True)
-        ttk.Checkbutton(sage, text=t("Créer dans Sage"), variable=self.creer_sage,
-                        style="Carte.TCheckbutton").grid(row=10, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
         self.etat = tk.Label(self, text=t("Lecture des catégories et des taxes Clover…"), background=CARTE,
                              foreground=TEXTE_DOUX, anchor="w", justify="left", wraplength=720)
@@ -170,21 +171,20 @@ class FenetreCreationArticle(tk.Toplevel):
         self.aide_comptes.configure(text=t("Service : créé dans Sage seulement, n° commençant par S ; comptes de produits "
                                            "et de charges seulement.")
                                     if service else t("Comptes et préfixe du n° viennent de la catégorie Clover."))
+        # règles du propriétaire : un service se crée seulement dans Sage (2026-10-30) ; un article de stock dans
+        # les deux systèmes (2026-11-01) ; les cases sont grisées, le choix n'est plus laissé
+        self.creer_sage.set(True)
+        if hasattr(self, "case_sage"):
+            self.case_sage.state(["disabled"])
+        if hasattr(self, "case_clover"):
+            self.case_clover.state(["disabled"])
+            self.creer_clover.set(not service and not self.id_clover_existant)
         if service:
-            # règle du propriétaire (2026-10-30) : un service se crée seulement dans Sage, jamais dans Clover
-            if hasattr(self, "case_clover"):
-                if "disabled" not in self.case_clover.state():
-                    self.creer_clover_stock = self.creer_clover.get()
-                self.creer_clover.set(False)
-                self.case_clover.state(["disabled"])
             self.bouton_table.grid_remove()
             for cle in ("actif", "ecart", "produits", "cmv"):
                 self.v[cle].set("")
             self.v["numero"].set(prochain_numero(self.numeros_sage, "S"))
         else:
-            if hasattr(self, "case_clover") and "disabled" in self.case_clover.state():
-                self.case_clover.state(["!disabled"])
-                self.creer_clover.set(self.creer_clover_stock)
             self.bouton_table.grid()
             if not initial:
                 self._categorie_choisie()
@@ -351,6 +351,13 @@ def proposer_depuis_sage(racine: Path) -> dict:
         "SELECT sPartCode, lAcNAsset, lAcNRev, lAcNExp, lAcNVar FROM tinvent WHERE bService = 0"),
         config.get("sage_import", {}).get("fichier_entreprise"))
     return proposer_table(lire_correspondances(Path(racine) / "donnees" / "correspondance_articles.xlsx"), lignes)
+
+
+def _config_toml(racine) -> dict:
+    import tomllib
+
+    chemin = Path(racine) / "config.toml"
+    return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
 
 
 class FenetreCategories(FenetreOutil):
@@ -520,6 +527,14 @@ class FenetreCategories(FenetreOutil):
         selection(nom)
 
     def enregistrer(self) -> None:
+        from .plan_comptable import comptes_connus, problemes
+
+        numeros = {getattr(l, c, "") for l in self.table.lignes.values() for c in ("actif", "produits", "cmv", "ecart")}
+        erreurs = problemes(numeros, comptes_connus(self.racine, _config_toml(self.racine)))
+        if erreurs:  # comptes de la table : ils doivent exister dans le plan comptable (règle du 2026-11-01)
+            self.etat.configure(text="⚠ " + " ; ".join(erreurs[:4]) + (" …" if len(erreurs) > 4 else ""),
+                                foreground=ROUGE)
+            return
         self.table.enregistrer()
         if self.au_retour:
             self.au_retour()

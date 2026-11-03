@@ -34,7 +34,8 @@ EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 A_VERIFIER = "À vérifier"
 A_SAISIR = "À saisir (photo)"
 PRETE = "Prête à importer"
-IMPORTEE = "Importée dans Sage"
+IMPORTEE = "Importée"  # dans Sage et, sauf case décochée, dans Clover (avant le 2026-11-01 : « Importée dans Sage »)
+ANCIEN_IMPORTEE = "Importée dans Sage"
 DEJA_DANS_SAGE = "Déjà dans Sage"  # saisie à la main entre-temps : archivée et retirée de la liste (2026-10-28)
 ETATS = [A_SAISIR, A_VERIFIER, PRETE, IMPORTEE]
 
@@ -182,6 +183,9 @@ class Registre:
     def charger(self) -> None:
         if self.chemin.exists():
             self.factures = [Facture.depuis_dict(d) for d in json.loads(self.chemin.read_text(encoding="utf-8"))]
+            for f in self.factures:
+                if f.etat == ANCIEN_IMPORTEE:
+                    f.etat = IMPORTEE
 
     def enregistrer(self) -> None:
         self.factures = [f for f in self.factures if f.etat != DEJA_DANS_SAGE]  # archivées : plus à traiter

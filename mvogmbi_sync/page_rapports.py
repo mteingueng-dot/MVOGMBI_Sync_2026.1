@@ -13,7 +13,8 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .design import (CARTE, MENU_ACTIF, MENU_FOND, MENU_SURVOL, ROUGE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton,
-                     ChampDate, ChampRecherche, Rangee, apres_frappe, cadre_tableau, entete_page, fond_de, rayer)
+                     ChampDate, ChampRecherche, ChoixMultiple, Rangee, apres_frappe, cadre_tableau, entete_page, fond_de,
+                     rayer)
 from .export_tableau import bouton_exporter, export_permis, placer_a_droite
 from .statistiques_clover import SEUIL_CUMP_DOUTEUX
 from .langues import t
@@ -77,7 +78,7 @@ FILTRES_PEREMPTION = ["Bientôt périmés (3 mois ou moins)", "Périmés", "Un m
                       "Plus de 3 mois", "Tous"]
 COULEURS_PEREMPTION = {"rouge": "#f8c9cf", "orange": "#ffe3a8", "neutre": "#eef1ef"}
 FILTRES_SUIVI = ["Toutes", "Bloquées ou en échec", "Non encaissées", "Non rapprochées"]
-FILTRES_GLOBAUX = ("Article", "Client", "Employé", "Catégorie", "Mode de paiement")
+FILTRES_GLOBAUX = ("Point de vente", "Article", "Client", "Employé", "Catégorie", "Mode de paiement")
 TYPES_RECHERCHE = ["Client", "Fournisseur", "Vente", "Encaissement", "Paiement", "Article", "Statistiques client",
                    "Statistiques fournisseur", "Statistiques employé"]
 # statistiques (demande du propriétaire du 2026-10-28) : liste à choisir pour chaque type
@@ -85,7 +86,7 @@ STATISTIQUES = {"Statistiques client": "Client", "Statistiques fournisseur": "Fo
                 "Statistiques employé": "Employé"}
 REGROUPEMENTS = ["Article", "Catégorie", "Article par jour", "Catégorie par jour"]
 EXTENSIBLES = {"Commentaire", "Description", "Client / fournisseur", "Fournisseur", "Client", "Article Sage", "Article",
-               "Indicateur", "Appareil", "Employé", "Mode(s) de paiement"}
+               "Indicateur", "Appareil", "Employé", "Mode(s) de paiement", "Type", "Source", "Pièce", "Dépôt"}
 COLONNES_ARCHIVES = (("date", "Date", 90), ("fournisseur", "Fournisseur", 260), ("numero", "N°", 110),
                      ("total", "Total", 100), ("lignes", "Lignes", 70), ("archivee", "Archivée le", 150))
 
@@ -154,8 +155,8 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
             if isinstance(v, Decimal):
                 if "%" in entete:
                     v = f"{v} %".replace(".", ",")
-                elif any(m in entete for m in ("Quantité", "Cumul", "Vendu", "Stock ", "Stock", "Besoin", "À acheter",
-                                                 "Sold")) and "Valeur" not in entete and not entete.startswith("Solde"):
+                elif (any(m in entete for m in ("Quantité", "Cumul", "Vendu", "Stock ", "Stock", "Besoin", "À acheter",
+                                                  "Sold")) or "qté" in entete.casefold())                         and "Valeur" not in entete and not entete.startswith("Solde"):
                     v = f"{v.normalize():f}".replace(".", ",")
                 else:
                     v = montant(v)
@@ -643,13 +644,21 @@ class PageRapports(ttk.Frame):
             groupe = filtres.ajouter(filtres.groupe(), 10)
             ttk.Label(groupe, text=t(nom)).pack(side="left", padx=(0, 3))
             variable = tk.StringVar()
-            champ = ChampRecherche(groupe, variable, [], largeur=16, au_choix=lambda _v=None: self.recalculer())
+            # choix multiples avec « Tout sélectionner » (demande du propriétaire du 2026-11-01) ; le point de vente
+            # change les données lues (relecture), les autres filtres recalculent seulement
+            rappel = self.calculer_statistiques if nom == "Point de vente" else self.recalculer
+            champ = ChoixMultiple(groupe, variable, [], largeur=16, au_choix=lambda r=rappel: r())
             champ.pack(side="left")
             self.filtres[nom], self.champs_filtres[nom] = variable, champ
+        from .points_vente import visibles
+
+        self.champs_filtres["Point de vente"].configurer_valeurs(
+            [p.libelle for p in visibles(self, self._config_toml())])
         filtres.ajouter(Bouton(filtres, "✔  " + t("Appliquer"), self.recalculer, petit=True), 4)
         filtres.ajouter(Bouton(filtres, "✖  " + t("Effacer"), self.effacer_filtres, "secondaire", petit=True))
         self.etat_stats = ttk.Label(cadre, text="", foreground=TEXTE_DOUX, padding=(0, 4))
         self.etat_stats.pack(fill="x")
+        self._verrouiller_employe()
 
         # menu de navigation à gauche (comme Clover) et contenu à droite
         corps = tk.Frame(cadre, background=fond_de(cadre))
@@ -872,11 +881,17 @@ class PageRapports(ttk.Frame):
                 from .api_clover import ClientClover
                 from .statistiques_clover import comparaison, lire, montants_par_moyen, series, statistiques
 
-                client = ClientClover(charger_config(self.racine / "config.toml"))
-                cache = self.racine / "donnees" / "cache_clover"
+                from .points_vente import cache_clover
+                from .statistiques_clover import fusionner
+
                 du2, au2, libelle = comparaison(du, au, self.nom_periode)
-                donnees = lire(client, du, au, cache, progression)
-                autres = lire(client, du2, au2, cache, progression)
+                parts, parts_avant = [], []
+                for pv in self._points_choisis():  # un ou plusieurs magasins : ventes additionnées
+                    client = ClientClover(charger_config(self.racine / "config.toml", pv))
+                    cache = cache_clover(self.racine, pv)
+                    parts.append(lire(client, du, au, cache, progression))
+                    parts_avant.append(lire(client, du2, au2, cache, progression))
+                donnees, autres = fusionner(parts), fusionner(parts_avant)
                 couts = self._couts_sage()
                 self.brut_stats = {"donnees": donnees, "autres": autres, "couts": couts, "du": du,
                                    "au": au, "du2": du2, "au2": au2, "libelle": libelle,
@@ -892,7 +907,22 @@ class PageRapports(ttk.Frame):
         threading.Thread(target=travail, daemon=True).start()
 
     def _filtres_actifs(self) -> dict[str, str]:
-        return {nom: v.get().strip() for nom, v in self.filtres.items() if v.get().strip()}
+        return {nom: v.get().strip() for nom, v in self.filtres.items() if v.get().strip() and nom != "Point de vente"}
+
+    def _config_toml(self) -> dict:
+        import tomllib
+
+        chemin = self.racine / "config.toml"
+        return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
+
+    def _points_choisis(self):
+        """Points de vente du filtre (aucun choix = tous ceux que le profil voit) : leurs ventes sont additionnées."""
+        from .design import choix_multiples
+        from .points_vente import visibles
+
+        tous = visibles(self, self._config_toml())
+        choisis = set(choix_multiples(self.filtres["Point de vente"].get())) if "Point de vente" in self.filtres else set()
+        return [p for p in tous if not choisis or p.libelle in choisis] or tous[:1]
 
     def _calculer(self, b: dict) -> dict:
         """Statistiques de la période et de sa comparaison, filtres globaux appliqués."""
@@ -934,9 +964,23 @@ class PageRapports(ttk.Frame):
 
         threading.Thread(target=travail, daemon=True).start()
 
+    def _verrouiller_employe(self) -> None:
+        """Login limité à un employé (règle du propriétaire du 2026-10-30) : filtre Employé posé sur son nom, non
+        modifiable."""
+        from .design import login_limite
+
+        self.employe_fixe = None
+        if login_limite(self):
+            moi = self.nametowidget(".").employe_connecte()
+            self.employe_fixe = moi.nom if moi else "—"
+            self.filtres["Employé"].set(self.employe_fixe)
+            self.champs_filtres["Employé"].desactiver()
+
     def effacer_filtres(self) -> None:
         for variable in self.filtres.values():
             variable.set("")
+        if self.employe_fixe is not None:
+            self.filtres["Employé"].set(self.employe_fixe)
         self.recalculer()
 
     def _couts_sage(self) -> dict:
@@ -1055,6 +1099,8 @@ class PageRapports(ttk.Frame):
         self.liens_nav = {}
         tk.Frame(self.nav, height=6, background=MENU_FOND).pack()
         for icone, section, etats in NAVIGATION:
+            if section == "Gestion" and getattr(self, "employe_fixe", None) is not None:
+                continue  # rapports de gestion : pas pour un login limité à un employé
             ouverte = section == self.section_ouverte
             entete = tk.Label(self.nav, text=f"{icone}   {t(section)}", anchor="w", cursor="hand2",
                               font=("Segoe UI Semibold" if ouverte else "Segoe UI", 10), padx=12, pady=6,

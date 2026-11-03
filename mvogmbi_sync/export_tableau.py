@@ -113,6 +113,11 @@ def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[s
     de plus) : en-tête du marché, titre, date, en-têtes verts, une ligne sur deux teintée, montants à droite,
     page à l'horizontale au-delà de 7 colonnes (ou s'il y a des graphiques). `images` : images PIL (graphiques,
     cartes d'indicateurs) placées avant le tableau ; sans en-têtes, le PDF ne contient que les images."""
+    if not images:  # tableau seul : modèle dessiné directement, sans Edge (2026-11-03)
+        from .pdf_documents import tableau
+
+        tableau(Path(chemin), RACINE_ENTETE, titre, entetes, lignes, sous_titre)
+        return
     pdf_depuis_html(page_html(titre, entetes, lignes, images, sous_titre), chemin)
 
 
@@ -149,9 +154,7 @@ def pdf_depuis_html(page: str, chemin: Path, delai: int = 120) -> None:
     import tempfile
 
     edge = next((e for e in EDGE if e.exists()), None)
-    if not edge:
-        raise RuntimeError(t("Microsoft Edge introuvable : l'export PDF en a besoin."))
-    raison = ""
+    raison = "" if edge else "Microsoft Edge introuvable"
     # des processus d'Edge gardent quelques secondes leur profil ouvert : le dossier temporaire est effacé sans
     # erreur (« WinError 32 … Extension Rules », constat du 2026-10-29 : le PDF était fait, l'erreur venait du
     # ménage) ; ce qui reste est effacé par Windows plus tard
@@ -160,23 +163,89 @@ def pdf_depuis_html(page: str, chemin: Path, delai: int = 120) -> None:
         # OneDrive, réseau ou protégé ne fait plus échouer Edge (constat du 2026-10-28)
         source, pdf = Path(dossier) / "tableau.html", Path(dossier) / "tableau.pdf"
         source.write_text(page, encoding="utf-8")
-        for options in (["--headless"], ["--headless=old"]):  # 2e essai avec l'ancien mode sans fenêtre
+        # constat du 2026-11-01 : dans l'application ouverte, Edge s'arrête parfois sans rien écrire (« code 0 »)
+        # alors que la même commande marche hors de l'application : 3 façons de le lancer, chacune avec son profil,
+        # chaque échec noté dans donnees/journal_pdf.log, puis la création de secours sans Edge (fpdf2)
+        essais = (["--headless"], ["--headless=old"],
+                  ["--headless", "--no-sandbox", "--disable-extensions", "--no-first-run", "--disable-sync"])
+        for rang, options in enumerate(essais if edge else ()):
             try:
                 with _ProgrammeExterne():
                     r = subprocess.run([str(edge), *options, "--disable-gpu", "--no-pdf-header-footer",
-                                        f"--user-data-dir={Path(dossier) / 'profil'}", f"--print-to-pdf={pdf}",
+                                        f"--user-data-dir={Path(dossier) / f'profil{rang}'}", f"--print-to-pdf={pdf}",
                                         source.as_uri()], timeout=delai, capture_output=True,
                                        stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 lignes = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
                 raison = (lignes[-1] if lignes else f"Edge s'est arrêté (code {r.returncode})")[:200]
             except subprocess.TimeoutExpired:
                 raison = "Edge n'a pas répondu en 2 minutes"
+            except OSError as exc:
+                raison = f"Edge n'a pas pu être lancé : {exc}"
             if pdf.exists() and pdf.stat().st_size > 0:
                 break
-        if not pdf.exists():
-            raise RuntimeError(t("Le PDF n'a pas pu être créé.") + (f" ({raison})" if raison else ""))
+            _noter_pdf(f"essai {rang + 1} {' '.join(options)} : {raison}")
+        if not (pdf.exists() and pdf.stat().st_size > 0):
+            try:
+                pdf_secours(page, pdf)
+                _noter_pdf("PDF fait par la création de secours (fpdf2)")
+            except Exception as exc:
+                _noter_pdf(f"création de secours impossible : {exc}")
+                raise RuntimeError(t("Le PDF n'a pas pu être créé.") + (f" ({raison})" if raison else "")) from None
         Path(chemin).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(pdf, chemin)
+
+
+def _noter_pdf(texte: str) -> None:
+    """Journal de diagnostic des PDF (donnees/journal_pdf.log)."""
+    from datetime import datetime
+
+    if RACINE_ENTETE is None:
+        return
+    try:
+        chemin = Path(RACINE_ENTETE) / "donnees" / "journal_pdf.log"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        with open(chemin, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {texte}\n")
+    except OSError:
+        pass
+
+
+POLICES = (Path(r"C:\Windows\Fonts\arial.ttf"), Path(r"C:\Windows\Fonts\arialbd.ttf"))
+
+
+def pdf_secours(page: str, chemin: Path) -> None:
+    """PDF sans Edge (bibliothèque fpdf2) : même contenu, mise en forme simple (titres, tableaux, texte). Sert quand
+    Edge refuse d'imprimer : un bulletin ou un bon de commande part quand même."""
+    import html as html_lib
+
+    from fpdf import FPDF
+
+    corps = re.sub(r"(?is)<(style|script|head)[^>]*>.*?</\1>", "", page)
+    corps = re.sub(r"(?is)<img[^>]*>", "", corps)
+    corps = re.sub(r"(?is)</?(div|span|section|header|footer|main|article|thead|tbody|colgroup|col)[^>]*>", "", corps)
+    corps = re.sub(r"(?i)<(t[dh]|tr|table|p|h[1-6]|b|i|br|ul|ol|li)\b[^>]*?(/?)>", r"<\1\2>", corps)
+    corps = re.sub(r"[\U00010000-\U0010FFFF\u2600-\u27BF\uFE0F]", "", corps)  # pictogrammes absents de la police
+    corps = re.sub(r"(?is)<body[^>]*>|</body>|</?html[^>]*>|<!doctype[^>]*>", "", corps)
+    paysage = corps.count("<th>") > 7 * max(1, corps.count("<table>"))
+    document = FPDF(orientation="L" if paysage else "P", unit="mm", format="Letter")
+    document.set_margins(12, 12, 12)
+    document.set_auto_page_break(True, 12)
+    if all(p.exists() for p in POLICES):
+        document.add_font("Arial", "", str(POLICES[0]))
+        document.add_font("Arial", "B", str(POLICES[1]))
+        police = "Arial"
+    else:
+        police = "Helvetica"
+        corps = corps.encode("latin-1", "replace").decode("latin-1")
+    document.set_font(police, size=9)
+    for morceau in re.split(r"(?i)<div class=.saut.>|page-break", corps) or [corps]:
+        document.add_page()
+        try:
+            document.write_html(morceau, font_family=police)
+        except Exception:  # HTML trop riche : le texte seul
+            texte = html_lib.unescape(re.sub(r"<[^>]+>", " ", morceau))
+            document.multi_cell(0, 5, " ".join(texte.split()))
+    document.output(str(chemin))
 
 
 def page_html(titre: str, entetes: list[str], lignes: list[list[str]], images=None, sous_titre: str = "",

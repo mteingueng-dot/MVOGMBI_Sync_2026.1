@@ -140,6 +140,28 @@ def appliquer_promotions(racine: Path, client, aujourdhui: date | None = None, c
     return faits
 
 
+def annuler_promotion(racine: Path, numero: str, client) -> str:
+    """Annule une promotion (demande du propriétaire du 2026-11-03 : même en cours) : prévue -> annulée ; en cours ->
+    prix normal remis tout de suite dans Clover, si le prix est encore le prix promo (sinon laissé, noté)."""
+    registre = Promotions(racine)
+    p = next(x for x in registre.liste if x.numero == numero)
+    jour = date.today().isoformat()
+    if p.etat == EN_COURS:
+        actuel = _prix_clover(client, p.id_clover)
+        if actuel == Decimal(p.prix_promo):
+            client.regler_prix(p.id_clover, Decimal(p.prix_normal))
+            p.messages.append(f"{jour} : promotion annulée, prix normal remis ({p.prix_normal})")
+        else:
+            p.messages.append(f"{jour} : promotion annulée ; prix changé entre-temps ({actuel}) : laissé tel quel")
+    elif p.etat == PREVUE:
+        p.messages.append(f"{jour} : promotion annulée avant son début")
+    else:
+        raise ValueError(f"{numero} est déjà {p.etat.lower()}.")
+    p.etat = ANNULEE
+    registre.enregistrer()
+    return p.messages[-1]
+
+
 def effet(p: Promotion, ventes_pendant: dict, ventes_avant: dict) -> tuple[Decimal, Decimal, Decimal, Decimal]:
     """(quantité pendant, quantité avant, ventes nettes pendant, ventes nettes avant) de l'article."""
     a, b = ventes_pendant.get(p.id_clover), ventes_avant.get(p.id_clover)
@@ -235,9 +257,14 @@ ul {{ padding-left: 18px; }} li {{ margin: 4px 0; }}
 def ecrire_tableau(racine: Path, config_toml: dict, resume=None, alertes: list[str] | None = None) -> Path:
     from .resume_matin import calculer, html as html_resume
 
+    from dataclasses import replace
+
     resume = resume or calculer(racine, config_toml)
+    # ni retenues en retard ni caisse non comptée sur le téléphone (demande du propriétaire du 2026-11-01) : ces
+    # alertes restent dans le courriel du matin
+    resume = replace(resume, alertes=[])
     cible = dossier_tableau(racine, config_toml)
     cible.mkdir(parents=True, exist_ok=True)
     chemin = cible / "tableau_du_gerant.html"
-    chemin.write_text(page_telephone(html_resume(resume), alertes or [], datetime.now()), encoding="utf-8")
+    chemin.write_text(page_telephone(html_resume(resume), [], datetime.now()), encoding="utf-8")
     return chemin

@@ -59,6 +59,7 @@ class Employe:
     clover: str = ""       # identifiant de l'employé Clover (importé)
     compte: str = ""       # compte de l'application relié (« Paie > Mon horaire »)
     courriel: str = ""     # adresse où l'employé reçoit son bulletin de paie (aussi dans sa fiche Sage)
+    adresse: str = ""      # adresse postale imprimée sur ses T4 et RL-1 (lignes séparées par « | »)
 
 
 @dataclass

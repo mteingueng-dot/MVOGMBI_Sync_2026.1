@@ -6,12 +6,14 @@ from __future__ import annotations
 
 import tkinter as tk
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 from . import paie_temps as pt
 from . import planning as pl
-from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee, \
+    employes_visibles
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -60,7 +62,7 @@ class FenetrePlanning(FenetreOutil):
         from .page_rapports import remplir
 
         self.planning = pl.Planning(self.racine)
-        self.employes = pt.Registre(self.racine).actifs()
+        self.employes = employes_visibles(self, pt.Registre(self.racine).actifs())
         jours = pl.jours_du_mois(self.mois)
         publie = self.planning.publies.get(self.mois)
         self.libelle.configure(text=t("Planning de {m}", m=self.mois) + (
@@ -178,6 +180,34 @@ def lignes_horaire(planning: pl.Planning, employe: str, depuis: date, jours: int
     return lignes
 
 
+ENTETES_HORAIRE = ["Jour", "Horaire", "Pause", "Heures"]
+MOIS_COURTS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc.")
+
+
+def semaines_horaire(lignes: list[list]) -> tuple[list[list], list[Decimal]]:
+    """Lignes de `lignes_horaire` regroupées par semaine (dimanche à samedi) pour l'affichage : [jour, horaire, pause,
+    heures, sorte] où sorte = « semaine » (titre de la semaine et son total), « quart » ou « repos » ; et le total de
+    chaque semaine."""
+    sortie, totaux, courante, titre = [], [], None, None
+    for iso, jour_semaine, debut, fin, pause, heures in lignes:
+        d = date.fromisoformat(iso)
+        dimanche = d - timedelta(days=(d.weekday() + 1) % 7)
+        if dimanche != courante:
+            courante = dimanche
+            titre = [t("Semaine du {j} {m}", j=dimanche.day, m=t(MOIS_COURTS[dimanche.month - 1])), "", "", "", "semaine"]
+            sortie.append(titre)
+            totaux.append(Decimal(0))
+        libelle = f"{jour_semaine} {d.day} {t(MOIS_COURTS[d.month - 1])}"
+        if fin:
+            h = Decimal(heures.replace(",", "."))
+            totaux[-1] += h
+            sortie.append([libelle, f"{debut} – {fin}", f"{pause} min" if pause else "—", heures, "quart"])
+        else:
+            sortie.append([libelle, debut, "", "", "repos"])
+        titre[3] = f"{totaux[-1]:.2f}".replace(".", ",")
+    return sortie, totaux
+
+
 class FenetreMonHoraire(FenetreOutil):
     """Horaire publié de l'employé relié au compte connecté (5 semaines à partir d'aujourd'hui)."""
 
@@ -188,16 +218,37 @@ class FenetreMonHoraire(FenetreOutil):
         self.title(t("Mon horaire"))
         self.configure(background=CARTE, padx=14, pady=10)
         self.transient(parent)
-        self.geometry("620x560")
+        self.geometry("760x620")
         employe = next((e for e in pt.Registre(racine).employes if e.compte and e.compte.casefold() == compte.casefold()),
                        None)
         texte = (t("Horaire publié de {n}, 5 semaines à partir d'aujourd'hui.", n=employe.nom) if employe else
                  t("Votre compte n'est relié à aucun employé : demandez au gérant de le relier dans « Paie > Employés "
                    "et NIP »."))
         tk.Label(self, text=texte, background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left",
-                 wraplength=580).pack(fill="x")
-        tableau = tableau_simple(self, hauteur=18)
-        if employe:
-            remplir(tableau, ["Date", "Jour", "Début", "Fin", "Pause (min)", "Heures"],
-                    lignes_horaire(pl.Planning(racine), employe.id, date.today()),
-                    {"Date": 100, "Jour": 60}, decroissant=False)
+                 wraplength=720).pack(fill="x")
+        if not employe:
+            return
+        lignes, semaines = semaines_horaire(lignes_horaire(pl.Planning(racine), employe.id, date.today()))
+        travailles = [l for l in lignes if l[-1] == "quart"]
+        # cartes : prochain quart, heures de la semaine, jours de travail
+        cartes = tk.Frame(self, background=CARTE)
+        cartes.pack(fill="x", pady=(8, 2))
+        prochain = f"{travailles[0][0]}  {travailles[0][1]}" if travailles else t("Aucun quart publié")
+        total = sum(semaines, Decimal(0))
+        for colonne, (titre, valeur) in enumerate(((t("Prochain quart"), prochain),
+                                                   (t("Heures sur 5 semaines"), f"{total:.2f} h".replace(".", ",")),
+                                                   (t("Jours de travail"), str(len(travailles))))):
+            carte = tk.Frame(cartes, background="#f4f9f5", highlightthickness=1, highlightbackground="#e1ece4")
+            carte.grid(row=0, column=colonne, sticky="nsew", padx=3)
+            cartes.columnconfigure(colonne, weight=1, uniform="h")
+            tk.Label(carte, text=titre, background="#f4f9f5", foreground=TEXTE_DOUX, font=("Segoe UI", 9),
+                     anchor="w").pack(fill="x", padx=8, pady=(5, 0))
+            tk.Label(carte, text=valeur, background="#f4f9f5", foreground=VERT_FONCE, font=("Segoe UI Semibold", 12),
+                     anchor="w").pack(fill="x", padx=8, pady=(0, 5))
+        tableau = tableau_simple(self, hauteur=16)
+        remplir(tableau, ENTETES_HORAIRE, [l[:-1] for l in lignes], {}, lambda i: (lignes[i][-1],), decroissant=False)
+        tableau.tag_configure("repos", foreground="#9aa79e")
+        tableau.tag_configure("semaine", background="#e3f1e7", font=("Segoe UI Semibold", 9))
+        tableau.tag_configure("quart", font=("Segoe UI Semibold", 9))
+        for colonne, largeur in zip(tableau["columns"], (210, 190, 110, 90)):  # tout le tableau occupe la largeur
+            tableau.column(colonne, width=largeur, stretch=True, anchor="center" if largeur < 200 else "w")

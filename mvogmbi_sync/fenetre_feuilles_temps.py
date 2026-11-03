@@ -12,7 +12,8 @@ from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
 from . import paie_temps as pt
-from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, dans_application
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, dans_application, \
+    employes_visibles, login_limite
 from .export_tableau import bouton_exporter
 from .fenetre_pointage import reference
 from .langues import t
@@ -67,7 +68,8 @@ class FenetreFeuilles(FenetreOutil):
         from .page_rapports import remplir
 
         self.registre = pt.Registre(self.racine)
-        self.feuilles = pt.feuilles(self.registre, self.debut)
+        permis = {e.id for e in employes_visibles(self, self.registre.employes)}  # selon le login
+        self.feuilles = [f for f in pt.feuilles(self.registre, self.debut) if f.employe.id in permis]
         fin = self.debut + timedelta(days=pt.JOURS_PERIODE - 1)
         self.libelle.configure(text=t("Période de paie du {d} au {f}", d=f"{self.debut:%Y-%m-%d}", f=f"{fin:%Y-%m-%d}"))
         jours = [self.debut + timedelta(days=i) for i in range(pt.JOURS_PERIODE)]
@@ -104,6 +106,10 @@ class FenetreFeuilles(FenetreOutil):
         return self.feuilles[int(choix[0])]
 
     def approuver(self) -> None:
+        if login_limite(self):
+            messagebox.showwarning(self.title(), t("Votre profil ne permet pas d'approuver les feuilles de temps."),
+                                   parent=self)
+            return
         pretes = [f for f in self.feuilles if f.etat == pt.A_APPROUVER and not f.anomalies and f.total > 0]
         if not pretes:
             messagebox.showinfo(self.title(), t("Aucune feuille à approuver (sans anomalie et avec des heures)."),
@@ -268,10 +274,12 @@ class FenetreEmployes(FenetreOutil):
                                 ("🔗  " + t("Relier à un compte…"), self.relier),
                                 ("🔗  " + t("Lier aux employés Sage…"), self.lier_sage),
                                 ("✉  " + t("Courriel…"), self.courriel),
+                                ("🏠  " + t("Adresse…"), self.adresse),
                                 ("⏻  " + t("Activer / désactiver"), self.basculer)):
             barre.ajouter(Bouton(barre, texte, commande, "secondaire", fond=CARTE, petit=True))
         self.etat = tk.Label(self, text=t("Le NIP (4 à 6 chiffres) n'est jamais gardé : seule son empreinte l'est. "
-                                          "Un employé sans NIP n'apparaît pas au poste de pointage."),
+                                          "Un employé sans NIP apparaît au poste de pointage, mais ne peut pas "
+                                          "pointer."),
                              background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left", wraplength=720)
         self.etat.pack(fill="x", pady=(6, 0))
         self.tableau = tableau_simple(self, hauteur=14)
@@ -386,6 +394,18 @@ class FenetreEmployes(FenetreOutil):
 
         Bouton(boite, t("Enregistrer"), ok, fond=CARTE, petit=True).pack(anchor="e")
         boite.grab_set()
+
+    def adresse(self) -> None:
+        """Adresse postale imprimée sur les T4 et RL-1 de l'employé."""
+        e = self._choisi()
+        if not e:
+            return
+        texte = simpledialog.askstring(self.title(), t("Adresse de {n} (T4 et RL-1), lignes séparées par « | » :", n=e.nom),
+                                       initialvalue=e.adresse, parent=self)
+        if texte is not None:
+            e.adresse = " | ".join(x.strip() for x in texte.split("|") if x.strip())
+            self.registre.enregistrer()
+            self.afficher()
 
     def courriel(self) -> None:
         """Adresse où l'employé reçoit son bulletin de paie (à inscrire aussi dans sa fiche Sage si elle change)."""

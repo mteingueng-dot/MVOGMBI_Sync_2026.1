@@ -280,17 +280,16 @@ def _argent(texte: str) -> str:
 
 
 def ecrire_pdf_bon(racine: Path, bon: Bon) -> Path:
-    from .export_tableau import ecrire_pdf
+    """Bon de commande sur le modèle des documents (pdf_documents) : quantités et prix du fournisseur."""
+    from .pdf_documents import document_commercial
 
-    dossier = Path(racine) / "donnees" / DOSSIER
-    dossier.mkdir(parents=True, exist_ok=True)
-    chemin = dossier / (re.sub(r'[\\/:*?"<>|]+', "-", f"{bon.numero} {bon.fournisseur}")[:100] + ".pdf")
-    lignes = [[l.numero_sage, l.description, l.quantite.replace(".", ","), _argent(l.prix), _argent(l.montant)]
-              for l in bon.lignes]
-    lignes.append(["", "Total", "", "", _argent(str(bon.total))])
-    ecrire_pdf(chemin, f"Bon de commande {bon.numero}", ["N° article", "Description", "Quantité", "Prix", "Montant"],
-               lignes, sous_titre=f"Fournisseur : {bon.fournisseur} — date : {bon.date} — {len(bon.lignes)} article(s)")
-    return chemin
+    chemin = Path(racine) / "donnees" / DOSSIER / (re.sub(r'[\\/:*?"<>|]+', "-", f"{bon.numero} {bon.fournisseur}")[:100]
+                                                   + ".pdf")
+    lignes = [{"numero": l.numero_sage, "description": l.description, "quantite": l.quantite, "prix": l.prix or 0,
+               "montant": l.montant or 0, "taxe": ""} for l in bon.lignes]
+    return document_commercial(chemin, racine, "Bon de commande", bon.numero, bon.date, "Fournisseur",
+                               [bon.fournisseur], [f"{len(bon.lignes)} article(s)", f"État : {bon.etat}"], lignes,
+                               avec_taxes=False, libelle_prix="Prix d'achat")
 
 
 # --------------------------------------------------------------------------------------------- réception

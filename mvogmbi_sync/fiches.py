@@ -58,6 +58,16 @@ def lire_tiers(base, cote: str, nom: str) -> tuple[list[tuple[str, str]], list]:
     return [(k, v) for k, v in infos if str(v).strip()], [("Mouvements", *mouvements)]
 
 
+EMPLACEMENTS_PAR_DEFAUT = {"primary location for all", "primary location", "default location", ""}
+
+
+def nom_emplacement(nom) -> str:
+    """Nom d'un emplacement Sage ; celui créé par Sage en anglais (« Primary location for all ») devient
+    « Emplacement par défaut » (demande du propriétaire du 2026-11-01 : pas de français et d'anglais mêlés)."""
+    texte = " ".join(str(nom or "").split())
+    return t("Emplacement par défaut") if texte.casefold() in EMPLACEMENTS_PAR_DEFAUT else texte
+
+
 def lire_article(base, numero: str) -> tuple[list[tuple[str, str]], list]:
     from .rapports import mouvements_article
 
@@ -88,7 +98,7 @@ def lire_article(base, numero: str) -> tuple[list[tuple[str, str]], list]:
              (t("CUMP"), _argent((valeur / quantite).quantize(Decimal("0.0001"))) if quantite > 0 and valeur > 0
               else "—")]
     sections = [("Stock par emplacement", ["Emplacement", "Quantité", "Valeur", "Dernier coût"],
-                 [[s["d"] or t("Emplacement par défaut"), Decimal(str(s["q"] or 0)).normalize(), _d(s["v"]),
+                 [[nom_emplacement(s["d"]), Decimal(str(s["q"] or 0)).normalize(), _d(s["v"]),
                    _d(s["c"])] for s in stocks])]
     if not a.get("bService"):
         sections.append(("Mouvements", *mouvements_article(base, numero)))

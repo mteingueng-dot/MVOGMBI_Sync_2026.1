@@ -133,6 +133,14 @@ class PageUtilisateurs(ttk.Frame):
         self.boite_supprimer = ttk.Checkbutton(droite, text=t("Supprimer des éléments"),
                                                variable=self.supprimer_permis, style="Carte.TCheckbutton")
         self.boite_supprimer.pack(anchor="w", pady=1)
+        self.lancer_permis = tk.BooleanVar(value=True)
+        self.boite_lancer = ttk.Checkbutton(droite, text=t("Lancer maintenant (importer dans Sage)"),
+                                            variable=self.lancer_permis, style="Carte.TCheckbutton")
+        self.boite_lancer.pack(anchor="w", pady=1)
+        self.tous_employes = tk.BooleanVar(value=True)
+        self.boite_tous = ttk.Checkbutton(droite, text=t("Voir tous les employés"), variable=self.tous_employes,
+                                          style="Carte.TCheckbutton")
+        self.boite_tous.pack(anchor="w", pady=1)
         self.note = tk.Label(droite, text="", font=("Segoe UI", 9), foreground=TEXTE_DOUX, background=CARTE,
                              wraplength=330, justify="left")
         self.note.pack(anchor="w", pady=(8, 4))
@@ -211,8 +219,9 @@ class PageUtilisateurs(ttk.Frame):
     def afficher(self, choisi: str | None = None) -> None:
         self.tableau.delete(*self.tableau.get_children())
         for u in self.registre.utilisateurs:
-            self.tableau.insert("", "end", iid=u.nom, tags=() if u.actif else ("inactif",), values=(
-                u.nom, t(u.profil), t("Actif") if u.actif else t("Désactivé"),
+            etat = t("Verrouillé") if u.verrouille else t("Actif") if u.actif else t("Désactivé")
+            self.tableau.insert("", "end", iid=u.nom, tags=() if u.actif and not u.verrouille else ("inactif",), values=(
+                u.nom, t(u.profil), etat,
                 u.derniere_connexion.replace("T", " ")))
         rayer(self.tableau)
         profils = [t(p) for p in self.registre.profils]  # noms affichés (profils de départ traduits)
@@ -257,6 +266,10 @@ class PageUtilisateurs(ttk.Frame):
         self.boite_exporter.state(["disabled"] if admin else ["!disabled"])
         self.supprimer_permis.set(admin or "Supprimer" not in refusees)
         self.boite_supprimer.state(["disabled"] if admin else ["!disabled"])
+        self.lancer_permis.set(admin or "Lancer le traitement maintenant" not in refusees)
+        self.boite_lancer.state(["disabled"] if admin else ["!disabled"])
+        self.tous_employes.set(admin or profil not in self.registre.limites)
+        self.boite_tous.state(["disabled"] if admin else ["!disabled"])
         self._etat_cases_pdv()
         n = sum(1 for u in self.registre.utilisateurs if u.profil == profil)
         self.note.configure(text=(t("L'administrateur voit toutes les pages et gère les utilisateurs.") if admin
@@ -320,8 +333,11 @@ class PageUtilisateurs(ttk.Frame):
         u = self._selection()
         if not u:
             return
-        mdp = simpledialog.askstring(self.titre, t("Nouveau mot de passe pour {nom} :", nom=u.nom), show="•",
-                                     parent=self)
+        question = t("Nouveau mot de passe pour {nom} :", nom=u.nom)
+        if u.verrouille:
+            question = t("Compte verrouillé après des mots de passe faux. Après vérification de l'identité de "
+                         "{nom}, donnez-lui un nouveau mot de passe : le compte sera rouvert.", nom=u.nom) + "\n\n" + question
+        mdp = simpledialog.askstring(self.titre, question, show="•", parent=self)
         if mdp is not None:
             self._faire(lambda: self.registre.changer_mot_de_passe(u.nom, mdp), t("Mot de passe changé."))
 
@@ -373,10 +389,13 @@ class PageUtilisateurs(ttk.Frame):
         refusees = [c[len("action:"):] for c, v in self.coches.items() if c.startswith("action:") and not v]
         if not self.supprimer_permis.get():
             refusees.append("Supprimer")
+        if not self.lancer_permis.get():
+            refusees.append("Lancer le traitement maintenant")
         codes = None if self.pdv_tous.get() else [c for c, v in self.cases_pdv.items() if v.get()]
 
         def enregistrer():
             self.registre.definir_export(profil, self.exporter.get())
+            self.registre.definir_tous_employes(profil, self.tous_employes.get())
             self.registre.definir_points_vente(profil, codes)
             self.registre.definir_acces(profil, fonctions, sorted(pages))
             self.registre.definir_fonctions(profil, refusees)

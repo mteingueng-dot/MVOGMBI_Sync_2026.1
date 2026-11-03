@@ -67,6 +67,11 @@ class PageFournisseurs(ttk.Frame):
                              values=[t("Toutes")] + [t(e) for e in ETATS])
         liste.pack(side="left")
         liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher_liste())
+        # coché : la facture met à jour Sage ET Clover ; décoché : Sage seulement (services, facture déjà entrée
+        # dans Clover) — demande du propriétaire du 2026-11-01, coché par défaut
+        self.avec_clover = tk.BooleanVar(value=True)
+        ttk.Checkbutton(barre, text=t("Mettre aussi à jour Clover"), variable=self.avec_clover).pack(side="right",
+                                                                                                    padx=(8, 0))
         Bouton(barre, "📤  " + t("Importer toutes les factures prêtes"), lambda: self.importer(toutes=True),
                "accent").pack(side="right", padx=(8, 0))
         self.resume = ttk.Label(self, text="", foreground=TEXTE_DOUX, padding=(0, 6))
@@ -363,8 +368,11 @@ class PageFournisseurs(ttk.Frame):
                                                  "dans le fichier d'entreprise."))
             return
         liste = "\n".join(f"  • {f.fournisseur_sage} n° {f.numero} — {f.total:,.2f} $" for f in pretes)
-        if not messagebox.askyesno(self.titre, t("Importer {n} facture(s) dans Sage ?\n\n{liste}", n=len(pretes),
-                                                 liste=liste)):
+        clover = self.avec_clover.get()
+        question = (t("Importer {n} facture(s) dans Sage et Clover ?\n\n{liste}", n=len(pretes), liste=liste) if clover
+                    else t("Importer {n} facture(s) dans Sage seulement (Clover ne change pas) ?\n\n{liste}",
+                           n=len(pretes), liste=liste))
+        if not messagebox.askyesno(self.titre, question):
             return
         self.resume.configure(text=t("Import dans Sage en cours (contrôles, import, vérification)…"))
 
@@ -375,7 +383,7 @@ class PageFournisseurs(ttk.Frame):
                 from .import_achats import importer_achats
 
                 config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
-                resultats = importer_achats(self.racine, config, pretes)
+                resultats = importer_achats(self.racine, config, pretes, clover=clover)
                 message = "\n\n".join(f"{fichier} : {texte}" for fichier, texte in resultats.items())
             except Exception as exc:
                 message = f"✘ {exc}"

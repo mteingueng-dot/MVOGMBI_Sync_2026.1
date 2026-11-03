@@ -131,6 +131,10 @@ def appliquer(racine: Path, config_toml: dict, numero: str, client=None) -> Pert
             dc.STOCK, "", p.jour, [dc.LigneDocument(l.numero_sage, l.nom, l.quantite, l.cout) for l in reliees],
             f"Perte {p.numero} — {p.motif}"[:60], dc.SORTIE, p.auteur, p.depot)
         p.document = doc.numero
+        doc.messages = ["Clover : fait par la déclaration de perte"]  # passer_stock ne refait pas Clover
+        reg = dc.Registre(racine)
+        reg.document(doc.numero).messages = list(doc.messages)
+        reg.enregistrer()
         p.messages.append(f"Document de stock {doc.numero} créé : « Passer dans Sage » depuis la liste des documents "
                           "de stock.")
     sans_lien = [l.nom for l in p.lignes if not l.numero_sage]
@@ -155,12 +159,66 @@ def appliquer(racine: Path, config_toml: dict, numero: str, client=None) -> Pert
     return p
 
 
+ANNULEE = "Annulée"
+
+
+@vide_apres
+def annuler(racine: Path, config_toml: dict, numero: str, auteur: str = "", client=None) -> Perte:
+    """Défait une perte déclarée (demande du propriétaire du 2026-11-01 : supprimer / modifier) : son document de
+    stock est annulé (passé dans Sage : document inverse dans Sage ET Clover ; pas encore passé : supprimé) et le
+    stock Clover des lignes déjà sorties est rendu. La perte reste au registre, « Annulée » (trace)."""
+    from . import documents as dc
+
+    registre = Registre(racine)
+    p = registre.perte(numero)
+    if ANNULEE in p.messages[-1:]:
+        raise ValueError(f"{numero} est déjà annulée.")
+    clover_par_document = False
+    if p.document:
+        doc = next((d for d in dc.Registre(racine).documents if d.numero == p.document), None)
+        if doc is not None and doc.etat == dc.PASSE:
+            from .chaine_documents import annuler_stock
+
+            annuler_stock(racine, config_toml, p.document, auteur)  # le document inverse rend aussi Clover
+            clover_par_document = True
+            p.messages.append(f"Document de stock {p.document} annulé dans Sage et Clover")
+        elif doc is not None:
+            dc.Registre(racine).supprimer(p.document)
+            p.messages.append(f"Document de stock {p.document} supprimé (pas encore dans Sage)")
+    if client is None and any(l.clover_fait for l in p.lignes):
+        from .points_vente import client as client_de, point_de_vente
+
+        client = client_de(racine, point_de_vente(config_toml, p.point_vente or None))
+    for l in p.lignes:
+        if not l.clover_fait:
+            continue
+        if clover_par_document and l.numero_sage:
+            l.clover_fait = False
+            continue
+        try:
+            stock = client.stock(l.id_clover)
+            client.regler_stock(l.id_clover, stock + Decimal(l.quantite))
+            l.clover_fait = False
+            p.messages.append(f"Clover rendu : {l.nom} {stock} -> {stock + Decimal(l.quantite)}")
+        except Exception as exc:
+            p.messages.append(f"Clover : {l.nom} non rendu ({exc})")
+        registre.enregistrer()
+    if not any(l.clover_fait for l in p.lignes):
+        p.messages.append(ANNULEE)
+    registre.enregistrer()
+    return p
+
+
+def est_annulee(p: Perte) -> bool:
+    return ANNULEE in p.messages
+
+
 # --------------------------------------------------------------------------------------------- rapport
 def rapport(pertes: list[Perte], debut: date, fin: date, regroupement: str = "motif") -> tuple[list[list], Decimal]:
     """Lignes [regroupement, déclarations, quantité, valeur, part] triées par valeur, et la valeur totale."""
     groupes: dict[str, list] = {}
     for p in pertes:
-        if not debut.isoformat() <= p.jour <= fin.isoformat():
+        if not debut.isoformat() <= p.jour <= fin.isoformat() or est_annulee(p):
             continue
         for l in p.lignes:
             cle = {"motif": p.motif, "categorie": l.categorie or "Sans catégorie", "nom": l.nom,

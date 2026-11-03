@@ -85,24 +85,32 @@ class SaisieDocument(tk.Toplevel):
         self.article = tk.StringVar()
         self.choix = {f"{n} — {d}": n for n, (d, _p) in articles.items()}
         ChampRecherche(g, self.article, sorted(self.choix, key=str.casefold), largeur=46,
-                       au_choix=lambda _v=None: self._prix_propose()).pack(side="left")
+                       au_choix=lambda _v=None: self._article_choisi()).pack(side="left")
         g = ajout.ajouter(ajout.groupe(), 10)
         tk.Label(g, text=t("Quantité"), background=CARTE).pack(side="left", padx=(0, 4))
         self.quantite = tk.StringVar(value="1")
-        ttk.Entry(g, textvariable=self.quantite, width=8).pack(side="left")
+        champ_quantite = ttk.Entry(g, textvariable=self.quantite, width=8)
+        champ_quantite.pack(side="left")
         g = ajout.ajouter(ajout.groupe(), 10)
         self.libelle_prix = libelle_prix
         tk.Label(g, text=t(libelle_prix), background=CARTE).pack(side="left", padx=(0, 4))
         self.prix = tk.StringVar()
-        ttk.Entry(g, textvariable=self.prix, width=10).pack(side="left")
+        champ_prix = ttk.Entry(g, textvariable=self.prix, width=10)
+        champ_prix.pack(side="left")
+        self._champs_ligne = []
         if facteurs is not None:
+            # facteur et Qté Sage modifiables : Qté Sage = Qté × Facteur ; taper la Qté Sage recalcule le facteur
             self.facteur, self.qte_sage = tk.StringVar(value="1"), tk.StringVar(value="")
+            self._calcul = False
             for libelle, variable in (("Facteur", self.facteur), ("Qté Sage", self.qte_sage)):
                 g = ajout.ajouter(ajout.groupe(), 10)
                 tk.Label(g, text=t(libelle), background=CARTE).pack(side="left", padx=(0, 4))
-                tk.Label(g, textvariable=variable, width=7, anchor="e", background="#e9eeea", foreground="#24332a",
-                         font=("Segoe UI Semibold", 10), padx=6, pady=3).pack(side="left")
+                champ = ttk.Entry(g, textvariable=variable, width=8, justify="right")
+                champ.pack(side="left")
+                self._champs_ligne.append(champ)
             self.quantite.trace_add("write", lambda *_: self._qte_sage())
+            self.facteur.trace_add("write", lambda *_: self._qte_sage())
+            self.qte_sage.trace_add("write", lambda *_: self._facteur_de_qte_sage())
         from . import taxes as tx
 
         self.taxe = tk.StringVar(value=t(tx.CHOIX[""]))
@@ -111,9 +119,17 @@ class SaisieDocument(tk.Toplevel):
             tk.Label(g, text=t("Taxes"), background=CARTE).pack(side="left", padx=(0, 4))
             ttk.Combobox(g, textvariable=self.taxe, values=[t(v) for v in tx.CHOIX.values()], state="readonly",
                          width=14).pack(side="left")
-        ajout.ajouter(Bouton(ajout, "➕  " + t("Ajouter la ligne"), self.ajouter, fond=CARTE, petit=True), 6)
+        self.bouton_ligne = Bouton(ajout, "➕  " + t("Ajouter la ligne"), self.ajouter, fond=CARTE, petit=True)
+        ajout.ajouter(self.bouton_ligne, 6)
         ajout.ajouter(Bouton(ajout, "✖  " + t("Retirer la ligne"), self.retirer, "secondaire", fond=CARTE,
                              petit=True))
+        # Entrée : valide la ligne en cours (ajoutée, ou modifiée si une ligne est choisie) et prépare la suivante
+        # (demande du propriétaire du 2026-11-01, toutes les pages de saisie)
+        self._edition: int | None = None
+        for champ in [champ_quantite, champ_prix] + self._champs_ligne:
+            champ.bind("<Return>", lambda _e: self.ajouter())
+            champ.bind("<KP_Enter>", lambda _e: self.ajouter())
+        self.champ_quantite = champ_quantite
         cadre = cadre_tableau(self)
         cadre.pack(fill="both", expand=True)
         colonnes = (["N° Sage", "Description", "Quantité"] + (["Facteur", "Qté Sage"] if facteurs is not None else [])
@@ -126,6 +142,8 @@ class SaisieDocument(tk.Toplevel):
             self.arbre.column(f"c{i}", width=largeurs.get(c, 85), anchor="w" if c in largeurs else "e",
                               stretch=c == "Description")
         self.arbre.pack(fill="both", expand=True)
+        # clic sur une ligne : elle revient dans les champs pour être modifiée (Entrée ou « Mettre à jour »)
+        self.arbre.bind("<<TreeviewSelect>>", lambda _e: self._reprendre_ligne())
         bas = Rangee(self)
         bas.pack(fill="x", pady=(8, 0))
         self.total = bas.ajouter(tk.Label(bas, text="", background=CARTE, font=("Segoe UI Semibold", 10)), 16)
@@ -147,8 +165,55 @@ class SaisieDocument(tk.Toplevel):
         self._afficher()
 
     def _qte_sage(self) -> None:
+        if self._calcul:
+            return
         quantite, facteur = _decimal(self.quantite.get()), _decimal(self.facteur.get()) or Decimal(1)
-        self.qte_sage.set(f"{(quantite * facteur).normalize():f}".replace(".", ",") if quantite else "")
+        self._calcul = True
+        try:
+            self.qte_sage.set(f"{(quantite * facteur).normalize():f}".replace(".", ",") if quantite else "")
+        finally:
+            self._calcul = False
+
+    def _facteur_de_qte_sage(self) -> None:
+        """Qté Sage tapée : facteur = Qté Sage / Qté (la quantité du fournisseur ne change pas)."""
+        if self._calcul:
+            return
+        quantite, qte_sage = _decimal(self.quantite.get()), _decimal(self.qte_sage.get())
+        if quantite and qte_sage:
+            self._calcul = True
+            try:
+                self.facteur.set(f"{(qte_sage / quantite).normalize():f}".replace(".", ","))
+            finally:
+                self._calcul = False
+
+    def _article_choisi(self) -> None:
+        """Article choisi (Entrée ou clic dans la liste) : prix proposé, puis la quantité prend la main."""
+        self._prix_propose()
+        if hasattr(self, "champ_quantite"):
+            self.champ_quantite.focus_set()
+            self.champ_quantite.select_range(0, "end")
+
+    def _reprendre_ligne(self) -> None:
+        choix = self.arbre.selection()
+        if not choix:
+            return
+        self._edition = int(choix[0])
+        l = self.lignes[self._edition]
+        libelle = next((k for k, v in self.choix.items() if v == l["numero_sage"]), l["numero_sage"])
+        self.article.set(libelle)
+        self.quantite.set(f"{l['quantite'].normalize():f}".replace(".", ","))
+        self.prix.set(f"{l['prix']:.2f}".replace(".", ","))
+        if self.facteurs is not None:
+            self.facteur.set(f"{l.get('facteur', Decimal(1)).normalize():f}".replace(".", ","))
+        if self.avec_taxes:
+            from . import taxes as tx
+
+            self.taxe.set(t(tx.CHOIX.get(l.get("taxe", ""), tx.CHOIX[""])))
+        self.bouton_ligne.configure(text="✔  " + t("Mettre à jour la ligne"))
+        self.etat.configure(text=t("Ligne {n} : modifiez les champs puis Entrée.", n=self._edition + 1),
+                            foreground=TEXTE_DOUX)
+        self.champ_quantite.focus_set()
+        self.champ_quantite.select_range(0, "end")
 
     def _prix_propose(self) -> None:
         numero = self.choix.get(self.article.get())
@@ -178,7 +243,12 @@ class SaisieDocument(tk.Toplevel):
                  "taxable": bool(code), "taxe": code}
         if self.facteurs is not None:
             ligne["facteur"] = _decimal(self.facteur.get()) or Decimal(1)
-        self.lignes.append(ligne)
+        if self._edition is not None and self._edition < len(self.lignes):
+            self.lignes[self._edition] = ligne
+        else:
+            self.lignes.append(ligne)
+        self._edition = None
+        self.bouton_ligne.configure(text="➕  " + t("Ajouter la ligne"))
         self.article.set("")
         self.quantite.set("1")
         self.prix.set("")
@@ -189,6 +259,8 @@ class SaisieDocument(tk.Toplevel):
         choix = self.arbre.selection()
         if choix:
             del self.lignes[int(choix[0])]
+            self._edition = None
+            self.bouton_ligne.configure(text="➕  " + t("Ajouter la ligne"))
             self._afficher()
 
     def _afficher(self) -> None:

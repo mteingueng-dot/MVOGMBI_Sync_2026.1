@@ -12,7 +12,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee, \
+    employes_visibles
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -119,13 +120,18 @@ class FenetreDepenses(FenetreOutil):
         moyen = next((m for m in dp.MOYENS + [dp.APPRO] if t(m) == self.moyen.get()), dp.PETITE_CAISSE)
         taxe = next((k for k, v in self.choix_taxes.items() if t(v) == self.taxe.get()), "GQ")
         try:
-            montant = Decimal(self.v["montant"].get().replace(",", ".").replace(" ", "").strip())
+            from .design import montant_saisi
+
+            montant = montant_saisi(self.v["montant"].get())
             d = dp.Depense("", self.v["jour"].get().strip(), self.v["fournisseur"].get().strip(),
                            self.v["description"].get().strip(), str(montant), "" if moyen == dp.APPRO else taxe,
                            self.v["compte"].get().strip(), moyen, auteur=self.auteur)
             recu = Path(self.v["recu"].get()) if self.v["recu"].get() else None
             d = dp.Registre(self.racine).ajouter(d, recu)
-        except (InvalidOperation, ValueError) as exc:
+        except InvalidOperation:
+            self.etat.configure(text="✘ " + t("Montant invalide."), foreground=ROUGE)
+            return
+        except ValueError as exc:
             self.etat.configure(text="✘ " + (t(str(exc)) if str(exc) else t("Montant invalide.")), foreground=ROUGE)
             return
         for c in ("fournisseur", "description", "montant", "recu"):
@@ -219,7 +225,8 @@ class FenetreFinEmploi(FenetreOutil):
         self.geometry("980x620")
         forme = Rangee(self)
         forme.pack(fill="x")
-        self.employes = {e.nom: e for e in sorted(pt.Registre(self.racine).employes, key=lambda e: e.nom.casefold())}
+        self.employes = {e.nom: e for e in sorted(employes_visibles(self, pt.Registre(self.racine).employes),
+                                                  key=lambda e: e.nom.casefold())}
         g = forme.ajouter(forme.groupe(), 10)
         tk.Label(g, text=t("Employé") + " *", background=CARTE).pack(side="left", padx=(0, 4))
         self.employe = tk.StringVar()

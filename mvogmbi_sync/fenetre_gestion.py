@@ -73,6 +73,7 @@ class FenetreListe(FenetreOutil):
         self.geometry("1150x640")
         barre = Rangee(self)
         barre.pack(fill="x")
+        self.barre = barre
         self.du, self.au = tk.StringVar(), tk.StringVar()
         if periode:
             g = barre.ajouter(barre.groupe(), 10)
@@ -169,6 +170,12 @@ class FenetreListe(FenetreOutil):
         ligne = self._ligne()
         if ligne is None:
             return
+        if self.genre == "articles":  # article : modifié dans Sage ET Clover (demande du propriétaire du 2026-11-03)
+            from .fenetre_fiches_articles import modifier_article
+
+            modifier_article(self, self.racine, str(ligne[0]).strip(), str(ligne[1]).strip(),
+                             apres=lambda: self.charger(forcer=True))
+            return
         messagebox.showinfo(self.title(), t("Les fiches et les documents enregistrés dans Sage se modifient dans "
                                             "Sage. La fiche s'ouvre pour consultation ; les documents saisis dans "
                                             "l'application se modifient dans leur liste (Vente, Articles)."),
@@ -176,7 +183,14 @@ class FenetreListe(FenetreOutil):
         self.fiche()
 
     def supprimer(self) -> None:
-        if self._ligne() is None:
+        ligne = self._ligne()
+        if ligne is None:
+            return
+        if self.genre == "articles":
+            from .fenetre_fiches_articles import supprimer_article
+
+            supprimer_article(self, self.racine, str(ligne[0]).strip(), str(ligne[1]).strip(),
+                              apres=lambda: self.charger(forcer=True))
             return
         messagebox.showinfo(self.title(), t("Une fiche ou un document de Sage ne se supprime pas d'ici : dans Sage, "
                                             "rendez la fiche inactive, ou corrigez / annulez le document. Les "
@@ -233,20 +247,10 @@ def ouvrir_liste(parent, racine: Path, genre: str):
         return FenetreListe(parent, racine, "Liste des fournisseurs", LECTURES["fournisseurs"](racine),
                             largeurs={"Fournisseur": 280}, genre=genre,
                             explication="Fournisseurs de Sage. Double-clic : fiche du fournisseur.")
-    if genre == "documents_vente":
-        return FenetreListe(parent, racine, "Liste des documents de vente",
-                            lambda b, d, a: ls.documents(b, "ventes", d, a), periode=True,
-                            largeurs={"Client": 220, "Facture": 160}, genre=genre,
-                            explication="Factures et encaissements de Sage. Double-clic : détail du document.")
-    if genre == "documents_achat":
-        return FenetreListe(parent, racine, "Liste des documents d'achat",
-                            lambda b, d, a: ls.documents(b, "achats", d, a), periode=True,
-                            largeurs={"Fournisseur": 220, "Facture": 160}, genre=genre,
-                            explication="Factures, paiements et notes de crédit de Sage. Double-clic : détail.")
-    if genre == "documents_stock":
-        return FenetreListe(parent, racine, "Liste des documents de stock",
-                            lambda b, d, a: ls.documents_stock(b, d, a), periode=True, largeurs={"Source": 160},
-                            genre=genre, explication="Ajustements et transferts de Sage. Double-clic : lignes.")
+    if genre in ("documents_vente", "documents_achat", "documents_stock"):
+        from .fenetre_chaine import ouvrir_documents
+
+        return ouvrir_documents(parent, racine, genre)
     if genre == "articles":
         return FenetreListe(parent, racine, "Liste des articles", LECTURES["articles"](racine), largeurs={"Description": 280},
                             genre=genre, explication="Articles de Sage avec leur stock, CUMP, valeur, comptes et "
@@ -422,19 +426,27 @@ class FenetreDocuments(FenetreOutil):
                        l=len(d.lignes)))
 
 
-def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, numero: str = "") -> None:
+def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, numero: str = "",
+                    sens: str = "", initial_lignes: list | None = None) -> None:
     """Nouveau document (commande client, facture de vente, document de stock), ou modification de `numero`."""
     from .fenetre_saisie import SaisieDocument
     from .inventaire import lire_sage as stocks
     from .points_vente import DEPOT_DEFAUT
 
+    achat = dc.cote(genre) == "achat"
+
     def lecture(base):
         articles = stocks(base)
+        table = "tvendor" if achat else "tcustomr"
         clients = [] if genre == dc.STOCK else sorted(
-            (r["n"] for r in base.requete("SELECT TRIM(sName) n FROM tcustomr WHERE bInactive = 0") if r["n"]),
+            (r["n"] for r in base.requete(f"SELECT TRIM(sName) n FROM {table} WHERE bInactive = 0") if r["n"]),
             key=str.casefold)
         prix = {}
-        if genre != dc.STOCK:  # services aussi vendables ; prix de vente de Sage proposé
+        if achat:  # prix du dernier achat proposé
+            from .bons_commande import derniers_achats
+
+            prix = {n: a.get("prix") for n, a in derniers_achats(base).items() if a.get("prix") is not None}
+        elif genre != dc.STOCK:  # services aussi vendables ; prix de vente de Sage proposé
             for r in base.requete("SELECT TRIM(sPartCode) n, TRIM(sName) d FROM tinvent WHERE bService = 1"):
                 articles.setdefault(r["n"], {"nom": r["d"], "cout": None})
             prix = {r["n"]: Decimal(str(r["p"])) for r in base.requete(
@@ -445,13 +457,17 @@ def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, n
     def fin(resultat):  # lecture gardée en mémoire : les saisies suivantes s'ouvrent tout de suite
         articles, clients, prix = resultat
         initial = None
+        if not numero and (sens or initial_lignes):  # entrée / sortie choisie, ou lignes reprises d'un document
+            initial = {"sens": sens, "lignes": initial_lignes or []}
         if numero:
             d = dc.Registre(racine).document(numero)
             initial = {"tiers": d.tiers, "date": d.date, "remarque": d.remarque, "sens": d.sens,
                        "depot": d.depot or DEPOT_DEFAUT,
                        "lignes": [{"numero_sage": l.numero_sage, "description": l.description,
                                    "quantite": Decimal(l.quantite), "prix": Decimal(l.prix or 0),
-                                   "taxable": l.taxable, "taxe": l.taxe} for l in d.lignes]}
+                                   "taxable": l.taxable, "taxe": l.taxe,
+                                   "facteur": Decimal(str(d.facteurs.get(l.numero_sage, 1) or 1))}
+                                  for l in d.lignes]}
 
         def valider(entete, lignes):
             registre = dc.Registre(racine)
@@ -463,6 +479,10 @@ def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, n
             else:
                 doc = registre.ajouter(genre, entete["tiers"], entete["date"], lignes_doc, entete["remarque"],
                                        entete["sens"], auteur, entete.get("depot", ""))
+            if achat:  # facteur de chaque ligne (Qté Sage = Qté × Facteur)
+                registre = dc.Registre(racine)
+                registre.document(doc.numero).facteurs = {l["numero_sage"]: str(l.get("facteur", 1)) for l in lignes}
+                registre.enregistrer()
             if apres:
                 apres()
             return t("{n} enregistré.", n=doc.numero)
@@ -470,14 +490,23 @@ def saisir_document(parent, racine: Path, genre: str, auteur: str, apres=None, n
         proposes = {n: (a["nom"] or "", a["cout"] if genre == dc.STOCK else prix.get(n)) for n, a in articles.items()}
         titres = {dc.STOCK: "Saisir un document de stock", dc.COMMANDE: "Saisir une commande client",
                   dc.FACTURE: "Saisir une facture de vente"}
-        titre = t(titres[genre]) + (f" — {numero}" if numero else "")
+        titre = t(titres.get(genre, dc.libelle(genre))) + (f" — {numero}" if numero else "")
+        depots = dc.depots(_config(racine))  # dépôt sur tous les documents (demande du propriétaire du 2026-11-01)
         if genre == dc.STOCK:
             SaisieDocument(parent, titre, proposes, valider, libelle_prix="Coût unitaire",
-                           sens=[dc.ENTREE, dc.SORTIE], initial=initial, depots=dc.depots(_config(racine)))
-        else:
-            SaisieDocument(parent, titre, proposes, valider, tiers=clients, taxable=True, initial=initial)
+                           sens=[dc.ENTREE, dc.SORTIE], initial=initial, depots=depots)
+        elif achat:
+            from .bons_commande import facteurs_dernier_achat
 
-    lire_sage_dans_un_fil(parent, racine, lecture, fin, cle=f"saisie:{genre}")
+            facteurs = facteurs_dernier_achat(racine)
+            SaisieDocument(parent, titre, proposes, valider, tiers=clients, libelle_tiers="Fournisseur",
+                           libelle_prix="Prix d'achat", taxable=True, initial=initial, depots=depots,
+                           facteurs=lambda fournisseur, n: facteurs.get((fournisseur, n)))
+        else:
+            SaisieDocument(parent, titre, proposes, valider, tiers=clients, taxable=True, initial=initial,
+                           depots=depots)
+
+    lire_sage_dans_un_fil(parent, racine, lecture, fin, cle=f"saisie:{dc.cote(genre) or genre}:{achat}")
 
 
 class DialogueTiers(tk.Toplevel):
@@ -508,6 +537,20 @@ class DialogueTiers(tk.Toplevel):
             self.v[cle] = tk.StringVar(value=getattr(defaut, cle))
             ttk.Entry(grille, textvariable=self.v[cle], width=34 if cle in ("nom", "rue1", "rue2", "courriel", "site")
                       else 24).grid(row=rang, column=colonne + 1, sticky="w", pady=3)
+        # compte de produits (client) ou de charges (fournisseur) de l'onglet Options, et la case « mes n° articles »
+        # (demande du propriétaire du 2026-11-01)
+        options = tk.Frame(self, background=CARTE)
+        options.pack(fill="x", pady=(8, 0))
+        libelle = "Compte de produits" if genre == "clients" else "Compte de charges"
+        tk.Label(options, text=t(libelle), background=CARTE, anchor="w").pack(side="left", padx=(0, 6))
+        self.compte = tk.StringVar()
+        self.choix_compte = ttk.Combobox(options, textvariable=self.compte, width=44)
+        self.choix_compte.pack(side="left")
+        self.mes_numeros = tk.BooleanVar(value=True)
+        ttk.Checkbutton(options, text=t("Ce client utilise mes n° articles") if genre == "clients" else
+                        t("Ce fournisseur utilise mes n° d'articles"), variable=self.mes_numeros).pack(
+            side="left", padx=(16, 0))
+        self._comptes_proposes(genre)
         if genre == "fournisseurs":
             tk.Label(self, text=t("N° d'inscription aux taxes : 9 chiffres + RP, RT ou RZ + 4 chiffres "
                                   "(ex. 123456789RT0001), ou vide."), background=CARTE, foreground=TEXTE_DOUX,
@@ -522,12 +565,34 @@ class DialogueTiers(tk.Toplevel):
         self.bouton = Bouton(bas, "✔  " + t("Créer dans Sage"), self.creer, fond=CARTE)
         self.bouton.pack(side="right", padx=8)
 
+    def _comptes_proposes(self, genre: str) -> None:
+        """Comptes de détail du plan comptable : produits (4xxx) pour un client, charges (5xxx) pour un fournisseur."""
+        from .plan_comptable import DETAIL, comptes_connus
+
+        def travail():
+            connus = comptes_connus(self.racine, _config(self.racine))
+            classe = "4" if genre == "clients" else "5"
+            valeurs = [f"{c.numero} {c.nom}" for c in sorted(connus.values(), key=lambda c: int(c.numero))
+                       if c.numero.startswith(classe) and c.type in DETAIL and not c.inactif]
+            self.after(0, lambda: self.winfo_exists() and self.choix_compte.configure(values=valeurs))
+
+        threading.Thread(target=travail, daemon=True).start()
+
     def creer(self) -> None:
         import re
 
         from .robot_tiers import FicheTiers
 
         valeurs = {c: " ".join(v.get().split()) for c, v in self.v.items()}
+        compte = self.compte.get().strip().split(" ")[0]
+        if compte:
+            from .plan_comptable import comptes_connus, problemes
+
+            erreurs = problemes([compte], comptes_connus(self.racine, _config(self.racine)))
+            if erreurs:  # le compte doit exister dans le plan comptable (règle du propriétaire du 2026-11-01)
+                self.etat.configure(text="✘ " + " ; ".join(erreurs), foreground=ROUGE)
+                return
+        valeurs["compte"], valeurs["mes_numeros"] = compte, self.mes_numeros.get()
         if not valeurs["nom"]:
             self.etat.configure(text="✘ " + t("Le nom est obligatoire."), foreground=ROUGE)
             return
@@ -540,7 +605,7 @@ class DialogueTiers(tk.Toplevel):
             return
         if "no_taxe" in valeurs:
             valeurs["no_taxe"] = valeurs["no_taxe"].replace(" ", "").upper()
-        fiche = FicheTiers(**valeurs)
+        fiche = FicheTiers(**{k: v for k, v in valeurs.items()})
         self.etat.configure(text=t("Création dans Sage… (l'application ouvre Sage elle-même s'il est fermé : environ "
                                    "une minute)"), foreground=TEXTE_DOUX)
 

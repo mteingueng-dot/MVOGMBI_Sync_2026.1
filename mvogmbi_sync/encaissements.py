@@ -42,6 +42,8 @@ ECART = "Montant différent dans Sage"
 SANS_FACTURE = "Facture pas encore dans Sage"
 A_VENIR = "Dépôt à venir"
 A_VERIFIER = "Espèces à répartir à la main"
+A_RIA = "Part RIA à confirmer"     # dépôt d'espèces supérieur aux ventes : le surplus appartient à RIA
+JOURS_CUMUL_ESPECES = 14           # un dépôt d'espèces cumule souvent plusieurs journées de ventes
 
 
 def date_depot(jour_vente: date) -> date:
@@ -84,6 +86,8 @@ class Depot:
     etat: str = ""
     origine: str = ""      # mouvement du relevé (Interac, dépôt d'espèces) ; « » = lot de cartes Clover
     remarque: str = ""
+    cle: str = ""          # clé du mouvement du relevé
+    ria: Decimal = Decimal(0)  # surplus du dépôt d'espèces sur les ventes : part de RIA à confirmer (page RIA)
 
     @property
     def montant(self) -> Decimal:
@@ -225,7 +229,10 @@ def calculer(client, base, client_sage: str, compte_depot: int, debut: date, fin
     evaluer(depots, etat_factures_sage(base, client_sage, compte_depot, factures) if base else {},
             aujourdhui or date.today(), dates_especes)
     if banque:
-        depots += especes_a_encaisser(base, client_sage, compte_depot, depots, banque, debut, fin)
+        from .ria import Registre as RegistreRia
+
+        depots += especes_a_encaisser(base, client_sage, compte_depot, depots, banque, debut, fin,
+                                      RegistreRia(racine).parts_depots())
     if base and racine:
         depots += depots_manuels(racine, base, client_sage, compte_depot, debut, fin)
     depots.sort(key=lambda d: (d.date, bool(d.origine)))
@@ -320,23 +327,28 @@ def origine(m) -> str:
 
 
 def especes_a_encaisser(base, client_sage: str, compte_depot: int, depots_clover: list[Depot], mouvements,
-                        debut: date, fin: date) -> list[Depot]:
+                        debut: date, fin: date, parts_ria: dict[str, Decimal] | None = None) -> list[Depot]:
     """Un encaissement par virement Interac / dépôt d'espèces, réparti sur les factures de vente (voir l'en-tête)."""
     from .rapprochement import factures_ventes, jours_couverts
 
     factures = {}
     for n, d in factures_ventes(base, client_sage).items():
-        jours = jours_couverts(n)
-        if jours and jours[0] <= fin and jours[-1] >= debut:
+        jours = jours_couverts(n)  # un dépôt d'espèces peut couvrir plusieurs journées d'avant la période
+        if jours and jours[0] <= fin and jours[-1] >= debut - timedelta(days=JOURS_CUMUL_ESPECES):
             factures[n] = d
     etat = etat_factures_sage(base, client_sage, compte_depot, list(factures))
     return repartir_especes(mouvements, factures, {n: etat.get(n, {}).get("du", Decimal(0)) for n in factures},
-                            depots_clover)
+                            depots_clover, parts_ria)
 
 
 def repartir_especes(mouvements, factures: dict[str, date], dus: dict[str, Decimal],
-                     depots_clover: list[Depot]) -> list[Depot]:
-    """Répartition (sans Sage) : `factures` n° -> date, `dus` n° -> solde dû dans Sage."""
+                     depots_clover: list[Depot], parts_ria: dict[str, Decimal] | None = None) -> list[Depot]:
+    """Répartition (sans Sage) : `factures` n° -> date, `dus` n° -> solde dû dans Sage. Dépôt d'espèces supérieur aux
+    espèces dues (règle du propriétaire du 2026-10-30) : les factures sont couvertes, de la plus ancienne à la plus
+    récente, et le surplus est la part de RIA, à confirmer dans la page RIA ; `parts_ria` : parts déjà confirmées
+    (clé du mouvement -> montant), retirées du dépôt avant la répartition. Rien n'est encaissé tant que la part de
+    RIA n'est pas confirmée : le dépôt se partage une seule fois."""
+    parts_ria = parts_ria or {}
     from .rapprochement import RAPPROCHE, est_interac, facture_du_jour, jours_couverts
 
     a_venir: dict[str, Decimal] = defaultdict(Decimal)  # lots de cartes pas encore encaissés, par facture
@@ -348,7 +360,7 @@ def repartir_especes(mouvements, factures: dict[str, date], dus: dict[str, Decim
     resultat = []
     for m in sorted(mouvements, key=lambda x: (x.date, x.rang)):
         jour = date.fromisoformat(m.date)
-        depot = Depot(jour, origine=origine(m))
+        depot = Depot(jour, origine=origine(m), cle=m.cle)
         resultat.append(depot)
         if m.etat == RAPPROCHE:
             depot.etat = APPLIQUE
@@ -365,7 +377,11 @@ def repartir_especes(mouvements, factures: dict[str, date], dus: dict[str, Decim
             else:
                 parts = [(numero, m.montant)]
         else:
-            reste = m.montant
+            reste = m.montant - parts_ria.get(m.cle, Decimal(0))
+            if reste <= 0:  # tout le dépôt est la part de RIA, déjà confirmée
+                depot.etat, depot.remarque = APPLIQUE, "dépôt entièrement pour RIA"
+                depot.lignes = [LigneEncaissement(jour, m.montant, "RIA", True, etat=APPLIQUE)]
+                continue
             for numero in sorted((n for n in factures if jours_couverts(n)[0] <= jour and dispo[n] > 0),
                                  key=lambda n: (factures[n], n)):
                 part = min(reste, dispo[numero])
@@ -373,9 +389,18 @@ def repartir_especes(mouvements, factures: dict[str, date], dus: dict[str, Decim
                 reste -= part
                 if not reste:
                     break
+            if reste and factures:  # surplus : part de RIA ; aucune saisie avant sa confirmation
+                depot.ria, depot.etat = reste, A_RIA
+                depot.remarque = f"{reste} $ de plus que les espèces des ventes : part de RIA à confirmer (page RIA)"
+                for numero, part in parts:
+                    dispo[numero] -= part
+                    depot.lignes.append(LigneEncaissement(jours_couverts(numero)[0], part, numero, True, dus.get(numero),
+                                                          etat=A_RIA))
+                depot.lignes.append(LigneEncaissement(jour, reste, "RIA", etat=A_RIA))
+                continue
             if reste:
                 parts = []
-                depot.remarque = f"les factures n'ont pas assez d'espèces à encaisser ({reste} $ de trop)"
+                depot.remarque = "aucune facture de vente dans la période"
         if not parts:
             depot.etat = A_VERIFIER
             depot.lignes = [LigneEncaissement(jour, m.montant, "?", etat=A_VERIFIER)]
@@ -481,7 +506,7 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, facture
                 if d.etat == ECART:
                     bilan["a_verifier"].append(f"{nom}Dépôt du {d.date} ({d.montant:,.2f} $) : montant différent "
                                                "déjà saisi dans Sage.")
-                elif d.etat == A_VERIFIER:
+                elif d.etat in (A_VERIFIER, A_RIA):
                     bilan["a_verifier"].append(f"{nom}{d.origine} du {d.date} ({d.montant:,.2f} $) : {d.remarque}.")
             journal(f"{nom}{len(depots)} dépôt(s) " + (f"des {len(factures)} vente(s) importée(s) " if factures else
                                                          f"depuis le {premier_depot} ") +

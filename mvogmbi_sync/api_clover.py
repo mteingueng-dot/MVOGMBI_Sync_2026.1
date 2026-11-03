@@ -169,6 +169,9 @@ class ClientClover:
         """UGS (SKU) de l'article ; « » l'efface (vérifié sur un article d'essai le 2026-10-28)."""
         self._ecrire("POST", f"items/{id_article}", {"sku": ugs})
 
+    def renommer_article(self, id_article: str, nom: str) -> None:
+        self._ecrire("POST", f"items/{id_article}", {"name": nom})
+
     def supprimer_article(self, id_article: str) -> None:
         self._ecrire("DELETE", f"items/{id_article}")
 

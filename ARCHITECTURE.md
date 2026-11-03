@@ -106,7 +106,7 @@ flowchart TB
         clover["api_clover · export_clover"]
         sagel["base_sage · articles_sage"]
         sagei["import_sage · sage_auto"]
-        robots["sage_bureau · robot_encaissements<br/>robot_paiements · robot_journal"]
+        robots["sage_bureau · robot_encaissements<br/>robot_paiements · robot_journal · ria"]
         autres["paiements_courriel IMAP · ocr_windows<br/>coffre · utilisateurs"]
     end
     interface --> connexion
@@ -280,6 +280,8 @@ flowchart TD
     W --> Y["Vérification :<br/>baisse du solde de la facture"]
     V -- oui --> OK["Appliqué"]
 ```
+
+Un dépôt d'espèces supérieur aux espèces dues garde son surplus en « Part RIA à confirmer » (`repartir_especes`). `ria.py` (`donnees/ria.json`) note la part confirmée, retirée du dépôt au calcul suivant ; `journal_sur_bureau_cache` saisit aussi les opérations de RIA (`mouvements_a_saisir`), avec le n° « RI-0001 » comme source.
 
 ### 4.4 Factures et paiements fournisseurs
 

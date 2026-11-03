@@ -133,13 +133,20 @@ class FenetrePertes(FenetreOutil):
         g = ajout.ajouter(ajout.groupe(), 10)
         tk.Label(g, text=t("Quantité"), background=CARTE).pack(side="left", padx=(0, 4))
         self.quantite = tk.StringVar(value="1")
-        ttk.Entry(g, textvariable=self.quantite, width=8).pack(side="left")
-        ajout.ajouter(Bouton(ajout, "➕  " + t("Ajouter la ligne"), self.ajouter, fond=CARTE, petit=True), 6)
+        self.champ_quantite = ttk.Entry(g, textvariable=self.quantite, width=8)
+        self.champ_quantite.pack(side="left")
+        # Entrée : valide la ligne ; clic sur une ligne : elle revient dans les champs (demande du 2026-11-01)
+        self.champ_quantite.bind("<Return>", lambda _e: self.ajouter())
+        self.champ_quantite.bind("<KP_Enter>", lambda _e: self.ajouter())
+        self._edition = None
+        self.bouton_ligne = Bouton(ajout, "➕  " + t("Ajouter la ligne"), self.ajouter, fond=CARTE, petit=True)
+        ajout.ajouter(self.bouton_ligne, 6)
         ajout.ajouter(Bouton(ajout, "✖  " + t("Retirer la ligne"), self.retirer, "secondaire", fond=CARTE,
                              petit=True), 6)
         ajout.ajouter(Bouton(ajout, "⏰  " + t("Ajouter les produits périmés en stock"), self.perimes, "secondaire",
                              fond=CARTE, petit=True))
         self.tableau = tableau_simple(cadre, hauteur=11)
+        self.tableau.bind("<<TreeviewSelect>>", lambda _e: self._reprendre_ligne())
         bas = Rangee(cadre)
         bas.pack(fill="x", pady=(8, 0))
         self.total = bas.ajouter(tk.Label(bas, text="", background=CARTE, font=("Segoe UI Semibold", 10)), 16)
@@ -171,12 +178,30 @@ class FenetrePertes(FenetreOutil):
             self.etat.configure(text="✘ " + t("Quantité invalide."), foreground=ROUGE)
             return
         l = pe.ligne(article, quantite, self.liens, self.couts)
-        self.lignes.append(l)
+        if self._edition is not None and self._edition < len(self.lignes):
+            self.lignes[self._edition] = l
+        else:
+            self.lignes.append(l)
+        self._edition = None
+        self.bouton_ligne.configure(text="➕  " + t("Ajouter la ligne"))
         self.article.set("")
         self.quantite.set("1")
         self.afficher_lignes()
         self.etat.configure(text=("⚠ " + t("Coût inconnu : la valeur de cette ligne est 0.")) if l.source_cout ==
                             "Coût inconnu" else "", foreground=ROUGE)
+
+    def _reprendre_ligne(self) -> None:
+        choix = self.tableau.selection()
+        if not choix:
+            return
+        self._edition = int(choix[0])
+        l = self.lignes[self._edition]
+        cle = next((k for k, a in self.articles.items() if a.get("id") == l.id_clover), l.nom)
+        self.article.set(cle)
+        self.quantite.set(f"{Decimal(l.quantite).normalize():f}".replace(".", ","))
+        self.bouton_ligne.configure(text="✔  " + t("Mettre à jour la ligne"))
+        self.champ_quantite.focus_set()
+        self.champ_quantite.select_range(0, "end")
 
     def perimes(self) -> None:
         """Articles dont l'UGS (date de péremption) est passée et qui ont du stock : ajoutés pour tout leur stock,
@@ -260,20 +285,107 @@ class FenetrePertes(FenetreOutil):
         barre = Rangee(cadre)
         barre.pack(fill="x")
         barre.ajouter(Bouton(barre, "🔄  " + t("Actualiser"), self.afficher_liste, fond=CARTE, petit=True), 8)
+        for texte, commande, style in (("📂  " + t("Ouvrir"), self.ouvrir, "secondaire"),
+                                       ("✎  " + t("Modifier"), self.modifier, "secondaire"),
+                                       ("🗑  " + t("Supprimer"), self.supprimer, "danger")):
+            barre.ajouter(Bouton(barre, texte, commande, style, fond=CARTE, petit=True), 8)
         barre.ajouter(Bouton(barre, "↻  " + t("Refaire la sortie du stock Clover"), self.reprendre, "secondaire",
                              fond=CARTE, petit=True), 8)
         self.tableau_liste = tableau_simple(cadre, hauteur=16)
+        self.tableau_liste.bind("<Double-1>", lambda _e: self.ouvrir())
         barre.ajouter(bouton_exporter(barre, self.tableau_liste, lambda: t("Pertes déclarées")))
         self.afficher_liste()
 
     def afficher_liste(self) -> None:
         from .page_rapports import remplir
 
+        from .points_vente import points_de_vente
+
+        noms = {p.code: p.libelle for p in points_de_vente(self.config_toml)}
         self.pertes = pe.Registre(self.racine).pertes
         remplir(self.tableau_liste, ["Date", "N°", "Point de vente", "Motif", "Lignes", "Valeur au coût",
-                                     "Document de stock", "Déclarée par", "Messages"],
-                [[p.jour, p.numero, p.point_vente or "1", t(p.motif), len(p.lignes), p.valeur, p.document, p.auteur,
-                  " ; ".join(p.messages)] for p in self.pertes], {"Messages": 360})
+                                     "Document de stock", "État", "Déclarée par", "Messages"],
+                [[p.jour, p.numero, noms.get(p.point_vente or "1", p.point_vente or "1"), t(p.motif), len(p.lignes),
+                  p.valeur, p.document, t("Annulée") if pe.est_annulee(p) else t("Déclarée"), p.auteur,
+                  " ; ".join(m for m in p.messages if m != pe.ANNULEE)] for p in self.pertes],
+                {"Messages": 360, "Point de vente": 200})
+
+    def _perte_choisie(self):
+        choix = self.tableau_liste.selection()
+        if not choix:
+            messagebox.showinfo(self.title(), t("Choisissez une perte dans la liste."), parent=self)
+            return None
+        return self.pertes[int(choix[0])]
+
+    def ouvrir(self) -> None:
+        """Pièce de la perte : en-tête, lignes et messages (double-clic)."""
+        from .page_rapports import remplir, tableau_simple
+
+        p = self._perte_choisie()
+        if p is None:
+            return
+        fenetre = tk.Toplevel(self)
+        fenetre.title(t("Perte {n}", n=p.numero))
+        fenetre.configure(background=CARTE, padx=14, pady=10)
+        fenetre.geometry("900x480")
+        fenetre.transient(self.winfo_toplevel())
+        infos = (f"{t('Date')} : {p.jour}    {t('Motif')} : {t(p.motif)}    {t('Dépôt')} : {p.depot or '—'}    "
+                 f"{t('Document de stock')} : {p.document or '—'}    {t('Déclarée par')} : {p.auteur}"
+                 + (f"\n{t('Remarque')} : {p.remarque}" if p.remarque else ""))
+        tk.Label(fenetre, text=infos, background=CARTE, anchor="w", justify="left").pack(fill="x")
+        tableau = tableau_simple(fenetre, hauteur=10)
+        remplir(tableau, ["Article", "N° Sage", "Quantité", "Coût unitaire", "Valeur au coût", "Clover"],
+                [[l.nom, l.numero_sage or t("Non relié"), Decimal(l.quantite), Decimal(l.cout), l.valeur,
+                  "✔" if l.clover_fait else ""] for l in p.lignes], {"Article": 320}, decroissant=False)
+        tk.Label(fenetre, text="\n".join(m for m in p.messages if m != pe.ANNULEE), background=CARTE,
+                 foreground=TEXTE_DOUX, anchor="w", justify="left", wraplength=860).pack(fill="x", pady=(6, 0))
+
+    def supprimer(self, puis=None) -> None:
+        p = self._perte_choisie()
+        if p is None:
+            return
+        if pe.est_annulee(p):
+            messagebox.showinfo(self.title(), t("{n} est déjà annulée.", n=p.numero), parent=self)
+            return
+        if not messagebox.askyesno(self.title(), t("Annuler la perte {n} ? Le stock est rendu dans Clover, et dans "
+                                                   "Sage si son document de stock y est déjà passé.", n=p.numero),
+                                   parent=self):
+            return
+        numero = p.numero
+
+        def executer():
+            try:
+                fait = pe.annuler(self.racine, self.config_toml, numero, self.auteur)
+                texte = "\n".join(fait.messages[-6:])
+            except BaseException as exc:
+                fait, texte = None, "✘ " + (str(exc) or type(exc).__name__)
+
+            def fin():
+                self.afficher_liste()
+                messagebox.showinfo(self.title(), texte, parent=self)
+                if fait is not None and puis:
+                    puis(fait)
+
+            self.after(0, fin)
+
+        threading.Thread(target=executer, daemon=True).start()
+
+    def modifier(self) -> None:
+        """La perte est annulée (stock rendu), puis ses lignes reviennent dans « Déclarer une perte »."""
+
+        def reprendre(p):
+            for l in p.lignes:
+                l.clover_fait = False
+            self.lignes = list(p.lignes)
+            self.jour.set(p.jour)
+            self.motif.set(t(p.motif))
+            self.remarque.set(p.remarque)
+            self.afficher_lignes()
+            self.onglets.select(0)
+            self.etat.configure(text=t("Lignes de {n} reprises : corrigez-les puis « Enregistrer ».", n=p.numero),
+                                foreground=VERT_FONCE)
+
+        self.supprimer(puis=reprendre)
 
     def reprendre(self) -> None:
         choix = self.tableau_liste.selection()

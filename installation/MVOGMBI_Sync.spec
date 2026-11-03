@@ -5,8 +5,10 @@
 from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 racine = SPECPATH + "\\.."
-cachees = ["keyring.backends.Windows", "keyring.backends.fail", "pymysql", "tzdata", "PIL.ImageTk", "sv_ttk"]
+cachees = ["keyring.backends.Windows", "keyring.backends.fail", "pymysql", "tzdata", "PIL.ImageTk", "sv_ttk", "fpdf",
+           "pypdf"]
 donnees = (copy_metadata("keyring") + collect_data_files("tzdata") + collect_data_files("sv_ttk")
+           + collect_data_files("fpdf")
            + [(racine + "\\config.example.toml", "."),
               (racine + "\\mvogmbi_sync\\ressources", "mvogmbi_sync\\ressources")])
 

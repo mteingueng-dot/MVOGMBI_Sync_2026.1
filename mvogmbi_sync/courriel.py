@@ -74,9 +74,20 @@ def envoyer(config_toml: dict, sujet: str, corps: str, corps_html: str | None = 
     _expedier(c, preparer_message(c, sujet, corps, corps_html, pieces))
 
 
+def copie_cachee(c: dict) -> list[str]:
+    """Adresse(s) qui reçoivent en copie cachée (Cci) chaque courriel envoyé par l'application à un employé, un
+    client ou un fournisseur (règle du propriétaire du 2026-11-01) : [courriel] cci, sinon le premier destinataire
+    du compte rendu. Les comptes rendus du traitement automatique n'en ont pas."""
+    choisies = adresses(c.get("cci"))
+    if choisies:
+        return choisies
+    return adresses(c.get("destinataires"))[:1]
+
+
 def envoyer_a(config_toml: dict, destinataire: str, sujet: str, corps: str,
               pdf: list[tuple[str, bytes]] | None = None) -> None:
-    """Courriel personnel (bulletin de paie) : UN seul destinataire, jamais de copie, pièces jointes PDF."""
+    """Courriel personnel (bulletin de paie, T4 / RL-1, relance) : UN seul destinataire visible, pièces jointes PDF ;
+    copie cachée au propriétaire (`copie_cachee`), invisible pour le destinataire."""
     c = parametres(config_toml)
     if not c.get("serveur"):
         raise RuntimeError("Courriel non configuré (serveur manquant).")
@@ -86,20 +97,43 @@ def envoyer_a(config_toml: dict, destinataire: str, sujet: str, corps: str,
     message["Subject"] = sujet
     message["From"] = c.get("expediteur") or c.get("utilisateur")
     message["To"] = destinataire.strip()
+    cachees = [a for a in copie_cachee(c) if a.lower() != destinataire.strip().lower()]
+    if cachees:
+        message["Bcc"] = ", ".join(cachees)  # send_message l'envoie sans l'écrire dans le courriel transmis
     message.set_content(corps)
     for nom, contenu in pdf or []:
         message.add_attachment(contenu, maintype="application", subtype="pdf", filename=nom)
     _expedier(c, message)
 
 
+ESSAIS_ENVOI = 3
+
+
 def _expedier(c: dict, message: EmailMessage) -> None:
+    """Envoi réessayé (constat du 2026-11-03 : « Connection unexpectedly closed: timed out » à l'envoi d'un bulletin) :
+    jusqu'à ESSAIS_ENVOI essais, délai plus long à chaque fois ; une erreur de mot de passe ou d'adresse n'est pas
+    réessayée."""
+    import socket
+    import time
+
+    for essai in range(1, ESSAIS_ENVOI + 1):
+        try:
+            return _expedier_une_fois(c, message, 60 * essai)
+        except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, TimeoutError, socket.timeout,
+                ConnectionError) as exc:
+            if essai == ESSAIS_ENVOI:
+                raise RuntimeError(f"Le serveur de courriel ne répond pas après {ESSAIS_ENVOI} essais ({exc}).") from None
+            time.sleep(5 * essai)
+
+
+def _expedier_une_fois(c: dict, message: EmailMessage, delai: int) -> None:
     port = int(c.get("port", 587))
     securite = str(c.get("securite", "starttls")).lower()
     contexte = ssl.create_default_context()
     if securite == "ssl":
-        serveur = smtplib.SMTP_SSL(c["serveur"], port, context=contexte, timeout=60)
+        serveur = smtplib.SMTP_SSL(c["serveur"], port, context=contexte, timeout=delai)
     else:
-        serveur = smtplib.SMTP(c["serveur"], port, timeout=60)
+        serveur = smtplib.SMTP(c["serveur"], port, timeout=delai)
         if securite == "starttls":
             serveur.starttls(context=contexte)
     with serveur:

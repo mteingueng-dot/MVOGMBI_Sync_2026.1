@@ -51,7 +51,8 @@ def _simple(texte: str) -> str:
 
 # sorte de retenue d'après le nom du compte (passif « RRQ à payer » et charge « RRQ - employeur » : même rubrique)
 RUBRIQUES = (("rqap", "RQAP"), ("rrq", "RRQ"), ("rpc", "RPC"), ("fss", "FSS"), ("cnesst", "CNESST"),
-             ("csst", "CNESST"), ("cnt", "CNT"), ("assurance emploi", "Assurance-emploi"))
+             ("csst", "CNESST"), ("cnt", "CNT"), ("assurance emploi", "Assurance-emploi"),
+             ("quebec a payer", "Impôt du Québec"))
 
 
 def rubrique(nom: str) -> str:
@@ -141,6 +142,50 @@ def extras_periode(racine, feuilles: list[pt.Feuille]) -> dict:
 
 
 # --------------------------------------------------------------------------------------------- paies de Sage
+# Tables de paie de Sage (accès Vue au module Paie). Revenus : tcomppy5, retenues : tcomppy6, par n° d'ordre.
+RETENUES_SAGE = {1: "Assurance-emploi", 2: "RPC", 3: "Impôt fédéral", 6: "Impôt du Québec", 7: "RRQ", 29: "RQAP"}
+VACANCES_ACQUISES, VACANCES_PAYEES = 4, 5
+ACCES_REFUSE = 1142
+
+
+@dataclass
+class GainSage:
+    libelle: str
+    unite: str         # « Heure » ou « Période »
+    taux: Decimal
+    unites: Decimal
+    montant: Decimal
+    cumul: Decimal
+
+
+@dataclass
+class DetailPaie:
+    """Détail d'une paie lu dans les tables de paie de Sage (`tpydet`, `tpydet1`, `tpydet2`, `tpydluc`) : montants
+    exacts de l'employé. Constat du 2026-10-30 : les écritures comptables comptent la provision de vacances dans le
+    brut et ne séparent pas toujours la part de l'employeur (2026 : brut 81 505 $ contre 79 445 $, A-E 2 416 $ contre
+    1 007 $), d'où cette lecture ; le NAS (temp.sSIN) et le compte bancaire ne sont jamais lus."""
+    brut: Decimal = ZERO
+    retenues: dict[str, Decimal] = field(default_factory=dict)
+    retenues_annee: dict[str, Decimal] = field(default_factory=dict)
+    gains: list[GainSage] = field(default_factory=list)
+    heures: Decimal = ZERO
+    debut: date | None = None
+    fin: date | None = None
+    vacances_acquises: Decimal = ZERO
+    vacances_acquises_annee: Decimal = ZERO
+    vacances_payees_annee: Decimal = ZERO
+    solde_reporte: Decimal = ZERO
+    gains_ae: Decimal = ZERO
+    gains_pension: Decimal = ZERO
+    gains_rqap: Decimal = ZERO
+    adresse: str = ""
+    courriel: str = ""
+
+    @property
+    def vacances_dues(self) -> Decimal:
+        return self.solde_reporte + self.vacances_acquises_annee - self.vacances_payees_annee
+
+
 @dataclass
 class PaieSage:
     ident: int
@@ -153,14 +198,17 @@ class PaieSage:
     autres_retenues: dict[str, Decimal] = field(default_factory=dict)  # compte de passif sans organisme connu
     vacances: Decimal = ZERO
     net: Decimal = ZERO
+    detail: DetailPaie | None = None
 
     @property
     def brut(self) -> Decimal:
-        return sum(self.gains.values(), ZERO)
+        return self.detail.brut if self.detail else sum(self.gains.values(), ZERO)
 
     @property
     def retenues(self) -> dict[str, Decimal]:
         """Retenues de l'employé par rubrique (passif − part de l'employeur), puis les autres retenues."""
+        if self.detail:
+            return dict(self.detail.retenues)
         r = {o: max(ZERO, m - self.cotisations.get(o, ZERO)) for o, m in self.passifs.items()}
         r.update(self.autres_retenues)
         return {k: v for k, v in r.items() if v}
@@ -220,7 +268,91 @@ def paies_sage(base, du: date, au: date) -> list[PaieSage]:
             jour = l["d"].date() if hasattr(l["d"], "date") else date.fromisoformat(str(l["d"])[:10])
             p = paies[l["i"]] = PaieSage(l["i"], jour, (l["s"] or "").strip(), (l["c"] or "").strip())
         classer(p, int(l["compte"]) // 10000, l["nom"] or "", Decimal(str(l["m"] or 0)).quantize(CENT))
-    return list(paies.values())
+    liste = list(paies.values())
+    completer_details(base, liste)
+    return liste
+
+
+def _argent(v) -> Decimal:
+    return Decimal(str(v or 0)).quantize(CENT)
+
+
+def _jour(v) -> date | None:
+    return v.date() if hasattr(v, "date") else None
+
+
+def adresses_sage(base) -> dict[int, tuple[str, str]]:
+    """Adresse (lignes séparées par « | ») et courriel de chaque employé. Colonnes nommées : jamais le NAS."""
+    sortie = {}
+    for l in base.requete("SELECT lId, sStreet1, sStreet2, sCity, sProvState, sPostalZip, sEmail FROM temp"):
+        ville = " ".join(x.strip() for x in (l["sCity"], l["sProvState"], l["sPostalZip"]) if x and x.strip())
+        lignes = [x.strip() for x in (l["sStreet1"], l["sStreet2"], ville) if x and x.strip()]
+        sortie[l["lId"]] = (" | ".join(lignes), (l["sEmail"] or "").strip())
+    return sortie
+
+
+def completer_details(base, paies: list[PaieSage]) -> bool:
+    """Ajoute à chaque paie son détail lu dans les tables de paie de Sage. Accès au module Paie refusé : False, les
+    montants restent ceux des écritures comptables."""
+    if not paies:
+        return False
+    marques = ",".join(["%s"] * len(paies))
+    try:
+        entetes = base.requete(
+            "SELECT a.lId, a.lEmpId, a.lJourId, a.dGross, a.dHrsWorked, a.dtPrdStart, a.dtPrdEnd, a.dEIEarn, a.dPenEarn, "
+            f"a.dQpipEarn, c.dVacBalFor FROM tpydet a LEFT JOIN tpydluc c ON c.lDetID = a.lId WHERE a.lJourId IN ({marques})",
+            tuple(p.ident for p in paies))
+        noms_revenus = {l["lId"]: (l["sName"].strip(), (l["sUnit"] or "").strip()) for l in base.requete(
+            "SELECT lId, sName, sUnit FROM tcomppy5 WHERE lCompId = 1")}
+        noms_retenues = {l["lId"]: l["sName"].strip() for l in base.requete(
+            "SELECT lId, sName FROM tcomppy6 WHERE lCompId = 1")}
+        adresses = adresses_sage(base)
+    except Exception as exc:
+        if exc.args and exc.args[0] == ACCES_REFUSE:
+            return False  # accès au module Paie pas (encore) donné pour ce fichier
+        raise
+    par_ecriture = {e["lJourId"]: e for e in entetes}
+    if not par_ecriture:
+        return False
+    marques = ",".join(["%s"] * len(entetes))
+    ids = tuple(e["lId"] for e in entetes)
+    revenus: dict[tuple, list] = {}
+    for l in base.requete("SELECT lDetId, lEmpId, lIncId, nType, dAmtPrUnit, dUnitsPrPd, dAmtPerPd, dAmtYTD FROM tpydet1 "
+                          f"WHERE lDetId IN ({marques}) ORDER BY lIncId", ids):
+        revenus.setdefault((l["lDetId"], l["lEmpId"]), []).append(l)
+    retenues: dict[tuple, list] = {}
+    for l in base.requete(f"SELECT lDetId, lEmpId, lDedId, dDedPerPd, dAmtYTD FROM tpydet2 WHERE lDetId IN ({marques}) "
+                          "ORDER BY lDedId", ids):
+        retenues.setdefault((l["lDetId"], l["lEmpId"]), []).append(l)
+    for p in paies:
+        e = par_ecriture.get(p.ident)
+        if e is None:
+            continue
+        cle = (e["lId"], e["lEmpId"])
+        adresse, courriel = adresses.get(e["lEmpId"], ("", ""))
+        d = DetailPaie(brut=_argent(e["dGross"]), heures=_argent(e["dHrsWorked"]), debut=_jour(e["dtPrdStart"]),
+                       fin=_jour(e["dtPrdEnd"]), solde_reporte=_argent(e["dVacBalFor"]), gains_ae=_argent(e["dEIEarn"]),
+                       gains_pension=_argent(e["dPenEarn"]), gains_rqap=_argent(e["dQpipEarn"]), adresse=adresse,
+                       courriel=courriel)
+        for l in revenus.get(cle, []):
+            montant, cumul = _argent(l["dAmtPerPd"]), _argent(l["dAmtYTD"])
+            if l["lIncId"] == VACANCES_ACQUISES:
+                d.vacances_acquises, d.vacances_acquises_annee = montant, cumul
+                continue
+            if l["lIncId"] == VACANCES_PAYEES:
+                d.vacances_payees_annee = cumul
+            if l["nType"] != -1 and (montant or cumul):  # -1 : prêts, avantages, avances, hors du brut payé
+                nom, unite = noms_revenus.get(l["lIncId"], (f"Revenu {l['lIncId']}", ""))
+                d.gains.append(GainSage(nom, unite, _argent(l["dAmtPrUnit"]), _argent(l["dUnitsPrPd"]), montant, cumul))
+        for l in retenues.get(cle, []):
+            nom = RETENUES_SAGE.get(l["lDedId"]) or noms_retenues.get(l["lDedId"], f"Retenue {l['lDedId']}")
+            montant, cumul = _argent(l["dDedPerPd"]), _argent(l["dAmtYTD"])
+            if montant:
+                d.retenues[nom] = montant
+            if cumul:
+                d.retenues_annee[nom] = cumul
+        p.detail = d
+    return True
 
 
 def lignes_paies(paies: list[PaieSage]) -> list[list]:
@@ -283,6 +415,9 @@ def cumul_annee(paies: list[PaieSage], paie: PaieSage) -> PaieSage:
                     cible[k] = cible.get(k, ZERO) + v
             total.net += p.net
             total.vacances += p.vacances
+    if paie.detail:  # cumuls tenus par Sage, reprises de solde comprises
+        d = paie.detail
+        total.detail = DetailPaie(brut=sum((g.cumul for g in d.gains), ZERO), retenues=dict(d.retenues_annee))
     return total
 
 
@@ -309,16 +444,113 @@ def releve(paie: PaieSage, cumul: PaieSage, f: pt.Feuille | None,
         ligne(f"   {nom}", "", retenues.get(nom, ZERO), retenues_annee.get(nom, ZERO))
     ligne("Total des retenues", "", paie.total_retenues, cumul.total_retenues)
     ligne("SALAIRE NET VERSÉ", "", paie.net, cumul.net)
-    if paie.cotisations or cumul.cotisations:
-        ligne("COTISATIONS DE L'EMPLOYEUR (information)")
-        for nom in sorted(set(paie.cotisations) | set(cumul.cotisations)):
-            ligne(f"   {nom}", "", paie.cotisations.get(nom, ZERO), cumul.cotisations.get(nom, ZERO))
     if paie.vacances or cumul.vacances:
         ligne("Vacances accumulées", "", paie.vacances, cumul.vacances)
     periode = (f" — période du {f.debut:%Y-%m-%d} au {f.debut + timedelta(days=pt.JOURS_PERIODE - 1):%Y-%m-%d}"
                if f is not None else "")
     sous_titre = f"{paie.employe} — paie du {paie.jour:%Y-%m-%d} ({paie.source}){periode}"
     return ["Rubrique", "Heures", "Cette paie", "Total de l'année"], lignes, sous_titre
+
+
+# --------------------------------------------------------------------------------------------- fiche de paie
+# format de la fiche de Sage (demande du propriétaire du 2026-10-30) : gains à gauche, retenues à droite, colonnes
+# Période et Cumul ; sans les cotisations de l'employeur ; en-tête de l'entreprise gardé
+LIBELLES_RETENUES = (("Assurance-emploi", "A-E"), ("RQAP", "RQAP"), ("RRQ", "RRQ"), ("RPC", "RPC"),
+                     ("Impôt fédéral", "Impôt"), ("Impôt du Québec", "Impôt Qc"))
+CSS_FICHE = """<style>
+.fiche { font-size: 9.5pt; }
+.fiche .tete { display: flex; justify-content: space-between; gap: 18px; padding: 8px 2px 4px; font-weight: 600; }
+.fiche .periode { padding: 2px 2px 8px; color: #5b6a60; }
+.fiche .colonnes { display: flex; gap: 14px; align-items: flex-start; }
+.fiche .colonnes > div { flex: 1; }
+.fiche .gains { flex: 1.45; }
+.fiche table td, .fiche table th { padding: 4px 7px; }
+.fiche tr.total td { font-weight: 700; background: #eaf4ed; }
+.fiche tr.net td { font-weight: 700; background: #1f7a3a; color: #fff; }
+.fiche td.v, .fiche th.v { text-align: right; white-space: nowrap; }
+</style>"""
+
+
+def _nombre(v) -> str:
+    return "" if v in ("", None) else f"{Decimal(v):,.2f}".replace(",", " ").replace(".", ",")
+
+
+def lignes_fiche(paie: PaieSage, cumul: PaieSage, f: pt.Feuille | None, extras=(ZERO, ZERO)) -> dict:
+    """Lignes de la fiche : gains [libellé, heures, période, cumul], retenues [libellé, période, cumul], vacances. Le
+    taux se déduit du brut et des heures de l'application ; sans feuille de temps : les comptes de salaire de Sage."""
+    gains: list[list] = []
+    if paie.detail:
+        for g in paie.detail.gains:
+            horaire = g.unite.casefold().startswith("heure")
+            libelle = f"{g.libelle} @ {_nombre(g.taux)}/Hr" if horaire and g.taux else g.libelle
+            gains.append([libelle, g.unites if horaire else "", g.montant, g.cumul])
+    elif f is not None and f.total and paie.brut:
+        regulieres = f.normales + sum(extras, ZERO)
+        taux = (paie.brut / (regulieres + f.supplementaires * Decimal("1.5"))).quantize(CENT)
+        if f.supplementaires:
+            montant_supp = (f.supplementaires * taux * Decimal("1.5")).quantize(CENT)
+            gains.append([f"Régulières @ {_nombre(taux)}/Hr", regulieres, paie.brut - montant_supp, ""])
+            gains.append([f"Supplém. 1 @ {_nombre(taux * Decimal('1.5'))}/Hr", f.supplementaires, montant_supp, ""])
+        else:
+            gains.append([f"Régulières @ {_nombre(taux)}/Hr", regulieres, paie.brut, cumul.brut])
+    else:
+        for nom in sorted(set(paie.gains) | set(cumul.gains)):
+            gains.append([nom, "", paie.gains.get(nom, ZERO), cumul.gains.get(nom, ZERO)])
+    retenues, retenues_annee = paie.retenues, cumul.retenues
+    connues = [c for c, _l in LIBELLES_RETENUES]
+    lignes_r = [[l, retenues.get(c, ZERO), retenues_annee.get(c, ZERO)] for c, l in LIBELLES_RETENUES
+                if retenues.get(c) or retenues_annee.get(c)]
+    lignes_r += [[n, retenues.get(n, ZERO), retenues_annee.get(n, ZERO)]
+                 for n in sorted((set(retenues) | set(retenues_annee)) - set(connues))]
+    return {"gains": gains, "retenues": lignes_r, "vacances": (paie.vacances, cumul.vacances)}
+
+
+def fiche_de_paie(paie: PaieSage, cumul: PaieSage, f: pt.Feuille | None, extras=(ZERO, ZERO), periode: str = "") -> str:
+    """Page HTML de la fiche de paie (en-tête de l'entreprise, puis format de la fiche de Sage)."""
+    import html
+
+    from .export_tableau import page_html
+
+    e = html.escape
+    d = lignes_fiche(paie, cumul, f, extras)
+    if paie.detail and paie.detail.debut and paie.detail.fin:  # dates inscrites dans Sage
+        periode = f"{paie.detail.debut:%Y-%m-%d} à {paie.detail.fin:%Y-%m-%d}"
+    if f is not None and not periode:
+        periode = f"{f.debut:%Y-%m-%d} à {f.debut + timedelta(days=pt.JOURS_PERIODE - 1):%Y-%m-%d}"
+
+    def rangee(cellules, classe=""):
+        return (f"<tr class='{classe}'><td>{e(str(cellules[0]))}</td>"
+                + "".join(f"<td class='v'>{e(str(c))}</td>" for c in cellules[1:]) + "</tr>")
+
+    gauche = "".join(rangee([l, "", _nombre(h), _nombre(p), _nombre(c)]) for l, h, p, c in d["gains"])
+    gauche += rangee(["Salaire brut", "", "", _nombre(paie.brut), _nombre(cumul.brut)], "total")
+    gauche += rangee(["Brut payé", "", "", _nombre(paie.brut), _nombre(cumul.brut)])
+    acquises, acquises_annee = d["vacances"]
+    if paie.detail:
+        v = paie.detail
+        if v.vacances_acquises or v.vacances_acquises_annee or v.solde_reporte:
+            gauche += rangee(["Vac. cumul.", "", "", _nombre(v.vacances_acquises), _nombre(v.vacances_acquises_annee)])
+            gauche += rangee(["Vac. payées", "", "", "", _nombre(v.vacances_payees_annee)])
+            gauche += rangee(["Solde rep.", "", "", "", _nombre(v.solde_reporte)])
+            gauche += rangee(["Vacances dues", "", "", "", _nombre(v.vacances_dues)], "total")
+    elif acquises or acquises_annee:
+        gauche += rangee(["Vacances acquises", "", "", _nombre(acquises), _nombre(acquises_annee)])
+    droite = "".join(rangee([l, _nombre(p), _nombre(c)]) for l, p, c in d["retenues"])
+    droite += rangee(["Retenues", _nombre(paie.total_retenues), _nombre(cumul.total_retenues)], "total")
+    droite += rangee(["Salaire net", _nombre(paie.net), _nombre(cumul.net)], "net")
+    if paie.detail and paie.detail.heures:
+        droite += rangee(["Hres AE assurables", _nombre(paie.detail.heures), ""])
+    elif f is not None and f.total:
+        droite += rangee(["Hres AE assurables", _nombre(f.total + sum(extras, ZERO)), ""])
+    corps = (f"{CSS_FICHE}<div class='fiche'><div class='tete'><span>{e(paie.employe)}</span>"
+             f"<span>{paie.jour:%Y-%m-%d}</span><span>{e(paie.source)}</span></div>"
+             + (f"<div class='periode'>Période de paie : {e(periode)}</div>" if periode else "")
+             + "<div class='colonnes'><div class='gains'><table><thead><tr><th></th><th class='v'>Pièces</th>"
+               "<th class='v'>Heures</th><th class='v'>Période</th><th class='v'>Cumul</th></tr></thead><tbody>"
+             + gauche + "</tbody></table></div><div><table><thead><tr><th></th><th class='v'>Période</th>"
+               "<th class='v'>Cumul</th></tr></thead><tbody>" + droite + "</tbody></table></div></div></div>")
+    page = page_html("Fiche de paie", [], [], sous_titre=f"{paie.employe} — {paie.jour:%Y-%m-%d}")
+    return page.replace("</body></html>", corps + "</body></html>")
 
 
 # --------------------------------------------------------------------------------------------- envoi des bulletins

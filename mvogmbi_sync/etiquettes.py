@@ -65,7 +65,70 @@ def prix_changes(racine: Path, depuis: str) -> set[str]:
         return {r.get("ID Clover", "") for r in csv.DictReader(f, delimiter=";") if (r.get("Date") or "")[:10] >= depuis}
 
 
-def page(etiquettes: list[Etiquette], imprimer: bool = True) -> str:
+AVERY = "Feuille Avery 5160 (3 × 10)"
+LARGEUR_TICKET_MAX = 110  # mm : au-delà, le papier n'est pas un rouleau de caisse
+HAUTEUR_TICKET = 38       # mm : une étiquette par ticket
+
+
+def imprimantes_ticket() -> list[tuple[str, int]]:
+    """Imprimantes de tickets installées sur CE poste (pilote Windows) : (nom, largeur du papier en mm), d'après
+    Win32_PrinterConfiguration.PaperWidth (dixièmes de mm) ; un rouleau fait au plus LARGEUR_TICKET_MAX mm."""
+    import json
+    import subprocess
+
+    try:
+        sortie = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_PrinterConfiguration | Select-Object Name, PaperWidth | ConvertTo-Json"],
+            capture_output=True, text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        donnees = json.loads(sortie.stdout or "[]")
+    except Exception:
+        return []
+    donnees = [donnees] if isinstance(donnees, dict) else donnees
+    trouvees = []
+    for d in donnees:
+        largeur = round((d.get("PaperWidth") or 0) / 10)
+        if 30 <= largeur <= LARGEUR_TICKET_MAX:
+            trouvees.append((str(d.get("Name") or ""), largeur))
+    return trouvees
+
+
+def formats(imprimantes: list[tuple[str, int]] | None = None) -> dict[str, int | None]:
+    """Formats proposés : {libellé : largeur du ticket en mm, ou None = feuille Avery}. Les imprimantes de tickets
+    du poste d'abord (demande du propriétaire du 2026-11-01 : format des pilotes installés sur chaque poste)."""
+    choix = {f"Ticket {l} mm — {nom}": l for nom, l in (imprimantes if imprimantes is not None else imprimantes_ticket())}
+    choix.update({"Ticket 80 mm": 80, "Ticket 58 mm": 58, AVERY: None})
+    return choix
+
+
+def page_ticket(etiquettes: list[Etiquette], largeur: int, imprimer: bool = True) -> str:
+    """Une étiquette par ticket (rouleau de caisse de `largeur` mm) : nom, prix en grand, code-barres."""
+    e = html.escape
+    marge = 3 if largeur >= 70 else 2
+    cases = []
+    for x in etiquettes:
+        prix = f"{x.prix:,.2f} $".replace(",", " ").replace(".", ",") + (f" / {e(x.unite)}" if x.unite else "")
+        cb = svg_code_barres(x.code, hauteur=40) if x.code else ""
+        cases.append(f"<div class='e'><div class='n'>{e(x.nom)}</div><div class='p'>{prix}</div>{cb}"
+                     f"<div class='c'>{e(x.code)}</div></div>")
+    script = "<script>window.addEventListener('load', () => window.print());</script>" if imprimer else ""
+    taille_prix = 22 if largeur >= 70 else 16
+    return f"""<!doctype html><html lang='fr'><head><meta charset='utf-8'><title>Étiquettes de prix</title><style>
+@page {{ size: {largeur}mm {HAUTEUR_TICKET}mm; margin: 0; }}
+html, body {{ margin: 0; padding: 0; width: {largeur}mm; font-family: 'Segoe UI', Arial, sans-serif; }}
+.e {{ box-sizing: border-box; width: {largeur}mm; height: {HAUTEUR_TICKET}mm; padding: 2mm {marge}mm;
+     page-break-after: always; overflow: hidden; text-align: center; }}
+.e:last-child {{ page-break-after: auto; }}
+.n {{ font-size: 10pt; font-weight: 600; line-height: 1.15; max-height: 2.4em; overflow: hidden; }}
+.p {{ font-size: {taille_prix}pt; font-weight: 800; margin: 1mm 0; }}
+.cb {{ width: 92%; height: 9mm; }}
+.c {{ font-size: 7pt; letter-spacing: .5px; }}
+</style></head><body>{''.join(cases)}{script}</body></html>"""
+
+
+def page(etiquettes: list[Etiquette], imprimer: bool = True, largeur_ticket: int | None = None) -> str:
+    if largeur_ticket:
+        return page_ticket(etiquettes, largeur_ticket, imprimer)
     e = html.escape
     cases = []
     for x in etiquettes:

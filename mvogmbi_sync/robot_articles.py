@@ -419,8 +419,9 @@ def fenetre_principale_ouverte(fichier_sai) -> int:
     return trouvee[0] if trouvee else 0
 
 
-def ouvrir_session(config_toml: dict, journal=print):
-    """Sage déjà ouvert sur le fichier d'entreprise configuré, sinon ouvert par l'application."""
+def ouvrir_session(config_toml: dict, journal=print, mono: bool = False):
+    """Sage déjà ouvert sur le fichier d'entreprise configuré, sinon ouvert par l'application (multi-utilisateur ;
+    `mono` : mono-utilisateur, pour ce que Sage refuse en multi-utilisateur, ex. rendre un compte inactif)."""
     from . import coffre
     from .__main__ import executable_import
     from .sage_bureau import SessionSage, executable_sage, sage_ouvert
@@ -440,7 +441,7 @@ def ouvrir_session(config_toml: dict, journal=print):
         session = SessionSage(exe, journal)
         utilisateur = str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin"))
         try:
-            session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
+            session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""), mono=mono)
         except Exception:
             session.fermer()  # jamais de Sage laissé ouvert (bloqué sur un avertissement) après un échec
             raise

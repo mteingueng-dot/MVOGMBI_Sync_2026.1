@@ -12,7 +12,8 @@ from tkinter import messagebox, simpledialog, ttk
 
 from . import conges as co
 from . import paie_temps as pt
-from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee
+from .design import FenetreOutil, CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, Rangee, \
+    employes_visibles
 from .export_tableau import bouton_exporter
 from .langues import t
 
@@ -40,7 +41,7 @@ class FenetreConges(FenetreOutil):
             construire(cadre)
 
     def _employes(self) -> list[pt.Employe]:
-        return sorted(pt.Registre(self.racine).actifs(), key=lambda e: e.nom.casefold())
+        return sorted(employes_visibles(self, pt.Registre(self.racine).actifs()), key=lambda e: e.nom.casefold())
 
     # ------------------------------------------------------------------ jours fériés
     def _feries(self, cadre) -> None:
@@ -134,8 +135,9 @@ class FenetreConges(FenetreOutil):
     def afficher_conges(self) -> None:
         from .page_rapports import remplir
 
-        noms = {e.id: e.nom for e in pt.Registre(self.racine).employes}
-        self.liste_conges = sorted(co.Registre(self.racine).conges, key=lambda c: c.jour, reverse=True)
+        noms = {e.id: e.nom for e in employes_visibles(self, pt.Registre(self.racine).employes)}
+        self.liste_conges = sorted((c for c in co.Registre(self.racine).conges if c.employe in noms),
+                                   key=lambda c: c.jour, reverse=True)
         remplir(self.tableau_conges, ["Date", "Employé", "Type", "Heures payées", "Saisi par", "Remarque"],
                 [[c.jour, noms.get(c.employe, c.employe), t(c.type), _h(Decimal(c.heures)), c.auteur, c.remarque]
                  for c in self.liste_conges], {"Employé": 200, "Type": 220}, decroissant=False)

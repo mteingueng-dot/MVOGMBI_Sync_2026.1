@@ -36,30 +36,33 @@ MASQUE = "••••••••"  # affiché quand un secret est déjà enreg
  RAPPROCHEMENT, RAPPORTS, GUIDE, FAQ, UTILISATEURS) = range(15)
 # menu en groupes (demande du propriétaire du 2026-10-28) : pages (index) ou fenêtres (icône, titre, page dont le
 # profil donne l'accès, méthode qui ouvre la fenêtre)
+LARGEUR_MENU = 318  # libellés du menu entiers (« Clients professionnels et relances », 2026-11-01)
 MENU_GROUPES = [
     (None, "", [ACCUEIL]),
     ("Administration", "⚙", [CLOVER, SAGE, COURRIEL, AUTOMATISATION,
                              ("💾", "Sauvegarde des données", AUTOMATISATION, "ouvrir_sauvegarde"),
                              ("🧭", "Journal des opérations", UTILISATEURS, "ouvrir_journal_operations"),
+                             ("🛡", "Audit des actions", UTILISATEURS, "ouvrir_audit"),
                              ("📱", "Tableau du gérant (téléphone)", AUTOMATISATION, "ouvrir_tableau"), UTILISATEURS]),
     # rubriques Articles, Vente et Fournisseur rangées comme les menus de gestion de Sage (demande du propriétaire
     # du 2026-10-29 ; noms des rubriques gardés)
     ("Articles", "🏷", [("📚", "Liste des articles", CORRESPONDANCE, "ouvrir_liste", "articles"),
                        ("📄", "Articles Clover", CORRESPONDANCE, "ouvrir_articles_clover"),
                        ("🆕", "Créer un article", CORRESPONDANCE, "ouvrir_creation_article"),
-                       ("🗂", "Liste des documents de stock", CORRESPONDANCE, "ouvrir_liste", "documents_stock"),
-                       ("✏", "Saisir un document de stock", CORRESPONDANCE, "ouvrir_documents", "stock"),
-                       ("🔁", "Transferts entre magasins", CORRESPONDANCE, "ouvrir_transferts"),
-                       ("🗑", "Pertes et démarque", CORRESPONDANCE, "ouvrir_pertes"),
                        ("🏷", "Étiquettes de prix", CORRESPONDANCE, "ouvrir_etiquettes"),
                        ("🏷", "Promotions", CORRESPONDANCE, "ouvrir_promotions"),
-                       ("🔄", "Inventaire tournant", CORRESPONDANCE, "ouvrir_inventaire_tournant"),
                        ("🔎", "Interrogation de compte article", RAPPORTS, "ouvrir_interrogation", "Article"),
-                       ("📋", "Inventaire Clover et Sage", CORRESPONDANCE, "ouvrir_inventaire"),
-                       ("📒", "Livre d'inventaire", CORRESPONDANCE, "ouvrir_liste", "livre"),
                        CORRESPONDANCE,
                        ("💲", "Coûts Clover depuis Sage", CORRESPONDANCE, "ouvrir_couts_clover"),
                        ("💹", "Prix et marges", CORRESPONDANCE, "ouvrir_prix_marges")]),
+    # rubrique Stock : tout ce qui touche les quantités en stock (demande du propriétaire du 2026-11-01)
+    ("Stock", "📦", [("🗂", "Liste des documents de stock", CORRESPONDANCE, "ouvrir_liste", "documents_stock"),
+                    ("✏", "Saisir un document de stock", CORRESPONDANCE, "ouvrir_documents", "stock"),
+                    ("🔁", "Transferts entre magasins", CORRESPONDANCE, "ouvrir_transferts"),
+                    ("🗑", "Pertes et démarque", CORRESPONDANCE, "ouvrir_pertes"),
+                    ("📋", "Inventaire Clover et Sage", CORRESPONDANCE, "ouvrir_inventaire"),
+                    ("🔄", "Inventaire tournant", CORRESPONDANCE, "ouvrir_inventaire_tournant"),
+                    ("📒", "Livre d'inventaire", CORRESPONDANCE, "ouvrir_liste", "livre")]),
     ("Vente", "🛒", [("👥", "Liste des clients", ENCAISSEMENTS, "ouvrir_liste", "clients"),
                     ("🗂", "Liste des documents de vente", ENCAISSEMENTS, "ouvrir_liste", "documents_vente"),
                     ("✏", "Saisir une facture de vente", ENCAISSEMENTS, "ouvrir_documents", "facture"),
@@ -81,6 +84,8 @@ MENU_GROUPES = [
     ("Comptabilité", "🏦", [("💵", "Contrôle de la caisse", PAIEMENTS, "ouvrir_caisse"),
                         ("🧾", "Petite caisse et dépenses", PAIEMENTS, "ouvrir_depenses"),
                         ENCAISSEMENTS, PAIEMENTS, RAPPROCHEMENT,
+                        ("💱", "RIA (transferts d'argent)", RAPPROCHEMENT, "ouvrir_ria"),
+                           ("📒", "Plan comptable", RAPPROCHEMENT, "ouvrir_plan_comptable"),
                            ("🧾", "Comptes Sage par catégorie", CORRESPONDANCE, "ouvrir_comptes_sage"),
                            ("⏳", "Âge des comptes", RAPPROCHEMENT, "ouvrir_comptabilite", "Âge des comptes"),
                            ("🧮", "Déclaration TPS/TVQ", RAPPROCHEMENT, "ouvrir_comptabilite", "Déclaration TPS/TVQ"),
@@ -91,12 +96,14 @@ MENU_GROUPES = [
     # paie (demande du propriétaire du 2026-10-29) : pointage pour tous ; feuilles de temps et NIP pour qui voit
     # les paiements fournisseurs (administrateur, comptable)
     ("Paie", "🕑", [("⏱", "Pointage des employés", ACCUEIL, "ouvrir_pointage"),
+                   ("💵", "Mes heures et mes paies", ACCUEIL, "ouvrir_mes_paies"),
                    ("🗓", "Feuilles de temps", PAIEMENTS, "ouvrir_feuilles_temps"),
                    ("📅", "Planning mensuel", PAIEMENTS, "ouvrir_planning"),
                    ("🗓", "Mon horaire", ACCUEIL, "ouvrir_mon_horaire"),
                    ("👥", "Employés et NIP", PAIEMENTS, "ouvrir_employes_paie"),
                    ("🏖", "Jours fériés et congés", PAIEMENTS, "ouvrir_conges"),
                    ("💵", "Traitement de la paie", RAPPROCHEMENT, "ouvrir_traitement_paie"),
+                   ("📆", "Calendrier de paie", RAPPROCHEMENT, "ouvrir_calendrier_paie"),
                    ("🚪", "Fin d'emploi et relevé d'emploi", PAIEMENTS, "ouvrir_fin_emploi"),
                    ("👷", "Coût de la main-d'œuvre", RAPPROCHEMENT, "ouvrir_main_oeuvre"),
                    ("🏛", "Retenues à la source", RAPPROCHEMENT, "ouvrir_comptabilite", "Retenues à la source"),
@@ -161,6 +168,10 @@ class Application(tk.Tk):
         self.relancer = False
         self.deconnecter = False
         self.session = session
+        from . import audit
+
+        audit.SESSION.update(racine=racine, utilisateur=session.nom if session is not None else "")
+        audit.noter(racine, "Ouverture de l'application", "Connexion")
         if session is not None:
             from .utilisateurs import Registre
 
@@ -215,7 +226,7 @@ class Application(tk.Tk):
         self._bandeau()
         corps = tk.Frame(self, background=FOND)
         corps.pack(fill="both", expand=True)
-        self.menu = tk.Frame(corps, background=MENU_FOND, width=262)
+        self.menu = tk.Frame(corps, background=MENU_FOND, width=LARGEUR_MENU)
         self.menu.pack(side="left", fill="y")
         self.menu.pack_propagate(False)
         contenu = ttk.Frame(corps, padding=(20, 14, 20, 10))
@@ -223,13 +234,16 @@ class Application(tk.Tk):
 
         bas = ttk.Frame(contenu, padding=(0, 10, 0, 0))
         bas.pack(side="bottom", fill="x")
+        self.bouton_config = None
         if any(self.permis(i) for i in (CLOVER, SAGE, COURRIEL, AUTOMATISATION)):
-            Bouton(bas, "💾  " + t("Enregistrer la configuration"),
-                   lambda: action_permise(self, "Enregistrer la configuration") and self.enregistrer()).pack(side="right")
+            self.bouton_config = Bouton(bas, "💾  " + t("Enregistrer la configuration"),
+                                        lambda: action_permise(self, "Enregistrer la configuration")
+                                        and self.enregistrer())
         self.etat = ttk.Label(bas, text="", foreground=TEXTE_DOUX)
         self.etat.pack(side="left")
         self.onglets = ttk.Notebook(contenu, style="Pages.TNotebook")
         self.onglets.pack(fill="both", expand=True)
+        self.onglets.bind("<<NotebookTabChanged>>", lambda _e: self._maj_bouton_config(), add="+")
         # outils (listes, fenêtres de travail) affichés dans la fenêtre principale, pas dans une fenêtre à part
         # (demande du propriétaire du 2026-10-29) ; seules les créations ouvrent une nouvelle fenêtre
         self.zone_outil = ttk.Frame(contenu)
@@ -331,7 +345,13 @@ class Application(tk.Tk):
         """Menu en groupes repliables (demande du propriétaire du 2026-10-28) : Accueil, puis Administration, Stock,
         Vente, Fournisseur, Comptabilité, État ; un seul groupe ouvert à la fois (celui de la page affichée). Une page
         cachée par le profil est absente ; un groupe sans page permise aussi."""
-        tk.Label(self.menu, text="MENU", font=("Segoe UI", 8, "bold"), foreground="#7d8b81",
+        # compte, langue et version : toujours visibles en bas ; seules les rubriques défilent (demande du propriétaire
+        # du 2026-10-30). Le bas est placé AVANT les rubriques : sinon un groupe ouvert le pousse hors de la fenêtre.
+        bas = tk.Frame(self.menu, background=MENU_FOND)
+        bas.pack(side="bottom", fill="x", padx=16, pady=(10, 14))
+        tk.Frame(self.menu, height=1, background="#d9e3dc").pack(side="bottom", fill="x", padx=12)
+        zone = self._zone_du_menu()
+        tk.Label(zone, text="MENU", font=("Segoe UI", 8, "bold"), foreground="#7d8b81",
                  background=MENU_FOND).pack(anchor="w", padx=22, pady=(16, 6))
         n = len(self._pages)
         self.boutons_menu, self.barres_menu, self.pastilles_menu = [None] * n, [None] * n, [None] * n
@@ -343,13 +363,13 @@ class Application(tk.Tk):
                 e for e in elements if not isinstance(e, int) and self.permis_action(e)]
             if not visibles:
                 continue
-            parent = self.menu
+            parent = zone
             if nom:
-                entete = tk.Label(self.menu, text=f"▸  {icone_groupe}  {t(nom)}", anchor="w",
+                entete = tk.Label(zone, text=f"▸  {icone_groupe}  {t(nom)}", anchor="w",
                                   font=("Segoe UI Semibold", 10), background=MENU_FOND, foreground="#3d4a41",
                                   padx=14, pady=6, cursor="hand2")
                 entete.pack(fill="x", padx=(8, 10), pady=(4, 0))
-                parent = tk.Frame(self.menu, background=MENU_FOND)
+                parent = tk.Frame(zone, background=MENU_FOND)
                 entete.bind("<Button-1>", lambda _e, g=nom: self.ouvrir_groupe(g, basculer=True))
                 entete.bind("<Enter>", lambda _e, w=entete: w.configure(background=MENU_SURVOL))
                 entete.bind("<Leave>", lambda _e, w=entete: w.configure(background=MENU_FOND))
@@ -363,21 +383,18 @@ class Application(tk.Tk):
                         self.groupe_de_page[element] = nom
                 elif self.permis_action(element):
                     self._action_menu(parent, nom, *element)
-        cachees = tk.Frame(self.menu)  # pages sans ligne de menu (Rapports : par ses onglets) : jamais affiché
+        cachees = tk.Frame(zone)  # pages sans ligne de menu (Rapports : par ses onglets) : jamais affiché
         for index in range(n):
             if self.boutons_menu[index] is None:
                 self._ligne_menu(cachees, index, decale=False)
                 if index in GROUPE_DES_PAGES_SANS_LIGNE:
                     self.groupe_de_page[index] = GROUPE_DES_PAGES_SANS_LIGNE[index]
-        manuel = tk.Label(self.menu, text="📖   " + t("Manuel d'utilisation (PDF)"), anchor="w", font=("Segoe UI", 10),
+        manuel = tk.Label(zone, text="📖   " + t("Manuel d'utilisation (PDF)"), anchor="w", font=("Segoe UI", 10),
                           background=MENU_FOND, foreground=VERT_FONCE, padx=16, pady=7, cursor="hand2")
         manuel.pack(fill="x", padx=(12, 10), pady=(10, 1))
         manuel.bind("<Button-1>", lambda _e: self.ouvrir_manuel())
         manuel.bind("<Enter>", lambda _e: manuel.configure(background=MENU_SURVOL))
         manuel.bind("<Leave>", lambda _e: manuel.configure(background=MENU_FOND))
-        self._actif = None
-        bas = tk.Frame(self.menu, background=MENU_FOND)
-        bas.pack(side="bottom", fill="x", padx=16, pady=14)
         if self.session is not None:
             tk.Label(bas, text=f"👤  {self.session.nom}", font=("Segoe UI Semibold", 10), foreground=TEXTE,
                      background=MENU_FOND).pack(anchor="w")
@@ -400,6 +417,37 @@ class Application(tk.Tk):
         from .aide import COPYRIGHT, VERSION
         for texte in (f"MVOGMBI_Sync {VERSION}", COPYRIGHT, t("Tous droits réservés.")):
             tk.Label(bas, text=texte, font=("Segoe UI", 8), foreground="#8a978e", background=MENU_FOND).pack(anchor="w")
+        self._actif = None
+        self._molette_menu(zone)
+
+    def _zone_du_menu(self) -> tk.Frame:
+        """Partie du menu qui défile (molette, barre seulement si les rubriques ne tiennent pas)."""
+        toile = tk.Canvas(self.menu, background=MENU_FOND, highlightthickness=0, borderwidth=0)
+        barre = ttk.Scrollbar(self.menu, orient="vertical", command=toile.yview)
+        toile.configure(yscrollcommand=barre.set)
+        toile.pack(side="left", fill="both", expand=True)
+        zone = tk.Frame(toile, background=MENU_FOND)
+        fenetre = toile.create_window((0, 0), window=zone, anchor="nw")
+
+        def ajuster(_e=None) -> None:
+            toile.configure(scrollregion=(0, 0, zone.winfo_reqwidth(), zone.winfo_reqheight()))
+            deborde = zone.winfo_reqheight() > toile.winfo_height() > 1
+            if deborde and not barre.winfo_ismapped():
+                barre.pack(side="right", fill="y", before=toile)
+            elif not deborde and barre.winfo_ismapped():
+                barre.pack_forget()
+                toile.yview_moveto(0)
+
+        zone.bind("<Configure>", ajuster)
+        toile.bind("<Configure>", lambda e: (toile.itemconfigure(fenetre, width=e.width), ajuster()))
+        self._toile_menu = toile
+        return zone
+
+    def _molette_menu(self, element) -> None:
+        element.bind("<MouseWheel>", lambda e: self._toile_menu.yview_scroll(-e.delta // 120, "units")
+                     if self._toile_menu.yview() != (0.0, 1.0) else None)
+        for enfant in element.winfo_children():
+            self._molette_menu(enfant)
 
     def _ligne_menu(self, parent, index: int, decale: bool) -> None:
         icone, titre = self._pages[index]
@@ -422,12 +470,56 @@ class Application(tk.Tk):
 
     def _action_menu(self, parent, groupe, icone: str, titre: str, _page: int, methode: str, *arguments) -> None:
         """Entrée qui ouvre une fenêtre de travail (inventaire, transferts…) ou un onglet des Rapports."""
-        bouton = tk.Label(parent, text=f"{icone}   {t(titre)}", anchor="w", font=("Segoe UI", 10),
+        ligne = tk.Frame(parent, background=MENU_FOND)
+        ligne.pack(fill="x", padx=(20, 10), pady=1)
+        barre = tk.Frame(ligne, width=4, background=MENU_FOND)
+        barre.pack(side="left", fill="y")
+        bouton = tk.Label(ligne, text=f"{icone}   {t(titre)}", anchor="w", font=("Segoe UI", 10),
                           background=MENU_FOND, foreground=TEXTE, padx=12, pady=4, cursor="hand2")
-        bouton.pack(fill="x", padx=(24, 10), pady=1)
-        bouton.bind("<Button-1>", lambda _e: (self._lancer_action(methode, *arguments), self.ouvrir_groupe(groupe)))
-        bouton.bind("<Enter>", lambda _e: bouton.configure(background=MENU_SURVOL))
-        bouton.bind("<Leave>", lambda _e: bouton.configure(background=MENU_FOND))
+        bouton.pack(side="left", fill="x", expand=True)
+        self._entrees_menu = getattr(self, "_entrees_menu", [])
+        self._entrees_menu.append((bouton, barre))
+
+        def choisir(_e=None) -> None:
+            self._lancer_action(methode, *arguments)
+            self.ouvrir_groupe(groupe)
+            self._marquer_actif(bouton, barre)
+
+        bouton.bind("<Button-1>", choisir)
+        bouton.bind("<Enter>", lambda _e: bouton is not self._actif and bouton.configure(background=MENU_SURVOL))
+        bouton.bind("<Leave>", lambda _e: bouton is not self._actif and bouton.configure(background=MENU_FOND))
+
+    def _marquer_actif(self, bouton, barre) -> None:
+        """Fond de l'entrée choisie (page ou fenêtre de travail), demande du propriétaire du 2026-11-01."""
+        lignes = [(b, self.barres_menu[i], self.pastilles_menu[i]) for i, b in enumerate(self.boutons_menu) if b]
+        lignes += [(b, r, None) for b, r in getattr(self, "_entrees_menu", [])]
+        for b, r, pastille in lignes:
+            actif = b is bouton
+            fond = MENU_ACTIF if actif else MENU_FOND
+            b.configure(background=fond, foreground=VERT_FONCE if actif else TEXTE,
+                        font=("Segoe UI Semibold", 10) if actif else ("Segoe UI", 10))
+            r.configure(background=JAUNE if actif else MENU_FOND)
+            if pastille is not None:
+                pastille.configure(background=fond)
+        self._actif = bouton
+
+    def limite_employe(self) -> bool:
+        """Vrai : ce login ne voit que l'employé relié à son compte (règle du propriétaire du 2026-10-30) ; faux :
+        administrateur, gérant, ou application sans session (outils)."""
+        if self.session is None:
+            return False
+        from .utilisateurs import Registre
+
+        return not Registre(self.racine).voit_tous_employes(self.session)
+
+    def employe_connecte(self):
+        """Employé relié au compte connecté (« Paie > Employés et NIP » > « Relier à un compte… »), sinon None."""
+        if self.session is None:
+            return None
+        from . import paie_temps as pt
+
+        return next((e for e in pt.Registre(self.racine).employes
+                     if e.compte and e.compte.casefold() == self.session.nom.casefold()), None)
 
     def permis_fenetre(self, action: str) -> bool:
         """Action sensible d'une fenêtre (utilisateurs.ACTIONS_FENETRES) non retirée au profil."""
@@ -436,6 +528,8 @@ class Application(tk.Tk):
     def permis_action(self, element: tuple) -> bool:
         """Entrée du menu permise : cochée (accès par fonction) ; sinon sa page l'est et le profil n'a pas retiré
         cette fonction."""
+        if element[3] == "ouvrir_mes_paies":  # chaque employé : ses heures, ses bulletins, ses T4 / RL-1
+            return self.limite_employe()
         fonctions = getattr(self, "_fonctions", None)
         if fonctions is not None:
             return element[1] in fonctions
@@ -445,6 +539,10 @@ class Application(tk.Tk):
         """Entrée du menu : la fenêtre de travail qu'elle ouvre (FenetreOutil) remplace l'outil affiché dans la
         fenêtre principale ; une fenêtre de création (tk.Toplevel) reste à part."""
         self._mode_outil = "remplacer"
+        from . import audit
+
+        audit.noter(self.racine, f"Menu : {methode.replace('ouvrir_', '').replace('_', ' ')}"
+                    + (f" ({', '.join(map(str, arguments))})" if arguments else ""), "Menu")
         try:
             getattr(self, methode)(*arguments)
         finally:
@@ -473,6 +571,7 @@ class Application(tk.Tk):
         cadre.pack(fill="both", expand=True)
         self.onglets.pack_forget()
         self.zone_outil.pack(fill="both", expand=True)
+        self._maj_bouton_config()
         return corps
 
     def titre_outil(self, fenetre, texte: str) -> None:
@@ -496,6 +595,24 @@ class Application(tk.Tk):
         else:
             self.zone_outil.pack_forget()
             self.onglets.pack(fill="both", expand=True)
+        self._maj_bouton_config()
+
+    def _maj_bouton_config(self) -> None:
+        """« Enregistrer la configuration » : seulement sur les pages de configuration d'Administration (Clover,
+        Sage 50, Courriel, Automatisation), jamais sous une fenêtre de travail (demande du propriétaire du
+        2026-11-01)."""
+        bouton = getattr(self, "bouton_config", None)
+        if bouton is None:
+            return
+        try:  # winfo_manager : placé ou non, même fenêtre réduite ou cachée
+            page = self.onglets.index("current") if self.onglets.winfo_manager() else None
+        except tk.TclError:
+            page = None
+        if page in (CLOVER, SAGE, COURRIEL, AUTOMATISATION) and not getattr(self, "_pile_outils", None):
+            if not bouton.winfo_manager():
+                bouton.pack(side="right")
+        elif bouton.winfo_manager():
+            bouton.pack_forget()
 
     def _vider_pile(self) -> None:
         pile, self._pile_outils = list(self._pile_outils), []
@@ -602,8 +719,21 @@ class Application(tk.Tk):
         FenetreComptabilite(self, self.racine, onglet)
 
     def ouvrir_pointage(self) -> None:
+        from .design import employes_visibles
         from .fenetre_pointage import ouvrir
-        ouvrir(self, self.racine)
+        ouvrir(self, self.racine, lambda liste: employes_visibles(self, liste))
+
+    def ouvrir_mes_paies(self) -> None:
+        from .fenetre_paie import FenetrePaie
+        FenetrePaie(self, self.racine)
+
+    def ouvrir_calendrier_paie(self) -> None:
+        from .fenetre_paie import FenetreCalendrier
+        FenetreCalendrier(self, self.racine)
+
+    def ouvrir_ria(self) -> None:
+        from .fenetre_ria import FenetreRia
+        FenetreRia(self, self.racine)
 
     def _auteur(self) -> str:
         return self.session.nom if self.session is not None else "Administrateur"
@@ -647,6 +777,14 @@ class Application(tk.Tk):
     def ouvrir_fin_emploi(self) -> None:
         from .fenetres_gestion2 import FenetreFinEmploi
         FenetreFinEmploi(self, self.racine)
+
+    def ouvrir_plan_comptable(self) -> None:
+        from .fenetre_plan_comptable import FenetrePlanComptable
+        FenetrePlanComptable(self, self.racine)
+
+    def ouvrir_audit(self) -> None:
+        from .fenetre_audit import FenetreAudit
+        FenetreAudit(self, self.racine)
 
     def ouvrir_journal_operations(self) -> None:
         from .fenetres_gestion2 import FenetreJournalOperations
@@ -780,16 +918,9 @@ class Application(tk.Tk):
         self.onglets.select(index)
         if hasattr(self, "groupes_menu") and self.groupe_de_page.get(index, self.groupe_ouvert) != self.groupe_ouvert:
             self.ouvrir_groupe(self.groupe_de_page.get(index))
-        for i, bouton in enumerate(self.boutons_menu):
-            if bouton is None:
-                continue
-            actif = i == index
-            fond = MENU_ACTIF if actif else MENU_FOND
-            bouton.configure(background=fond, foreground=VERT_FONCE if actif else TEXTE,
-                             font=("Segoe UI Semibold", 10) if actif else ("Segoe UI", 10))
-            self.pastilles_menu[i].configure(background=fond)
-            self.barres_menu[i].configure(background=JAUNE if actif else MENU_FOND)
-        self._actif = self.boutons_menu[index]
+        if self.boutons_menu[index] is not None:
+            self._marquer_actif(self.boutons_menu[index], self.barres_menu[index])
+        self._maj_bouton_config()
 
     def changer_langue(self) -> None:
         code = next(c for c, nom in langues.LANGUES.items() if nom == self.langue.get())
@@ -1114,7 +1245,7 @@ class Application(tk.Tk):
         etats[ENCAISSEMENTS] = (bool(enc.get("date_depart")) and encaisse,
                                 t("Depuis le {date}", date=enc["date_depart"]) if enc.get("date_depart") and encaisse
                                 else "")
-        etats[FOURNISSEURS] = self._etat_registre("factures_fournisseurs.json", "Importée dans Sage",
+        etats[FOURNISSEURS] = self._etat_registre("factures_fournisseurs.json", ("Importée", "Importée dans Sage"),
                                                   "{n} facture(s) importée(s)")
         b = c.get("boite_paiements", {})
         boite = bool(b.get("serveur") and b.get("utilisateur")) and coffre.present(coffre.BOITE_PAIEMENTS)
@@ -1144,8 +1275,8 @@ class Application(tk.Tk):
             etat, detail, description = self.lignes_etapes[page]
             etat.configure(text="✔" if faite else "●", foreground=VERT if faite else JAUNE)
             detail.configure(text=precision or description)
-            if hasattr(self, "pastilles_menu"):
-                self.pastilles_menu[page].configure(text="✔" if faite else "●", foreground=VERT if faite else JAUNE)
+            # menu sans ✔ / ● devant les fonctions (demande du propriétaire du 2026-11-01) : l'état reste sur
+            # la carte « Mise en route » de l'accueil
         faites = sum(1 for faite, _ in etats.values() if faite)
         if self.progression_etapes is None:
             return None
@@ -1206,6 +1337,17 @@ class Application(tk.Tk):
                                                                                     pady=(6, 8))
         self.sortie_sage = self._sortie(comptes, 4)
         self.sortie_sage.grid(row=6, column=0, columnspan=3, sticky="we")
+        # calendrier de paie : la première paie se règle ici, plus dans la fenêtre du calendrier (demande du
+        # propriétaire du 2026-11-01)
+        from .calendrier_paie import Calendrier
+
+        calendrier = Calendrier(self.racine)
+        premiere = calendrier.premiere(date.today().year)
+        paie = self._carte(f, 3, t("Paie"), "3")
+        self._champ(paie, 0, t("Première paie de l'année"), "paie.premiere", premiere.isoformat() if premiere else "",
+                    calendrier=True, aide=t("Date de la première paie de l'année : les paies suivantes (tous les 14 "
+                                            "jours) et leurs périodes se calculent (« Paie > Calendrier de paie »)."))
+        self._champ(paie, 2, t("Jours entre la fin de la période et la paie"), "paie.delai", str(calendrier.delai))
 
     def _onglet_courriel(self) -> None:
         c = self.config_toml.get("courriel", {})
@@ -1224,6 +1366,10 @@ class Application(tk.Tk):
         self._champ(envoi, 0, t("Expéditeur"), "courriel.expediteur", c.get("expediteur", ""))
         self._champ(envoi, 1, t("Destinataire(s)"), "courriel.destinataires", c.get("destinataires", ""),
                     aide=t("Une ou plusieurs adresses séparées par des virgules."))
+        self._champ(envoi, 9, t("Copie cachée (Cci)"), "courriel.cci", c.get("cci", ""),
+                    aide=t("Reçoit en copie cachée chaque courriel envoyé par l'application (bulletins, T4 / RL-1, "
+                           "relances), sauf les comptes rendus du traitement automatique. Vide : le premier "
+                           "destinataire ci-dessus."))
         self._champ(envoi, 4, t("Autres destinataires"), "courriel.copie", c.get("copie", ""),
                     aide=t("Facultatif : autres personnes à informer, adresses séparées par des virgules "
                            "(ex. comptable@exemple.com, gerant@exemple.com)."))
@@ -1262,6 +1408,19 @@ class Application(tk.Tk):
         ttk.Checkbutton(factures, text=t("Les relever aussi pendant le traitement de nuit"), style="Carte.TCheckbutton",
                         variable=self._var("fc.automatique", bool(fc.get("automatique", True)), tk.BooleanVar)).grid(
             row=5, column=1, sticky="w", pady=6)
+        r = self.config_toml.get("ria", {})
+        etats = self._carte(f, 5, t("États RIA reçus par courriel"), "5",
+                            t("Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit "
+                              "sans les marquer comme lus et les ajoute à « Comptabilité > RIA > États de compte "
+                              "RIA ». Même serveur que la boîte des avis de paiement, sauf indication."))
+        self._champ(etats, 0, t("Courriel de réception des états RIA"), "ria.courriel", r.get("courriel", ""))
+        self._champ(etats, 1, t("Serveur (IMAP)"), "ria.serveur", r.get("serveur", ""),
+                    aide=t("Vide : le serveur de la boîte des avis de paiement."))
+        self._champ(etats, 3, t("Mot de passe"), "secret.boite_ria", secret=coffre.BOITE_RIA,
+                    aide=t("Vide si c'est la même adresse que la boîte des avis de paiement."))
+        self._champ(etats, 5, t("Expéditeurs des états"), "ria.expediteurs", r.get("expediteurs", ""),
+                    aide=t("Facultatif : adresses ou domaines de RIA séparés par des virgules."))
+        self._champ(etats, 7, t("Lire les états à partir du"), "ria.depuis", r.get("depuis", ""), calendrier=True)
 
     def _onglet_automatisation(self) -> None:
         a = self.config_toml.get("automatique", {})
@@ -1413,10 +1572,22 @@ class Application(tk.Tk):
             return False
         from .courriel import adresses, adresses_invalides
 
-        invalides = adresses_invalides(v["courriel.destinataires"]) + adresses_invalides(v["courriel.copie"])
+        invalides = (adresses_invalides(v["courriel.destinataires"]) + adresses_invalides(v["courriel.copie"])
+                     + adresses_invalides(v.get("courriel.cci", "")))
         if invalides:
             messagebox.showerror(TITRE, t("Adresse(s) courriel invalide(s) : {liste}", liste=", ".join(invalides)))
             return False
+        if "paie.premiere" in v and str(v["paie.premiere"]).strip():
+            from .calendrier_paie import Calendrier
+
+            try:
+                jour = date.fromisoformat(str(v["paie.premiere"]).strip())
+                calendrier = Calendrier(self.racine)
+                calendrier.definir(jour.year, jour, int(str(v["paie.delai"]).strip() or 15))
+                calendrier.enregistrer()
+            except ValueError as exc:
+                messagebox.showerror(TITRE, t("Première paie de l'année : date au format AAAA-MM-JJ.") + f"\n{exc}")
+                return False
         c = self.config_toml
         c.setdefault("clover", {}).update(merchant_id=str(v["clover.merchant_id"]).strip())
         c["clover"].setdefault("base_url", "https://api.clover.com")
@@ -1441,6 +1612,7 @@ class Application(tk.Tk):
             securite=v["courriel.securite"], utilisateur=str(v["courriel.utilisateur"]).strip(),
             expediteur=str(v["courriel.expediteur"]).strip(),
             destinataires=", ".join(adresses(v["courriel.destinataires"])), copie=", ".join(adresses(v["courriel.copie"])),
+            cci=", ".join(adresses(v.get("courriel.cci", ""))),
             envoyer_si_succes=bool(v["courriel.envoyer_si_succes"]))
         c.setdefault("boite_paiements", {}).update(
             serveur=str(v["boite.serveur"]).strip(), utilisateur=str(v["boite.utilisateur"]).strip(),
@@ -1451,9 +1623,16 @@ class Application(tk.Tk):
             depuis=str(v["fc.depuis"]).strip() or str(v["boite.depuis"]).strip() or "2026-08-01",
             automatique=bool(v["fc.automatique"]))
         c["boite_paiements"].setdefault("port", 993)
+        if "ria.courriel" in v:
+            c.setdefault("ria", {}).update(
+                courriel=str(v["ria.courriel"]).strip(), serveur=str(v["ria.serveur"]).strip(),
+                expediteurs=", ".join(e.strip() for e in str(v["ria.expediteurs"]).replace(";", ",").split(",")
+                                      if e.strip()),
+                depuis=str(v["ria.depuis"]).strip())
         for cle_var, cle_coffre in (("secret.clover", coffre.CLOVER_JETON), ("secret.sage_lecture", coffre.SAGE_LECTURE),
                                     ("secret.sage_import", coffre.SAGE_IMPORT), ("secret.courriel", coffre.COURRIEL),
-                                    ("secret.boite", coffre.BOITE_PAIEMENTS)):
+                                    ("secret.boite", coffre.BOITE_PAIEMENTS),
+                                    ("secret.boite_ria", coffre.BOITE_RIA)):
             valeur = str(v[cle_var])
             if valeur.startswith(MASQUE):  # tapé à la suite du masque : seul l'ajout est le mot de passe
                 valeur = valeur[len(MASQUE):]
@@ -1594,6 +1773,8 @@ class Application(tk.Tk):
     def charger_periode(self) -> None:
         """Importe les factures de la date ou de la période choisie (jours déjà dans Sage sautés ; vendredi à
         dimanche : une seule facture)."""
+        if not action_permise(self, "Lancer le traitement maintenant"):
+            return
         try:
             du, au = date.fromisoformat(self.periode_du.get().strip()), date.fromisoformat(self.periode_au.get().strip())
             assert du <= au < date.today()

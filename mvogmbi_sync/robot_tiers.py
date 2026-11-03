@@ -52,6 +52,8 @@ class FicheTiers:
     courriel: str = ""
     site: str = ""
     no_taxe: str = ""
+    compte: str = ""           # client : compte de produits ; fournisseur : compte de charges (onglet Options)
+    mes_numeros: bool = True   # « Ce client / fournisseur utilise mes n° articles » (onglet Importer/Exporter)
 
 
 @dataclass
@@ -64,6 +66,9 @@ class ResultatTiers:
 
 def _simple(texte: str) -> str:
     return unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode().lower().replace("&", "")
+
+
+ID_COMPTE_CLIENT, ID_COMPTE_FOURNISSEUR = 80, 105  # onglet « Options » des fiches (relevé du 2026-11-03)
 
 
 class FenetreTiers(FenetreArticle):
@@ -92,6 +97,80 @@ class FenetreTiers(FenetreArticle):
             self.ecrire(CHAMPS["nom"], nom)
             time.sleep(0.5)
         raise ErreurRobot(f"Le nom « {nom} » ne reste pas dans la fiche de Sage.")
+
+    def compte_options(self, numero: str, genre: str) -> bool:
+        """Compte de produits (client, liste 80) ou de charges (fournisseur, liste 105) de l'onglet « Options »
+        (relevé du 2026-11-03) : onglet affiché au clavier, puis compte choisi comme une personne (focus clavier, flèche),
+        sinon tapé dans la liste ; True si la liste affiche le compte."""
+        from .robot_encaissements import CB_SETCURSEL
+        from .sage_bureau import _descendants, kernel32
+
+        ident = ID_COMPTE_CLIENT if genre == "clients" else ID_COMPTE_FOURNISSEUR
+        onglets = next((e for e in _descendants(self.h) if _classe(e) == "SysTabControl32"), None)
+        cb = user32.GetDlgItem(self.h, ident)
+        for touche in [0x24] + [0x27] * 6:
+            if cb and user32.IsWindowVisible(cb):
+                break
+            if not onglets:
+                return False
+            user32.SendMessageW(onglets, 0x0100, touche, 0)
+            user32.SendMessageW(onglets, 0x0101, touche, 0xC0000000)
+            time.sleep(0.4)
+        if not (cb and user32.IsWindowVisible(cb)):
+            return False
+        elements = self._elements(cb)
+        if not elements:  # liste remplie par Sage à son ouverture seulement
+            user32.SendMessageW(cb, 0x014F, 1, 0)  # CB_SHOWDROPDOWN
+            time.sleep(1)
+            elements = self._elements(cb)
+            user32.SendMessageW(cb, 0x014F, 0, 0)
+        import re
+
+        motif = re.compile(rf"(^|\D){re.escape(numero)}(\D|$)")
+        index = next((i for i, e in enumerate(elements) if motif.search(e)), None)
+        if index is None and not elements:  # toujours vide : le n° est tapé dans la liste, comme une personne
+            return self._taper_compte(cb, numero, motif)
+        if index is None:
+            raise ErreurRobot(f"Compte {numero} absent de la liste de Sage ({len(elements)} éléments, ex. "
+                              f"{' | '.join(elements[:3])}).")
+        fil, moi = user32.GetWindowThreadProcessId(self.h, None), kernel32.GetCurrentThreadId()
+        user32.AttachThreadInput(moi, fil, True)
+        try:
+            user32.SetActiveWindow(self.h)
+            user32.SetFocus(cb)
+            time.sleep(0.2)
+            user32.SendMessageW(cb, CB_SETCURSEL, max(index - 1, 0) if index else 1, 0)
+            touche = 0x28 if index > 0 else 0x26
+            user32.SendMessageW(cb, 0x0100, touche, 0)
+            user32.SendMessageW(cb, 0x0101, touche, 0xC0000000)
+            time.sleep(0.4)
+            user32.SetFocus(user32.GetDlgItem(self.h, 112))  # quitter la liste : Sage valide le choix
+            time.sleep(0.4)
+        finally:
+            user32.AttachThreadInput(moi, fil, False)
+        return bool(motif.search(self.lire(ident)))
+
+    def _taper_compte(self, cb, numero: str, motif) -> bool:
+        from .sage_bureau import kernel32
+
+        edit = user32.FindWindowExW(cb, None, "Edit", None) or cb
+        fil, moi = user32.GetWindowThreadProcessId(self.h, None), kernel32.GetCurrentThreadId()
+        user32.AttachThreadInput(moi, fil, True)
+        try:
+            user32.SetActiveWindow(self.h)
+            user32.SetFocus(edit)
+            time.sleep(0.2)
+            for caractere in numero:
+                user32.PostMessageW(edit, 0x0102, ord(caractere), 0)  # WM_CHAR
+                time.sleep(0.1)
+            time.sleep(0.5)
+            user32.SetFocus(user32.GetDlgItem(self.h, 112))  # quitter la liste : Sage valide le n°
+            time.sleep(0.8)
+        finally:
+            user32.AttachThreadInput(moi, fil, False)
+        for d in self.dialogues():  # n° inconnu : Sage ouvre sa liste de comptes, fermée sans choix
+            user32.PostMessageW(d, 0x0010, 0, 0)
+        return bool(motif.search(self.lire(user32.GetDlgCtrlID(cb))))
 
     def mes_numeros(self) -> bool:
         """Coche « … utilise mes numéros d'articles » (onglet trouvé au clavier) ; True si la case est cochée."""
@@ -160,8 +239,9 @@ def creer_tiers(config_toml: dict, genre: str, fiches: list[FicheTiers], journal
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
 
     def lu(nom: str):
-        lignes = lire_sage(config_toml, lambda b: b.requete(f"SELECT bUseMyItem m FROM {table} WHERE sName = %s",
-                                                            (nom,)), fichier)
+        colonne = "lAcDefRev" if genre == "clients" else "lAcDefExp"
+        lignes = lire_sage(config_toml, lambda b: b.requete(
+            f"SELECT bUseMyItem m, {colonne} c FROM {table} WHERE sName = %s", (nom,)), fichier)
         return lignes[0] if lignes else None
 
     session = ouvrir_session(config_toml, journal)
@@ -182,13 +262,17 @@ def creer_tiers(config_toml: dict, genre: str, fiches: list[FicheTiers], journal
                 time.sleep(2)  # la fiche finit de s'ouvrir (sinon Sage efface ce qui est tapé)
                 fenetre = FenetreTiers(h, titre)
                 fenetre.remplir(f, genre)
-                r.mes_numeros = fenetre.mes_numeros()
+                if f.compte and not fenetre.compte_options(f.compte, genre):
+                    r.messages.append(f"compte {f.compte} non choisi dans l'onglet Options : à choisir dans Sage")
+                r.mes_numeros = fenetre.mes_numeros() if f.mes_numeros else False
                 fenetre.verifier_nom(f.nom)  # changer d'onglet ne doit rien avoir effacé
                 fenetre.enregistrer(r)
                 for _ in range(10):
                     ligne = lu(f.nom)
                     if ligne:
                         r.cree, r.mes_numeros = True, bool(ligne["m"])
+                        if f.compte and int(ligne["c"] or 0) // 10000 != int(f.compte):
+                            r.messages.append(f"compte {f.compte} absent de la fiche : à choisir dans Sage")
                         break
                     time.sleep(1)
                 if not r.cree and not r.messages:

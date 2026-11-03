@@ -184,14 +184,23 @@ class FenetrePromotions(FenetreOutil):
         if not choix:
             return
         p = self.liste[int(choix[0])]
-        if p.etat != p3.PREVUE:
-            messagebox.showinfo(self.title(), t("Seule une promotion prévue s'annule ; une promotion en cours se "
-                                                "termine à sa date de fin."), parent=self)
+        if p.etat not in (p3.PREVUE, p3.EN_COURS):
+            messagebox.showinfo(self.title(), t("{n} est déjà terminée ou annulée.", n=p.numero), parent=self)
             return
-        registre = p3.Promotions(self.racine)
-        next(x for x in registre.liste if x.numero == p.numero).etat = p3.ANNULEE
-        registre.enregistrer()
-        self.afficher()
+        question = (t("Annuler la promotion {n} en cours ? Le prix normal ({p}) est remis tout de suite dans Clover.",
+                      n=p.numero, p=p.prix_normal) if p.etat == p3.EN_COURS else
+                    t("Annuler la promotion {n} ?", n=p.numero))
+        if not messagebox.askyesno(self.title(), question, parent=self):
+            return
+
+        def travail():
+            from .points_vente import client as client_de, point_de_vente
+
+            pv = point_de_vente(_config(self.racine), p.point_vente or None)
+            return p3.annuler_promotion(self.racine, p.numero, client_de(self.racine, pv))
+
+        _fil(self, travail, lambda texte: (self.afficher(), self.etat.configure(text=texte, foreground=TEXTE_DOUX)),
+             self.etat, "Annulation de la promotion…")
 
     def calculer_effet(self) -> None:
         def travail():

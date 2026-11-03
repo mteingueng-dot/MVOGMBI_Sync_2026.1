@@ -43,7 +43,12 @@ def compte_sage(numero: str) -> int:
 
 
 def source(m: MouvementBanque) -> str:
-    return f"Relevé {m.date}"[:LONGUEUR_SOURCE]
+    return (getattr(m, "source_sage", "") or f"Relevé {m.date}")[:LONGUEUR_SOURCE]
+
+
+def compte_contrepartie(m: MouvementBanque, defaut: str) -> str:
+    """Compte de l'autre côté de l'écriture : le compte de banque, sauf une opération RIA payée en espèces."""
+    return getattr(m, "compte_contre", "") or defaut
 
 
 def ecriture_presente(base, m: MouvementBanque) -> int | None:
@@ -51,7 +56,8 @@ def ecriture_presente(base, m: MouvementBanque) -> int | None:
     lignes = base.requete(
         "SELECT e.lId FROM tjourent e JOIN tjentact a ON a.lJEntId = e.lId WHERE e.sSource = %s AND "
         "e.dtJourDate = %s AND a.lAcctId = %s AND ROUND(a.dAmount, 2) = %s AND e.nType NOT IN (32, 33, 64, 65) "
-        "ORDER BY e.lId DESC LIMIT 1", (source(m), m.date, COMPTE_BANQUE, str(m.montant)))
+        "ORDER BY e.lId DESC LIMIT 1",
+        (source(m), m.date, compte_sage(compte_contrepartie(m, str(COMPTE_BANQUE))), str(m.montant)))
     return lignes[0]["lId"] if lignes else None
 
 
@@ -78,7 +84,7 @@ def saisir_ecriture(f: FenetreJournal, m: MouvementBanque, compte_banque: str = 
     f.regler_date(m.date)
     f.ecrire(ID_REMARQUE, m.description[:LONGUEUR_REMARQUE])
     banque_x, autre_x = (X_DEBIT, X_CREDIT) if m.montant > 0 else (X_CREDIT, X_DEBIT)
-    for rang, (compte, x) in enumerate(((compte_banque, banque_x), (m.compte, autre_x))):
+    for rang, (compte, x) in enumerate(((compte_contrepartie(m, compte_banque), banque_x), (m.compte, autre_x))):
         y = f.ligne_y0 + HAUTEUR_LIGNE * rang
         f.taper(X_COMPTE, y, compte, "Compte")
         if f.dialogues():  # compte inconnu : Sage ouvre sa liste de comptes
@@ -140,6 +146,10 @@ def journal_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
     bilan = {"saisis": [], "a_verifier": [], "erreur": ""}
     registre = RegistreReleves(racine)
     mouvements = [m for r in registre.lire() for m in r.mouvements if m.etat == CONFIRME and m.compte]
+    from .ria import Registre as RegistreRia
+
+    ria = RegistreRia(racine)
+    mouvements += ria.mouvements_a_saisir()  # surplus de dépôts et paiements en espèces de RIA
     if not mouvements:
         return bilan
     exe = executable_sage(executable_import())
@@ -157,12 +167,16 @@ def journal_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
             texte = f"{m.date} : {m.montant:,.2f} $ — {m.description[:45]} → compte {m.compte}"
             (bilan["saisis"] if r.traite else bilan["a_verifier"]).append(
                 texte + ("" if r.traite else " — NON enregistré : " + " ".join(r.messages)))
-            registre.retenir(m)
+            if hasattr(m, "operation"):
+                ria.noter_saisie(m, r.traite)
+            else:
+                registre.retenir(m)
     except Exception as exc:
         bilan["erreur"] = str(exc)
         journal(f"Erreur : {exc}")
     finally:
         registre.enregistrer()
+        ria.enregistrer()
         session.fermer()
     return bilan
 

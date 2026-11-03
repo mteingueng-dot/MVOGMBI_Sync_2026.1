@@ -575,6 +575,103 @@ def ecrire_journal(racine: Path, cr: CompteRendu) -> Path:
     return chemin
 
 
+def recevoir_avis_paiement(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Avis Interac de la boîte des paiements lus chaque nuit (demande du propriétaire du 2026-11-03) : ajoutés à la
+    page « Paiements fournisseurs », à confirmer ; rien n'est payé sans confirmation."""
+    from . import coffre
+    from .paiements_courriel import lire_boite
+    from .paiements_fournisseurs import Registre
+
+    b = config_toml.get("boite_paiements", {})
+    if not (b.get("serveur") and b.get("utilisateur")) or not coffre.present(coffre.BOITE_PAIEMENTS):
+        return
+    try:
+        registre = Registre(racine)
+        depuis = date.fromisoformat(str(b.get("depuis") or (date.today() - timedelta(days=60)).isoformat()))
+        connus = {p.avis.identifiant for p in registre.paiements if getattr(p.avis, "identifiant", "")}
+        avis = lire_boite(b["serveur"], b["utilisateur"], coffre.lire(coffre.BOITE_PAIEMENTS), depuis,
+                          int(b.get("port", 993)), connus=connus)
+        nouveaux = registre.ajouter(avis)
+        registre.enregistrer()
+        if nouveaux:
+            cr.note(f"{len(nouveaux)} avis de paiement Interac reçu(s), à confirmer dans « Comptabilité > Paiements "
+                    "fournisseur ».")
+    except Exception as exc:
+        cr.note(f"Avis de paiement du courriel non lus : {exc}")
+
+
+def importer_factures_pretes(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Factures fournisseurs « Prêtes à importer » importées chaque nuit dans Sage puis Clover (demande du
+    propriétaire du 2026-11-03) ; [factures_courriel] import_nuit = false pour l'arrêter."""
+    from .fournisseurs import PRETE, Registre
+    from .import_achats import importer_achats
+
+    if not config_toml.get("factures_courriel", {}).get("import_nuit", True):
+        return
+    try:
+        pretes = [f for f in Registre(racine).factures if f.etat == PRETE]
+        if not pretes:
+            return
+        resultats = importer_achats(racine, config_toml, pretes, journal=lambda _t: None)
+        importees = sum(1 for texte in resultats.values() if texte.startswith("importée"))
+        cr.note(f"Factures fournisseurs prêtes : {importees} importée(s) sur {len(pretes)}"
+                + "".join(f"\n   {f} : {t}" for f, t in resultats.items() if not t.startswith("importée")))
+    except Exception as exc:
+        cr.note(f"Factures fournisseurs prêtes non importées : {exc}")
+
+
+def recevoir_etats_ria(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """États de compte RIA reçus par courriel ([ria] courriel) : lus et ajoutés à la page RIA."""
+    from .ria_etats import configuree, recuperer
+
+    if not configuree(config_toml):
+        return
+    try:
+        nouveaux = recuperer(racine, config_toml)
+        if nouveaux:
+            cr.note(f"{len(nouveaux)} état(s) de compte RIA reçu(s) : " + ", ".join(
+                f"{e.debut} au {e.fin}" for e in nouveaux))
+    except Exception as exc:
+        cr.note(f"États RIA du courriel non relevés : {exc}")
+    traiter_ria_dans_sage(racine, config_toml, cr)
+
+
+def traiter_ria_dans_sage(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
+    """Opérations de comptoir des états RIA créées, puis saisies dans Sage (journal général, l'application ouvre
+    Sage elle-même) si les comptes RIA sont renseignés (demande du propriétaire du 2026-11-03)."""
+    from . import ria
+    from .rapprochement import RegistreReleves
+    from .ria_etats import operations_des_etats
+
+    try:
+        banque = [m for r in RegistreReleves(racine).lire() for m in r.mouvements]
+        crees = operations_des_etats(racine, banque)
+        registre = ria.Registre(racine)
+        if crees:
+            cr.note(f"{crees} opération(s) RIA tirée(s) des états de compte.")
+        if registre.comptes_manquants():
+            if registre.a_saisir():
+                cr.note("Opérations RIA non saisies dans Sage : comptes à renseigner (Comptabilité > RIA > "
+                        "« Comptes… »).")
+            return
+        if not registre.a_saisir():
+            return
+        import json
+        import tempfile
+
+        from .__main__ import commande_moteur
+        from .sage_bureau import executer_sur_bureau_cache
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
+            fichier = Path(dossier) / "bilan.json"
+            executer_sur_bureau_cache(commande_moteur() + ["journal-bureau", "--resultat", str(fichier)], racine)
+            bilan = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else {}
+        cr.note(f"RIA dans Sage : {len(bilan.get('saisis', []))} écriture(s) ; "
+                + (" ; ".join(bilan.get("a_verifier", [])[:5]) or "rien à vérifier"))
+    except Exception as exc:
+        cr.note(f"Opérations RIA non traitées : {exc}")
+
+
 def recevoir_factures_fournisseurs(racine: Path, config_toml: dict, cr: CompteRendu) -> None:
     """Factures fournisseurs jointes aux courriels de la boîte configurée : copiées et lues pour la page 8 (rien
     n'est importé sans le propriétaire). Une erreur ici ne touche pas le traitement."""
@@ -697,7 +794,10 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
         verrou.unlink(missing_ok=True)
     if not simulation:
         recevoir_factures_fournisseurs(racine, config_toml, cr)
+        recevoir_avis_paiement(racine, config_toml, cr)
         archiver_factures_deja_dans_sage(racine, config_toml, cr)
+        importer_factures_pretes(racine, config_toml, cr)
+        recevoir_etats_ria(racine, config_toml, cr)
         prechauffer_statistiques(racine, cr)
         preparer_resume(racine, config_toml, cr)
         promotions_et_tableau(racine, config_toml, cr)

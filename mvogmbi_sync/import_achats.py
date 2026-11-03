@@ -169,10 +169,12 @@ def sage_ouvert() -> bool:
 
 
 @vide_apres  # mémoire des lectures vidée après une écriture
-def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], journal=print) -> dict[str, str]:
+def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], journal=print,
+                    clover: bool = True) -> dict[str, str]:
     """Contrôle, écrit le .IMP et l'importe (Sage fermé, fenêtres de l'outil cachées), puis vérifie chaque facture.
 
-    Renvoie {fichier: résultat} ; les factures importées passent à l'état « Importée dans Sage ».
+    Renvoie {fichier: résultat} ; les factures importées passent à l'état « Importée ». `clover` faux : Sage
+    seulement (services, ou facture déjà entrée dans Clover), le stock et le coût Clover ne changent pas.
     """
     from . import coffre
     from .__main__ import executable_import, lire_sage, ouvrir_base_sage
@@ -231,7 +233,10 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
             resultats[f.fichier] = "ÉCHEC : absente de Sage après l'import" + (
                 " — " + " ; ".join(resultat.erreurs) if resultat.erreurs else "")
     importees = [f for f in a_importer if f.etat == IMPORTEE]
-    if importees:  # Clover suit : stock + quantité reçue, coût = nouveau prix d'achat (règle du 2026-10-28)
+    if importees and not clover:
+        for f in importees:
+            resultats[f.fichier] += "\n   Clover : non mis à jour (import dans Sage seulement)"
+    elif importees:  # Clover suit : stock + quantité reçue, coût = nouveau prix d'achat (règle du 2026-10-28)
         try:
             from .stock_clover import mettre_a_jour_factures
             for fichier, messages in mettre_a_jour_factures(racine, Path(racine) / "config.toml", importees).items():

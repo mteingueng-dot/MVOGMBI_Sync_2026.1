@@ -626,24 +626,44 @@ def kpis(vues: dict, moyens: list[tuple[str, Decimal]]) -> list[tuple[str, str, 
 FILTRES = ("Article", "Client", "Employé", "Catégorie")
 
 
+def fusionner(parts: list[DonneesClover]) -> DonneesClover:
+    """Données de plusieurs points de vente réunies (filtre « Point de vente », « Tout » = total des magasins)."""
+    if len(parts) == 1:
+        return parts[0]
+    d = DonneesClover(fuseau=parts[0].fuseau if parts else "America/Toronto")
+    for p in parts:
+        d.commandes += p.commandes
+        d.paiements += p.paiements
+        d.remboursements += p.remboursements
+        for cible, source in ((d.employes, p.employes), (d.clients, p.clients), (d.appareils, p.appareils),
+                              (d.categories, p.categories)):
+            cible.update(source)
+    return d
+
+
 def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
     """Données réduites aux filtres de la page Rapports : client, employé et mode de paiement gardent les commandes
     concernées (mode de paiement : commandes payées au moins en partie ainsi, seuls ces paiements sont gardés) ;
     article et catégorie ne gardent que leurs lignes (et les commandes qui en ont). Paiements et remboursements
     suivent les commandes gardées ; avec un filtre d'article ou de catégorie, un paiement ne compte que pour la part
     des lignes gardées dans sa commande."""
-    filtres = {k: v.strip() for k, v in (filtres or {}).items() if v and v.strip()}
+    from .design import choix_multiples
+
+    filtres = {k: v.strip() for k, v in (filtres or {}).items() if v and v.strip() and k != "Point de vente"}
     if not filtres:
         return d
-    article, client = filtres.get("Article", "").casefold(), filtres.get("Client", "").casefold()
-    employe, categorie = filtres.get("Employé", "").casefold(), filtres.get("Catégorie", "").casefold()
-    mode = filtres.get("Mode de paiement", "").casefold()
+
+    def ensemble(nom: str) -> set[str]:  # filtres à choix multiples : « A | B » (demande du 2026-11-01)
+        return {v.casefold() for v in choix_multiples(filtres.get(nom, ""))}
+
+    article, client, employe = ensemble("Article"), ensemble("Client"), ensemble("Employé")
+    categorie, mode = ensemble("Catégorie"), ensemble("Mode de paiement")
     gardees, parts = [], {}
 
     def mode_de(p: dict) -> str:
         return ((p.get("tender") or {}).get("label") or "?").casefold()
 
-    commandes_du_mode = {(p.get("order") or {}).get("id") for p in d.paiements if mode_de(p) == mode} if mode else set()
+    commandes_du_mode = {(p.get("order") or {}).get("id") for p in d.paiements if mode_de(p) in mode} if mode else set()
 
     def valeur(lignes) -> Decimal:
         return sum((_cents(l.get("price")) * (Decimal(l["unitQty"]) / 1000 if l.get("unitQty") else 1)
@@ -652,17 +672,17 @@ def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
     for o in d.commandes:
         nom_employe = ((o.get("employee") or {}).get("name") or d.employes.get((o.get("employee") or {}).get("id"), ""))
         clients = [d.clients.get(c["id"], c["id"]) for c in (o.get("customers") or {}).get("elements") or []]
-        if employe and nom_employe.casefold() != employe:
+        if employe and nom_employe.casefold() not in employe:
             continue
-        if client and client not in {c.casefold() for c in clients}:
+        if client and not client & {c.casefold() for c in clients}:
             continue
         if mode and o["id"] not in commandes_du_mode:
             continue
         if article or categorie:
             lignes = [l for l in (o.get("lineItems") or {}).get("elements") or []
-                      if (not article or (l.get("name") or "").strip().casefold() == article)
+                      if (not article or (l.get("name") or "").strip().casefold() in article)
                       and (not categorie or d.categories.get((l.get("item") or {}).get("id"), SANS_CATEGORIE)
-                           .casefold() == categorie)]
+                           .casefold() in categorie)]
             if not lignes:
                 continue
             tout = valeur((o.get("lineItems") or {}).get("elements") or [])
@@ -680,7 +700,7 @@ def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
 
     return DonneesClover(commandes=gardees,
                          paiements=[part(p) for p in d.paiements if (p.get("order") or {}).get("id") in ids
-                                    and (not mode or mode_de(p) == mode)],
+                                    and (not mode or mode_de(p) in mode)],
                          remboursements=[r for r in d.remboursements if (r.get("orderRef") or {}).get("id") in ids],
                          employes=d.employes, clients=d.clients, appareils=d.appareils, categories=d.categories,
                          fuseau=d.fuseau)

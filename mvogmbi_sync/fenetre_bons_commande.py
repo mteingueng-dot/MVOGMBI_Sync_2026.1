@@ -95,12 +95,13 @@ class FenetreBons(FenetreOutil):
         self.geometry("1000x620")
         barre = Rangee(self)
         barre.pack(fill="x")
-        for texte, commande in (("📂  " + t("Ouvrir"), self.ouvrir_pdf),
+        for texte, commande in (("🔄  " + t("Actualiser"), self.afficher), ("📂  " + t("Ouvrir"), self.ouvrir_pdf),
                                 ("➕  " + t("Ajouter"), self.nouveau), ("✎  " + t("Modifier"), self.modifier),
                                 ("🗑  " + t("Supprimer"), self.supprimer),
                                 ("🧮  " + t("Proposer les commandes…"), lambda: ouvrir(self, self.racine)),
                                 ("🔁  " + t("Refaire le PDF"), self.refaire),
-                                ("⚖  " + t("Comparer avec la facture"), self.comparer)):
+                                ("⚖  " + t("Comparer avec la facture"), self.comparer),
+                                ("🔀  " + t("Transformer…"), self.transformer)):
             barre.ajouter(Bouton(barre, texte, commande, "secondaire", fond=CARTE, petit=True))
         self.etat = tk.Label(self, text="", background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left",
                              wraplength=950)
@@ -124,6 +125,31 @@ class FenetreBons(FenetreOutil):
         self.bind("<Map>", lambda e: e.widget is self and self.afficher(), add="+")
         from .design import dans_application
         dans_application(parent, self)
+
+    def transformer(self) -> None:
+        """Bon reçu : bon de réception (BR) ou directement la facture « Prête à importer » (demande du propriétaire
+        du 2026-11-01 : commande émise, marchandise reçue -> facture prête à importer)."""
+        from . import documents as dc
+        from .chaine_documents import transformer_achat
+        from .fenetre_chaine import choisir
+
+        choix = self.tableau.selection()
+        if not choix:
+            messagebox.showinfo(self.title(), t("Choisissez un bon dans la liste."), parent=self)
+            return
+        bon = self.bons[int(choix[0])]
+        reponse = choisir(self, "Transformation", "Vers quel type voulez-vous transformer le bon de commande ?",
+                          [(c, dc.libelle(c)) for c in dc.TRANSFORMATIONS[dc.COMMANDE_ACHAT]], avec_date=True,
+                          libelle_numero="N° de facture du fournisseur", cles_numero=(dc.FACTURE_ACHAT,))
+        if not reponse:
+            return
+        try:
+            cree = transformer_achat(self.racine, ("bc", bon.numero), reponse[0], reponse[1], "", reponse[2])
+        except ValueError as exc:
+            messagebox.showerror(self.title(), t(str(exc)), parent=self)
+            return
+        self.afficher()
+        messagebox.showinfo(self.title(), t("{n} créé à partir de {o}.", n=cree, o=bon.numero), parent=self)
 
     def afficher(self) -> None:
         from .page_rapports import remplir

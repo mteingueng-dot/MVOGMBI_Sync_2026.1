@@ -324,8 +324,13 @@ class Graphique(tk.Canvas):
                 i, v = max(valeurs_1, key=lambda x: x[1])
                 px, py = gauche + pas * i, hauteur - bas - zone_h * v / maximum
                 self.create_oval(px - 4, py - 4, px + 4, py + 4, fill="white", outline=series[0][2], width=2)
-                self.create_text(px, py - 12, text=f"max {_court(v)} ({etiquettes[i]})", font=("Segoe UI Semibold", 8),
-                                 fill=TEXTE, anchor="s" if py > haut + 30 else "n")
+                # étiquette tenue dans la zone du graphique : jamais sur l'axe des montants ni hors du cadre
+                vertical = "s" if py > haut + 30 else "n"
+                cote = "w" if px < gauche + 90 else "e" if px > largeur - 90 else ""
+                decale = 6 if cote == "w" else -6 if cote == "e" else 0
+                self.create_text(px + decale, py - 12 if vertical == "s" else py + 12,
+                                 text=f"max {_court(v)} ({etiquettes[i]})", font=("Segoe UI Semibold", 8), fill=TEXTE,
+                                 anchor=vertical + cote if cote else vertical)
 
         self._dessin = dessiner
         self.redessiner()

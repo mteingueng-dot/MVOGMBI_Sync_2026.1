@@ -12,7 +12,9 @@ class BaseFactice:
     def __init__(self, lignes):
         self.lignes = lignes
 
-    def requete(self, _sql, _params=()):
+    def requete(self, sql, _params=()):
+        if "tpydet" in sql:
+            raise RuntimeError(1142, "SELECT refusé")  # sans accès au module Paie : les écritures comptables
         return self.lignes
 
 

@@ -95,9 +95,23 @@ class Connexion(tk.Tk):
         self.utilisateur = self.registre.verifier(nom, mdp)
         if self.utilisateur is None:
             self.mdp.set("")
-            self.message.configure(text=t("Nom ou mot de passe incorrect, ou compte désactivé."))
+            self.message.configure(text=message_refus(self.registre, nom))
             return
         self.destroy()
+
+
+def message_refus(registre: Registre, nom: str) -> str:
+    """Texte après un refus : compte verrouillé, essais restants, ou refus général (sans dire si le nom existe)."""
+    from .utilisateurs import ESSAIS_AVANT_VERROU
+
+    u = registre.trouver(nom)
+    if u is not None and registre.bloque(u):
+        return t("Compte verrouillé après {n} mots de passe faux : un administrateur doit le rouvrir en vous donnant "
+                 "un nouveau mot de passe (page Utilisateurs).", n=ESSAIS_AVANT_VERROU)
+    if u is not None and u.echecs:
+        return t("Mot de passe incorrect : encore {n} essai(s) avant le verrouillage du compte.",
+                 n=ESSAIS_AVANT_VERROU - u.echecs)
+    return t("Nom ou mot de passe incorrect, ou compte désactivé.")
 
 
 def connecter(racine: Path, titre: str) -> Utilisateur | None:
@@ -197,8 +211,9 @@ class Verrou(tk.Toplevel):
         champ.focus_force()
 
     def valider(self) -> None:
-        if Registre(self.racine).verifier(self.utilisateur.nom, self.mdp.get()) is None:
+        registre = Registre(self.racine)
+        if registre.verifier(self.utilisateur.nom, self.mdp.get()) is None:
             self.mdp.set("")
-            self.message.configure(text=t("Mot de passe incorrect."))
+            self.message.configure(text=message_refus(registre, self.utilisateur.nom))
             return
         self.deverrouiller()

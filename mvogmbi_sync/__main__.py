@@ -207,6 +207,44 @@ def commande_tiers_bureau(args: argparse.Namespace) -> None:
     sys.exit(1 if bilan["erreur"] or not all(r["cree"] for r in bilan["resultats"]) else 0)
 
 
+def commande_fiches_articles_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : modifie ou supprime des articles de Sage."""
+    import json
+    from dataclasses import asdict
+
+    from .robot_fiches_articles import DemandeArticle, traiter
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    notes, bilan = [], {"resultats": [], "erreur": ""}
+    try:
+        demandes = [DemandeArticle(**d) for d in json.loads(Path(args.demande).read_text(encoding="utf-8"))]
+        bilan["resultats"] = [asdict(r) for r in traiter(config_toml, demandes, journal=notes.append)]
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or not all(r["fait"] for r in bilan["resultats"]) else 0)
+
+
+def commande_comptes_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : crée, modifie ou supprime des comptes du plan comptable."""
+    import json
+    from dataclasses import asdict
+
+    from .robot_comptes import DemandeCompte, traiter
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    notes, bilan = [], {"resultats": [], "erreur": ""}
+    try:
+        demandes = [DemandeCompte(**d) for d in json.loads(Path(args.demande).read_text(encoding="utf-8"))]
+        bilan["resultats"] = [asdict(r) for r in traiter(config_toml, demandes, journal=notes.append)]
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or not all(r["fait"] for r in bilan["resultats"]) else 0)
+
+
 def commande_depenses_bureau(args: argparse.Namespace) -> None:
     """Commande interne, lancée sur le bureau caché : écritures des dépenses (petite caisse) dans Sage."""
     import json
@@ -1449,6 +1487,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--resultat", required=True)
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_tiers_bureau)
+
+    p = sous.add_parser("fiches-articles-bureau", help="(interne) Modifier ou supprimer des articles de Sage")
+    p.add_argument("--demande", required=True)
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_fiches_articles_bureau)
+
+    p = sous.add_parser("comptes-bureau", help="(interne) Plan comptable de Sage (créer, modifier, supprimer)")
+    p.add_argument("--demande", required=True)
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_comptes_bureau)
 
     p = sous.add_parser("depenses-bureau", help="(interne) Dépenses de la petite caisse dans Sage sur le bureau caché")
     p.add_argument("--resultat", required=True)

@@ -26,10 +26,71 @@ from .cache_lectures import vide_apres
 
 CENT = Decimal("0.01")
 COMMANDE, FACTURE, STOCK = "commande", "facture", "stock"
-PREFIXES = {COMMANDE: "CC", FACTURE: "FV", STOCK: "DS"}
 ENTREE, SORTIE = "Entrée", "Sortie"
 BROUILLON, OUVERTE, FACTUREE, IMPORTEE, PASSE, ECHEC = (
     "Brouillon", "Ouverte", "Facturée", "Importée dans Sage", "Passé dans Sage", "Échec")
+TRANSFORME, ANNULE = "Transformé", "Annulé"
+
+# Types de documents (demande du propriétaire du 2026-11-01, comme les documents de vente et d'achat de Sage) :
+# genre -> (côté, libellé, préfixe). Seules les factures touchent le stock (Sage et Clover) ; devis, commandes,
+# préparations, bons de livraison / réception / retour et avoirs financiers restent dans l'application. Passer d'un
+# type à l'autre (« Transformer ») crée le document suivant avec les mêmes lignes et garde la chaîne (`origine`) :
+# depuis une facture on retrouve la commande et le bon de livraison.
+DEVIS, PREPARATION, LIVRAISON, RETOUR, AVOIR, FACTURE_RETOUR, FACTURE_AVOIR = (
+    "devis", "preparation", "livraison", "retour", "avoir", "facture_retour", "facture_avoir")
+PREPARATION_ACHAT, COMMANDE_ACHAT, RECEPTION, RETOUR_ACHAT, AVOIR_ACHAT, FACTURE_ACHAT, FACTURE_RETOUR_ACHAT, \
+    FACTURE_AVOIR_ACHAT = ("preparation_achat", "commande_achat", "reception", "retour_achat", "avoir_achat",
+                           "facture_achat", "facture_retour_achat", "facture_avoir_achat")
+TYPES = {
+    DEVIS: ("vente", "Devis", "DV"),
+    COMMANDE: ("vente", "Bon de commande", "CC"),
+    PREPARATION: ("vente", "Préparation de livraison", "PL"),
+    LIVRAISON: ("vente", "Bon de livraison", "BL"),
+    RETOUR: ("vente", "Bon de retour", "RC"),
+    AVOIR: ("vente", "Bon d'avoir financier", "AV"),
+    FACTURE: ("vente", "Facture", "FV"),
+    FACTURE_RETOUR: ("vente", "Facture de retour", "FRC"),
+    FACTURE_AVOIR: ("vente", "Facture d'avoir", "FAV"),
+    PREPARATION_ACHAT: ("achat", "Préparation de commande", "PC"),
+    COMMANDE_ACHAT: ("achat", "Bon de commande", "BC"),       # registre bons_commande.py
+    RECEPTION: ("achat", "Bon de réception", "BR"),
+    RETOUR_ACHAT: ("achat", "Bon de retour", "RT"),
+    AVOIR_ACHAT: ("achat", "Bon d'avoir financier", "AVF"),
+    FACTURE_ACHAT: ("achat", "Facture", "FA"),               # registre fournisseurs.py (factures fournisseurs)
+    FACTURE_RETOUR_ACHAT: ("achat", "Facture de retour", "FRT"),  # registre retours.py
+    FACTURE_AVOIR_ACHAT: ("achat", "Facture d'avoir", "FAF"),
+    STOCK: ("stock", "Document de stock", "DS"),
+}
+PREFIXES = {genre: prefixe for genre, (_c, _l, prefixe) in TYPES.items()}
+# types proposés par « Ajouter » (ordre de Sage)
+TYPES_VENTE = [DEVIS, COMMANDE, PREPARATION, LIVRAISON, RETOUR, AVOIR, FACTURE, FACTURE_RETOUR, FACTURE_AVOIR]
+TYPES_ACHAT = [PREPARATION_ACHAT, COMMANDE_ACHAT, RECEPTION, RETOUR_ACHAT, AVOIR_ACHAT, FACTURE_ACHAT,
+               FACTURE_RETOUR_ACHAT, FACTURE_AVOIR_ACHAT]
+# chaînes du propriétaire : vente BC -> BL -> FA -> RC -> FRC ; achat BC -> BR -> FA -> RT -> FRT
+TRANSFORMATIONS = {
+    DEVIS: [COMMANDE, PREPARATION, LIVRAISON, FACTURE],
+    COMMANDE: [PREPARATION, LIVRAISON, FACTURE],
+    PREPARATION: [LIVRAISON, FACTURE],
+    LIVRAISON: [FACTURE, RETOUR],
+    FACTURE: [RETOUR, FACTURE_RETOUR, AVOIR, FACTURE_AVOIR],
+    RETOUR: [FACTURE_RETOUR],
+    AVOIR: [FACTURE_AVOIR],
+    PREPARATION_ACHAT: [COMMANDE_ACHAT, RECEPTION],
+    COMMANDE_ACHAT: [RECEPTION, FACTURE_ACHAT],
+    RECEPTION: [FACTURE_ACHAT, RETOUR_ACHAT],
+    FACTURE_ACHAT: [RETOUR_ACHAT, FACTURE_RETOUR_ACHAT, AVOIR_ACHAT, FACTURE_AVOIR_ACHAT],
+    RETOUR_ACHAT: [FACTURE_RETOUR_ACHAT],
+    AVOIR_ACHAT: [FACTURE_AVOIR_ACHAT],
+}
+FACTURES_STOCK = {FACTURE, FACTURE_RETOUR}  # factures de vente importées dans Sage (stock Sage et Clover)
+
+
+def libelle(genre: str) -> str:
+    return TYPES[genre][1] if genre in TYPES else genre
+
+
+def cote(genre: str) -> str:
+    return TYPES[genre][0] if genre in TYPES else ""
 
 
 @dataclass
@@ -61,7 +122,9 @@ class Document:
     messages: list[str] = field(default_factory=list)
     cree: str = ""
     auteur: str = ""
-    depot: str = ""           # document de stock : emplacement Sage (dépôt d'un point de vente) ; vide = par défaut
+    depot: str = ""           # emplacement Sage (dépôt d'un point de vente) ; vide = par défaut
+    origine: str = ""         # document dont celui-ci vient (« Transformer ») : BC -> BL -> FA …
+    facteurs: dict = field(default_factory=dict)  # achats : n° Sage -> facteur (unités Sage par unité fournisseur)
 
     @property
     def sous_total(self) -> Decimal:
@@ -110,22 +173,54 @@ class Registre:
                 sens: str = "", auteur: str = "", depot: str = "") -> Document:
         if not lignes:
             raise ValueError("Ajoutez au moins une ligne.")
-        if genre in (COMMANDE, FACTURE) and not tiers:
-            raise ValueError("Choisissez le client.")
+        if cote(genre) in ("vente", "achat") and not tiers:
+            raise ValueError("Choisissez le client." if cote(genre) == "vente" else "Choisissez le fournisseur.")
         for l in lignes:
             if Decimal(l.quantite) <= 0:
                 raise ValueError(f"{l.numero_sage} : la quantité doit être positive.")
         date.fromisoformat(jour)
         doc = Document(self.prochain_numero(genre), genre, tiers, jour, lignes, remarque, sens,
-                       OUVERTE if genre == COMMANDE else BROUILLON, cree=datetime.now().isoformat(timespec="seconds"),
-                       auteur=auteur, depot=depot)
+                       BROUILLON if genre in FACTURES_STOCK or genre == STOCK else OUVERTE,
+                       cree=datetime.now().isoformat(timespec="seconds"), auteur=auteur, depot=depot)
         self.documents.append(doc)
         self.enregistrer()
         return doc
 
     def modifiable(self, doc: Document) -> bool:
-        """Un document se modifie ou se supprime tant qu'il n'est pas dans Sage ni facturé."""
+        """Un document se modifie ou se supprime tant qu'il n'est pas dans Sage, ni facturé, ni transformé."""
         return doc.etat in (BROUILLON, OUVERTE, ECHEC) and not (doc.genre == STOCK and any(l.cible for l in doc.lignes))
+
+    def chaine(self, numero: str) -> list[str]:
+        """Documents d'où vient `numero`, du plus ancien au plus proche (ex. [CC-0001, BL-0002] pour une facture)."""
+        precedents, vus = [], {numero}
+        doc = next((d for d in self.documents if d.numero == numero), None)
+        while doc is not None and doc.origine and doc.origine not in vus:
+            precedents.insert(0, doc.origine)
+            vus.add(doc.origine)
+            doc = next((d for d in self.documents if d.numero == doc.origine), None)
+        return precedents
+
+    def transformer(self, numero: str, cible: str, jour: str = "", auteur: str = "") -> Document:
+        """Document suivant de la chaîne (mêmes lignes, même tiers et dépôt) ; l'original passe à « Transformé ».
+        Un document se transforme une fois ; une facture peut aussi devenir un retour ou un avoir."""
+        doc = self.document(numero)
+        if cible not in TRANSFORMATIONS.get(doc.genre, []):
+            raise ValueError(f"Un {libelle(doc.genre).lower()} ne se transforme pas en {libelle(cible).lower()}.")
+        if doc.etat == TRANSFORME and doc.genre not in (FACTURE, FACTURE_ACHAT, LIVRAISON, RECEPTION):
+            raise ValueError(f"{numero} est déjà transformé ({doc.lien}).")
+        if cible in (COMMANDE_ACHAT, FACTURE_ACHAT, FACTURE_RETOUR_ACHAT):
+            raise ValueError("Ce type d'achat se crée dans son registre (transformer_achat).")
+        nouveau = self.ajouter(cible, doc.tiers, jour or date.today().isoformat(),
+                               [LigneDocument(**asdict(l)) for l in doc.lignes], doc.remarque, auteur=auteur,
+                               depot=doc.depot)
+        for l in nouveau.lignes:
+            l.cible = ""
+        nouveau.origine, nouveau.facteurs = doc.numero, dict(doc.facteurs)
+        if doc.genre not in (FACTURE, FACTURE_ACHAT):  # une facture reste « Importée » (elle a touché le stock)
+            doc.etat = TRANSFORME
+        doc.lien = nouveau.numero
+        self.enregistrer()
+        return nouveau
 
     def modifier(self, numero: str, tiers: str, jour: str, lignes: list[LigneDocument], remarque: str = "",
                  sens: str = "", depot: str = "") -> Document:
@@ -174,24 +269,25 @@ def _argent(v: Decimal) -> str:
 
 
 def ecrire_pdf(racine: Path, doc: Document) -> Path:
-    from .export_tableau import ecrire_pdf as pdf
+    """PDF du document sur son modèle (pdf_documents.document_commercial : en-tête, cadre du document, client ou
+    fournisseur, lignes, totaux avec TPS et TVQ) ; un PDF ouvert dans le lecteur n'empêche pas d'en écrire un autre."""
+    from .pdf_documents import document_commercial
+    from .points_vente import DEPOT_DEFAUT
 
-    titres = {COMMANDE: "Commande client", FACTURE: "Facture de vente", STOCK: f"Document de stock ({doc.sens})"}
+    titres = {STOCK: f"Document de stock — {doc.sens}", COMMANDE: "Commande client", FACTURE: "Facture de vente"}
+    titres.setdefault(doc.genre, libelle(doc.genre))
     dossier = Path(racine) / "donnees" / "documents"
-    dossier.mkdir(parents=True, exist_ok=True)
     chemin = dossier / (re.sub(r'[\\/:*?"<>|]+', "-", f"{doc.numero} {doc.tiers}".strip())[:100] + ".pdf")
-    lignes = [[l.numero_sage, l.description, l.quantite.replace(".", ","), _argent(Decimal(l.prix or 0)),
-               __import__("mvogmbi_sync.taxes", fromlist=["x"]).libelle(
-                   __import__("mvogmbi_sync.taxes", fromlist=["x"]).code(l)) if l.taxable or l.taxe else "",
-               _argent(l.montant)] for l in doc.lignes]
-    if doc.genre != STOCK:
-        lignes += [["", "Sous-total", "", "", "", _argent(doc.sous_total)], ["", "Taxes", "", "", "", _argent(doc.taxes)],
-                   ["", "Total", "", "", "", _argent(doc.total)]]
-    sous = " — ".join(x for x in (f"Client : {doc.tiers}" if doc.tiers else "", f"date : {doc.date}", doc.remarque) if x)
-    pdf(chemin, f"{titres[doc.genre]} {doc.numero}", ["N° article", "Description", "Quantité",
-                                                       "Coût" if doc.genre == STOCK else "Prix", "Taxes", "Montant"],
-        lignes, sous_titre=sous)
-    return chemin
+    chaine = Registre(racine).chaine(doc.numero)
+    infos = [f"Origine : {' → '.join(chaine)}" if chaine else "", f"Dépôt : {doc.depot or DEPOT_DEFAUT}",
+             f"Saisi par : {doc.auteur}" if doc.auteur else "", f"Suivant : {doc.lien}" if doc.lien else ""]
+    tiers_titre = "Fournisseur" if cote(doc.genre) == "achat" else "Client" if doc.genre != STOCK else "Mouvement"
+    tiers = [doc.tiers] if doc.tiers else [doc.sens or ""]
+    lignes = [{"numero": l.numero_sage, "description": l.description, "quantite": l.quantite, "prix": l.prix or 0,
+               "montant": l.montant, "taxe": l.taxe or ("GQ" if l.taxable else "")} for l in doc.lignes]
+    return document_commercial(chemin, racine, titres[doc.genre], doc.numero, doc.date, tiers_titre, tiers,
+                               [x for x in infos if x], lignes, avec_taxes=doc.genre != STOCK, etat=doc.etat,
+                               remarque=doc.remarque, libelle_prix="Coût unitaire" if doc.genre == STOCK else "Prix")
 
 
 # --------------------------------------------------------------------------------------------- factures de vente
@@ -202,9 +298,12 @@ def ecrire_imp(docs: list[Document], chemin: Path, config_toml: dict) -> Path:
     from . import taxes as tx
     from .import_sage import ImportSage, LigneImport, ecrire_imp as ecrire
 
+    def signe(d):  # facture de retour : marchandise reprise, quantités et montants négatifs
+        return -1 if d.genre == FACTURE_RETOUR else 1
+
     imps = [ImportSage(SimpleNamespace(client=d.tiers, numero=d.numero, date_facture=date.fromisoformat(d.date)),
-                       [LigneImport(l.numero_sage, Decimal(l.quantite), l.montant, bool(tx.code(l)), codes=tx.code(l))
-                        for l in d.lignes], [])
+                       [LigneImport(l.numero_sage, signe(d) * Decimal(l.quantite), signe(d) * l.montant,
+                                    bool(tx.code(l)), codes=tx.code(l)) for l in d.lignes], [])
             for d in docs]
     return ecrire(imps, chemin, config_import(config_toml))
 
@@ -279,8 +378,12 @@ def importer_factures(racine: Path, config_toml: dict, numeros: list[str], journ
             verifier()
         for d in a_importer:
             if presentes.get(d.numero):
+                from .chaine_documents import clover_du_document
+
                 d.etat, d.messages = IMPORTEE, []
-                resultats[d.numero] = f"importée dans Sage ({_argent(d.total)})"
+                d.messages = clover_du_document(racine, config_toml, d)  # la facture touche aussi le stock Clover
+                resultats[d.numero] = f"importée dans Sage ({_argent(d.total)})" + (
+                    " ; " + " ; ".join(d.messages) if d.messages else "")
             else:
                 d.etat = ECHEC
                 d.messages = ["absente de Sage après l'import"] + list(resultat.erreurs)
@@ -335,7 +438,12 @@ def passer_stock(racine: Path, config_toml: dict, numero: str, journal=print) ->
         raise RuntimeError(doc.messages[0])
     reussi = bool(textes) and all(t.startswith("fait") for t in textes.values())
     doc.etat = PASSE if reussi else ECHEC
-    doc.messages = [f"{n} : {t}" for n, t in textes.items()]
+    clover = [m for m in doc.messages if m.startswith("Clover :")]  # Clover déjà fait : jamais deux fois
+    doc.messages = [f"{n} : {t}" for n, t in textes.items()] + clover
+    if reussi:  # le stock Clover du point de vente du dépôt suit (demande du propriétaire du 2026-11-01)
+        from .chaine_documents import clover_du_document
+
+        doc.messages += clover_du_document(racine, config_toml, doc)
     registre.enregistrer()
     for m in doc.messages:
         journal(m)

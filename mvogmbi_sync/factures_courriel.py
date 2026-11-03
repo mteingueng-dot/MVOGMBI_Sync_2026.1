@@ -162,10 +162,19 @@ def lire_boite(serveur: str, utilisateur: str, mot_de_passe: str, depuis: date, 
             # tous les courriels de la période avec pièce jointe sont lus (pieces_du_message)
             _, donnees = boite.uid("search", None, "SINCE", depuis_imap)
             uids.update((donnees[0] or b"").split())
+        # en-têtes de TOUS les messages en une demande (avant : une par message), puis seuls les messages avec pièce
+        # jointe et pas encore pris sont téléchargés
+        entetes = {}
+        if uids:
+            _, donnees = boite.uid("fetch", b",".join(sorted(uids, key=int)),
+                                   "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID CONTENT-TYPE)])")
+            for d in donnees:
+                if isinstance(d, tuple):
+                    m = re.search(rb"UID (\d+)", d[0])
+                    if m:
+                        entetes[m.group(1)] = d[1] or b""
         for uid in sorted(uids, key=int):
-            # en-têtes d'abord : un courriel sans pièce jointe ni « facture » n'est pas téléchargé en entier
-            _, entete = boite.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID CONTENT-TYPE)])")
-            brut_entete = next((d[1] for d in entete if isinstance(d, tuple)), b"") or b""
+            brut_entete = entetes.get(uid, b"")
             if b"multipart" not in brut_entete.lower():
                 continue  # pas de pièce jointe
             m = re.search(rb"(?im)^message-id:\s*(\S+)", brut_entete)

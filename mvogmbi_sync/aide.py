@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.1"
+VERSION = "1.0.9"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -549,6 +549,30 @@ FAQ = {
         ("reponse", "Paramètres Windows > Applications > MVOGMBI_Sync > Désinstaller. La tâche planifiée est "
                     "retirée ; vos données et votre configuration restent dans le dossier d'installation."),
         ("sous_titre", 'Nouveautés : paie, caisse, stocks, ventes et sécurité'),
+        ("question", 'Comment gérer RIA dans Sage ?'),
+        ("reponse", "« Comptabilité > RIA » réunit les mouvements RIA des relevés, les surplus de dépôts d'espèces et "
+                    "les paiements en espèces. Une fois les comptes renseignés (« Comptes… » : le compte RIA du bilan et "
+                    "le compte de commissions, à créer dans Sage), « Saisir dans Sage » passe les écritures. Les entrées "
+                    "et sorties de RIA s'annulent ; seules les commissions, marquées avec « Commission », sont un revenu."),
+        ("question", "Un dépôt d'espèces dépasse les ventes en espèces : que faire ?"),
+        ("reponse", "Le dépôt couvre d'abord les espèces dues des factures, de la plus ancienne à la plus récente, même "
+                    "sur plusieurs journées. Le surplus s'affiche « Part RIA à confirmer » : rien n'est encaissé. Dans "
+                    "« Comptabilité > RIA », « Confirmer le surplus » puis « Saisir dans Sage » ; le calcul suivant de la "
+                    "page Encaissements propose alors le reste sur les ventes."),
+        ("question", 'Comment fonctionne le calendrier de paie ?'),
+        ("reponse", "« Paie > Calendrier de paie » : renseignez la date de la première paie de l'année. Les paies "
+                    "suivantes (tous les 14 jours), leurs périodes et les années à venir se calculent. Le calendrier "
+                    "fixe aussi les périodes des feuilles de temps."),
+        ("question", 'Comment remettre les T4 et les Relevés 1 ?'),
+        ("reponse", "« Traitement de la paie », onglet « Fin d'année (T4 / RL-1) » : « Calculer », puis imprimez pour un, "
+                    "plusieurs ou tous les employés, ou envoyez à chacun ses feuillets par courriel, sans copie. Le NAS "
+                    "n'est jamais gardé par l'application : la case reste vide. Les feuillets transmis aux gouvernements "
+                    "restent ceux de Sage."),
+        ("question", "Que voit un employé qui se connecte ?"),
+        ("reponse", "Seulement ses informations : son horaire, son pointage, ses feuilles de temps, ses paies et ses "
+                    "statistiques. Son compte doit être relié à son employé (« Paie > Employés et NIP »). "
+                    "L'administrateur et le gérant voient tous les employés ; la case « Voir tous les employés » de la "
+                    "page Utilisateurs règle ce droit par profil."),
         ("question", 'Comment traiter la paie dans Sage et envoyer les bulletins ?'),
         ("reponse", "« Paie > Traitement de la paie » : l'onglet « Heures validées » montre les heures approuvées (avec "
                     'les jours fériés et les congés payés). « Traiter la paie dans Sage… » : choisissez la date des '
@@ -1042,6 +1066,28 @@ FAQ = {
         ("reponse", "Windows Settings > Apps > MVOGMBI_Sync > Uninstall. The scheduled task is removed; your data "
                     "and configuration stay in the installation folder."),
         ("sous_titre", "What's new: payroll, cash, stock, sales and security"),
+        ("question", 'How do I manage RIA in Sage?'),
+        ("reponse", '“Accounting > RIA” gathers RIA statement transactions, cash deposit surpluses and cash payments. '
+                    'Once the accounts are entered (“Accounts…”: the RIA balance sheet account and the commission '
+                    'account, to be created in Sage), “Enter in Sage” posts the entries. RIA money in and out cancels '
+                    'out; only commissions, marked with “Commission”, are revenue.'),
+        ("question", 'A cash deposit exceeds cash sales: what should I do?'),
+        ("reponse", 'The deposit first covers the cash owing on invoices, oldest first, even across several days. The '
+                    'surplus shows as “RIA share to confirm”: nothing is applied. In “Accounting > RIA”, use “Confirm '
+                    'the surplus” then “Enter in Sage”; the next Cash receipts calculation then offers the remainder '
+                    'against sales.'),
+        ("question", 'How does the payroll calendar work?'),
+        ("reponse", '“Payroll > Payroll calendar”: enter the date of the first pay of the year. The following pays '
+                    '(every 14 days), their periods and the coming years are calculated. The calendar also sets the '
+                    'timesheet periods.'),
+        ("question", 'How do I hand out T4 and Relevé 1 slips?'),
+        ("reponse", '“Payroll processing”, “Year-end (T4 / RL-1)” tab: “Calculate”, then print for one, several or all '
+                    'employees, or email each employee their slips, with no copy. The SIN is never kept by the '
+                    'application: the box stays blank. The slips filed with the governments remain those from Sage.'),
+        ("question", 'What does an employee see after signing in?'),
+        ("reponse", 'Only their own information: schedule, punches, timesheets, pay and statistics. Their account must '
+                    'be linked to their employee record (“Payroll > Employees and PIN”). Administrators and managers '
+                    'see all employees; the “See all employees” box on the Users page sets this right by profile.'),
         ("question", 'How do I process payroll in Sage and send pay stubs?'),
         ("reponse", '“Payroll > Payroll processing”: the “Approved hours” tab shows approved hours (with holidays and '
                     'paid leave). “Process payroll in Sage…”: choose the cheque date; with Sage closed, the application '

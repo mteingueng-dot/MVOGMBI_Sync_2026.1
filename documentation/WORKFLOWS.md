@@ -112,6 +112,20 @@ flowchart TD
 
 ---
 
+## 6 bis. Dépôt d'espèces et RIA
+
+```mermaid
+flowchart TD
+    A[Relevé chargé] --> B{Dépôt supérieur aux espèces dues ?}
+    B -- Non --> C[Encaissement sur les ventes]
+    B -- Oui --> D[Part RIA à confirmer]
+    D --> E[Comptabilité > RIA : Confirmer le surplus]
+    E --> F[Saisir dans Sage : banque au débit, compte RIA au crédit]
+    F --> C
+    G[Retrait, dépôt ou paiement RIA du relevé] --> H[Saisir dans Sage]
+    I[Commission de fin de mois] --> J[Marquer Commission] --> H
+```
+
 ## 7. Nouvel article
 
 ```mermaid

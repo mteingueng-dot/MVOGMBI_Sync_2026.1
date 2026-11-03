@@ -196,11 +196,37 @@ class OngletInactifs(_Onglet):
                                + f" ({self.source.get()})")
         ordre = [aa.tranche(j, jamais) for j in aa.SEUILS_INACTIVITE] + [jamais]  # de 30 jours à jamais vendu
         tranches = "  •  ".join(f"{t(k)} : {resume['tranches'][k]}" for k in ordre if k in resume["tranches"])
+        self._cartes_totaux([("Valeur du stock immobilisé", argent(resume["valeur"])),
+                             ("Articles inactifs", str(resume["articles"])),
+                             ("Encore en stock", str(resume["en_stock"])), ("Jamais vendus", str(resume["jamais"]))])
         self.etat.configure(text=t("{n} article(s) inactif(s) sur {total} — jamais vendus : {j}, encore en stock : {s}, "
                                    "valeur du stock immobilisé : {v}", n=resume["articles"],
                                    total=sum(1 for a in self.articles.values() if a.catalogue),
                                    j=resume["jamais"], s=resume["en_stock"], v=argent(resume["valeur"]))
                            + (f"\n{tranches}" if tranches else ""))
+
+
+def _cartes(onglet, valeurs: list[tuple[str, str]]) -> None:
+    """Cartes d'indicateurs au-dessus du tableau (première : en grand)."""
+    from .design import CARTE, VERT_FONCE
+
+    cadre = getattr(onglet, "_cadre_cartes", None)
+    if cadre is None:
+        cadre = onglet._cadre_cartes = tk.Frame(onglet, background=fond_de(onglet))
+        cadre.pack(fill="x", pady=(2, 6), before=onglet.libelle)
+    for enfant in cadre.winfo_children():
+        enfant.destroy()
+    for rang, (titre, valeur) in enumerate(valeurs):
+        carte = tk.Frame(cadre, background=CARTE, highlightthickness=1, highlightbackground="#dfe9e2")
+        carte.grid(row=0, column=rang, sticky="nsew", padx=(0 if rang == 0 else 8, 0))
+        cadre.columnconfigure(rang, weight=2 if rang == 0 else 1, uniform="cartes")
+        tk.Label(carte, text=t(titre), background=CARTE, foreground="#6b7a70", font=("Segoe UI", 9),
+                 anchor="w").pack(fill="x", padx=12, pady=(8, 0))
+        tk.Label(carte, text=valeur, background=CARTE, foreground=VERT_FONCE,
+                 font=("Segoe UI Semibold", 18 if rang == 0 else 14), anchor="w").pack(fill="x", padx=12, pady=(0, 8))
+
+
+_Onglet._cartes_totaux = _cartes
 
 
 class OngletPareto(_Onglet):
