@@ -1,4 +1,4 @@
-// Présentation PowerPoint de MVOGMBI_Sync 1.0.0 (aucune donnée réelle : document publié).
+// Présentation PowerPoint de MVOGMBI_Sync 1.0.11 (aucune donnée réelle : document publié).
 //   node documentation/creer_presentation.js            (pptxgenjs requis : npm install pptxgenjs)
 // Sortie : documentation/Presentation_MVOGMBI_Sync.pptx
 
@@ -64,7 +64,7 @@ function contenu(section, titre, notes) {
 pres.addSection({ title: "Introduction" });
 let s = pres.addSlide({ masterName: "TITRE", sectionTitle: "Introduction" });
 s.addText("MVOGMBI_Sync 1.0", { placeholder: "title" });
-s.addText("Les ventes Clover dans Sage 50, chaque nuit, sans ressaisie\nMarché MVOG-MBI Sherbrooke · 30 octobre 2026",
+s.addText("Les ventes Clover dans Sage 50, chaque nuit, sans ressaisie\nMarché MVOG-MBI Sherbrooke · 3 novembre 2026",
   { placeholder: "body" });
 pastille(s, W - M - 1.3, 0.6, 1.3, "✓", P.jaune, P.vertFonce);
 s.addNotes("MVOGMBI_Sync relie la caisse Clover et la comptabilité Sage 50. Version 1.0 : tout ce qui suit est en service.");
@@ -93,9 +93,9 @@ texte(s, [
 s.addShape(pres.shapes.RIGHT_ARROW, { x: W / 2 - 0.35, y: 3.7, w: 0.7, h: 0.6, fill: { color: P.jaune }, line: { color: P.jaune } });
 
 // ------------------------------------------------------------------ 3. chiffres clés
-s = contenu("Introduction", "La version 1.0 en chiffres",
-  "Sept jours de réalisation, 97 versions livrées avec leur installateur, 212 tests automatiques.");
-const stats = [["97", "versions livrées\nen 7 jours"], ["212", "tests automatiques\nréussis"], ["8", "rubriques au menu"],
+s = contenu("Introduction", "La version 1.0.11 en chiffres",
+  "Onze jours de réalisation, 108 versions livrées avec leur installateur, 255 tests automatiques.");
+const stats = [["108", "versions livrées\nen 11 jours"], ["255", "tests automatiques\nréussis"], ["10", "rubriques au menu"],
                ["< 1 s", "pour ouvrir une liste\nmême Sage fermé"]];
 stats.forEach(([n, l], i) => {
   const x = M + i * 3.1;
@@ -128,8 +128,8 @@ texte(s, [
 s = contenu("Fonctionnement", "Chaque nuit, sans intervention",
   "Le traitement de nuit enchaîne ces étapes ; un jour bloqué est signalé, les autres continuent.");
 const nuit = ["Lire les ventes de chaque jour sans facture", "Importer les factures dans Sage",
-  "Encaisser les dépôts", "Payer les fournisseurs confirmés", "Lire les factures reçues par courriel",
-  "Appliquer les promotions", "Sauvegarder les données", "Envoyer le résumé du matin"];
+  "Encaisser les dépôts", "Payer les fournisseurs confirmés", "Importer les factures reçues par courriel",
+  "Passer les états RIA dans Sage", "Sauvegarder les données", "Envoyer le résumé du matin"];
 nuit.forEach((t, i) => {
   const col = i % 2, lig = Math.floor(i / 2), x = M + col * 6.1, y = 1.55 + lig * 1.25;
   pastille(s, x, y, 0.75, String(i + 1), col === 0 ? P.vert : P.jaune, col === 0 ? P.blanc : P.vertFonce);
@@ -137,17 +137,18 @@ nuit.forEach((t, i) => {
 });
 
 // ------------------------------------------------------------------ 6. rubriques
-s = contenu("Fonctionnement", "Huit rubriques, comme dans Sage",
+s = contenu("Fonctionnement", "Dix rubriques, comme dans Sage",
   "Le menu reprend les rubriques de gestion de Sage, avec les fonctions propres au marché.");
-const rub = [["Administration", "Clover, Sage, courriel, sauvegarde, utilisateurs"], ["Articles", "création, inventaire, transferts, pertes, promotions"],
-  ["Vente", "factures des ventes, clients, commandes, relances"], ["Fournisseur", "factures PDF, bons de commande, retours"],
-  ["Comptabilité", "encaissements, banque, caisse, taxes, budget"], ["Paie", "pointage, planning, chèques, bulletins, congés"],
-  ["État", "statistiques, bénéfices, prévisions, 20/80"], ["Accueil", "mise en route, résumé, alertes"]];
+const rub = [["Accueil", "mise en route, résumé, alertes"], ["Administration", "Clover, Sage, courriel, sauvegarde, utilisateurs, audit"],
+  ["Articles", "liste, création, modification, prix, promotions"], ["Stock", "documents, transferts, pertes, inventaires"],
+  ["Vente", "factures des ventes, clients, devis à facture, relances"], ["Fournisseur", "factures PDF, bons de commande, retours"],
+  ["Comptabilité", "encaissements, banque, caisse, plan comptable, taxes"], ["RIA", "états de compte, envois, versements, commissions"],
+  ["Paie", "pointage, planning, chèques, bulletins, T4 / RL-1"], ["État", "statistiques, bénéfices, prévisions, 20/80"]];
 rub.forEach(([t, d], i) => {
-  const col = i % 4, lig = Math.floor(i / 4), x = M + col * 3.08, y = 1.55 + lig * 2.55;
-  carte(s, x, y, 2.85, 2.3, "rub" + i);
-  texte(s, t, { x: x + 0.25, y: y + 0.25, w: 2.4, h: 0.55, fontSize: 20, bold: true, color: P.vertFonce });
-  texte(s, d, { x: x + 0.25, y: y + 0.9, w: 2.4, h: 1.25, fontSize: 14, color: P.texte });
+  const col = i % 5, lig = Math.floor(i / 5), x = M + col * 2.45, y = 1.55 + lig * 2.55;
+  carte(s, x, y, 2.25, 2.3, "rub" + i);
+  texte(s, t, { x: x + 0.18, y: y + 0.22, w: 1.9, h: 0.55, fontSize: 18, bold: true, color: P.vertFonce });
+  texte(s, d, { x: x + 0.18, y: y + 0.85, w: 1.9, h: 1.3, fontSize: 13, color: P.texte });
 });
 
 // ------------------------------------------------------------------ 7. ventes
@@ -241,8 +242,8 @@ texte(s, "Mots de passe jamais gardés en clair · secrets dans le coffre-fort d
 
 // ------------------------------------------------------------------ 12. qualité
 s = contenu("Confiance", "Testé avant chaque livraison",
-  "212 tests automatiques, puis essais réels sur une copie du fichier d'entreprise et sur des articles Clover d'essai supprimés ensuite.");
-const qual = [["212", "tests automatiques"], ["0", "écriture d'essai dans\nle vrai fichier Sage"], ["12", "scénarios d'écriture\nvalidés dans Sage"]];
+  "255 tests automatiques, puis essais réels sur une copie du fichier d'entreprise et sur des articles Clover d'essai supprimés ensuite.");
+const qual = [["255", "tests automatiques"], ["0", "écriture d'essai dans\nle vrai fichier Sage"], ["16", "scénarios d'écriture\nvalidés dans Sage"]];
 qual.forEach(([n, l], i) => {
   const x = M + i * 4.1;
   texte(s, n, { x, y: 1.6, w: 3.8, h: 1.3, fontSize: 64, bold: true, color: i === 1 ? P.rouge : P.vert });

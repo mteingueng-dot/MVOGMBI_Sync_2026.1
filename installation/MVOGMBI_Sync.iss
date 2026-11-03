@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.0.9"
+#define Version "1.0.11"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -75,6 +75,7 @@ Source: "..\documentation\Plan_de_test_MVOGMBI_Sync.pdf"; DestDir: "{app}\docume
 Source: "..\documentation\Diagramme_de_projet_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Workflows_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Processus_BPM_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Regles_affaires_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Presentation_MVOGMBI_Sync.pptx"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 ; manuel du profil : page HTML du manuel et captures (l'application en retire les chapitres non permis)
 Source: "..\documentation\Manuel_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist

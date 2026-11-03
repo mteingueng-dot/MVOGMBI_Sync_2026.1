@@ -1,4 +1,4 @@
-"""Page « Comptabilité > RIA » (demande du propriétaire du 2026-10-30) : mouvements RIA des relevés, surplus des
+"""Page « RIA > Opérations RIA » (demande du propriétaire du 2026-10-30) : mouvements RIA des relevés, surplus des
 dépôts d'espèces, paiements en espèces, commissions, et leurs écritures dans Sage (ria.py)."""
 
 from __future__ import annotations
@@ -26,6 +26,27 @@ def _config(racine: Path) -> dict:
 
     chemin = Path(racine) / "config.toml"
     return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
+
+
+def regler_comptes(parent, racine: Path) -> bool:
+    """Comptes RIA, commissions et espèces (menu « Comptabilité > Comptes RIA » ou bouton « Comptes… ») ; True si enregistrés."""
+    titre = t("Comptes RIA")
+    registre = ria.Registre(racine)
+    for cle, libelle in ria.COMPTES.items():
+        valeur = simpledialog.askstring(titre, t(libelle) + " :", initialvalue=registre.comptes.get(cle, ""),
+                                        parent=parent)
+        if valeur is None:
+            return False
+        registre.comptes[cle] = valeur.strip()
+    from .plan_comptable import problemes, comptes_connus
+
+    erreurs = problemes(registre.comptes.values(), comptes_connus(racine, _config(racine)))
+    if erreurs:  # un compte saisi doit exister dans le plan comptable (règle du propriétaire du 2026-11-01)
+        messagebox.showerror(titre, " ; ".join(erreurs) + ".\n\n" + t(
+            "Créez-le dans « Comptabilité > Plan comptable »."), parent=parent)
+        return False
+    registre.enregistrer()
+    return True
 
 
 class FenetreRia(FenetreOutil):
@@ -244,22 +265,8 @@ class FenetreRia(FenetreOutil):
         self.actualiser()
 
     def reglages(self) -> None:
-        registre = ria.Registre(self.racine)
-        for cle, libelle in ria.COMPTES.items():
-            valeur = simpledialog.askstring(self.title(), t(libelle) + " :", initialvalue=registre.comptes.get(cle, ""),
-                                            parent=self)
-            if valeur is None:
-                return
-            registre.comptes[cle] = valeur.strip()
-        from .plan_comptable import problemes, comptes_connus
-
-        erreurs = problemes(registre.comptes.values(), comptes_connus(self.racine, _config(self.racine)))
-        if erreurs:  # un compte saisi doit exister dans le plan comptable (règle du propriétaire du 2026-11-01)
-            messagebox.showerror(self.title(), " ; ".join(erreurs) + ".\n\n" + t(
-                "Créez-le dans « Comptabilité > Plan comptable »."), parent=self)
-            return
-        registre.enregistrer()
-        self.actualiser()
+        if regler_comptes(self, self.racine):
+            self.actualiser()
 
     def saisir(self) -> None:
         """Mouvements RIA du relevé (compte choisi d'après leur sorte) et opérations : écritures de journal général."""
@@ -444,6 +451,9 @@ class FenetreEtatsRia(FenetreOutil):
             return
         if hasattr(self.page_ria, "saisir"):
             self.page_ria.saisir()
+        else:  # ouvert par le menu : la saisie se fait dans « RIA > Opérations RIA »
+            texte += " " + t("Saisie : « RIA > Opérations RIA » puis « Saisir dans Sage ».")
+            messagebox.showinfo(self.title(), texte, parent=self)
         self.etat.configure(text=texte, foreground=VERT_FONCE)
 
     def voir(self) -> None:

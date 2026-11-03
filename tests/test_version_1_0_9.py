@@ -152,3 +152,24 @@ def test_entetes_en_une_fois():
 def test_demande_article():
     d = DemandeArticle("modifier", "ESSAI0003", inactif=True)
     assert d.description == "" and d.inactif is True
+
+
+def test_ancienne_entree_ria_donne_les_nouvelles(tmp_path):
+    import json
+
+    from mvogmbi_sync.interface import MENU_GROUPES
+    from mvogmbi_sync.utilisateurs import Registre, _renommees
+
+    assert _renommees(["RIA (transferts d'argent)", "tableau"]) == sorted(
+        ["Opérations RIA", "États de compte RIA", "Comptes RIA", "tableau"])
+    titres = {g: [e[1] for e in entrees if isinstance(e, tuple)] for g, _, entrees in MENU_GROUPES if g}
+    assert titres["RIA"] == ["Opérations RIA"]
+    assert {"États de compte RIA", "Comptes RIA"} <= set(titres["Comptabilité"])
+    assert not any("RIA (transferts" in t for t in titres["Comptabilité"])
+    r = Registre(tmp_path)
+    r.ajouter("Patron", "Administrateur", "secret123")
+    r.definir_acces("Comptable", ["RIA (transferts d'argent)"], [])
+    r.enregistrer()
+    relu = Registre(tmp_path)
+    assert "Opérations RIA" in relu.fonctions_permises["Comptable"]
+    json.loads((tmp_path / "donnees" / "utilisateurs.json").read_text(encoding="utf-8"))

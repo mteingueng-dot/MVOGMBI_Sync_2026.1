@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Processus métier (BPM)
 
-Version 1.0.0 (30 octobre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Notation : chaque couloir est un acteur ou un système ; ( ) = début ou fin, [ ] = activité, { } = décision, flèches = enchaînement. Les processus sont ceux en service.
 
@@ -148,23 +148,54 @@ flowchart TB
 ## 4 bis. Transferts d'argent RIA
 
 ```mermaid
-flowchart LR
-    subgraph Client
-        A[Remet ou reçoit l'argent]
+flowchart TB
+    subgraph CLR["Client RIA"]
+        A1([Envoie ou reçoit de l'argent])
     end
-    subgraph Marché
-        B[Encaisse ou paie]
-        C[Dépose les espèces]
-        D[Confirme la part RIA]
-        E[Saisit dans Sage]
+    subgraph MAR["Marché (comptoir)"]
+        B1[Reçoit les espèces d'un envoi<br/>ou paie un versement]
+        B2[Dépose les espèces à la banque]
     end
-    subgraph RIA
-        F[Retire ou dépose le montant]
-        G[Dépose les commissions en fin de mois]
+    subgraph RIA["RIA"]
+        C1[État de compte<br/>par courriel]
+        C2[Règlement ACH<br/>et commission mensuelle]
     end
-    A --> B --> C --> D --> E
-    B --> F --> E
-    G --> E
+    subgraph APPRIA["MVOGMBI_Sync"]
+        D1[Lire et recontrôler l'état]
+        D2{Versement payé<br/>par Interac ?}
+        D3[Opération : envoi<br/>espèces → RIA]
+        D4[Opération : versement<br/>RIA → espèces]
+        D5[Surplus du dépôt d'espèces<br/>et commission reconnus]
+    end
+    subgraph SAGERIA["Sage 50"]
+        E1([Écritures de journal<br/>multi-utilisateur, vérifiées])
+    end
+    A1 --> B1 --> C1 --> D1 --> D2
+    D2 -- non --> D4 --> E1
+    D2 -- oui --> E1
+    D1 --> D3 --> E1
+    B1 --> B2 --> D5 --> E1
+    C2 --> D5
+```
+
+## 4 ter. Chaîne des documents de vente et d'achat
+
+```mermaid
+flowchart TB
+    subgraph CLI2["Client / fournisseur"]
+        A1([Demande ou commande])
+    end
+    subgraph APPD["MVOGMBI_Sync"]
+        B1[Devis ou demande de prix]
+        B2[Commande / bon de commande]
+        B3[Livraison / réception]
+        B4[Facture]
+        B5[Clover : stock mis à jour<br/>une seule fois]
+    end
+    subgraph SAGED["Sage 50"]
+        C1[Import de la facture<br/>mono-utilisateur, vérifiée]
+    end
+    A1 --> B1 -- Transformer --> B2 -- Transformer --> B3 -- Transformer --> B4 --> C1 --> B5
 ```
 
 ## 5. Gestion des stocks entre points de vente

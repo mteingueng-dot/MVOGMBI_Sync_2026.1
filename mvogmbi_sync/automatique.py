@@ -651,7 +651,7 @@ def traiter_ria_dans_sage(racine: Path, config_toml: dict, cr: CompteRendu) -> N
             cr.note(f"{crees} opération(s) RIA tirée(s) des états de compte.")
         if registre.comptes_manquants():
             if registre.a_saisir():
-                cr.note("Opérations RIA non saisies dans Sage : comptes à renseigner (Comptabilité > RIA > "
+                cr.note("Opérations RIA non saisies dans Sage : comptes à renseigner (RIA > "
                         "« Comptes… »).")
             return
         if not registre.a_saisir():

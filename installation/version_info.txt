@@ -6,10 +6,10 @@ VSVersionInfo(
     StringFileInfo([StringTable('040C04B0', [
       StringStruct('CompanyName', 'Concept Informatique inc.'),
       StringStruct('FileDescription', 'MVOGMBI_Sync - ventes Clover vers Sage 50'),
-      StringStruct('FileVersion', '1.0.9'),
+      StringStruct('FileVersion', '1.0.11'),
       StringStruct('LegalCopyright', 'Â© 2026 Concept Informatique inc. Tous droits rÃ©servÃ©s.'),
       StringStruct('ProductName', 'MVOGMBI_Sync'),
-      StringStruct('ProductVersion', '1.0.9')])]),
+      StringStruct('ProductVersion', '1.0.11')])]),
     VarFileInfo([VarStruct('Translation', [1036, 1200])])
   ]
 )

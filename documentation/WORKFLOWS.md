@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 1.0.0 (30 octobre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 
@@ -15,7 +15,8 @@ flowchart TD
     C --> D["Administration > Sage 50<br/>fichier d'entreprise, utilisateur mvogmbi_sync"]
     D --> E["Articles > Correspondance<br/>confirmer les liens Clover → Sage"]
     E --> F["Administration > Courriel<br/>compte rendu, boîte des avis"]
-    F --> G["Administration > Automatisation<br/>heure de nuit, date de départ"]
+    F --> F2["Comptabilité > Comptes RIA<br/>comptes RIA, commissions, espèces"]
+    F2 --> G["Administration > Automatisation<br/>heure de nuit, date de départ"]
     G --> H["Administration > Utilisateurs<br/>comptes et fonctions permises"]
     H --> I([Mise en route : 10 étapes cochées])
 ```
@@ -45,7 +46,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A([Facture PDF reçue]) --> B{"Par courriel ?"}
-    B -- oui --> C["Lue automatiquement<br/>(la nuit ou « Lire le courriel »)"]
+    B -- oui --> C["Lue automatiquement<br/>(la nuit ou « Lire le courriel »)<br/>prête = importée la nuit"]
     B -- non --> D["Fournisseur > Factures fournisseurs<br/>Ajouter des factures…"]
     C --> E["Vérifier les lignes : article Sage, facteur, taxes"]
     D --> E
@@ -119,11 +120,28 @@ flowchart TD
     A[Relevé chargé] --> B{Dépôt supérieur aux espèces dues ?}
     B -- Non --> C[Encaissement sur les ventes]
     B -- Oui --> D[Part RIA à confirmer]
-    D --> E[Comptabilité > RIA : Confirmer le surplus]
+    D --> E[RIA > Opérations RIA : Confirmer le surplus]
     E --> F[Saisir dans Sage : banque au débit, compte RIA au crédit]
     F --> C
     G[Retrait, dépôt ou paiement RIA du relevé] --> H[Saisir dans Sage]
     I[Commission de fin de mois] --> J[Marquer Commission] --> H
+```
+
+## 6 ter. États de compte RIA
+
+```mermaid
+flowchart TD
+    A([État de compte RIA PDF]) --> B{"Reçu par courriel ?"}
+    B -- oui --> C["Lu la nuit<br/>ou « Lire le courriel »"]
+    B -- non --> D["Comptabilité > États de compte RIA<br/>Importer des états…"]
+    C --> E["Contrôle : solde recalculé ligne par ligne"]
+    D --> E
+    E --> F["Traiter dans Sage"]
+    F --> G{"Comptes RIA renseignés ?"}
+    G -- non --> H["Comptabilité > Comptes RIA"] --> F
+    G -- oui --> I["Envois : espèces → RIA<br/>Versements en espèces : RIA → espèces<br/>Versements Interac : laissés à la banque"]
+    I --> J["RIA > Opérations RIA<br/>Saisir dans Sage"]
+    J --> K([Écritures vérifiées dans Sage])
 ```
 
 ## 7. Nouvel article
@@ -141,6 +159,40 @@ flowchart TD
     I --> J([Service disponible dans Sage])
 ```
 
+## 7 bis. Modifier ou supprimer un article
+
+```mermaid
+flowchart TD
+    A(["Articles > Liste des articles"]) --> B{"Action"}
+    B -- Modifier --> C["Description, inactif,<br/>renommer aussi dans Clover"]
+    C --> D["Enregistrer dans Sage<br/>(Sage fermé : l'application l'ouvre elle-même)"]
+    D --> E([Vérifié dans Sage, Clover renommé])
+    B -- Supprimer --> F["Confirmer"]
+    F --> G{"Sage accepte ?"}
+    G -- oui --> H([Supprimé de Sage puis de Clover])
+    G -- "non : encore en stock" --> I([Rendu inactif dans Sage,<br/>article Clover gardé])
+```
+
+## 7 ter. Chaîne des documents
+
+```mermaid
+flowchart LR
+    subgraph Vente
+        DV[Devis] --> CC[Commande] --> BL[Livraison] --> FV[Facture]
+        RC[Retour client] --> FRC[Facture de retour]
+    end
+    subgraph Achat
+        PC[Demande de prix] --> BC[Bon de commande] --> BR[Réception] --> FA[Facture fournisseur]
+        RT[Retour] --> FRT[Facture de retour]
+    end
+    FV --> S[(Import dans Sage<br/>puis stock Clover)]
+    FRC --> S
+    FA --> S
+    FRT --> S
+```
+
+« Transformer » reprend les lignes, le client ou fournisseur et le dépôt ; seules les factures touchent le stock.
+
 ---
 
 ## 8. Inventaire
@@ -148,8 +200,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     A([Inventaire]) --> B{"Complet ou tournant ?"}
-    B -- complet --> C["Articles > Inventaire Clover et Sage<br/>Exporter"]
-    B -- tournant --> D["Articles > Inventaire tournant<br/>catégories de la semaine"]
+    B -- complet --> C["Stock > Inventaire Clover et Sage<br/>Exporter"]
+    B -- tournant --> D["Stock > Inventaire tournant<br/>catégories de la semaine"]
     C --> E["Compter, remplir « Quantité comptée »"]
     D --> E
     E --> F["Saisir l'inventaire compté"]
@@ -171,4 +223,5 @@ flowchart TD
     F --> G["Points de vente permis"]
     G --> H["Enregistrer les accès"]
     H --> I([Appliqué à la prochaine connexion])
+    J([Compte verrouillé après 3 essais faux]) --> K["Administration > Utilisateurs<br/>nouveau mot de passe"] --> L([Compte rouvert])
 ```

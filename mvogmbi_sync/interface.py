@@ -84,7 +84,8 @@ MENU_GROUPES = [
     ("Comptabilité", "🏦", [("💵", "Contrôle de la caisse", PAIEMENTS, "ouvrir_caisse"),
                         ("🧾", "Petite caisse et dépenses", PAIEMENTS, "ouvrir_depenses"),
                         ENCAISSEMENTS, PAIEMENTS, RAPPROCHEMENT,
-                        ("💱", "RIA (transferts d'argent)", RAPPROCHEMENT, "ouvrir_ria"),
+                        ("📑", "États de compte RIA", RAPPROCHEMENT, "ouvrir_etats_ria"),
+                        ("🔢", "Comptes RIA", RAPPROCHEMENT, "ouvrir_comptes_ria"),
                            ("📒", "Plan comptable", RAPPROCHEMENT, "ouvrir_plan_comptable"),
                            ("🧾", "Comptes Sage par catégorie", CORRESPONDANCE, "ouvrir_comptes_sage"),
                            ("⏳", "Âge des comptes", RAPPROCHEMENT, "ouvrir_comptabilite", "Âge des comptes"),
@@ -93,6 +94,9 @@ MENU_GROUPES = [
                             "Prévision de trésorerie"),
                            ("📐", "Budget et écarts", RAPPROCHEMENT, "ouvrir_comptabilite", "Budget et écarts"),
                            ("📅", "Clôture du mois", RAPPROCHEMENT, "ouvrir_comptabilite", "Clôture du mois")]),
+    # RIA : rubrique à part pour les opérations (demande du propriétaire du 2026-11-03) ; états de compte et comptes
+    # RIA restent dans Comptabilité
+    ("RIA", "💱", [("💱", "Opérations RIA", RAPPROCHEMENT, "ouvrir_ria")]),
     # paie (demande du propriétaire du 2026-10-29) : pointage pour tous ; feuilles de temps et NIP pour qui voit
     # les paiements fournisseurs (administrateur, comptable)
     ("Paie", "🕑", [("⏱", "Pointage des employés", ACCUEIL, "ouvrir_pointage"),
@@ -734,6 +738,14 @@ class Application(tk.Tk):
     def ouvrir_ria(self) -> None:
         from .fenetre_ria import FenetreRia
         FenetreRia(self, self.racine)
+
+    def ouvrir_etats_ria(self) -> None:
+        from .fenetre_ria import FenetreEtatsRia
+        FenetreEtatsRia(self, self.racine)
+
+    def ouvrir_comptes_ria(self) -> None:
+        from .fenetre_ria import regler_comptes
+        regler_comptes(self, self.racine)
 
     def _auteur(self) -> str:
         return self.session.nom if self.session is not None else "Administrateur"
@@ -1411,7 +1423,7 @@ class Application(tk.Tk):
         r = self.config_toml.get("ria", {})
         etats = self._carte(f, 5, t("États RIA reçus par courriel"), "5",
                             t("Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit "
-                              "sans les marquer comme lus et les ajoute à « Comptabilité > RIA > États de compte "
+                              "sans les marquer comme lus et les ajoute à « Comptabilité > États de compte "
                               "RIA ». Même serveur que la boîte des avis de paiement, sauf indication."))
         self._champ(etats, 0, t("Courriel de réception des états RIA"), "ria.courriel", r.get("courriel", ""))
         self._champ(etats, 1, t("Serveur (IMAP)"), "ria.serveur", r.get("serveur", ""),

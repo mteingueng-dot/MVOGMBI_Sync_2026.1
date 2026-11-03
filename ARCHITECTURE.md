@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.0 (30 octobre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -9,14 +9,15 @@ MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabili
 - factures et paiements fournisseurs ;
 - rapprochement bancaire Desjardins ;
 - rapports et statistiques ;
-- gestion des articles, des stocks, des ventes et des achats comme dans Sage ;
-- comptabilité (caisse, dépenses, taxes, remises, budget) ;
+- gestion des articles, des stocks, des ventes et des achats comme dans Sage, avec la chaîne des documents (devis, commande, livraison, facture, retours) ;
+- comptabilité (caisse, dépenses, plan comptable, taxes, remises, budget) ;
+- agence RIA (états de compte, envois et versements, commissions) ;
 - paie (pointage, planning, feuilles de temps, chèques de paie dans Sage, bulletins) ;
-- utilisateurs, profils et droits par fonction.
+- utilisateurs, profils, droits par fonction et audit des actions.
 
 L'application est écrite en Python 3.13, a une interface tkinter et tourne sur le poste Windows du marché. Elle n'utilise aucun service d'IA ni d'API externe autre que Clover : c'est le choix du propriétaire.
 
-Ce document décrit les composants, les données, les intégrations et les principaux flux. Le fichier `CLAUDE.md` détaille les règles de gestion. Le manuel d'utilisation (`documentation/creer_manuel.py`) décrit l'usage au quotidien.
+Ce document décrit les composants, les données, les intégrations et les principaux flux. Les règles d'affaires sont réunies dans `documentation/REGLES_AFFAIRES.md` (codes RG-…) ; le fichier `CLAUDE.md` garde le détail technique de chaque règle. Le manuel d'utilisation (`documentation/creer_manuel.py`) décrit l'usage au quotidien.
 
 ---
 
@@ -26,7 +27,7 @@ Ce document décrit les composants, les données, les intégrations et les princ
 flowchart LR
     subgraph Externes["Sources externes"]
         CL["Clover<br/>API REST v3"]
-        BX["Boîte courriel<br/>IMAP : avis Interac"]
+        BX["Boîte courriel<br/>IMAP : avis Interac,<br/>factures, états RIA"]
         DJ["Relevés Desjardins<br/>PDF AccèsD"]
         FF["Factures fournisseurs<br/>PDF et photos"]
     end
@@ -41,7 +42,7 @@ flowchart LR
     subgraph Sage["Sage 50 CA"]
         MY[("Base MySQL locale<br/>port 13540, base simply")]
         IMP["Sage_SA_import.exe<br/>fichiers .IMP"]
-        FEN["Fenêtres de Sage<br/>Encaissements, Paiements,<br/>Journal général"]
+        FEN["Fenêtres de Sage<br/>Encaissements, Paiements, Journal,<br/>stock, fiches, plan comptable, paie"]
     end
     SMTP["Serveur SMTP<br/>compte rendu"]
     TS["Planificateur de tâches<br/>Windows"]
@@ -59,6 +60,7 @@ flowchart LR
     COEUR -- "factures de vente et d'achat" --> IMP --> MY
     COEUR -- "messages Windows" --> FEN --> MY
     NUIT --> SMTP
+    GOUV["Sites de l'ARC et de<br/>Revenu Québec<br/>formulaires T4 / RL-1"] --> COEUR
 ```
 
 Principes :
@@ -80,9 +82,9 @@ Principes :
 
 | Point d'entrée | Rôle |
 |---|---|
-| `MVOGMBI_Sync.exe` (`installation/lanceur_interface.py`) | Interface : connexion, puis les pages 1 à 11. |
+| `MVOGMBI_Sync.exe` (`installation/lanceur_interface.py`) | Interface : connexion, puis le menu en rubriques (Administration, Articles, Stock, Vente, Fournisseur, Comptabilité, RIA, Paie, État). |
 | `MVOGMBI_Sync_console.exe` (`installation/lanceur_console.py`) | Ligne de commande et tâche planifiée (`lancer_traitement.cmd`). |
-| `python -m mvogmbi_sync <commande>` (`__main__.py`) | `facture`, `importer`, `auto`, `encaissements`, `correspondance`, `verifier-comptes`, `verifier-sage`, `rapport`, `planifier`, `langue`, `interface`. Commandes internes : `encaisser-bureau`, `payer-bureau`, `journal-bureau`. |
+| `python -m mvogmbi_sync <commande>` (`__main__.py`) | `facture`, `importer`, `auto`, `encaissements`, `correspondance`, `verifier-comptes`, `verifier-sage`, `rapport`, `planifier`, `langue`, `interface`. `inventaire`, `pointage`, `essai-pdf`. Commandes internes (l'application ouvre Sage elle-même) : `encaisser-bureau`, `payer-bureau`, `journal-bureau`, `depenses-bureau`, `inventaire-bureau`, `transfert-bureau`, `creer-articles-bureau`, `fiches-articles-bureau`, `tiers-bureau`, `comptes-bureau`, `paie-bureau`, `garder-sage`. |
 
 ### 2.2 Modules
 
@@ -98,7 +100,8 @@ flowchart TB
         ventes["models · periodes · facture<br/>correspondance · verification_comptes<br/>points_vente"]
         enc["encaissements"]
         four["factures_fournisseurs · fournisseurs<br/>factures_courriel · import_achats<br/>paiements_fournisseurs"]
-        rap["rapprochement"]
+        rap["rapprochement · ria · ria_etats"]
+        gest["documents · chaine_documents<br/>plan_comptable · audit · feuillets"]
         stats["rapports · statistiques_clover<br/>couts_sage · previsions · peremption<br/>analyse_articles · onglets_articles"]
         nuit["automatique · courriel · planification"]
     end
@@ -106,12 +109,13 @@ flowchart TB
         clover["api_clover · export_clover"]
         sagel["base_sage · articles_sage"]
         sagei["import_sage · sage_auto"]
-        robots["sage_bureau · robot_encaissements<br/>robot_paiements · robot_journal · ria"]
+        robots["sage_bureau · robot_encaissements<br/>robot_paiements · robot_journal<br/>robot_comptes · robot_fiches_articles · robot_paie"]
         autres["paiements_courriel IMAP · ocr_windows<br/>coffre · utilisateurs"]
     end
     interface --> connexion
     interface --> pages --> design
-    pages --> ventes & enc & four & rap & stats
+    pages --> ventes & enc & four & rap & stats & gest
+    gest --> sagel & sagei & robots
     nuit --> ventes & enc & four & stats
     ventes --> clover & sagel & sagei
     enc --> clover & sagel & robots
@@ -126,7 +130,7 @@ flowchart TB
 | | `connexion.py` | Connexion, création du premier administrateur, fenêtre `Verrou`. |
 | | `page_*.py` | Une page par module. |
 | | `graphiques.py` | Graphiques sur `tk.Canvas` (barres, courbes, anneau, classement, carte de chaleur, infobulles, export PDF/PNG). |
-| | `export_tableau.py` | Liste « Exporter » : Excel, CSV, PDF (HTML imprimé par Edge sans fenêtre) et impression ; en-tête aux couleurs du marché ; droit d'exporter par profil. |
+| | `export_tableau.py`, `pdf_documents.py` | Liste « Exporter » : Excel, CSV, PDF et impression ; droit d'exporter par profil. Les PDF des tableaux et des documents (bons, factures, commandes) sont dessinés par fpdf2 (`pdf_documents` : en-tête logo + entreprise, filet vert / rouge / jaune, colonnes ajustées au contenu) ; Edge ne sert plus qu'aux pages HTML, avec une création de secours. |
 | | `entreprise.py` | Nom, adresse, téléphone et site web de l'entreprise lus dans Clover (une fois par jour) pour l'en-tête des impressions. |
 | | `design.py` | Couleurs, boutons, tableaux. |
 | | `aide.py`, `langues.py` | Aide et FAQ en français et en anglais ; traduction. |
@@ -165,7 +169,13 @@ flowchart TB
 | | `manuel.py` | Manuel d'utilisation du profil : chapitres des pages permises seulement, renumérotés, PDF par Edge dans donnees/manuels/. |
 | | `resume_matin.py` | Résumé du matin en tête du courriel de nuit (ventes, marge, banque, factures à payer, ruptures, péremption). |
 | | `analyse_articles.py`, `onglets_articles.py` | État > Produits inactifs (sans vente depuis N jours) et Articles 80/20 (classes A/B/C, stock et sa valeur) ; source Clover ou Sage. |
-| | `automatique.py`, `courriel.py`, `planification.py` | Traitement de nuit, compte rendu, tâche planifiée. |
+| | `ria.py`, `ria_etats.py`, `fenetre_ria.py` | RIA : mouvements RIA des relevés, surplus des dépôts d'espèces, commissions ; états de compte RIA (PDF lus et recontrôlés, reçus par courriel) transformés en opérations (envois, versements en espèces) puis saisies au journal général. |
+| | `chaine_documents.py`, `fenetre_chaine.py` | Chaîne des documents de vente (DV, CC, PL, BL, RC, FV, FRC) et d'achat (PC, BC, BR, FA, RT, FRT) : transformer, importer les factures, Clover mis à jour par les factures, annuler un document de stock par son inverse. |
+| | `plan_comptable.py`, `robot_comptes.py`, `fenetre_plan_comptable.py` | Plan comptable de Sage : lecture, création, modification, inactivation, suppression ; contrôle des comptes saisis dans l'application. |
+| | `robot_fiches_articles.py`, `fenetre_fiches_articles.py` | Liste des articles : modifier (description, inactif) ou supprimer un article dans Sage, puis renommer ou supprimer les articles Clover reliés. |
+| | `audit.py`, `fenetre_audit.py` | Audit des actions : une ligne par bouton, entrée du menu et connexion, chaînée par empreinte SHA-256. |
+| | `feuillets.py`, `calendrier_paie.py` | T4 et RL-1 sur les formulaires officiels (téléchargés des sites de l'ARC et de Revenu Québec, contrôlés) ; calendrier des paies aux 14 jours. |
+| | `automatique.py`, `courriel.py`, `planification.py` | Traitement de nuit, compte rendu, tâche planifiée ; envoi réessayé 3 fois, copie cachée au propriétaire des courriels personnels. |
 | Intégration | `api_clover.py`, `export_clover.py` | API REST Clover v3 (parallélisée) ; export Excel Clover. |
 | | `base_sage.py`, `articles_sage.py` | Lecture MySQL de Sage, même quand Sage est fermé (`lire_pendant_connexion`). |
 | | `import_sage.py`, `sage_auto.py` | Fichier `.IMP` `<SalInvoice>` ; pilotage de `Sage_SA_import.exe`. |
@@ -187,7 +197,9 @@ flowchart LR
             REGP["paiements_fournisseurs.json"]
             REL["releves_desjardins/releves.json"]
             CACHE["cache_clover/AAAA-MM-JJ.json<br/>couts_sage.json"]
-            USR["utilisateurs.json"]
+            USR["utilisateurs.json<br/>audit.jsonl"]
+            RIA["ria.json<br/>etats_ria/etats.json"]
+            DOCS["documents.json<br/>pertes, promotions, paie…"]
             JRN["journal_imports.csv<br/>journal_automatique.log<br/>journal_connexions.log"]
         end
         SORT["sortie/factures/*.IMP + détail Excel"]
@@ -204,6 +216,9 @@ flowchart LR
 | CUMP Sage | JSON, renouvelé chaque jour | `couts_sage.py` | bénéfices, liste d'articles |
 | Utilisateurs | JSON, empreintes PBKDF2 | `utilisateurs.py` | connexion, verrou |
 | Journaux | CSV, texte | import, nuit, connexion | tableau de bord, courriel |
+| Audit | `audit.jsonl`, une ligne par action, chaînée | `audit.py` | Administration > Audit des actions |
+| RIA | `ria.json` (opérations, comptes), `etats_ria/` (PDF et lecture) | `ria.py`, `ria_etats.py` | RIA, journal général |
+| Documents de l'application | `documents.json` + PDF | `documents.py`, `chaine_documents.py` | listes, import Sage |
 
 Tables Sage lues :
 
@@ -215,6 +230,8 @@ Tables Sage lues :
 | `tinvloc` | Dépôts (emplacements d'inventaire) |
 | `tjentact`, `tjourent`, `taccount` | Écritures et comptes |
 | `ttaxauth` | Taxes |
+| `tpydet`, `tpydet1`, `tpydet2`, `tcomppy5`, `temp` | Paies (brut, gains, retenues), libellés, employés (jamais le NAS) |
+| `titrec`, `titrline` | Mouvements d'articles (ventes, achats, ajustements, transferts) |
 
 ---
 
@@ -236,9 +253,11 @@ flowchart TD
     I --> J["5. Encaissements<br/>ventes importées cette nuit seulement"]
     J --> K["6. Paiements fournisseurs<br/>« Confirmé » seulement"]
     G --> K
-    K --> K2["Factures fournisseurs du courriel<br/>copiées et lues pour la page 8"]
-    K2 --> L["Préchauffage du cache<br/>statistiques des 7 derniers jours"]
-    L --> M["Journal<br/>+ courriel avec pièces jointes Excel"]
+    K --> K2["Factures fournisseurs et avis Interac du courriel<br/>factures « Prête à importer » importées"]
+    K2 --> K3["États RIA du courriel<br/>opérations saisies au journal<br/>si les comptes sont renseignés"]
+    K3 --> L["Promotions, préchauffage du cache<br/>résumé du matin, tableau du gérant"]
+    L --> L2["Sauvegarde des données"]
+    L2 --> M["Journal<br/>+ courriel avec pièces jointes Excel"]
 ```
 
 ### 4.2 Facturation des ventes (Clover → Sage)
@@ -282,6 +301,8 @@ flowchart TD
 ```
 
 Un dépôt d'espèces supérieur aux espèces dues garde son surplus en « Part RIA à confirmer » (`repartir_especes`). `ria.py` (`donnees/ria.json`) note la part confirmée, retirée du dépôt au calcul suivant ; `journal_sur_bureau_cache` saisit aussi les opérations de RIA (`mouvements_a_saisir`), avec le n° « RI-0001 » comme source.
+
+Les états de compte RIA (`ria_etats.py`) deviennent des opérations une seule fois chacune : envoi « MT Send » = débit espèces / crédit RIA ; versement ou remboursement en espèces = débit RIA / crédit espèces ; un versement payé par virement Interac (même montant au relevé, à 3 jours près) est laissé à la banque ; les règlements ACH et dépôts restent des mouvements de banque.
 
 ### 4.4 Factures et paiements fournisseurs
 
@@ -456,12 +477,13 @@ sequenceDiagram
 | Sujet | Mesure |
 |---|---|
 | Secrets | Coffre-fort Windows (keyring `MVOGMBI_Sync`) : `clover_jeton`, `sage_lecture`, `sage_import`, `courriel`, boîte des paiements. Jamais dans `config.toml` ni dans le dépôt. |
-| Comptes | `utilisateurs.json` : empreintes de mots de passe (PBKDF2), profils ; journal des connexions. |
+| Comptes | `utilisateurs.json` : empreintes de mots de passe (PBKDF2), profils ; journal des connexions ; 3 mots de passe faux = compte verrouillé (le dernier administrateur n'est bloqué que 15 min). |
+| Audit | `audit.jsonl` : chaque action (bouton, menu, connexion), poste et utilisateur ; chaque ligne porte l'empreinte de la précédente, une modification est repérée. |
 | Droits | Par profil : fonctions du menu permises une à une (`fonctions_permises` : « Liste des articles » sans le reste de la rubrique), actions refusées dans les fenêtres (`fonctions_refusees` : traiter la paie, restaurer une sauvegarde…), « Supprimer des éléments » (tous les boutons Supprimer / 🗑 et la touche Suppr), « Exporter les données », points de vente permis. L'administrateur a tout. |
 | Verrouillage | Après `[general] verrouillage_minutes` (5 par défaut ; 0 = jamais) sans activité. La fenêtre est cachée et le mot de passe est redemandé. |
 | Sage | Utilisateur MySQL en consultation seule ; imports et saisies uniquement après contrôle des doublons. |
 | Banque | Relevés chargés à la main : aucune connexion à AccèsD. |
-| Courriel | IMAP en lecture seule ; SMTP pour le compte rendu. |
+| Courriel | IMAP en lecture seule ; SMTP pour le compte rendu ; documents personnels à un seul destinataire visible, copie cachée au propriétaire. |
 | Dépôt public | `.gitignore` : `config.toml`, `donnees/`, `sortie/`, `*.xlsx`, `*.IMP`, `*.SAI`, captures et manuels contenant des données réelles. |
 
 ---
@@ -480,8 +502,8 @@ flowchart TD
 
 - `installation/fabriquer.cmd` enchaîne tout. Chaque livraison a son propre numéro de version : `aide.VERSION`, `version_info.txt` et `MVOGMBI_Sync.iss`.
 - RACINE est le dossier de l'exe ; la variable `MVOGMBI_RACINE` en force un autre.
-- Tests : `tests/`, 212 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
-- Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, de la documentation fonctionnelle, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
+- Tests : `tests/`, 255 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
+- Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, de la documentation fonctionnelle, des règles d'affaires, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
 
 ---
 
@@ -498,3 +520,4 @@ flowchart TD
 | 1re lecture, Sage fermé | outil d'import, puis base gardée 10 min | ~10 s, puis immédiat |
 | Listes Sage au démarrage | préchargement en arrière-plan (clients, fournisseurs, articles) | 0,1 à 0,4 s au clic |
 | Ventes par article sur 365 jours | résumés par jour sur disque | 0,3 s (4,6 s au 1er appel du jour) |
+| Lecture des boîtes de courriel | en-têtes de tous les messages en une demande, messages déjà lus sautés | une demande au lieu d'une par message |

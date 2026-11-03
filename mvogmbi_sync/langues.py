@@ -2444,4 +2444,9 @@ EN: dict[str, str] = {
     '{n} opération(s) créée(s) depuis les états.': '{n} transaction(s) created from the statements.',
     'Modifier les articles dans Sage et Clover': 'Modify items in Sage and Clover',
     'Annulation de la promotion…': 'Cancelling the promotion…',
+    "Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit sans les marquer comme lus et les ajoute à « RIA > États de compte RIA ». Même serveur que la boîte des avis de paiement, sauf indication.": 'Address where RIA sends account statements (AgentBalanceReport): the application reads them without marking them as read and adds them to “RIA > RIA account statements”. Same server as the payment notice mailbox unless stated.',
+    'Comptes RIA': 'RIA accounts',
+    'Saisie : « RIA > Opérations RIA » puis « Saisir dans Sage ».': 'Entry: “RIA > RIA transactions”, then “Enter in Sage”.',
+    'RIA': 'RIA',
+    "Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit sans les marquer comme lus et les ajoute à « Comptabilité > États de compte RIA ». Même serveur que la boîte des avis de paiement, sauf indication.": 'Address where RIA sends account statements (AgentBalanceReport): the application reads them without marking them as read and adds them to “Accounting > RIA account statements”. Same server as the payment notice mailbox unless stated.',
 }

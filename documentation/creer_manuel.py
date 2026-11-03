@@ -643,7 +643,16 @@ solde des factures choisies.</li>
 <li>Qté Sage = Qté × Facteur ; Montant = Qté × Prix fournisseur ; Prix Sage = Montant / Qté Sage.</li>
 <li>Deux formats différents sont deux articles différents.</li>
 <li>Une facture déjà présente dans Sage (même n°, même avec un préfixe « FA- ») n'est jamais importée deux fois.</li>
-</ul>""", """
+</ul>
+<h3>RIA</h3>
+<ul>
+<li>Envoi reçu en espèces : débit espèces, crédit compte RIA ; versement payé en espèces : débit compte RIA, crédit
+espèces ; versement payé par virement Interac : rien à écrire, la banque l'a déjà.</li>
+<li>Surplus d'un dépôt d'espèces au-delà des ventes : part RIA à confirmer ; seules les commissions sont un revenu.</li>
+<li>Rien n'est écrit dans Sage tant que les comptes RIA ne sont pas renseignés (Comptabilité > Comptes RIA).</li>
+</ul>
+<p>Toutes les règles, codées module par module, sont dans le document « Règles d'affaires » (menu Démarrer, Documents
+du projet).</p>""", """
 <h3>Receipts and payments</h3>
 <ul>
 <li>Clover deposit = sales received minus cash; Monday-to-Thursday sales are deposited the next day, Friday-to-Sunday
@@ -658,7 +667,16 @@ of the chosen invoices.</li>
 <li>Sage qty = Qty × Factor; Amount = Qty × Supplier price; Sage price = Amount / Sage qty.</li>
 <li>Two different sizes are two different items.</li>
 <li>An invoice already in Sage (same number, even with an “FA-” prefix) is never imported twice.</li>
-</ul>""") + blocs("Fichiers et sauvegarde"))
+</ul>
+<h3>RIA</h3>
+<ul>
+<li>Send received in cash: debit cash, credit RIA account; payout paid in cash: debit RIA account, credit cash; payout
+paid by Interac transfer: nothing to post, the bank already has it.</li>
+<li>Surplus of a cash deposit beyond sales: RIA share to confirm; only commissions are revenue.</li>
+<li>Nothing is posted to Sage until the RIA accounts are set (Accounting > RIA accounts).</li>
+</ul>
+<p>All the rules, coded module by module, are in the “Business rules” document (Start menu, Project documents; in
+French).</p>""") + blocs("Fichiers et sauvegarde"))
 
     # ------------------------------------------------------------------ 13. FAQ
     parties.append(titre("faq") + faq() + blocs("Dépannage")

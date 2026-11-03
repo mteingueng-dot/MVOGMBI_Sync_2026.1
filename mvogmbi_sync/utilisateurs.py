@@ -56,6 +56,17 @@ ACTIONS_FENETRES = {
                  "Modifier les articles dans Sage et Clover"],
     "Fournisseur": ["Importer un retour dans Sage"],
 }
+# entrées du menu renommées : le droit donné sous l'ancien nom passe aux nouvelles (rubrique RIA, 2026-11-03)
+RENOMMEES = {"RIA (transferts d'argent)": ["Opérations RIA", "États de compte RIA", "Comptes RIA"]}
+
+
+def _renommees(fonctions) -> list[str]:
+    sortie = []
+    for f in fonctions:
+        sortie += RENOMMEES.get(f, [f])
+    return sorted(set(sortie))
+
+
 SANS_EXPORT_DEFAUT = ["Employé"]  # profils sans le droit d'exporter (règle du propriétaire du 2026-10-28)
 # profils qui ne voient que l'employé relié à leur compte (règle du propriétaire du 2026-10-30) : pointage, horaire,
 # heures, paies, congés, T4 / RL-1, statistiques ; l'administrateur et le gérant voient tous les employés
@@ -123,7 +134,7 @@ class Registre:
             self.limites = [p for p in donnees.get("limites", LIMITES_DEFAUT) if p != ADMIN]
             self.fonctions_refusees = {k: list(v) for k, v in donnees.get("fonctions_refusees", {}).items()
                                        if k in self.profils and k != ADMIN}
-            self.fonctions_permises = {k: list(v) for k, v in donnees.get("fonctions_permises", {}).items()
+            self.fonctions_permises = {k: _renommees(v) for k, v in donnees.get("fonctions_permises", {}).items()
                                        if k in self.profils and k != ADMIN}
 
     # ------------------------------------------------------------------ lecture

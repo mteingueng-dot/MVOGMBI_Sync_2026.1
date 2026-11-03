@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.0 (30 octobre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 227 tests
+## 3. Tests automatiques — 255 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -51,9 +51,13 @@ Règles :
 | Points de vente | test_points_vente | 6 |
 | Courriel, export, sauvegarde | test_courriel, test_export_tableau, test_sauvegarde | 15 |
 | Langues et manuel | test_langues, test_manuel | 6 |
-| **Total** | 48 fichiers | **212** |
+| RIA (opérations, surplus, commissions) | test_ria | 6 |
+| Versions 1.0.1 à 1.0.7 : états RIA, chaîne des documents, plan comptable, audit, PDF, T4 / RL-1, paie | test_version_1_0_4, test_version_1_0_7, test_chaine_documents, test_paie_nouveautes | 25 |
+| Versions 1.0.9 et 1.0.10 : états RIA traités, articles modifiés ou supprimés, promotions annulées, courriel réessayé, menu RIA | test_version_1_0_9 | 8 |
+| Tests ajoutés aux fichiers existants depuis la 1.0.0 | divers | 4 |
+| **Total** | 55 fichiers | **255** |
 
-Résultat du 30 octobre 2026 : **212 réussis**.
+Résultat du 3 novembre 2026 : **255 réussis**.
 
 Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find a usable tk.tcl / init.tcl » ; Windows refuse un instant la lecture des fichiers de Tcl (antivirus). Le test passe à l'exécution suivante : ce n'est pas un défaut de l'application.
 
@@ -101,6 +105,10 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | S10 | Création d'article de stock, de service, de client, de fournisseur | multi-utilisateur | Réussi |
 | S11 | Correction des comptes d'articles | multi-utilisateur | Réussi |
 | S12 | Employé et chèque de paie (heures normales et supplémentaires) | multi-utilisateur | Réussi |
+| S13 | Facture de vente puis facture de retour client (quantités négatives) | mono-utilisateur | Réussi, stock revenu au départ |
+| S14 | Compte du plan comptable : créé, renommé, rendu inactif, supprimé | multi, mono pour l'inactif | Réussi |
+| S15 | Client et fournisseur avec compte de produits / de charges | multi-utilisateur | Réussi |
+| S16 | Article : renommé puis remis, service rendu inactif puis supprimé, suppression d'un article en stock | multi, mono pour l'inactif | Réussi ; suppression refusée par Sage (stock) |
 
 ### 4.4 Profils et droits
 
@@ -122,6 +130,14 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | N2 | Jour bloqué (article non relié) | Signalé, les autres jours continuent | Réussi |
 | N3 | Nuit réelle sur la copie d'essai | Factures importées, dépôts encaissés, courriel | Réussi |
 
+### 4.6 Lectures de documents
+
+| N° | Scénario | Attendu | Résultat |
+|---|---|---|---|
+| D1 | 43 états de compte RIA réels | Tous lus, soldes recontrôlés sans remarque | Réussi (114 opérations) |
+| D2 | Formulaires T4 et RL-1 téléchargés des sites officiels | Cases aux coordonnées connues | Réussi (fichiers identiques à ceux de l'application) |
+| D3 | PDF des documents et des tableaux dans l'application ouverte | Créés sans Edge, PDF ouvert = nouveau nom | Réussi |
+
 ---
 
 ## 5. Défauts trouvés et corrigés lors des campagnes
@@ -136,6 +152,10 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | 88 s pour une erreur de lecture | Toute erreur relançait l'ouverture | Seules les erreurs de connexion le font |
 | Article Clover « introuvable » par moments | Refus passager 429 non réessayé | Nouvel essai |
 | Ouverture de Sage au démarrage | Lecture automatique d'une page | Jamais sans action de la personne |
+| PDF non créés dans l'application ouverte | Edge s'arrête sans rien écrire | PDF dessinés par l'application (fpdf2) |
+| Sage resté ouvert après « Compte inactif » | Question modale de Sage bloquait l'envoi des clics | Mono-utilisateur pour l'inactif, clics sans attente |
+| États RIA avec remarques | Lignes ACH, sous-totaux, total à 2 montants | Lecture revue (0 remarque sur 43 états) |
+| Bulletin non envoyé (« timed out ») | Serveur de courriel lent | 3 essais, délai plus long à chaque fois |
 
 ---
 
@@ -155,3 +175,5 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 - Plusieurs points de vente réels (dès qu'un deuxième sera configuré).
 - Remises de retenues réelles (pas encore payées au 30 octobre 2026).
 - Promotions et envoi des bulletins de paie sur des données réelles.
+- Écritures RIA : dès que les comptes RIA et commissions seront créés dans Sage.
+- Renommage et suppression d'un article Clover depuis la liste des articles (même écriture que le prix, déjà validée).

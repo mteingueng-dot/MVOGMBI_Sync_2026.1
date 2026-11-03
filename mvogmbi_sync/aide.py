@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.9"
+VERSION = "1.0.11"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -192,7 +192,7 @@ FAQ = {
                     "Sage (Sage ouvert sur le bon fichier, sinon elle l'ouvre elle-même), puis l'article dans Clover, "
                     "et les relie (« Confirmé »). Le jeton Clover doit avoir le droit « Inventaire » en écriture."),
         ("question", "Comment faire l'inventaire dans Clover et Sage en même temps ?"),
-        ("reponse", "« Articles > Inventaire Clover et Sage » : « Exporter l'inventaire » écrit un fichier Excel (code et description "
+        ("reponse", "« Stock > Inventaire Clover et Sage » : « Exporter l'inventaire » écrit un fichier Excel (code et description "
                     "Clover et Sage, quantité Clover, quantité Sage, écart, coût unitaire). Inscrivez les quantités "
                     "comptées dans la colonne jaune, puis « Saisir l'inventaire compté » : le stock Clover et le stock "
                     "Sage deviennent la quantité comptée (ajustement d'inventaire dans Sage, vérifié dans la base). Le "
@@ -380,7 +380,7 @@ FAQ = {
                     "(jours de vente que le stock permet au rythme de la période ; « Rupture » si le stock est nul). "
                     "Le résumé donne le nombre d'articles A et la valeur de leur stock. Source Clover ou Sage."),
         ("question", "Comment transférer des articles d'un point de vente à l'autre ?"),
-        ("reponse", "« Articles > Transferts entre magasins » : « Nouveau transfert », point de vente de départ "
+        ("reponse", "« Stock > Transferts entre magasins » : « Nouveau transfert », point de vente de départ "
                     "et d'arrivée, date, puis les articles Sage et leurs quantités (le stock Sage des deux dépôts "
                     "s'affiche ; en jaune : stock de départ insuffisant). « Transférer » : dans Sage, transfert entre "
                     "les deux dépôts (même valeur, sans vente), vérifié dans la base ; dans Clover, stock diminué au "
@@ -550,17 +550,17 @@ FAQ = {
                     "retirée ; vos données et votre configuration restent dans le dossier d'installation."),
         ("sous_titre", 'Nouveautés : paie, caisse, stocks, ventes et sécurité'),
         ("question", 'Comment gérer RIA dans Sage ?'),
-        ("reponse", "« Comptabilité > RIA » réunit les mouvements RIA des relevés, les surplus de dépôts d'espèces et "
-                    "les paiements en espèces. Une fois les comptes renseignés (« Comptes… » : le compte RIA du bilan et "
+        ("reponse", "« RIA > Opérations RIA » réunit les mouvements RIA des relevés, les surplus de dépôts d'espèces et "
+                    "les paiements en espèces. Une fois les comptes renseignés (« Comptabilité > Comptes RIA » : le compte RIA du bilan et "
                     "le compte de commissions, à créer dans Sage), « Saisir dans Sage » passe les écritures. Les entrées "
                     "et sorties de RIA s'annulent ; seules les commissions, marquées avec « Commission », sont un revenu."),
         ("question", "Un dépôt d'espèces dépasse les ventes en espèces : que faire ?"),
         ("reponse", "Le dépôt couvre d'abord les espèces dues des factures, de la plus ancienne à la plus récente, même "
                     "sur plusieurs journées. Le surplus s'affiche « Part RIA à confirmer » : rien n'est encaissé. Dans "
-                    "« Comptabilité > RIA », « Confirmer le surplus » puis « Saisir dans Sage » ; le calcul suivant de la "
+                    "« RIA > Opérations RIA », « Confirmer le surplus » puis « Saisir dans Sage » ; le calcul suivant de la "
                     "page Encaissements propose alors le reste sur les ventes."),
         ("question", 'Comment fonctionne le calendrier de paie ?'),
-        ("reponse", "« Paie > Calendrier de paie » : renseignez la date de la première paie de l'année. Les paies "
+        ("reponse", "« Administration > Sage 50 », carte « Paie » : renseignez la date de la première paie de l'année ; « Paie > Calendrier de paie » les montre. Les paies "
                     "suivantes (tous les 14 jours), leurs périodes et les années à venir se calculent. Le calendrier "
                     "fixe aussi les périodes des feuilles de temps."),
         ("question", 'Comment remettre les T4 et les Relevés 1 ?'),
@@ -616,7 +616,7 @@ FAQ = {
                     'Comptabilité > Budget et écarts » : budget mensuel (ventes, coût des marchandises, autres charges) '
                     "comparé au réel de Sage, avec le cumul de l'année."),
         ("question", 'Comment déclarer des pertes (périmés, casse) ?'),
-        ("reponse", '« Articles > Pertes et démarque » : choisissez le point de vente, le motif et les articles (bouton '
+        ("reponse", '« Stock > Pertes et démarque » : choisissez le point de vente, le motif et les articles (bouton '
                     '« Ajouter les produits périmés en stock ») ; la valeur est au coût. Le stock Clover baisse tout de '
                     'suite et un document de stock « Sortie » est préparé pour Sage. Le rapport donne les pertes par '
                     'motif, catégorie, article ou mois, en % des ventes.'),
@@ -633,9 +633,9 @@ FAQ = {
                     "promotionnel est mis le premier jour et le prix normal remis après le dernier (sauf si quelqu'un "
                     "l'a changé entre-temps). « Calculer l'effet » compare les ventes pendant et avant."),
         ("question", "Comment faire l'inventaire tournant ?"),
-        ("reponse", '« Articles > Inventaire tournant » : chaque semaine, « Feuille de comptage de la semaine » donne '
+        ("reponse", '« Stock > Inventaire tournant » : chaque semaine, « Feuille de comptage de la semaine » donne '
                     'les articles de quelques catégories ; toutes sont comptées une fois par cycle de 8 semaines. La '
-                    'feuille remplie se saisit dans Articles > Inventaire.'),
+                    'feuille remplie se saisit dans Stock > Inventaire Clover et Sage.'),
         ("question", 'Comment relancer les clients professionnels ?'),
         ("reponse", '« Vente > Clients professionnels et relances » : soldes, retards et limite de crédit des clients de '
                     'Sage ; « Imprimer la lettre de relance » ou « Envoyer la relance par courriel » (au seul client).'),
@@ -655,6 +655,58 @@ FAQ = {
                     'de vente utilise son Clover, sa correspondance des articles et son dépôt Sage ; le tiroir-caisse '
                     "est compté par point de vente. Le coût de la main-d'œuvre additionne les ventes de tous les points "
                     "de vente. Les dépôts d'espèces des relevés Desjardins vont au point de vente n° 1."),
+        ("sous_titre", "Nouveautés des versions 1.0.4 à 1.0.10"),
+        ("question", "Comment passer les états de compte RIA dans Sage ?"),
+        ("reponse", "« Comptabilité > États de compte RIA » : importez les PDF (ou « Lire le courriel » ; la nuit, les "
+                    "états reçus sont lus seuls). Chaque état est recontrôlé ligne par ligne. « Traiter dans Sage » crée "
+                    "une opération par envoi (espèces reçues pour RIA) et par versement payé en espèces ; un versement "
+                    "payé par virement Interac est laissé à la banque. Les écritures passent ensuite par « RIA > "
+                    "Opérations RIA » > « Saisir dans Sage », une fois les comptes renseignés (« Comptabilité > Comptes "
+                    "RIA »)."),
+        ("question", "Comment modifier ou supprimer un article dans Sage et dans Clover ?"),
+        ("reponse", "« Articles > Liste des articles », choisissez l'article. « Modifier » : description et « Article "
+                    "inactif » dans Sage, et l'article Clover relié renommé si la case est cochée. « Supprimer » : "
+                    "l'article est supprimé de Sage puis de Clover. Sage refuse de supprimer un article encore en "
+                    "stock : il est alors rendu inactif dans Sage et l'article Clover est gardé. Sage doit être fermé : "
+                    "l'application l'ouvre elle-même."),
+        ("question", "Peut-on annuler une promotion déjà commencée ?"),
+        ("reponse", "Oui : « Articles > Promotions », choisissez-la, « Annuler la promotion ». Le prix normal est remis tout de suite "
+                    "dans Clover, sauf si quelqu'un a changé le prix entre-temps (il est alors laissé tel quel)."),
+        ("question", "Comment passer d'un devis à une facture, ou d'un bon de commande à une facture fournisseur ?"),
+        ("reponse", "Dans les listes de documents (« Vente > Liste des documents de vente », « Fournisseur > Liste des "
+                    "documents d'achat »), « Transformer » fait suivre le document : devis, commande, livraison, "
+                    "facture ; demande de prix, bon de commande, réception, facture. Les lignes, le client ou "
+                    "fournisseur et le dépôt sont repris. Seules les factures touchent le stock, dans Sage puis dans "
+                    "Clover. Un retour devient une facture de retour aux quantités négatives."),
+        ("question", "Où sont les documents de stock, l'inventaire, les transferts et les pertes ?"),
+        ("reponse", "Dans la rubrique « Stock » du menu : liste et saisie des documents de stock, transferts entre "
+                    "magasins, pertes et démarque, inventaires, livre d'inventaire. Un document de stock passé "
+                    "s'annule par un document inverse, dans Sage et dans Clover."),
+        ("question", "Comment gérer le plan comptable de Sage depuis l'application ?"),
+        ("reponse", "« Comptabilité > Plan comptable » : comptes lus dans Sage ; « Ajouter », « Modifier », rendre "
+                    "inactif ou « Supprimer » (droit « Modifier le plan comptable »). Chaque changement est vérifié "
+                    "dans Sage. Les comptes saisis ailleurs dans l'application (dépenses, RIA, catégories) doivent "
+                    "exister dans ce plan."),
+        ("question", "Que montre l'audit des actions ?"),
+        ("reponse", "« Administration > Audit des actions » : chaque bouton cliqué, chaque entrée du menu et chaque "
+                    "connexion, avec la date, le poste et la personne. Chaque ligne porte l'empreinte de la précédente : "
+                    "une ligne modifiée est repérée. Aucun mot de passe ni NAS n'y est écrit."),
+        ("question", "Un compte est verrouillé après des mots de passe faux."),
+        ("reponse", "Après 3 mots de passe faux de suite, le compte est verrouillé. Un administrateur le rouvre dans « "
+                    "Administration > Utilisateurs » en donnant un nouveau mot de passe. Le dernier administrateur "
+                    "actif n'est que bloqué 15 minutes."),
+        ("question", "Les T4 et Relevés 1 sont-ils les formulaires officiels ?"),
+        ("reponse", "Oui : l'application télécharge les formulaires des sites de l'ARC et de Revenu Québec (copie "
+                    "gardée 7 jours, contrôlée), puis y écrit les montants des paies de Sage. Le NAS n'est jamais écrit."),
+        ("question", "Le courriel d'un bulletin n'est pas parti (« timed out »)."),
+        ("reponse", "L'application réessaie maintenant jusqu'à 3 fois, en attendant un peu plus à chaque fois. Si "
+                    "l'envoi échoue encore, vérifiez le serveur et le mot de passe dans « Administration > Courriel ». "
+                    "Chaque document personnel part à son seul destinataire, avec une copie cachée au propriétaire "
+                    "(champ « Copie cachée (Cci) »)."),
+        ("question", "Les factures fournisseurs reçues par courriel sont-elles importées seules ?"),
+        ("reponse", "Oui : la nuit, les factures lues et « Prête à importer » sont importées dans Sage, avec le stock "
+                    "Clover. Les autres attendent votre vérification. Pour arrêter l'import de nuit : [factures_courriel] "
+                    "import_nuit = false dans config.toml."),
     ],
     "en": [
         ("titre", "Help / Frequently asked questions"),
@@ -905,7 +957,7 @@ FAQ = {
                     "pace; “Out of stock” if the stock is zero). The summary gives the number of A items and the value "
                     "of their stock. Clover or Sage source."),
         ("question", "How do I transfer items from one point of sale to another?"),
-        ("reponse", "“Items > Transfers between stores”: “New transfer”, origin and destination point of "
+        ("reponse", "“Stock > Transfers between stores”: “New transfer”, origin and destination point of "
                     "sale, date, then the Sage items and their quantities (the Sage stock of both locations is shown; "
                     "yellow: origin stock too low). “Transfer”: in Sage, a transfer between the two locations (same "
                     "value, no sale), checked in the database; in Clover, stock decreased at the origin and increased "
@@ -1067,17 +1119,17 @@ FAQ = {
                     "and configuration stay in the installation folder."),
         ("sous_titre", "What's new: payroll, cash, stock, sales and security"),
         ("question", 'How do I manage RIA in Sage?'),
-        ("reponse", '“Accounting > RIA” gathers RIA statement transactions, cash deposit surpluses and cash payments. '
-                    'Once the accounts are entered (“Accounts…”: the RIA balance sheet account and the commission '
+        ("reponse", '“RIA > RIA transactions” gathers RIA statement transactions, cash deposit surpluses and cash payments. '
+                    'Once the accounts are entered (“Accounting > RIA accounts”: the RIA balance sheet account and the commission '
                     'account, to be created in Sage), “Enter in Sage” posts the entries. RIA money in and out cancels '
                     'out; only commissions, marked with “Commission”, are revenue.'),
         ("question", 'A cash deposit exceeds cash sales: what should I do?'),
         ("reponse", 'The deposit first covers the cash owing on invoices, oldest first, even across several days. The '
-                    'surplus shows as “RIA share to confirm”: nothing is applied. In “Accounting > RIA”, use “Confirm '
+                    'surplus shows as “RIA share to confirm”: nothing is applied. In “RIA > RIA transactions”, use “Confirm '
                     'the surplus” then “Enter in Sage”; the next Cash receipts calculation then offers the remainder '
                     'against sales.'),
         ("question", 'How does the payroll calendar work?'),
-        ("reponse", '“Payroll > Payroll calendar”: enter the date of the first pay of the year. The following pays '
+        ("reponse", '“Administration > Sage 50”, “Payroll” card: enter the date of the first pay of the year; “Payroll > Payroll calendar” shows them. The following pays '
                     '(every 14 days), their periods and the coming years are calculated. The calendar also sets the '
                     'timesheet periods.'),
         ("question", 'How do I hand out T4 and Relevé 1 slips?'),
@@ -1127,7 +1179,7 @@ FAQ = {
                     'Budget and variances”: monthly budget (sales, cost of goods, other expenses) compared with Sage '
                     'actuals, with the year to date.'),
         ("question", 'How do I declare losses (expired, broken)?'),
-        ("reponse", '“Items > Losses and shrinkage”: choose the point of sale, the reason and the items (“Add expired '
+        ("reponse", '“Stock > Losses and shrinkage”: choose the point of sale, the reason and the items (“Add expired '
                     'products in stock” button); the value is at cost. Clover stock decreases right away and an “Out” '
                     'stock document is prepared for Sage. The report gives losses by reason, category, item or month, as '
                     'a % of sales.'),
@@ -1143,8 +1195,8 @@ FAQ = {
                     'promotional price is set on the first day and the regular price restored after the last (unless '
                     'someone changed it in between). “Compute effect” compares sales during and before.'),
         ("question", 'How do I do the cycle count?'),
-        ("reponse", "“Items > Cycle count”: each week, “This week's count sheet” gives the items of a few categories; "
-                    'all are counted once per 8-week cycle. The filled sheet is entered in Items > Inventory.'),
+        ("reponse", "“Stock > Cycle count”: each week, “This week's count sheet” gives the items of a few categories; "
+                    'all are counted once per 8-week cycle. The filled sheet is entered in Stock > Clover and Sage inventory.'),
         ("question", 'How do I remind business customers?'),
         ("reponse", '“Sales > Business customers and reminders”: balances, overdue amounts and credit limit of Sage '
                     'customers; “Print reminder letter” or “Email the reminder” (to that customer only).'),
@@ -1164,6 +1216,53 @@ FAQ = {
                     'sale uses its own Clover, item mapping and Sage location; the cash drawer is counted per point of '
                     'sale. Labour cost adds up the sales of all points of sale. Cash deposits from Desjardins statements '
                     'go to point of sale no. 1.'),
+        ("sous_titre", "What's new in versions 1.0.4 to 1.0.10"),
+        ("question", "How do I post RIA account statements to Sage?"),
+        ("reponse", "“Accounting > RIA account statements”: import the PDFs (or “Read the email”; at night, statements "
+                    "received are read automatically). Each statement is rechecked line by line. “Process in Sage” "
+                    "creates one transaction per send (cash received for RIA) and per payout paid in cash; a payout "
+                    "paid by Interac transfer is left to the bank. Entries are then posted from “RIA > RIA "
+                    "transactions” > “Enter in Sage”, once the accounts are set (“Accounting > RIA accounts”)."),
+        ("question", "How do I modify or delete an item in Sage and Clover?"),
+        ("reponse", "“Items > Item list”, choose the item. “Modify”: description and “Item inactive” in Sage, and the "
+                    "linked Clover item renamed if the box is checked. “Delete”: the item is deleted from Sage then "
+                    "from Clover. Sage refuses to delete an item still in stock: it is then made inactive in Sage and "
+                    "the Clover item is kept. Sage must be closed: the application opens it itself."),
+        ("question", "Can a promotion already under way be cancelled?"),
+        ("reponse", "Yes: “Items > Promotions”, choose it, “Cancel promotion”. The regular price is restored in Clover right "
+                    "away, unless someone changed the price in the meantime (it is then left as is)."),
+        ("question", "How do I turn a quote into an invoice, or a purchase order into a supplier invoice?"),
+        ("reponse", "In the document lists (“Sale > Sales document list”, “Supplier > Purchase document list”), "
+                    "“Transform” moves the document along: quote, order, delivery, invoice; price request, purchase "
+                    "order, receipt, invoice. Lines, customer or supplier and location are carried over. Only invoices "
+                    "change stock, in Sage then in Clover. A return becomes a return invoice with negative quantities."),
+        ("question", "Where are stock documents, inventory, transfers and losses?"),
+        ("reponse", "In the “Stock” section of the menu: stock document list and entry, transfers between stores, "
+                    "losses and shrinkage, inventories, inventory book. A posted stock document is cancelled by a "
+                    "reverse document, in Sage and in Clover."),
+        ("question", "How do I manage the Sage chart of accounts from the application?"),
+        ("reponse", "“Accounting > Chart of accounts”: accounts read from Sage; “Add”, “Modify”, make inactive or "
+                    "“Delete” (“Modify the chart of accounts” right). Each change is checked in Sage. Accounts entered "
+                    "elsewhere in the application (expenses, RIA, categories) must exist in this chart."),
+        ("question", "What does the action audit show?"),
+        ("reponse", "“Administration > Action audit”: each button clicked, each menu entry and each login, with the "
+                    "date, the computer and the person. Each line carries the fingerprint of the previous one: a "
+                    "modified line is detected. No password or SIN is written there."),
+        ("question", "An account is locked after wrong passwords."),
+        ("reponse", "After 3 wrong passwords in a row, the account is locked. An administrator reopens it in "
+                    "“Administration > Users” by giving a new password. The last active administrator is only blocked "
+                    "for 15 minutes."),
+        ("question", "Are the T4 and RL-1 slips the official forms?"),
+        ("reponse", "Yes: the application downloads the forms from the CRA and Revenu Québec websites (copy kept "
+                    "7 days, checked), then writes the Sage pay amounts on them. The SIN is never written."),
+        ("question", "A pay stub email was not sent (“timed out”)."),
+        ("reponse", "The application now retries up to 3 times, waiting a little longer each time. If sending still "
+                    "fails, check the server and password in “Administration > Email”. Each personal document goes to "
+                    "its sole recipient, with a blind copy to the owner (“Blind copy (Bcc)” field)."),
+        ("question", "Are supplier invoices received by email imported automatically?"),
+        ("reponse", "Yes: at night, invoices read and “Ready to import” are imported into Sage, with the Clover stock. "
+                    "The others wait for your review. To stop the night import: [factures_courriel] import_nuit = "
+                    "false in config.toml."),
     ],
 }
 

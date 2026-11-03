@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.0 (30 octobre 2026) — Marché MVOG-MBI Sherbrooke. 97 versions livrées en 7 jours, chacune avec son installateur.
+Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke. 108 versions livrées en 11 jours, chacune avec son installateur.
 
 ---
 
@@ -38,9 +38,17 @@ gantt
     Droits par fonction, droit Supprimer        :done, f2, 2026-10-30, 1d
     Sage multi-utilisateur, temps réel          :done, f3, 2026-10-30, 1d
     Test complet, version 1.0, documentation    :done, f4, 2026-10-30, 1d
+    section Version 1.0.x
+    PDF, T4 et RL-1 officiels, états RIA        :done, h1, 2026-11-01, 1d
+    Menu Stock, chaîne des documents            :done, h2, 2026-11-01, 1d
+    Plan comptable, audit, filtres multiples    :done, h3, 2026-11-01, 3d
+    Modèles PDF, articles modifiés et supprimés :done, h4, 2026-11-03, 1d
+    RIA dans Sage, rubrique RIA, règles d'affaires :done, h5, 2026-11-03, 1d
     section Suite
-    Plusieurs points de vente réels             :g1, 2026-11-02, 5d
+    Comptes RIA dans Sage, premières écritures  :g0, 2026-11-04, 2d
+    Plusieurs points de vente réels             :g1, 2026-11-06, 5d
     Remises de retenues réelles                 :g2, 2026-11-15, 1d
+    Version client-serveur (à planifier)        :g3, 2026-11-17, 10d
 ```
 
 ---
@@ -66,10 +74,16 @@ mindmap
       Bons de commande
       Paiements Interac
       Retours
+      Chaîne des documents
     Comptabilité
       Rapprochement Desjardins
       Caisse et dépenses
       TPS TVQ, budget, clôture
+      Plan comptable
+    RIA
+      États de compte
+      Envois et versements
+      Commissions
     Paie
       Pointage NIP
       Planning, feuilles de temps
@@ -84,6 +98,7 @@ mindmap
       Traitement de nuit
       Pilotage de Sage
       Utilisateurs et droits
+      Audit
       Sauvegarde
 ```
 
@@ -101,6 +116,9 @@ mindmap
 | 29 oct. 2026 | Gestion commerciale, comptabilité, paie | 1.23 à 1.45 |
 | 30 oct. 2026 | Droits par fonction, multi-utilisateur, temps réel, test complet | 1.46.3 |
 | 30 oct. 2026 | **Version 1.0.0** : numérotation remise à zéro, documentation complète | 1.0.0 |
+| 30 oct. 2026 | Rapports de gestion, services dans Sage seulement, lecture des paies de Sage | 1.0.1 à 1.0.3 |
+| 1er nov. 2026 | PDF de secours, T4 / RL-1 officiels, états RIA, menu Stock, chaîne des documents, plan comptable, audit | 1.0.4 à 1.0.7 |
+| 3 nov. 2026 | Modèles PDF, articles modifiés et supprimés, RIA dans Sage, rubrique RIA, règles d'affaires, documentation à jour | 1.0.8 à 1.0.11 |
 
 ---
 
