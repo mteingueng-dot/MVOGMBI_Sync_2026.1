@@ -6,7 +6,7 @@ données ; utilisateurs, profils et droits par fonction (administrateurs seuleme
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from .pages import Contexte, Fonction, csrf, page, tableau
@@ -109,14 +109,19 @@ def clover(ctx: Contexte) -> Reponse:
     from . import taches
 
     message = ""
-    if ctx.req.methode == "POST":
-        if ctx.req.champ("action") == "Tester":
-            def tester(journal):
-                from ..points_vente import client
+    if ctx.req.methode == "POST" and ctx.req.champ("op"):
+        reponse = _action_point_vente(ctx)
+        if isinstance(reponse, Reponse):
+            return reponse
+        message = reponse
+    elif ctx.req.methode == "POST" and ctx.req.champ("action") == "Tester":
+        def tester():
+            from ..points_vente import client
 
-                return f"Connecté à « {client(ctx.racine).marchand().get('name', '?')} »."
+            return f"connecté à « {client(ctx.racine).marchand().get('name', '?')} »"
 
-            return taches.lancer(ctx, "Test de la connexion Clover", tester, "/admin/clover")
+        _tester(ctx, "clover", "Test Clover", tester)
+    elif ctx.req.methode == "POST":
         message = _refus_config(ctx)
         if not message:
             identifiant = ctx.req.champ("merchant_id").strip()
@@ -131,14 +136,13 @@ def clover(ctx: Contexte) -> Reponse:
                 _garder_secrets(ctx, [("jeton", coffre.CLOVER_JETON)])
                 message = _message("Configuration Clover enregistrée.")
     c = ctx.config.get("clover", {})
-    points = [[e(x.get("code", "")), e(x.get("nom", "")), e(x.get("merchant_id", "")), e(x.get("client_sage", "")),
-               e(x.get("depot_sage", "")), e(x.get("prefixe", "")), "Oui" if x.get("actif", True) else "Non"]
-              for x in ctx.config.get("points_vente", [])]
-    from .consultations import Section, tableau_section
-
+    fiche = ctx.req.query.get("pv")
+    if fiche:
+        return Reponse(corps=page(ctx, "Clover", message + _fiche_point_vente(ctx, fiche)))
+    # un seul formulaire pour la carte 1 et « Enregistrer la configuration » (attribut form=) ; la carte 2 a le sien
     corps = (message + _titre("Accès à votre compte Clover (lecture des ventes)",
                               "L'application lit les ventes payées dans Clover ; elle n'y modifie jamais rien.")
-             + f"<form method='post'>{csrf(ctx)}"
+             + f"<form method='post' id='config'>{csrf(ctx)}"
              + _carte("1", "Identifiants Clover", _ligne(
                  "Identifiant marchand", _entree("merchant_id", c.get("merchant_id")),
                  "13 caractères, visibles dans l'adresse du tableau de bord Clover après « /m/ ».")
@@ -146,22 +150,229 @@ def clover(ctx: Contexte) -> Reponse:
                           "Clover > Compte et configuration > Jetons API (droits en lecture). Laissez vide pour "
                           "conserver le jeton enregistré.")
                  + "<span></span><div><button name='action' value='Tester'>🔌 Tester la connexion à Clover</button>"
-                   "</div>")
-             + _carte("2", "Points de vente", tableau_section(Section("Points de vente", [
-                 "N°", "Point de vente", "Marchand", "Client Sage", "Dépôt Sage", "Préfixe", "Actif"], points,
-                 html=set(range(7)))), "Chaque point de vente Clover est un dépôt (emplacement d'inventaire) dans "
-                                       "Sage, avec son client Sage et ses factures (« Vente 2026-10-23 » pour le n° 1, "
-                                       "« V2 2026-10-23 » pour le n° 2…). Le n° 1 utilise les identifiants ci-dessus.")
-             + ENREGISTRER_CONFIG + "</form>")
+                   "</div>" + "<span></span>" + _zone_sortie(ctx, "clover"))
+             + "</form>"
+             + _carte("2", "Points de vente", _liste_points_vente(ctx),
+                      "Chaque point de vente Clover est un dépôt (emplacement d'inventaire) dans Sage, avec son client "
+                      "Sage et ses factures (« Vente 2026-10-23 » pour le n° 1, « V2 2026-10-23 » pour le n° 2…). Le "
+                      "n° 1 utilise les identifiants ci-dessus.")
+             + ENREGISTRER_CONFIG.replace("<button ", "<button form='config' "))
     return Reponse(corps=page(ctx, "Clover", corps))
 
 
+def _tester(ctx: Contexte, cle: str, titre: str, fonction) -> None:
+    """Test court lancé tout de suite ; son résultat va dans la zone de sortie de la page (Application._sortie)."""
+    from datetime import datetime
+
+    try:
+        texte = f"✔ {fonction()}"
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001
+        texte = f"✘ {erreur}"
+    ctx.app.memoire[("test_admin", cle)] = f"{datetime.now():%H:%M:%S}  {titre} : {texte}"
+
+
+def _zone_sortie(ctx: Contexte, cle: str) -> str:
+    """Zone de sortie toujours visible (cadre gris de Windows), vide tant qu'aucun test n'a été lancé."""
+    return f"<div><pre class='sortie'>{e(ctx.app.memoire.get(('test_admin', cle), ''))}</pre></div>"
+
+
+# --------------------------------------------------------------------------------------------- points de vente
+def _points(ctx: Contexte):
+    from ..points_vente import points_de_vente
+
+    return points_de_vente(ctx.config)
+
+
+def _jeton_present(cle: str) -> bool:
+    from .. import coffre
+
+    try:
+        return coffre.present(cle)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _liste_points_vente(ctx: Contexte) -> str:
+    """CartePointsVente : tableau (N°, Nom, Identifiant marchand, Jeton, Client Sage, Dépôt Sage, Préfixe, Actif),
+    une ligne choisie, puis « ➕ Ajouter un point de vente », « Modifier », « Supprimer », « 🔌 Tester ce point de
+    vente »."""
+    choisi = ctx.req.champ("code") or "1"
+    lignes = []
+    for x in _points(ctx):
+        lignes.append(
+            f"<tr><td><input type='radio' form='pv' name='code' value='{e(x.code)}'"
+            f"{' checked' if x.code == choisi else ''}></td><td class='n'>{e(x.code)}</td><td>{e(x.nom)}</td>"
+            f"<td>{e(x.merchant_id or '—')}</td><td class='centre'>{'✔' if _jeton_present(x.cle_jeton) else '✘'}</td>"
+            f"<td>{e(x.client_sage)}</td><td>{e(x.depot_sage)}</td><td class='centre'>{e(x.prefixe)}</td>"
+            f"<td class='centre'>{'Oui' if x.actif else 'Non'}</td></tr>")
+    entetes = "".join(f"<th>{e(t)}</th>" for t in ("", "N°", "Nom", "Identifiant marchand", "Jeton", "Client Sage",
+                                                     "Dépôt Sage", "Préfixe", "Actif"))
+    return (f"<div class='defile'><table><tr>{entetes}</tr>{''.join(lignes)}</table></div>"
+            f"<form method='post' id='pv'>{csrf(ctx)}<div class='barre-onglet'>"
+            "<button name='op' value='ajouter'>➕ Ajouter un point de vente</button>"
+            "<button class='second' name='op' value='modifier'>Modifier</button>"
+            "<button class='danger' name='op' value='supprimer'>Supprimer</button>"
+            "<button class='second' name='op' value='tester'>🔌 Tester ce point de vente</button></div></form>")
+
+
+def _fiche_point_vente(ctx: Contexte, code: str) -> str:
+    """page_points_vente.Fiche : Nom, (Identifiant marchand, Jeton API), Client Sage, Dépôt Sage, (Préfixe), Actif,
+    « * champ obligatoire », Enregistrer / Annuler."""
+    from ..points_vente import DEPOT_DEFAUT, LONGUEUR_PREFIXE, PointDeVente
+
+    points = _points(ctx)
+    p = next((x for x in points if x.code == code), None)
+    if p is None:
+        codes = {x.code for x in points}
+        code = next(str(n) for n in range(2, 100) if str(n) not in codes)
+        p = PointDeVente(code, f"Point de vente {code}", "", "", DEPOT_DEFAUT, f"V{code}", True)
+    jeton_present = not p.principal and _jeton_present(p.cle_jeton)
+    champs = _ligne("Nom *", _entree("nom", p.nom, taille=44))
+    if not p.principal:
+        champs += _ligne("Identifiant marchand *", _entree("marchand", p.merchant_id, taille=44),
+                         "13 caractères, dans l'adresse du tableau de bord Clover de ce point de vente.")
+        champs += _ligne("Jeton API" + ("" if jeton_present else " *"),
+                         "<input type='password' name='jeton' autocomplete='new-password' size='44'>",
+                         "Laissez vide pour conserver le jeton enregistré." if jeton_present else
+                         "Clover > Compte et configuration > Jetons API (droits en lecture).")
+    champs += _ligne("Client Sage *", _entree("client", p.client_sage, taille=44),
+                     "Client des factures de ce point de vente (fiche : « Ce client utilise mes n° articles »).")
+    champs += _ligne("Dépôt Sage *", _entree("depot", p.depot_sage, taille=44),
+                     f"Emplacement d'inventaire Sage de ce point de vente (« {DEPOT_DEFAUT} » par défaut).")
+    if not p.principal:
+        champs += _ligne("Préfixe des factures *", _entree("prefixe", p.prefixe, taille=10),
+                         f"{LONGUEUR_PREFIXE} caractères au plus, sans espace : « {p.prefixe or 'V2'} 2026-10-23/25 ».")
+        champs += ("<span></span><div><label class='case'><input type='checkbox' name='actif' value='1'"
+                   f"{' checked' if p.actif else ''}> Actif (traité avec « tous les points de vente »)</label></div>")
+    return (_titre(f"Point de vente {p.code}") + f"<form method='post' action='/admin/clover'>{csrf(ctx)}"
+            f"<input type='hidden' name='code' value='{e(p.code)}'>"
+            + _carte(p.code, "Point de vente", champs)
+            + "<div class='barre-onglet'><span class='note'>* champ obligatoire</span><span class='a-droite'>"
+              "<button name='op' value='enregistrer'>Enregistrer</button> <a class='ouvrir' href='/admin/clover'>"
+              "Annuler</a></span></div></form>")
+
+
+def _action_point_vente(ctx: Contexte):
+    """Ajouter / Modifier (fiche), Supprimer (le n° 1 jamais), Tester ce point de vente, Enregistrer la fiche."""
+    from .. import coffre
+    from ..points_vente import DEPOT_DEFAUT, PRINCIPAL, PointDeVente, problemes_configuration
+    from .serveur import redirection
+
+    op, code = ctx.req.champ("op"), ctx.req.champ("code")
+    points = _points(ctx)
+    p = next((x for x in points if x.code == code), None)
+    if op == "ajouter":
+        return redirection("/admin/clover?pv=nouveau")
+    if p is None and op != "enregistrer":
+        return _message(erreur="Sélectionnez un point de vente dans la liste.")
+    if op == "modifier":
+        return redirection(f"/admin/clover?pv={p.code}")
+    if op == "tester":
+        def tester():
+            from ..__main__ import charger_config
+            from ..api_clover import ClientClover
+
+            try:
+                config = charger_config(ctx.racine / "config.toml", p)
+            except SystemExit as exc:
+                raise RuntimeError(str(exc)) from None
+            return f"connecté à « {ClientClover(config).marchand().get('name', '?')} »"
+
+        _tester(ctx, "clover", f"Test Clover ({p.libelle})", tester)
+        return ""
+    if refus := _refus_config(ctx):
+        return refus
+    if op == "supprimer":
+        if p.principal:
+            return _message(erreur="Le point de vente n° 1 ne peut pas être supprimé.")
+        points = [x for x in points if x.code != p.code]
+    elif op == "enregistrer":
+        if p is None:
+            p = PointDeVente(code, "", "", "", DEPOT_DEFAUT, "", True)
+        v = {k: ctx.req.champ(k).strip() for k in ("nom", "marchand", "jeton", "client", "depot", "prefixe")}
+        jeton_present = not p.principal and _jeton_present(p.cle_jeton)
+        cles = ["nom", "client", "depot"] + ([] if p.principal else ["marchand", "prefixe"]
+                                              + ([] if jeton_present else ["jeton"]))
+        manquants = [k for k in cles if not v[k]]
+        if not p.principal and v["marchand"] and (len(v["marchand"]) != 13 or not v["marchand"].isalnum()):
+            manquants.append("identifiant marchand (13 lettres ou chiffres)")
+        if manquants:
+            return _message(erreur="Champs obligatoires à remplir : " + ", ".join(manquants) + ".")
+        p.nom, p.client_sage, p.depot_sage = v["nom"], v["client"], v["depot"] or DEPOT_DEFAUT
+        if not p.principal:
+            p.merchant_id, p.prefixe, p.actif = v["marchand"], v["prefixe"], bool(ctx.req.champ("actif"))
+        points = [x for x in points if x.code != p.code] + [p]
+        points.sort(key=lambda x: (x.code != PRINCIPAL, int(x.code) if x.code.isdigit() else 999, x.code))
+    else:
+        return ""
+    if erreurs := problemes_configuration(points):
+        return _message(erreur=" ".join(erreurs))
+
+    def modifier(c):
+        principal = points[0]
+        c.setdefault("clover", {}).update(nom=principal.nom, client_sage=principal.client_sage,
+                                          depot_sage=principal.depot_sage)
+        c["points_vente"] = [dict(code=x.code, nom=x.nom, merchant_id=x.merchant_id, client_sage=x.client_sage,
+                                  depot_sage=x.depot_sage, prefixe=x.prefixe, actif=x.actif) for x in points[1:]]
+        if not c["points_vente"]:
+            c.pop("points_vente")
+
+    _ecrire(ctx, modifier)
+    if op == "supprimer":
+        coffre.supprimer(p.cle_jeton)
+        return _message(f"Point de vente {p.libelle} supprimé. Ses factures déjà dans Sage ne sont pas touchées.")
+    if v["jeton"] and not p.principal:
+        coffre.ecrire(p.cle_jeton, v["jeton"])
+    return _message(f"Point de vente {p.libelle} enregistré.")
+
+
 # --------------------------------------------------------------------------------------------- Sage 50
+def _test_sage(ctx: Contexte) -> str:
+    """Application.tester_sage : lecture de Sage (ouvert, sinon base ouverte puis refermée par l'outil d'import)."""
+    from ..__main__ import executable_import, ouvrir_base_sage
+    from ..automatique import lire_etat_sage
+    from ..facture import CLIENT
+    from ..sage_auto import lire_pendant_connexion
+
+    fichier = Path(ctx.config["sage_import"]["fichier_entreprise"])
+    if not fichier.is_file():
+        raise RuntimeError(f"fichier introuvable : {fichier}")
+
+    def lecture():
+        with ouvrir_base_sage(ctx.config, fichier) as base:
+            return lire_etat_sage(base, CLIENT)
+
+    try:
+        etat, mode = lecture(), "Sage ouvert"
+    except PermissionError:
+        raise
+    except Exception:  # noqa: BLE001
+        exe = executable_import()
+        if not exe:
+            raise RuntimeError("Sage_SA_import.exe ?") from None
+        etat = lire_pendant_connexion(exe, fichier, lecture)
+        mode = "Sage fermé : base ouverte puis refermée automatiquement"
+    client = "OK" if etat.client_configure else (
+        "À RÉGLER : cocher « Ce client utilise mes n° articles » dans la fiche du client")
+    sans_compte = sum(1 for a in etat.articles if not a.compte_revenus and a.type == "Inventory")
+    return (f"{mode}. {len(etat.articles)} articles. Dernière facture journalière : {etat.derniere_date or 'aucune'}. "
+            f"Client « {CLIENT} » : {client}. Articles sans compte de produits : {sans_compte}.")
+
+
 def sage(ctx: Contexte) -> Reponse:
     from .. import coffre
     from ..calendrier_paie import Calendrier
 
     message = ""
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "Tester":
+        from . import taches
+
+        def tester(journal):
+            texte = _test_sage(ctx)
+            ctx.app.memoire[("test_admin", "sage")] = f"{datetime.now():%H:%M:%S}  Test Sage : ✔ {texte}"
+            return [texte]
+
+        return taches.lancer(ctx, "Test Sage", tester, "/admin/sage")
     if ctx.req.methode == "POST":
         message = _refus_config(ctx)
         if not message:
@@ -208,8 +419,10 @@ def sage(ctx: Contexte) -> Reponse:
     a, en = ctx.config.get("automatique", {}), ctx.config.get("encaissements", {})
     corps = (message + _titre("Fichier d'entreprise et comptes Sage") + f"<form method='post'>{csrf(ctx)}"
              + _carte("1", "Fichier d'entreprise", _ligne(
-                 "Fichier d'entreprise (.SAI)", _entree("fichier", b.get("fichier_entreprise")
-                                                        or ctx.config.get("sage_import", {}).get("fichier_entreprise")),
+                 "Fichier d'entreprise (.SAI)", _entree("fichier", ctx.req.query.get("fichier")
+                                                        or b.get("fichier_entreprise")
+                                                        or ctx.config.get("sage_import", {}).get("fichier_entreprise"))
+                 + " <a class='ouvrir' href='/parcourir-sai'>Parcourir…</a>",
                  "Le fichier dans lequel les factures sont importées (chemin sur le serveur). Pour les essais : une "
                  "COPIE.")
                  + _ligne("Premier jour à importer", _entree("date_depart", a.get("date_depart", ""), "date", 12),
@@ -227,7 +440,9 @@ def sage(ctx: Contexte) -> Reponse:
                  + _ligne("Mot de passe (lecture)", _mot_de_passe("lecture", coffre.SAGE_LECTURE))
                  + _ligne("Mot de passe Sage pour l'import", _mot_de_passe("import", coffre.SAGE_IMPORT),
                           "Mot de passe demandé par la fenêtre « Sage 50 - Password » de l'import (utilisateur "
-                          "sysadmin)."))
+                          "sysadmin).")
+                 + "<span></span><div><button name='action' value='Tester'>📒 Tester l'accès à Sage</button></div>"
+                 + "<span></span>" + _zone_sortie(ctx, "sage"))
              + _carte("3", "Paie", _ligne(
                  "Première paie de l'année", _entree("premiere", premiere.isoformat() if premiere else "", "date", 12),
                  "Date de la première paie de l'année : les paies suivantes (tous les 14 jours) et leurs périodes se "
@@ -470,12 +685,14 @@ def sauvegarde(ctx: Contexte) -> Reponse:
              "(correspondance, pointages, feuilles de temps, registres, journaux) et la configuration dans une archive "
              "vérifiée. Gardées : 14 jours, 8 semaines, 12 mois.</p>"
              + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<div class='large'><label>Dossier des sauvegardes"
-               f"</label><input name='dossier' value='{e(str(cible))}' size='62'></div><button class='second' "
+               f"</label><input name='dossier' value='{e(ctx.req.query.get('dossier') or str(cible))}' size='62'>"
+               "</div><a class='ouvrir' href='/parcourir-sauvegarde'>📁 Choisir…</a><button class='second' "
                "name='action' value='Enregistrer le dossier'>✔ Enregistrer le dossier</button></form>"
              + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><button name='action' value='Sauvegarder'>💾 "
                "Sauvegarder maintenant</button><button class='danger' name='action' value='Restaurer'>↩ Restaurer la "
                "sauvegarde choisie…</button><label class='case'><input type='checkbox' name='confirme' value='1'> Je "
-               "remplace les données actuelles par cette sauvegarde</label></div>"
+               "remplace les données actuelles par cette sauvegarde</label><a class='ouvrir' "
+               "href='/dossier-sauvegardes'>📂 Ouvrir le dossier</a></div>"
              + f"<p class='{'erreur-texte' if retard else 'ok-texte'}'>{e(etat)}</p>"
              + tableau_section(Section("Sauvegardes", ["", "Date", "Sauvegarde", "Taille"], lignes, html={0, 1, 2, 3}))
              + "</form>")
@@ -532,10 +749,17 @@ def utilisateurs(ctx: Contexte) -> Reponse:
                             if cle in fonctions:
                                 pages_cochees.add(cle_page(page_el))
                     reg.definir_acces(profil, fonctions, sorted(pages_cochees))
-                    toutes = [a for liste in ACTIONS_FENETRES.values() for a in liste]
-                    reg.definir_fonctions(profil, [a for a in toutes if a not in set(ctx.req.champs("action_permise"))])
+                    toutes = [a for g, liste in ACTIONS_FENETRES.items() if g != "Général" for a in liste]
+                    refusees_ = [a for a in toutes if a not in set(ctx.req.champs("action_permise"))]
+                    # section « Droits » de page_utilisateurs : Supprimer et Lancer maintenant hors de l'arbre
+                    if not ctx.req.champ("supprimer_permis"):
+                        refusees_.append("Supprimer")
+                    if not ctx.req.champ("lancer_permis"):
+                        refusees_.append("Lancer le traitement maintenant")
+                    reg.definir_fonctions(profil, refusees_)
                     reg.definir_export(profil, bool(ctx.req.champ("export")))
                     reg.definir_tous_employes(profil, bool(ctx.req.champ("tous_employes")))
+                    reg.definir_points_vente(profil, None if ctx.req.champ("pdv_tous") else ctx.req.champs("pdv"))
                 reg.enregistrer()
             message = _message("Enregistré.")
         except ErreurUtilisateur as erreur:
@@ -572,13 +796,28 @@ def utilisateurs(ctx: Contexte) -> Reponse:
         actions = "".join(
             f"<div class='carte'><strong>{e(g)}</strong><br>" + "".join(
                 f"<label><input type='checkbox' name='action_permise' value='{e(a)}'{'' if a in refusees else ' checked'}>"
-                f" {e(a)}</label><br>" for a in liste) + "</div>" for g, liste in ACTIONS_FENETRES.items())
+                f" {e(a)}</label><br>" for a in liste) + "</div>" for g, liste in ACTIONS_FENETRES.items()
+            if g != "Général")
+        from ..points_vente import points_de_vente
+
+        codes = reg.points_vente.get(choisi)
+        pdv = (f"<label><input type='checkbox' name='pdv_tous' value='1'{' checked' if codes is None else ''}> Tous les "
+               "points de vente</label><br>" + "".join(
+                   f"<label class='retrait'><input type='checkbox' name='pdv' value='{e(x.code)}'"
+                   f"{' checked' if codes is None or x.code in codes else ''}> {e(x.libelle)}</label><br>"
+                   for x in points_de_vente(ctx.config)))
+        droits = "".join(
+            f"<label><input type='checkbox' name='{n}' value='1'{' checked' if ok else ''}> {e(lib)}</label><br>"
+            for n, lib, ok in (("export", "Exporter les données (Excel, CSV, PDF, images)", choisi not in reg.sans_export),
+                               ("supprimer_permis", "Supprimer des éléments", "Supprimer" not in refusees),
+                               ("lancer_permis", "Lancer maintenant (importer dans Sage)",
+                                "Lancer le traitement maintenant" not in refusees),
+                               ("tous_employes", "Voir tous les employés", choisi not in reg.limites)))
         acces = (f"<form method='post'>{csrf(ctx)}<input type='hidden' name='profil' value='{e(choisi)}'>"
                  f"<h2>Fonctions permises au profil « {e(choisi)} »</h2><div class='tuiles'>{arbre}</div>"
-                 f"<h2>Actions dans les fenêtres</h2><div class='tuiles'>{actions}</div><p><label><input type='checkbox' "
-                 f"name='export' value='1'{' checked' if choisi not in reg.sans_export else ''}> Exporter les données"
-                 f"</label> <label><input type='checkbox' name='tous_employes' value='1'"
-                 f"{' checked' if choisi not in reg.limites else ''}> Voir tous les employés</label></p><div "
+                 f"<h2>Actions dans les fenêtres</h2><div class='tuiles'>{actions}</div><div class='tuiles'><div "
+                 f"class='carte'><strong>Points de vente permis</strong><br>{pdv}</div><div class='carte'><strong>"
+                 f"Droits</strong><br>{droits}</div></div><div "
                  "class='boutons'><button class='accent' name='action' value='Accès'>💾 Enregistrer les accès</button></div>"
                  "</form>")
     choix_profil = "".join(f"<option{' selected' if p == choisi else ''}>{e(p)}</option>" for p in reg.profils

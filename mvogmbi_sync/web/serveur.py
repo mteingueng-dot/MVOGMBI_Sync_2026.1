@@ -195,6 +195,11 @@ class Application:
         if u is None or not u.actif or reg.bloque(u):
             self.sessions.fermer(session.jeton)
             return redirection("/connexion")
+        if req.methode == "GET" and "csrf" in req.query:  # filet : le jeton ne reste jamais dans une adresse
+            from urllib.parse import urlencode
+
+            reste = {k: v for k, v in req.query.items() if k != "csrf"}
+            return redirection(req.chemin + (f"?{urlencode(reste)}" if reste else ""))
         if req.methode == "POST" and not secrets.compare_digest(req.champ("csrf"), session.csrf):
             return Reponse(403, pages.page_simple("Formulaire refusé", "Le formulaire a expiré : rouvrez la page."))
         fonction = pages.trouver(req.chemin)

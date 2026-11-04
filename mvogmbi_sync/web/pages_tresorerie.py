@@ -6,6 +6,8 @@ confirmation par la personne, puis saisie dans Sage par l'application (Sage ferm
 from __future__ import annotations
 
 import time
+from urllib.parse import quote
+from pathlib import Path
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -56,11 +58,16 @@ def encaissements(ctx: Contexte) -> Reponse:
             total = argent(sum((d.montant for d in a_saisir), Decimal(0)))
             return taches.lancer(ctx, f"Encaissement de {len(a_saisir)} dépôt(s) ({total})", travail,
                                  f"/encaissements?du={debut}&au={fin}&pv={code}&calculer=1", sage=True)
-    barre = (f"<form class='barre-onglet' method='post'>{csrf(ctx)}{choix_pv}<div><label>Ventes du</label><input "
+    # barre en GET (jamais le jeton CSRF dans l'adresse) ; « Encaisser dans Sage » envoie son propre formulaire POST
+    barre = (f"<form method='post' id='encaisser'>{csrf(ctx)}<input type='hidden' name='du' value='{debut}'>"
+             f"<input type='hidden' name='au' value='{fin}'><input type='hidden' name='pv' value='{e(code)}'></form>"
+             f"<form class='barre-onglet' method='get'>{choix_pv}<div><label>Ventes du</label><input "
              f"type='date' name='du' value='{debut}'></div><div><label>au</label><input type='date' name='au' "
-             f"value='{fin}'></div><button formmethod='get' name='calculer' value='1'>⟳ Calculer les dépôts</button>"
-             "<button class='accent a-droite' name='action' value='Encaisser dans Sage'>🏦 Encaisser dans Sage</button>"
-             "</form>")
+             f"value='{fin}'></div><button name='calculer' value='1'>⟳ Calculer les dépôts</button>"
+             "<button class='accent a-droite' form='encaisser' name='action' value='Encaisser dans Sage'>🏦 Encaisser "
+             "dans Sage</button>"
+             + (f"<button class='second' name='excel' value='1'>📗 Excel</button>"
+                if ctx.reg.peut_exporter(ctx.u) else "") + "</form>")
     resume = "Cliquez sur « Calculer les dépôts » : lots de cartes Clover et état dans Sage."
     depots = None
     gardee = ctx.app.memoire.get(cle)
@@ -84,9 +91,25 @@ def encaissements(ctx: Contexte) -> Reponse:
             except (Exception, SystemExit) as erreur:  # noqa: BLE001
                 ctx.app.noter(f"Encaissements : {erreur!r}")
                 resume = f"✘ {erreur}"
+    if ctx.req.query.get("excel"):  # « 📗 Excel » : encaissements.ecrire_excel des dépôts calculés
+        if not ctx.reg.peut_exporter(ctx.u):
+            return Reponse(403, page(ctx, "Encaissements", "<p>Export non permis.</p>"))
+        if not depots:
+            message = _message(erreur="Calculez d'abord les dépôts.")
+        else:
+            import tempfile
+
+            from ..encaissements import ecrire_excel
+
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
+                chemin = Path(dossier) / "encaissements.xlsx"
+                ecrire_excel(depots, chemin, compte_depot)
+                contenu = chemin.read_bytes()
+            return Reponse(corps=contenu, type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           entetes={"Content-Disposition": "attachment; filename=\"encaissements.xlsx\""})
     corps = _entete_encaissements() + message + barre
-    if depots is None:
-        return Reponse(corps=page(ctx, "Encaissements", corps + f"<p class='note'>{e(resume)}</p>"))
+    calcule = depots is not None
+    depots = depots or []  # pas encore calculé : tableau et carte de saisie vides, comme la fenêtre Windows
     ordre = sorted(enumerate(depots), key=lambda x: (x[1].date, x[0]), reverse=True)  # plus récent en haut
     a_saisir = [d for d in depots if d.etat in (en.A_SAISIR, en.ECART, en.A_VERIFIER, en.A_RIA)]
     try:
@@ -94,6 +117,8 @@ def encaissements(ctx: Contexte) -> Reponse:
     except (KeyError, ValueError, IndexError):
         choisi = a_saisir[0] if a_saisir else None
     lien = f"du={debut}&amp;au={fin}&amp;pv={e(code)}"
+    if ctx.req.query.get("copier") and choisi:
+        return Reponse(corps=_texte_saisie(choisi, pdv, compte_depot), type="text/plain; charset=utf-8")
     lignes, classes = [], []
     for i, d in ordre:
         texte = f"{d.date} ({JOURS[d.date.weekday()]})" + (f"  •  {d.origine}" if d.origine else "") + \
@@ -107,12 +132,16 @@ def encaissements(ctx: Contexte) -> Reponse:
                            argent(l.montant_du) if l.montant_du is not None else "", e(l.etat)])
             classes.append(COULEURS.get(l.etat, "termine"))
     total = argent(sum((d.montant for d in depots), Decimal(0)))
-    resume = (f"{len(depots)} dépôt(s), {total} au total — {len(a_saisir)} à saisir dans Sage, "
-              f"{sum(1 for d in depots if d.etat == en.APPLIQUE)} déjà appliqué(s).")
+    if calcule:
+        resume = (f"{len(depots)} dépôt(s), {total} au total — {len(a_saisir)} à saisir dans Sage, "
+                  f"{sum(1 for d in depots if d.etat == en.APPLIQUE)} déjà appliqué(s).")
     corps += (f"<p class='note'>{e(resume)}</p>"
               + tableau_section(Section("Dépôts et factures", ["Date du dépôt / facture", "Montant", "Montant dû (Sage)",
                                                                "État"], lignes, classes=classes, html={0, 1, 2, 3}))
-              + "<div class='carte'><h2>Saisie dans Sage (Encaissements)</h2><pre class='saisie'>"
+              + "<div class='carte'><div class='barre-onglet'><h2>Saisie dans Sage (Encaissements)</h2>"
+              + (f"<a class='ouvrir a-droite' href='?{lien}&amp;choix={depots.index(choisi)}&amp;copier=1'>📋 Copier"
+                 "</a>" if choisi else "<span class='ouvrir a-droite'>📋 Copier</span>")
+              + "</div><pre class='saisie'>"
               + e(_texte_saisie(choisi, pdv, compte_depot) if choisi else "Sélectionnez un dépôt dans le tableau.")
               + "</pre></div><p class='note'>« Encaisser dans Sage » : Sage doit être fermé sur le serveur ; "
                 "l'application l'ouvre elle-même.</p>")
@@ -167,7 +196,7 @@ def paiements(ctx: Contexte) -> Reponse:
     except (TypeError, ValueError):
         rang = None
     ouvertes, noms = (ctx.app.memoire.get("paiements_sage") or (0, ([], [])))[1]
-    retour = f"/paiements-fournisseurs?depuis={depuis}&au={au}&filtre={filtre}"
+    retour = f"/paiements-fournisseurs?depuis={depuis}&au={au}&filtre={quote(filtre)}"
     message = ""
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
@@ -233,7 +262,7 @@ def paiements(ctx: Contexte) -> Reponse:
     registre = pf.RegistrePaiements(ctx.racine)
     visibles = [(n, x) for n, x in enumerate(registre.paiements)
                 if depuis.isoformat() <= x.avis.date_virement <= au.isoformat()]
-    lien = f"depuis={depuis}&amp;au={au}&amp;filtre={e(filtre)}"
+    lien = f"depuis={depuis}&amp;au={au}&amp;filtre={e(quote(filtre))}"
     lignes, classes = [], []
     for n, x in sorted(visibles, key=lambda v: (v[1].avis.date_virement, v[0]), reverse=True):  # plus récent en haut
         if filtre == "À traiter" and x.etat not in (pf.A_RELIER, pf.PROPOSE, pf.CONFIRME):
@@ -253,12 +282,14 @@ def paiements(ctx: Contexte) -> Reponse:
         resume += "   •   cliquez sur « Actualiser » pour lire les avis et les factures impayées de Sage"
     options = "".join(f"<option{' selected' if f == filtre else ''}>{e(f)}</option>"
                       for f in ["À traiter", "Tous"] + list(pf.ETATS))
-    barre = (f"<form class='barre-onglet' method='post'>{csrf(ctx)}<div><label>Lire depuis le</label><input "
-             f"type='date' name='depuis' value='{depuis}'></div><div><label>au</label><input type='date' name='au' "
-             f"value='{au}'></div><button name='action' value='Actualiser'>🔄 Actualiser</button><div><label>Afficher :"
-             f"</label><select name='filtre'>{options}</select></div><button class='second' formmethod='get'>Afficher"
-             "</button><button class='accent a-droite' name='action' value='Payer dans Sage'>💸 Payer dans Sage"
-             "</button></form>")
+    barre = (f"<form method='post' id='paiements-action'>{csrf(ctx)}</form>"  # jeton jamais dans une adresse
+             f"<form class='barre-onglet' method='get'><div><label>Lire depuis le</label><input "
+             f"type='date' name='depuis' value='{depuis}' form='paiements-action'></div><div><label>au</label><input "
+             f"type='date' name='au' value='{au}' form='paiements-action'></div><button form='paiements-action' "
+             "name='action' value='Actualiser'>🔄 Actualiser</button><div><label>Afficher :"
+             f"</label><select name='filtre'>{options}</select></div><button class='second'>Afficher"
+             "</button><button class='accent a-droite' form='paiements-action' name='action' value='Payer dans Sage'>"
+             "💸 Payer dans Sage</button></form>")
     corps = ("<p class='sous-titre'>💸 Paiements fournisseurs — virements Interac reliés aux factures fournisseurs et "
              "saisis dans Sage</p>" + message + barre + f"<p class='note'>{e(resume)}</p>"
              + tableau_section(Section("Virements Interac", ["Date", "Bénéficiaire", "Montant", "Message",

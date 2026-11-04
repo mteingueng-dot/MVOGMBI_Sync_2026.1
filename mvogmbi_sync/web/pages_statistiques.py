@@ -467,9 +467,16 @@ def statistiques(ctx: Contexte) -> Reponse:
     periodes = "".join(f"<option{' selected' if p == nom_periode else ''}>{e(p)}</option>"
                        for p in sc.PERIODES + ["Personnalisée"])
     cache = "".join(f"<input type='hidden' name='{k}' value='{e(q[k])}'>" for k in ("vue", "section") if k in q)
-    barre = (f"<form class='barre-stats' method='get'>{cache}<div><label>Période</label><select name='periode'>{periodes}"
-             f"</select></div><div><label>Du</label><input type='date' name='du' value='{du}'></div><div><label>Au"
-             f"</label><input type='date' name='au' value='{au}'></div>")
+    # « Journée en cours : actualiser chaque minute » (cochée par défaut, comme Windows) : rechargement par balise meta
+    auto = q.get("auto", "1") == "1"
+    pdf = ("" if not ctx.reg.peut_exporter(ctx.u) else
+           f"<a class='ouvrir' href='?{e(urlencode({**q, 'pdf': '1'}))}'>📕 PDF de la page</a>")
+    barre = (f"<form class='barre-stats' method='get'>{cache}<div class='barre-onglet'><div><label>Période</label><select "
+             f"name='periode'>{periodes}</select></div><div><label>Du</label><input type='date' name='du' value='{du}'>"
+             f"</div><div><label>Au</label><input type='date' name='au' value='{au}'></div><button name='actualiser' "
+             "value='1'>🔄 Actualiser</button><input type='hidden' name='auto' value='0'><label class='case'><input "
+             f"type='checkbox' name='auto' value='1'{' checked' if auto else ''}> Journée en cours : actualiser chaque "
+             f"minute</label>{pdf}</div><div class='barre-onglet'><strong>Filtrer :</strong>")
     message = ""
     try:
         b = _brut(ctx, du, au, nom_periode)
@@ -486,8 +493,9 @@ def statistiques(ctx: Contexte) -> Reponse:
         ctx.app.noter(f"Statistiques : {erreur!r}")
         b, r = None, None
         message = "<p class='erreur'>Clover ne répond pas pour l'instant.</p>"
-    barre += ("<button>Afficher</button>" + (f"<a class='ouvrir' href='?{e(urlencode({k: v for k, v in q.items() if k not in FILTRES}))}'>"
-                                              "Effacer les filtres</a>" if filtres and not limite else "") + "</form>")
+    effacer = urlencode({k: v for k, v in q.items() if k not in FILTRES})
+    barre += ("<button>✔ Appliquer</button>" + ("" if limite else f"<a class='ouvrir' href='?{e(effacer)}'>✖ Effacer</a>")
+              + "</div></form>")
     etat = ""
     if r:
         etat = (f"<p class='note'>Mis à jour à {datetime.now():%H:%M} — variations par rapport à {e(r['libelle'])}."
@@ -514,9 +522,46 @@ def statistiques(ctx: Contexte) -> Reponse:
     q_nav = {k: v for k, v in q.items() if k not in ("vue", "section")}
     from .pages_rapports_web import onglets
 
+    if q.get("pdf") and ctx.reg.peut_exporter(ctx.u):  # PageRapports.pdf_page : état affiché, période et filtres
+        return _pdf_page(ctx, vue, du, au, filtres, etat + contenu)
     corps = (onglets("Statistiques Clover", ctx) + barre + message + etat + "<div class='corps-stats'>" + _navigation(q_nav, vue, section, limite)
              + f"<div class='contenu-stats'>{contenu}</div></div>")
-    return Reponse(corps=page(ctx, "Statistiques Clover", corps))
+    html = page(ctx, "Statistiques Clover", corps)
+    if auto and au >= date.today():
+        html = html.replace("<head>", "<head><meta http-equiv='refresh' content='60'>", 1)
+    return Reponse(corps=html)
+
+
+def _pdf_page(ctx: Contexte, vue: str, du, au, filtres: dict, contenu: str) -> Reponse:
+    """« 📕 PDF de la page » : graphiques (SVG) et tableaux de l'état, période et filtres en sous-titre, en-tête de
+    l'entreprise ; mis en page par Edge (export_tableau.pdf_depuis_html), comme Windows."""
+    import tempfile
+    from pathlib import Path
+    from urllib.parse import quote
+
+    from .. import export_tableau
+    from ..export_tableau import entete_html, pdf_depuis_html
+    from .export_web import STYLE_EXPORT
+    from .pages import STYLE
+    from .style_windows import STYLE_WINDOWS
+
+    libelle = next((l for _i, _s, etats in NAVIGATION for l, c in etats if c == vue), vue)
+    titre = f"Statistiques Clover — {libelle}"
+    sous_titre = f"Du {du} au {au}" + (" · " + ", ".join(f"{k} = {v}" for k, v in filtres.items()) if filtres else "")
+    export_tableau.RACINE_ENTETE = export_tableau.RACINE_ENTETE or ctx.racine
+    try:
+        tete = entete_html() + f"<h1>{e(titre)}</h1>"
+    except Exception:  # noqa: BLE001 — sans en-tête Clover
+        tete = f"<h1>{e(titre)}</h1>"
+    html = (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'><title>{e(titre)}</title><style>{STYLE}"
+            f"{STYLE_STATS}{STYLE_WINDOWS}{STYLE_EXPORT} .menu-export {{ display: none; }} body {{ background: #fff; }}"
+            f"</style></head><body>{tete}<p class='note'>{e(sous_titre)}</p>{contenu}</body></html>")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
+        chemin = Path(dossier) / "page.pdf"
+        pdf_depuis_html(html, chemin)
+        octets = chemin.read_bytes()
+    return Reponse(corps=octets, type="application/pdf",
+                   entetes={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(titre + '.pdf')}"})
 
 
 def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> str:

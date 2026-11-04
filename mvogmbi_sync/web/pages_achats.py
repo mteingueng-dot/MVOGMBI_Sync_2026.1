@@ -73,17 +73,9 @@ def bons(ctx: Contexte) -> Reponse:
     if action:
         try:
             if action == "Proposer":
-                jours = max(7, min(28, int(ctx.req.champ("jours") or 14)))
+                from .serveur import redirection
 
-                def proposer(journal):
-                    journal("Lecture des ventes Clover, du stock et des derniers achats dans Sage…")
-                    propositions = bc.lire(ctx.racine, ctx.config, jours)
-                    ctx.app.memoire["propositions"] = (time.time(), propositions)
-                    a_commander = [x for x in propositions if x.permis]
-                    return [f"{len(a_commander)} article(s) à commander chez "
-                            f"{len({x.fournisseur for x in a_commander})} fournisseur(s)."]
-
-                return taches.lancer(ctx, f"Proposition des commandes ({jours} jours)", proposer, "/bons-proposition")
+                return redirection(f"/bons-proposition?jours={int(ctx.req.champ('jours') or 14)}&actualiser=1")
             if action in ("Créer le bon de commande", "Enregistrer le bon"):
                 message = _enregistrer_bon(ctx, b if action == "Enregistrer le bon" else None)
                 op = ""
@@ -174,7 +166,7 @@ def bons(ctx: Contexte) -> Reponse:
              + "</form>"
              + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<div><label>Couvrir (jours de ventes)</label><select "
                f"name='jours'>{jours}</select></div><button name='action' value='Proposer'>🧮 Proposer les commandes…"
-               "</button><a class='ouvrir' href='/bons-proposition'>Voir la proposition</a></form>" + bas)
+               "</button></form>" + bas)
     return Reponse(corps=page(ctx, "Bons de commande", corps))
 
 
@@ -241,44 +233,67 @@ def _enregistrer_bon(ctx: Contexte, b) -> str:
 
 
 def proposition(ctx: Contexte) -> Reponse:
+    """Comme fenetre_bons_commande.ouvrir (FenetreACocher + « Couvrir … jours de ventes ») : articles à commander
+    regroupés par article Sage, fournisseur et prix du dernier achat ; « Créer les bons de commande » (un bon par
+    fournisseur, en PDF)."""
     from .. import bons_commande as bc
+    from ..fenetre_bons_commande import HORIZONS
+    from .a_cocher import choisies, page_a_cocher
+    from . import taches
 
-    propositions = (ctx.app.memoire.get("propositions") or (0, []))[1]
-    message = ""
-    if ctx.req.methode == "POST" and propositions:
-        choisis = set(ctx.req.champs("choix"))
-        retenues = [p for k, p in enumerate(propositions) if str(k) in choisis and p.permis]
+    try:
+        jours = int(ctx.req.query.get("jours") or ctx.req.champ("jours") or 14)
+    except ValueError:
+        jours = 14
+    jours = jours if jours in HORIZONS else 14
+    gardee = ctx.app.memoire.get("propositions")
+    if not gardee or gardee[2] != jours or ctx.req.query.get("actualiser"):
+        def lire(journal):  # ventes Clover, stock et derniers achats : quelques secondes
+            journal("Lecture des ventes Clover, du stock et des derniers achats dans Sage…")
+            ctx.app.memoire["propositions"] = (time.time(), bc.lire(ctx.racine, ctx.config, jours), jours)
+            return ["Proposition prête."]
+
+        return taches.lancer(ctx, f"Proposition des commandes ({jours} jours)", lire, f"/bons-proposition?jours={jours}")
+    lignes = gardee[1]
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "lancer":
+        retenues = choisies(ctx, lignes)
         if not retenues:
-            message = _message(erreur="Cochez au moins un article à commander.")
-        else:
-            try:
-                with ctx.app.ecriture:
-                    crees = bc.creer_bons(ctx.racine, retenues)
-                ctx.app.memoire.pop("propositions", None)
-                return Reponse(corps=page(ctx, "Bons créés", _message(f"{len(crees)} bon(s) créé(s) : "
-                                                                       + ", ".join(b.numero for b in crees))
-                                          + "<p><a href='/bons-commande'>◀ Bons de commande</a></p>"))
-            except RuntimeError as erreur:
-                message = _message(erreur=str(erreur))
-    if not propositions:
-        return Reponse(corps=page(ctx, "Proposition des commandes", "<p>Aucune proposition : lancez « Proposer les "
-                                                                     "commandes… » depuis la liste des bons.</p>"
-                                                                     "<p><a href='/bons-commande'>◀ Bons de commande"
-                                                                     "</a></p>"))
-    rangees = []
-    for k, p in enumerate(propositions):
-        case = (f"<input type='checkbox' name='choix' value='{k}'{' checked' if p.cochee_par_defaut else ''}>"
-                if p.permis else "")
-        rangees.append([case, e(p.fournisseur), e(p.numero_sage), e(p.description), e(f"{p.stock:g}"),
-                        e(f"{p.vendu:g}"), e(f"{p.quantite:g}"), argent(p.prix) if p.prix is not None else "",
-                        argent(p.montant) if p.montant is not None else "", e(p.etat)])
-    corps = (message + f"<form method='post'>{csrf(ctx)}"
-             + tableau(["", "Fournisseur", "N° Sage", "Article", "Stock", "Vendu", "À commander", "Prix", "Montant",
-                        "État"], rangees, {4, 5, 6, 7, 8})
-             + "<div class='boutons'><button>Créer les bons (un par fournisseur)</button></div></form>"
-               "<p class='note'>Quantité et prix en unités du fournisseur (dernier achat). Articles non reliés à Sage "
-               "ou jamais achetés : visibles, non cochables.</p>")
-    return Reponse(corps=page(ctx, "Proposition des commandes", corps))
+            return Reponse(corps=page(ctx, "Bons de commande", _message(erreur="Cochez au moins une ligne.")))
+        try:
+            with ctx.app.ecriture:
+                bons_ = bc.creer_bons(ctx.racine, retenues)
+        except RuntimeError as erreur:
+            return Reponse(corps=page(ctx, "Bons de commande", _message(erreur=str(erreur))))
+        ctx.app.memoire.pop("propositions", None)
+        texte = (f"{len(bons_)} bon(s) de commande créé(s) : "
+                 + ", ".join(f"{b.numero} {b.fournisseur} ({argent(b.total)})" for b in bons_))
+        return Reponse(corps=page(ctx, "Bons de commande", _message(texte)
+                                  + "<p><a class='ouvrir' href='/bons-commande'>◀ Bons de commande</a> (« 📂 Ouvrir » "
+                                    "donne le PDF à envoyer au fournisseur)</p>"))
+    a_commander = [x for x in lignes if x.permis]
+    total = sum((x.montant or 0 for x in a_commander), 0)
+
+    def nombre(v):
+        return "" if v is None else f"{v:f}".replace(".", ",")
+
+    resume = (f"{len(a_commander)} article(s) à commander chez {len({x.fournisseur for x in a_commander})} "
+              f"fournisseur(s), {argent(total)} au dernier prix d'achat — règle : stock Clover − ventes des {jours} "
+              f"derniers jours <= 0 ; quantité = de quoi couvrir {jours} jours. Fournisseur et prix : dernier achat dans "
+              "Sage.")
+    options = "".join(f"<option{' selected' if h == jours else ''}>{h}</option>" for h in HORIZONS)
+    corps = page_a_cocher(
+        ctx, "/bons-proposition",
+        "Articles à commander (règle des prévisions), regroupés par article Sage, avec le fournisseur et le prix du "
+        "dernier achat dans Sage. Cochez les lignes : un bon par fournisseur est créé en PDF (rien n'est envoyé sans "
+        "vous).",
+        ["Fournisseur", "N° Sage", "Article Sage", "Articles Clover", "Stock", "Vendu", "À commander", "Prix",
+         "Montant", "Dernier achat", "État"], lignes,
+        lambda x: (x.fournisseur, x.numero_sage, x.description, x.articles_clover, nombre(x.stock), nombre(x.vendu),
+                   nombre(x.quantite), argent(x.prix) if x.prix is not None else "",
+                   argent(x.montant) if x.montant is not None else "", x.dernier_achat, x.etat),
+        resume, "Créer les bons de commande",
+        f"<div><label>Couvrir</label><select name='jours'>{options}</select> jours de ventes</div>", {"jours": jours})
+    return Reponse(corps=page(ctx, "Bons de commande", corps))
 
 
 def bon(ctx: Contexte) -> Reponse:
@@ -359,9 +374,28 @@ def retours(ctx: Contexte) -> Reponse:
     message = ""
     valeurs = {k: ctx.req.champ(k).strip() for k in ("fournisseur", "facture", "jour", "motif")}
     lignes_proposees = []
+    if ctx.req.methode == "POST":  # lignes déjà saisies (champs cachés, comme le tableau de la fenêtre Windows)
+        lignes_proposees = [rt.LigneRetour(a_.strip(), d_.strip(), q_.strip(), p_.strip(), t_)
+                            for a_, d_, q_, p_, t_ in zip(ctx.req.champs("l_article"), ctx.req.champs("l_description"),
+                                                          ctx.req.champs("l_quantite"), ctx.req.champs("l_prix"),
+                                                          ctx.req.champs("l_taxe"))]
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
         try:
+            if action == "Ajouter la ligne":
+                article, quantite = ctx.req.champ("article").strip(), ctx.req.champ("quantite").strip()
+                if not article or not quantite:
+                    raise ValueError("N° Sage et quantité obligatoires.")
+                if Decimal(quantite.replace(",", ".")) <= 0:
+                    raise ValueError("Quantité positive (unités Sage).")
+                Decimal((ctx.req.champ("prix") or "0").replace(",", "."))
+                lignes_proposees.append(rt.LigneRetour(article, ctx.req.champ("description").strip(), quantite,
+                                                       ctx.req.champ("prix").strip() or "0", ctx.req.champ("taxe")))
+            elif action == "Retirer la ligne":
+                k = ctx.req.champ("k")
+                if not k.isdigit() or int(k) >= len(lignes_proposees):
+                    raise ValueError("Choisissez une ligne.")
+                del lignes_proposees[int(k)]
             if action == "Importer dans Sage":
                 action_nom = "Importer un retour dans Sage"
                 if not action_permise(ctx, action_nom):
@@ -380,19 +414,19 @@ def retours(ctx: Contexte) -> Reponse:
                                               "saisissez les lignes.")
             if action == "Créer le retour":
                 lignes = []
-                for article, description, quantite, prix, taxe in zip(
-                        ctx.req.champs("article"), ctx.req.champs("description"), ctx.req.champs("quantite"),
-                        ctx.req.champs("prix"), ctx.req.champs("taxe")):
-                    if article.strip() and quantite.strip():
-                        lignes.append(rt.LigneRetour(article.strip(), description.strip(),
-                                                     str(Decimal(quantite.replace(",", "."))),
-                                                     str(Decimal(prix.replace(",", ".") or "0")), taxe))
+                for l_ in lignes_proposees:
+                    lignes.append(rt.LigneRetour(l_.numero_sage, l_.description,
+                                                 str(Decimal(str(l_.quantite).replace(",", "."))),
+                                                 str(Decimal(str(l_.prix).replace(",", ".") or "0")), l_.taxe))
+                if not lignes:
+                    raise ValueError("Ajoutez au moins une ligne.")
                 with ctx.app.ecriture:
                     r = rt.Registre(ctx.racine).ajouter(valeurs["fournisseur"], valeurs["facture"],
                                                         valeurs["jour"] or date.today().isoformat(), lignes,
                                                         valeurs["motif"], ctx.u.nom)
                 message = _message(f"Retour {r.numero} créé : « Importer dans Sage » pour l'appliquer.")
                 valeurs = {k: "" for k in valeurs}
+                lignes_proposees = []
         except (ValueError, InvalidOperation) as erreur:
             message = _message(erreur=str(erreur) or "Quantité ou prix invalide.")
     from .consultations import Section, tableau_section
@@ -405,28 +439,37 @@ def retours(ctx: Contexte) -> Reponse:
     classes = ["termine" if r.etat == rt.IMPORTE else "" for r in sorted(registre.retours, key=lambda r: r.cree,
                                                                            reverse=True)]
     liste = "<datalist id='fournisseurs'>" + "".join(f"<option value='{e(n)}'>" for n in noms) + "</datalist>"
-    rangees = []
-    for l in lignes_proposees + [rt.LigneRetour("", "", "", "")] * 4:
-        rangees.append(f"<tr><td><input name='article' value='{e(l.numero_sage)}' size='12'></td><td><input "
-                       f"name='description' value='{e(l.description)}' size='28'></td><td><input name='quantite' "
-                       f"value='{e(l.quantite)}' size='6'></td><td><input name='prix' value='{e(l.prix)}' size='8'></td>"
-                       f"<td><select name='taxe'>" + "".join(
-                           f"<option value='{x}'{' selected' if x == l.taxe else ''}>{x or 'Aucune'}</option>"
-                           for x in ("", "GQ", "G", "Q")) + "</select></td></tr>")
-    corps = (message + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><div><label>Fournisseur Sage *"
-             f"</label><input name='fournisseur' list='fournisseurs' value='{e(valeurs['fournisseur'])}' size='28'>"
-             f"{liste}</div><div><label>Facture d'origine *</label><input name='facture' "
+    from ..taxes import CHOIX
+
+    caches, rangees = "", []
+    for k, l in enumerate(lignes_proposees):
+        caches += "".join(f"<input type='hidden' name='l_{n}' value='{e(str(v))}'>" for n, v in (
+            ("article", l.numero_sage), ("description", l.description), ("quantite", l.quantite), ("prix", l.prix),
+            ("taxe", l.taxe)))
+        rangees.append([f"<input type='radio' name='k' value='{k}'>", e(l.numero_sage), e(l.description),
+                        e(str(l.quantite)), e(str(l.prix)), e(CHOIX.get(l.taxe, l.taxe))])
+    taxes = "".join(f"<option value='{e(x)}'>{e(v)}</option>" for x, v in CHOIX.items())
+    corps = (message + f"<form method='post'>{csrf(ctx)}{caches}<div class='barre-onglet'><div><label>Fournisseur Sage *"
+             f"</label><input name='fournisseur' list='fournisseurs' value='{e(valeurs['fournisseur'])}' size='24'>"
+             f"{liste}</div><div><label>N° de la facture d'origine *</label><input name='facture' "
              f"value='{e(valeurs['facture'])}' size='14'></div><div><label>Motif</label><input name='motif' "
              f"value='{e(valeurs['motif'])}' size='20'></div><div><label>Date</label><input type='date' name='jour' "
              f"value='{e(valeurs['jour'] or date.today().isoformat())}'></div><button class='second' name='action' "
              "value='Reprendre les lignes'>📥 Reprendre les lignes de la facture</button></div>"
-             "<div class='defile'><table><tr><th>N° Sage</th><th>Description</th><th>Quantité</th><th>Prix</th>"
-             f"<th>Taxes</th></tr>{''.join(rangees)}</table></div><div class='barre-onglet'><button name='action' "
-             "value='Créer le retour'>✔ Enregistrer le retour</button></div></form>"
+             "<div class='barre-onglet'><div><label>N° Sage</label><input name='article' size='12'></div><div><label>"
+             "Description</label><input name='description' size='26'></div><div><label>Quantité (unités Sage)</label>"
+             "<input name='quantite' size='8'></div><div><label>Prix Sage</label><input name='prix' size='9'></div>"
+             f"<div><label>Taxes</label><select name='taxe'>{taxes}</select></div><button name='action' "
+             "value='Ajouter la ligne'>➕ Ajouter la ligne</button><button class='second' name='action' "
+             "value='Retirer la ligne'>✖ Retirer la ligne</button></div>"
+             + tableau_section(Section("Lignes du retour", ["", "N° Sage", "Description", "Quantité", "Prix Sage",
+                                                           "Taxes"], rangees, html=set(range(6))))
+             + "<div class='barre-onglet'><button name='action' value='Créer le retour'>✔ Enregistrer le retour"
+               "</button></div></form>"
              + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><button class='second' name='action' "
                "value='Importer dans Sage'>📤 Importer le retour choisi dans Sage</button></div>"
-               "<p class='note'>Le retour est importé dans Sage comme une facture d'achat négative (« R-n° de facture ») ;"
-               " le stock Clover des articles reliés diminue.</p>"
+               "<div class='ligne-etat'>Le retour est importé dans Sage comme une facture d'achat négative (« R-n° de "
+               "facture ») ; le stock Clover des articles reliés diminue.</div>"
              + tableau_section(Section("Retours", ["", "Date", "N°", "Fournisseur", "Facture d'origine", "Lignes",
                                                   "Montant", "État", "Messages"], lignes, classes=classes,
                                        html=set(range(9))))

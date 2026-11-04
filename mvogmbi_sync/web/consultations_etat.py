@@ -213,9 +213,5 @@ CONSULTATIONS_ETAT = [
                  sans_sage=True, choix={"annee": ("Année", ANNEES)}, defauts={"annee": str(date.today().year)}),
     Consultation("/main-oeuvre", "Coût de la main-d'œuvre", "rapprochement", ("periode",), _main_oeuvre, "", "👷",
                  "Paie", sans_sage=True, defauts={"du": date.today() - timedelta(days=28),
-                                                  "au": date.today() + timedelta(days=13)}),
-    Consultation("/budget", "Budget et écarts", "rapprochement", ("mois",), _budget, "", "📐", "Comptabilité"),
-    Consultation("/archives-fournisseurs", "Factures fournisseurs archivées", "rapports", ("texte",), _archives,
-                 "Factures fournisseurs importées dans Sage, avec leurs lignes, rangées par année.", "🗄", "Fournisseur",
-                 sans_sage=True),
+                                                  "au": date.today() + timedelta(days=13)}, bouton="🔍 Afficher"),
 ]

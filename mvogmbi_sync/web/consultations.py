@@ -48,6 +48,7 @@ class Consultation:
     sans_sage: bool = False
     defauts: dict = field(default_factory=dict)
     choix: dict = field(default_factory=dict)  # filtre -> (libellé, valeurs) : liste de choix
+    bouton: str = "🔄 Actualiser"  # bouton de la barre, comme la fenêtre Windows (« 🔍 Calculer », « 🔍 Vérifier »)
 
 
 # --------------------------------------------------------------------------------------------- outils
@@ -401,21 +402,29 @@ def _formulaire(ctx: Contexte, c: Consultation, v: dict) -> str:
         coche = " checked" if v.get("stock") else ""
         champs.append(f"<div><label><input type='checkbox' name='stock' value='1'{coche}> Seulement les articles en "
                       "stock</label></div>")
-    if "source" in f:
-        champs.append(f"<div><label>Source</label><input name='source' value='{e(v.get('source', ''))}' size='14'></div>")
+    if "source" in f:  # FenetreJournalOperations : liste des sources (Toutes + celles du journal)
+        try:
+            from .. import journal_operations as jo
+
+            sources = sorted({o.source for o in jo.lire(ctx.racine)})
+        except Exception:  # noqa: BLE001
+            sources = []
+        options = "<option value=''>Toutes</option>" + "".join(
+            f"<option{' selected' if x == v.get('source') else ''}>{e(x)}</option>" for x in sources)
+        champs.append(f"<div><label>Source</label><select name='source'>{options}</select></div>")
     if "texte" in f:
         champs.append(f"<div><label>Rechercher :</label><input name='texte' value='{e(v.get('texte', ''))}' "
                       "size='24'></div>")
     return (f"<form class='barre-onglet' method='get'>{''.join(champs)}<input type='hidden' name='voir' value='1'>"
-            "<button type='submit' name='actualiser' value='1'>🔄 Actualiser</button></form>")
+            f"<button type='submit' name='actualiser' value='1'>{e(c.bouton)}</button></form>")
 
 
 # listes de fenetre_gestion.ouvrir_liste : genre (fiches.ouvrir_fiche) et page web de « ➕ Ajouter »
-LISTES = {"/clients": ("clients", ""), "/fournisseurs-liste": ("fournisseurs", ""),
+LISTES = {"/clients": ("clients", "/client-nouveau"), "/fournisseurs-liste": ("fournisseurs", "/fournisseur-nouveau"),
           "/articles": ("articles", "/creer-article"), "/livre-inventaire": ("livre", "/creer-article"),
-          "/documents-vente": ("documents_vente", "/document/saisie?genre=facture"),
-          "/documents-achat": ("documents_achat", "/saisir-facture-achat"),
-          "/documents-stock": ("documents_stock", "/document/saisie?genre=stock")}
+          "/documents-vente": ("documents_vente", "/document/choisir?cote=vente"),
+          "/documents-achat": ("documents_achat", "/document/choisir?cote=achat"),
+          "/documents-stock": ("documents_stock", "/document/choisir?cote=stock")}
 MESSAGE_MODIFIER = ("Les fiches et les documents enregistrés dans Sage se modifient dans Sage. La fiche s'ouvre pour "
                     "consultation ; les documents saisis dans l'application se modifient dans leur liste (Vente, "
                     "Articles).")
@@ -540,6 +549,12 @@ def _liste_comme_windows(ctx: Contexte, c: Consultation, sections: list, v: dict
     if not choisi.isdigit() or int(choisi) >= len(s0.lignes):
         return html + "<p class='erreur-texte'>Choisissez une ligne dans la liste.</p>"
     ligne = list(s0.lignes[int(choisi)])
+    if genre == "articles" and op in ("modifier", "supprimer"):  # Sage puis Clover, comme fenetre_fiches_articles
+        from .pages_fiches import formulaire_article
+
+        valeur = dict(zip(s0.entetes, ligne))
+        numero = str(valeur.get("N° Sage") or ligne[0])
+        return html + formulaire_article(ctx, op, numero, str(valeur.get("Description") or ""))
     message = {"modifier": MESSAGE_MODIFIER, "supprimer": MESSAGE_SUPPRIMER}.get(op, "")
     if op == "supprimer":
         return html + f"<p class='note'>{e(message)}</p>"
@@ -576,41 +591,32 @@ CONSULTATIONS = [
                  "Clients de Sage : montant dû, factures ouvertes, dernière facture.", "👥", "Vente"),
     Consultation("/documents-vente", "Liste des documents de vente", "encaissements", ("periode", "texte"),
                  _documents("ventes"), "Factures, encaissements et autres documents de vente de Sage.", "🗂", "Vente"),
-    Consultation("/interrogation-client", "Interrogation de compte client", "rapports", ("client", "periode"),
-                 _interrogation("client"), "", "🔎", "Vente", defauts={"du": AN}),
     Consultation("/fournisseurs-liste", "Liste des fournisseurs", "fournisseurs", ("texte",), _tiers("fournisseurs"),
                  "Fournisseurs de Sage avec le montant dû.", "🏭", "Fournisseur"),
     Consultation("/documents-achat", "Liste des documents d'achat", "fournisseurs", ("periode", "texte"),
                  _documents("achats"), "Factures, paiements et notes de crédit des fournisseurs dans Sage.", "🗂",
                  "Fournisseur"),
-    Consultation("/interrogation-fournisseur", "Interrogation de compte fournisseur", "rapports",
-                 ("fournisseur", "periode"), _interrogation("fournisseur"), "", "🔎", "Fournisseur",
-                 defauts={"du": AN}),
     Consultation("/articles", "Liste des articles", "correspondance", ("texte",), _articles,
                  "Articles de Sage : stock, CUMP, valeur, comptes et lien Clover.", "📚", "Articles"),
-    Consultation("/interrogation-article", "Interrogation de compte article", "rapports", ("article", "periode"),
-                 _interrogation("article"), "Ventes, achats et ajustements d'un article de Sage.", "🔎", "Articles",
-                 defauts={"du": AN}),
     Consultation("/documents-stock", "Liste des documents de stock", "correspondance", ("periode", "texte"),
                  _documents("stock"), "Ajustements d'inventaire et transferts entre emplacements de Sage.", "🗂",
                  "Stock"),
     Consultation("/livre-inventaire", "Livre d'inventaire", "correspondance", ("au", "texte"), _livre, "", "📒",
                  "Stock"),
     Consultation("/age-comptes", "Âge des comptes", "rapprochement", ("cote", "vue"), _age, "", "⏳", "Comptabilité"),
-    Consultation("/taxes", "Déclaration TPS/TVQ", "rapprochement", ("periode",), _taxes, "", "🧮", "Comptabilité"),
+    Consultation("/taxes", "Déclaration TPS/TVQ", "rapprochement", ("periode",), _taxes, "", "🧮", "Comptabilité", bouton="🔍 Calculer"),
     Consultation("/tresorerie", "Prévision de trésorerie", "rapprochement", (), _tresorerie,
                  "Solde du compte de dépôt, ventes prévues, factures fournisseurs et paies sur 4 semaines.", "💧",
-                 "Comptabilité"),
-    Consultation("/cloture", "Clôture du mois", "rapprochement", ("mois",), _cloture, "", "📅", "Comptabilité"),
-    Consultation("/plan-comptable", "Plan comptable", "rapprochement", ("texte",), _plan, "", "📒", "Comptabilité"),
-    Consultation("/retenues", "Retenues à la source", "rapprochement", ("mois",), _retenues, "", "🏛", "Paie"),
-    Consultation("/suivi-remises", "Suivi des remises", "rapprochement", (), _suivi_remises, "", "📬", "Paie"),
+                 "Comptabilité", bouton="🔍 Calculer"),
+    Consultation("/cloture", "Clôture du mois", "rapprochement", ("mois",), _cloture, "", "📅", "Comptabilité", bouton="🔍 Vérifier"),
+    Consultation("/retenues", "Retenues à la source", "rapprochement", ("mois",), _retenues, "", "🏛", "Paie", bouton="🔍 Calculer"),
+    Consultation("/suivi-remises", "Suivi des remises", "rapprochement", (), _suivi_remises, "", "📬", "Paie", bouton="🔍 Calculer"),
     Consultation("/audit", "Audit des actions", "utilisateurs", ("periode", "texte"), _audit,
                  "Chaque page, bouton et connexion, avec la personne et le poste.", "🛡", "Administration",
                  sans_sage=True, defauts={"du": date.today() - timedelta(days=7)}),
     Consultation("/journal-operations", "Journal des opérations", "utilisateurs", ("periode", "source", "texte"),
                  _journal, "Journaux et registres de l'application réunis.", "🧭", "Administration", sans_sage=True,
-                 defauts={"du": date.today() - timedelta(days=30)}),
+                 defauts={"du": date.today() - timedelta(days=30)}, bouton="🔍 Afficher"),
 ]
 
 from .consultations_etat import CONSULTATIONS_ETAT  # noqa: E402 — 3e vague (État, paie, budget)

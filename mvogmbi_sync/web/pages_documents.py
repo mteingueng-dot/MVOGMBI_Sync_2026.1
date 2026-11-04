@@ -223,7 +223,8 @@ def saisie(ctx: Contexte) -> Reponse:
     depots = dc.depots(ctx.config)
     message = ""
     valeurs = {"tiers": doc.tiers if doc else "", "jour": doc.date if doc else date.today().isoformat(),
-               "remarque": doc.remarque if doc else "", "sens": doc.sens if doc else dc.SORTIE,
+               "remarque": doc.remarque if doc else "", "sens": doc.sens if doc else (ctx.req.query.get("sens") if ctx.req.query.get("sens") in (dc.ENTREE, dc.SORTIE)
+                                           else dc.SORTIE),
                "depot": doc.depot if doc else ""}
     lignes_doc = [(l.numero_sage, l.description, l.quantite, l.prix, l.taxe or ("GQ" if l.taxable else ""))
                   for l in doc.lignes] if doc else []
@@ -350,11 +351,60 @@ def saisie(ctx: Contexte) -> Reponse:
     return Reponse(corps=page(ctx, titre, corps))
 
 
+def choisir_type(ctx: Contexte) -> Reponse:
+    """Fenêtre « Ajouter un document » de Windows (fenetre_chaine.choisir) : type à choisir, puis la saisie, la page
+    ou la fenêtre qui le crée (FenetreDocumentsChaine.ajouter)."""
+    from urllib.parse import quote
+
+    from .. import documents as dc
+    from ..fenetre_chaine import STOCK_ENTREE, STOCK_INVENTAIRE, STOCK_PERTE, STOCK_TOURNANT, STOCK_TRANSFERT, TYPES_STOCK
+    from .serveur import redirection
+
+    cote = ctx.req.query.get("cote") or ctx.req.champ("cote")
+    cote = cote if cote in ("vente", "achat", "stock") else "vente"
+    if not _permis(ctx, cote):
+        return _refus(ctx)
+    retour = {"vente": "/documents-vente", "achat": "/documents-achat", "stock": "/documents-stock"}[cote]
+    if cote == "stock":
+        choix = [(x, x) for x in TYPES_STOCK]
+        question = "Quel type de document de stock voulez-vous ajouter ?"
+    else:
+        choix = [(g, dc.libelle(g)) for g in (dc.TYPES_VENTE if cote == "vente" else dc.TYPES_ACHAT)]
+        question = "Quel type de document voulez-vous ajouter ?"
+    if ctx.req.methode == "POST":
+        if ctx.req.champ("action") != "OK":
+            return redirection(retour)
+        genre = ctx.req.champ("type")
+        if cote == "stock":
+            pages_ = {STOCK_TRANSFERT: "/transferts", STOCK_PERTE: "/pertes", STOCK_INVENTAIRE: "/inventaire",
+                      STOCK_TOURNANT: "/inventaire-tournant"}
+            if genre in pages_:
+                return redirection(pages_[genre])
+            return redirection(f"/document/saisie?genre={dc.STOCK}&sens="
+                               + quote(dc.ENTREE if genre == STOCK_ENTREE else dc.SORTIE))
+        if genre == dc.COMMANDE_ACHAT:
+            return redirection("/bons-commande?op=ajouter")
+        if genre == dc.FACTURE_ACHAT:
+            return redirection("/saisir-facture-achat")
+        if genre == dc.FACTURE_RETOUR_ACHAT:
+            return redirection("/retours")
+        if genre in dict(choix):
+            return redirection(f"/document/saisie?genre={quote(genre)}")
+    radios = "".join(f"<label class='choix-radio'><input type='radio' name='type' value='{e(k)}'"
+                     f"{' checked' if n == 0 else ''}> {e(lib)}</label>" for n, (k, lib) in enumerate(choix))
+    corps = (f"<form method='post' class='carte fenetre-choix'>{csrf(ctx)}<input type='hidden' name='cote' "
+             f"value='{cote}'><h2>Ajouter un document</h2><p>{e(question)}</p>{radios}<div class='barre-onglet'>"
+             "<button class='a-droite' name='action' value='OK'>✔ OK</button><button class='second' name='action' "
+             "value='Annuler'>Annuler</button></div></form>")
+    return Reponse(corps=page(ctx, "Ajouter un document", corps))
+
+
 FONCTIONS = [
     Fonction("/documents", "Documents saisis", None, documents, "🗂", "", toujours=True, menu=False),
     Fonction("/document", "Document", None, document, "🗂", "", toujours=True, menu=False),
     Fonction("/document/pdf", "Document (PDF)", None, document_pdf, "📄", "", toujours=True, menu=False),
     Fonction("/document/saisie", "Saisie d'un document", None, saisie, "✍", "", toujours=True, menu=False),
+    Fonction("/document/choisir", "Ajouter un document", None, choisir_type, "✍", "", toujours=True, menu=False),
 ]
 WEB = {"Saisir une facture de vente": "/document/saisie?genre=facture",
        "Commandes clients": "/documents?cote=vente&genre=commande",

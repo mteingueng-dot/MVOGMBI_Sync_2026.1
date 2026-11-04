@@ -508,19 +508,31 @@ def etiquettes(ctx: Contexte) -> Reponse:
 
 
 # --------------------------------------------------------------------------------------------- prix et marges
+def _montant(v) -> str:
+    return "" if v is None else f"{v:,.2f} $".replace(",", " ").replace(".", ",")
+
+
+def _pourcent(v) -> str:
+    return "" if v is None else f"{v} %".replace(".", ",")
+
+
 def prix_marges(ctx: Contexte) -> Reponse:
+    """Comme fenetre_prix_marges.ouvrir (FenetreACocher + « Marge minimale » et « Arrondi ») : articles Clover sous la
+    marge minimale, prix proposé coché, « Mettre à jour les prix dans Clover »."""
     from .. import prix_marges as pm
+    from .a_cocher import choisies, page_a_cocher
     from . import taches
 
+    q = ctx.req.query
     try:
-        marge = int(ctx.req.query.get("marge") or ctx.req.champ("marge") or 25)
+        marge = int(q.get("marge") or ctx.req.champ("marge") or 25)
     except ValueError:
         marge = 25
-    mode = ctx.req.query.get("arrondi") or ctx.req.champ("arrondi") or pm.ARRONDIS[0]
+    mode = q.get("arrondi") or ctx.req.champ("arrondi") or pm.ARRONDIS[0]
     cle = "prix_marges"
     gardee = ctx.app.memoire.get(cle)
-    try:
-        donnees = gardee[1] if gardee and time.time() - gardee[0] < 600 and not ctx.req.query.get("relire") else None
+    try:  # changer la marge ou l'arrondi recalcule sans relire Clover ni Sage (comme Windows)
+        donnees = gardee[1] if gardee and time.time() - gardee[0] < 600 and not q.get("actualiser") else None
         if donnees is None:
             donnees = pm.lire_donnees(ctx.racine, ctx.config)
             ctx.app.memoire[cle] = (time.time(), donnees)
@@ -528,86 +540,99 @@ def prix_marges(ctx: Contexte) -> Reponse:
         ctx.app.noter(f"Prix et marges : {erreur!r}")
         donnees = {"articles": [], "liens": {}, "couts": {}, "ventes": {}}
         ctx.absents.update({"Clover", "Sage"})
-    lignes, bonnes = pm.analyser(donnees["articles"], donnees["liens"], donnees["couts"], donnees["ventes"], marge, mode)
-    message = ""
-    if ctx.req.methode == "POST":
+    lignes, correctes = pm.analyser(donnees["articles"], donnees["liens"], donnees["couts"], donnees["ventes"], marge,
+                                    mode)
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "lancer":
         action_nom = "Changer les prix Clover (promotions)"
-        choisis = [lignes[int(k)] for k in ctx.req.champs("choix") if k.isdigit() and int(k) < len(lignes)
-                   and lignes[int(k)].permis]
+        retenues = choisies(ctx, lignes)
         if not action_permise(ctx, action_nom):
-            message = _message(erreur=f"Votre profil n'a pas le droit « {action_nom} ».")
-        elif not choisis:
-            message = _message(erreur="Cochez au moins un article.")
-        else:
-            def appliquer(journal):
-                resultats = pm.appliquer(ctx.racine, choisis)
-                ctx.app.memoire.pop(cle, None)
-                return [f"{l.nom} : {argent(l.prix)} → {argent(l.nouveau)}" + (f" ✘ {err}" if err else "")
-                        for l, err in resultats]
+            return Reponse(corps=page(ctx, "Prix et marges", _message(
+                erreur=f"Votre profil n'a pas le droit « {action_nom} ».")))
+        if not retenues:
+            return Reponse(corps=page(ctx, "Prix et marges", _message(erreur="Cochez au moins une ligne.")))
 
-            return taches.lancer(ctx, f"Nouveaux prix dans Clover ({len(choisis)})", appliquer, "/prix-marges")
-    rangees = [[f"<input type='checkbox' name='choix' value='{k}'{' checked' if l.cochee_par_defaut else ''}>"
-                if l.permis else "", e(l.nom), e(l.categorie), e(l.numero_sage),
-                argent(l.cout) if l.cout is not None else "", e(l.source_cout), argent(l.prix) if l.prix else "",
-                f"{l.marge} %".replace(".", ",") if l.marge is not None else "",
-                argent(l.nouveau) if l.nouveau else "", f"{l.marge_apres} %".replace(".", ",") if l.marge_apres
-                is not None else "", argent(l.effet) if l.effet is not None else "", e(l.etat), e(l.note)]
-               for k, l in enumerate(lignes)]
-    marges = "".join(f"<option{' selected' if m == marge else ''}>{m}</option>" for m in pm.MARGES)
-    arrondis = "".join(f"<option{' selected' if a == mode else ''}>{e(a)}</option>" for a in pm.ARRONDIS)
-    corps = (message + f"<form class='ligne' method='get'><div><label>Marge minimale (%)</label><select name='marge'>"
-             f"{marges}</select></div><div><label>Arrondi</label><select name='arrondi'>{arrondis}</select></div>"
-             "<button class='second'>Recalculer</button><a class='ouvrir' href='?relire=1'>Relire Clover et Sage</a>"
-             f"</form><p class='note'>{bonnes} article(s) déjà à la bonne marge. Coût = CUMP de Sage, sinon coût Clover ;"
-             " effet = (nouveau − prix) × quantité vendue en 90 jours.</p>"
-             + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='marge' value='{marge}'><input type='hidden' "
-               f"name='arrondi' value='{e(mode)}'>"
-             + tableau(["", "Article", "Catégorie", "N° Sage", "Coût", "Source", "Prix", "Marge", "Nouveau prix",
-                        "Marge après", "Effet 90 j", "État", "Note"], rangees, {4, 6, 7, 8, 9, 10})
-             + "<div class='boutons'><button>Écrire les nouveaux prix dans Clover</button></div></form>")
+        def appliquer(journal):
+            resultats = pm.appliquer(ctx.racine, retenues)
+            ctx.app.memoire.pop(cle, None)
+            erreurs = [(l, err) for l, err in resultats if err]
+            return ([f"{len(resultats) - len(erreurs)} prix mis à jour dans Clover (journal : "
+                     "donnees/journal_prix_clover.csv)."]
+                    + [f"Non mis à jour : {l.nom} : {err}" for l, err in erreurs[:15]])
+
+        return taches.lancer(ctx, f"Nouveaux prix dans Clover ({len(retenues)})", appliquer,
+                             f"/prix-marges?marge={marge}&arrondi={mode}")
+    sous = [l for l in lignes if l.etat == pm.SOUS_MARGE]
+    effet = sum((l.effet or 0 for l in sous), 0)
+    resume = (f"{len(sous)} article(s) sous {marge} % de marge (proposés cochés), "
+              f"{sum(1 for l in lignes if l.etat == pm.A_VERIFIER)} à vérifier, {correctes} à la bonne marge. Effet "
+              f"estimé des lignes proposées sur {pm.JOURS_VENTES} jours de ventes : {_montant(effet)}. Coût = CUMP de "
+              "Sage (sinon coût Clover) ; rien ne change dans Clover sans votre clic.")
+    marges = "".join(f"<option{' selected' if m_ == marge else ''}>{m_}</option>" for m_ in pm.MARGES)
+    arrondis = "".join(f"<option{' selected' if a_ == mode else ''}>{e(a_)}</option>" for a_ in pm.ARRONDIS)
+    reglages = (f"<div><label>Marge minimale</label><select name='marge'>{marges}</select> %</div><div><label>Arrondi"
+                f"</label><select name='arrondi'>{arrondis}</select></div>")
+    corps = page_a_cocher(
+        ctx, "/prix-marges",
+        "Articles Clover dont la marge (prix Clover − coût) est sous la marge minimale choisie, avec le prix proposé "
+        "(coût / (1 − marge), arrondi). Cochez les prix à changer, puis « Mettre à jour les prix dans Clover ».",
+        ["Article Clover", "Catégorie", "N° Sage", "Coût", "Source du coût", "Prix Clover", "Marge", "Prix proposé",
+         "Marge après", "Vendu 90 j", "Effet 90 j", "État", "Remarque"], lignes,
+        lambda l: (l.nom, l.categorie, l.numero_sage, _montant(l.cout), l.source_cout or "", _montant(l.prix),
+                   _pourcent(l.marge), _montant(l.nouveau), _pourcent(l.marge_apres),
+                   f"{l.vendu.normalize():f}".replace(".", ",") if l.vendu else "", _montant(l.effet), l.etat,
+                   l.note or ""),
+        resume, "Mettre à jour les prix dans Clover", reglages, {"marge": marge, "arrondi": mode})
     return Reponse(corps=page(ctx, "Prix et marges", corps))
 
 
 # --------------------------------------------------------------------------------------------- coûts Clover
 def couts_clover(ctx: Contexte) -> Reponse:
+    """Comme fenetre_couts.FenetreCoutsClover : le CUMP de Sage remplace le coût Clover des lignes cochées ; jamais de
+    valeur aberrante (non cochable)."""
     from .. import couts_clover as cc
+    from .a_cocher import choisies, page_a_cocher
     from . import taches
 
     cle = "couts_clover"
     gardee = ctx.app.memoire.get(cle)
     try:
-        if gardee and time.time() - gardee[0] < 600 and not ctx.req.query.get("relire"):
-            propositions, bons = gardee[1]
+        if gardee and time.time() - gardee[0] < 600 and not ctx.req.query.get("actualiser"):
+            propositions, a_jour = gardee[1]
         else:
-            propositions, bons = cc.lire(ctx.racine, ctx.config)
-            ctx.app.memoire[cle] = (time.time(), (propositions, bons))
+            propositions, a_jour = cc.lire(ctx.racine, ctx.config)
+            ctx.app.memoire[cle] = (time.time(), (propositions, a_jour))
     except (Exception, SystemExit) as erreur:  # noqa: BLE001 — tableau vide avec ses colonnes
         ctx.app.noter(f"Coûts Clover : {erreur!r}")
-        propositions, bons = [], 0
+        propositions, a_jour = [], 0
         ctx.absents.update({"Clover", "Sage"})
-    message = ""
-    if ctx.req.methode == "POST":
-        choisis = [propositions[int(k)] for k in ctx.req.champs("choix") if k.isdigit() and int(k) < len(propositions)
-                   and propositions[int(k)].permis]
-        if not choisis:
-            message = _message(erreur="Cochez au moins un article.")
-        else:
-            def appliquer(journal):
-                resultats = cc.appliquer(ctx.racine, choisis)
-                ctx.app.memoire.pop(cle, None)
-                return [f"{p.nom} : coût {argent(p.cump)}" + (f" ✘ {err}" if err else "") for p, err in resultats]
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "lancer":
+        retenues = choisies(ctx, propositions)
+        if not retenues:
+            return Reponse(corps=page(ctx, "Coûts Clover depuis Sage", _message(erreur="Cochez au moins une ligne.")))
 
-            return taches.lancer(ctx, f"Coûts Clover mis à jour ({len(choisis)})", appliquer, "/couts-clover")
-    rangees = [[f"<input type='checkbox' name='choix' value='{k}'{' checked' if p.cochee_par_defaut else ''}>"
-                if p.permis else "", e(p.nom), e(p.numero_sage), argent(p.prix) if p.prix is not None else "",
-                argent(p.cout_clover) if p.cout_clover is not None else "", argent(p.cump) if p.cump is not None else "",
-                e(p.etat), e(p.note)] for k, p in enumerate(propositions)]
-    corps = (message + f"<p class='note'>{bons} article(s) ont déjà le bon coût. <a href='?relire=1'>Relire</a></p>"
-             + f"<form method='post'>{csrf(ctx)}"
-             + tableau(["", "Article Clover", "N° Sage", "Prix", "Coût Clover", "CUMP Sage", "État", "Note"], rangees,
-                       {3, 4, 5})
-             + "<div class='boutons'><button>Mettre le CUMP de Sage comme coût Clover</button></div></form>"
-               "<p class='note'>Jamais de valeur aberrante (CUMP absent, plus de 5 × le prix, moins de 5 % du prix).</p>")
+        def appliquer(journal):
+            resultats = cc.appliquer(ctx.racine, retenues)
+            ctx.app.memoire.pop(cle, None)
+            erreurs = [f"{x.nom} : {err}" for x, err in resultats if err]
+            return [f"{len(resultats) - len(erreurs)} coût(s) Clover mis à jour."] + erreurs[:15]
+
+        return taches.lancer(ctx, f"Coûts Clover mis à jour ({len(retenues)})", appliquer, "/couts-clover")
+
+    def valeurs(x):
+        ecart = "" if x.cump is None or x.cout_clover is None else f"{x.cump - x.cout_clover:+.2f}".replace(".", ",")
+        marge = "" if not x.prix or x.cump is None else f"{(x.prix - x.cump) / x.prix * 100:.0f} %"
+        return (x.nom, x.numero_sage, _montant(x.prix), _montant(x.cout_clover), _montant(x.cump), ecart, marge, x.etat,
+                x.note or "")
+
+    corps = page_a_cocher(
+        ctx, "/couts-clover",
+        "Le coût moyen (CUMP) de l'article dans Sage remplace le coût Clover. Cochez les lignes à mettre à jour, puis "
+        "lancez la mise à jour. Jamais de valeur aberrante : CUMP absent, plus de 5 fois le prix de vente ou sous 5 % "
+        "du prix.",
+        ["Article Clover", "N° Sage", "Prix de vente", "Coût Clover", "Coût Sage (CUMP)", "Écart", "Marge", "État",
+         "Remarque"], propositions, valeurs,
+        f"{len(propositions)} article(s) proposé(s), {a_jour} déjà au coût Sage. Les valeurs aberrantes (grisées) ne "
+        "peuvent pas être cochées.", "Mettre à jour les coûts Clover")
     return Reponse(corps=page(ctx, "Coûts Clover depuis Sage", corps))
 
 
@@ -624,10 +649,23 @@ def comptes_categories(ctx: Contexte) -> Reponse:
     table = TableCategories(ctx.racine)
     choisi = ctx.req.champ("categorie") or ctx.req.query.get("categorie", "")
     op = ctx.req.query.get("op", "")
+    selection = bool(ctx.req.query.get("selection") or ctx.req.champ("selection"))  # ouverte par « Créer un article »
     message = ""
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
         try:
+            if action == "Valider la sélection":
+                c_ = table.lignes.get(choisi)
+                if c_ is None:
+                    raise ValueError("Choisissez la catégorie de l'article.")
+                if c_.problemes():
+                    raise ValueError(f"Comptes de « {choisi} » incomplets : " + " ; ".join(c_.problemes())
+                                     + ". Complétez-les puis « Appliquer ».")
+                from urllib.parse import quote
+
+                from .serveur import redirection
+
+                return redirection(f"/creer-article?reprendre=1&categorie={quote(choisi)}")
             if action == "Proposer depuis Sage":
                 def proposer(journal):
                     from ..fenetre_article import proposer_depuis_sage
@@ -693,7 +731,13 @@ def comptes_categories(ctx: Contexte) -> Reponse:
             "</div>" for k, lib in (("prefixe", "Préfixe"), ("actif", "Actif"), ("produits", "Produits"),
                                     ("cmv", "CMV"), ("ecart", "Écart")))
             + "<button class='second' name='action' value='Appliquer'>Appliquer</button>")
-    corps = (message + f"<form method='post'>{csrf(ctx)}"
+    choix_html = ("<input type='hidden' name='selection' value='1'><div class='ligne-etat'>Choisissez la catégorie de "
+                  "l'article (« Valider la sélection »). Comptes modifiables : « Appliquer » avant de valider.</div>"
+                  if selection else "")
+    valider = ("<div class='barre-onglet'><span class='a-droite'><a class='ouvrir' href='/creer-article?reprendre=1'>"
+               "✖ Fermer</a> <button name='action' value='Valider la sélection'>✔ Valider la sélection</button></span>"
+               "</div>" if selection else "")
+    corps = (message + f"<form method='post'>{csrf(ctx)}{choix_html}"
              + tableau_section(Section("Comptes Sage par catégorie Clover", ["", "Catégorie", "Préfixe", "Actif",
                                                                             "Produits", "CMV", "Écart"], lignes,
                                        classes=classes, html=set(range(7))))
@@ -705,7 +749,7 @@ def comptes_categories(ctx: Contexte) -> Reponse:
                "incomplets.</p><div class='barre-onglet'><button class='second' name='action' value='Proposer depuis "
                "Sage'>Proposer depuis Sage</button><a class='ouvrir' href='/comptes-categories?op=verifier'>🔎 Articles "
                "Sage à corriger…</a><button class='a-droite' name='action' value='Enregistrer'>Enregistrer</button>"
-               "</div></form>"
+               "</div>" + valider + "</form>"
              + (_articles_a_corriger(ctx) if op == "verifier" else ""))
     return Reponse(corps=page(ctx, "Comptes Sage par catégorie", corps))
 
@@ -771,6 +815,180 @@ def _corriger_comptes(ctx: Contexte):
                          "/comptes-categories?op=verifier", sage=True)
 
 
+# --------------------------------------------------------------------------------------------- plan comptable
+def plan_comptable(ctx: Contexte) -> Reponse:
+    """Comme fenetre_plan_comptable.FenetrePlanComptable : « Rechercher : », « 🔄 Actualiser », « ➕ Ajouter »,
+    « ✎ Modifier », « 🗑 Supprimer » ; tableau N° / Compte / Type / Classe / État (en vert : en-têtes et totaux, gris :
+    inactifs). Les changements passent dans Sage (robot_comptes, l'application ouvre Sage elle-même)."""
+    from .. import plan_comptable as pc
+    from .consultations import Section, tableau_section
+    from . import taches
+
+    action_nom = "Modifier le plan comptable"
+    q = ctx.req.query
+    texte = (q.get("texte") or ctx.req.champ("texte")).strip()
+    choisi = ctx.req.champ("numero") or q.get("numero", "")
+    op = ctx.req.champ("op") or q.get("op", "")
+    message = ""
+    try:
+        comptes = sorted(pc.comptes_connus(ctx.racine, ctx.config, forcer=bool(q.get("actualiser"))).values(),
+                         key=lambda c: int(c.numero))
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001
+        ctx.app.noter(f"Plan comptable : {erreur!r}")
+        comptes = []
+    if not comptes:
+        ctx.absents.add("Sage")
+    action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
+    if action in ("Créer dans Sage", "Enregistrer dans Sage", "Supprimer de Sage"):
+        from ..robot_comptes import DemandeCompte, appliquer
+
+        try:
+            if not action_permise(ctx, action_nom):
+                raise ValueError(f"Votre profil n'a pas le droit « {action_nom} ».")
+            if action == "Créer dans Sage":
+                numero, nom = ctx.req.champ("nouveau").strip(), " ".join(ctx.req.champ("nom").split())
+                if not numero.isdigit() or not nom:
+                    raise ValueError("N° (chiffres) et description obligatoires.")
+                if any(c.numero == numero for c in comptes):
+                    raise ValueError(f"Le compte {numero} existe déjà.")
+                demandes = [DemandeCompte("creer", numero, nom, "L" if ctx.req.champ("type") == "L" else "R")]
+            else:
+                c = next((x for x in comptes if x.numero == choisi), None)
+                if c is None:
+                    raise ValueError("Choisissez un compte dans la liste.")
+                if action == "Supprimer de Sage":
+                    if not action_permise(ctx, "Supprimer"):
+                        raise ValueError("Votre profil n'a pas le droit « Supprimer ».")
+                    demandes = [DemandeCompte("supprimer", c.numero)]
+                else:
+                    nom = " ".join(ctx.req.champ("nom").split())
+                    inactif = bool(ctx.req.champ("inactif"))
+                    demande = DemandeCompte("modifier", c.numero, nom if nom and nom != c.nom else "",
+                                            inactif=inactif if inactif != c.inactif else None)
+                    if not demande.nom and demande.inactif is None:
+                        raise ValueError("Rien n'a changé.")
+                    demandes = [demande]
+
+            def travail(journal):
+                resultats = appliquer(ctx.racine, ctx.config, demandes)
+                pc.comptes_connus(ctx.racine, ctx.config, forcer=True)
+                return [f"{r['numero']} : " + ("fait" if r["fait"] else "✘ " + " ; ".join(r["messages"]))
+                        for r in resultats]
+
+            return taches.lancer(ctx, f"Plan comptable : {demandes[0].numero}", travail, "/plan-comptable", sage=True)
+        except ValueError as erreur:
+            message = _message(erreur=str(erreur))
+    mot = texte.casefold()
+    visibles = [c for c in comptes if not mot or mot in f"{c.numero} {c.nom}".casefold()]
+    lignes = [[f"<input type='radio' name='numero' value='{e(c.numero)}'{' checked' if c.numero == choisi else ''}>",
+               e(c.numero), e(c.nom), e(pc.TYPES.get(c.type, c.type)), e(c.classe), "Inactif" if c.inactif else "Actif"]
+              for c in visibles]
+    classes = ["total" if c.type not in pc.DETAIL else ("termine" if c.inactif else "") for c in visibles]
+    bas = ""
+    c = next((x for x in comptes if x.numero == choisi), None)
+    if op == "ajouter":
+        bas = (f"<form method='post' class='carte'>{csrf(ctx)}<h2>Nouveau compte</h2><div class='ligne'><div><label>N° "
+               "de compte *</label><input name='nouveau' size='10'></div><div class='large'><label>Description *"
+               "</label><input name='nom' size='36'></div><div><label>Type</label><select name='type'><option "
+               "value='R'>Compte de groupe</option><option value='L'>Compte de sous-groupe</option></select></div>"
+               "<button name='action' value='Créer dans Sage'>✔ Créer dans Sage</button></div><p class='note'>Le n° "
+               "doit tomber dans la bonne section de Sage (ex. 5xxx entre l'en-tête et le total des charges).</p>"
+               "</form>")
+    elif op in ("modifier", "supprimer"):
+        if c is None:
+            bas = "<p class='erreur-texte'>Choisissez un compte dans la liste.</p>"
+        elif op == "modifier":
+            bas = (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='numero' "
+                   f"value='{e(c.numero)}'><h2>Compte {e(c.numero)}</h2><div class='ligne'><div class='large'><label>"
+                   f"Description du compte</label><input name='nom' value='{e(c.nom)}' size='40'></div><label "
+                   f"class='case'><input type='checkbox' name='inactif' value='1'{' checked' if c.inactif else ''}> "
+                   "Compte inactif</label><button name='action' value='Enregistrer dans Sage'>✔ Enregistrer dans Sage"
+                   "</button></div></form>")
+        else:
+            bas = (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='numero' "
+                   f"value='{e(c.numero)}'><p>Supprimer le compte {e(c.numero)} ({e(c.nom)}) de Sage ? Sage refuse un "
+                   "compte qui a des écritures ou un solde.</p><button class='danger' name='action' value='Supprimer de "
+                   "Sage'>🗑 Supprimer de Sage</button></form>")
+    corps = (message + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><div><label>Rechercher :</label>"
+             f"<input name='texte' value='{e(texte)}' size='26'></div><button class='second' name='op' value=''>🔍"
+             "</button><a class='ouvrir' href='/plan-comptable?actualiser=1'>🔄 Actualiser</a><button name='op' "
+             "value='ajouter'>➕ Ajouter</button><button class='second' name='op' value='modifier'>✎ Modifier</button>"
+             "<button class='danger' name='op' value='supprimer'>🗑 Supprimer</button></div>"
+             f"<p class='note'>{len(visibles)} compte(s). En vert : en-têtes et totaux (aucune écriture). Ajouter, "
+             "modifier ou supprimer : l'application ouvre Sage elle-même (Sage fermé sur le serveur).</p>"
+             + tableau_section(Section("Plan comptable", ["", "N°", "Compte", "Type", "Classe", "État"], lignes,
+                                       classes=classes, html=set(range(6))), limite=5000)
+             + "</form>" + bas)
+    return Reponse(corps=page(ctx, "Plan comptable", corps))
+
+
+# --------------------------------------------------------------------------------------------- budget
+def budget(ctx: Contexte) -> Reponse:
+    """Comme l'onglet « Budget et écarts » de fenetre_comptabilite : Mois, montant de chaque poste, « ✔ Enregistrer le
+    budget », « Croissance (%) » + « 💡 Proposer d'après l'an dernier », « 🔍 Comparer au réel » (réel lu dans Sage :
+    produits 4xxx, CMV 50xx, autres charges 51xx-59xx)."""
+    from .. import comptabilite as cp
+    from ..budget import ENTETES_BUDGET, POSTES, Budget, ecarts, proposer, reel
+    from ..fenetre_comptabilite import _mois_proposes
+    from .consultations import Section, lire_ou_vide, tableau_section
+    from .pages_rapports_web import onglets
+
+    mois_choix = _mois_proposes()
+    mois_texte = ctx.req.champ("mois") or ctx.req.query.get("mois") or mois_choix[1]
+    try:
+        annee, mois = (int(x) for x in mois_texte.split("-"))
+    except ValueError:
+        annee, mois = (int(x) for x in mois_choix[1].split("-"))
+        mois_texte = mois_choix[1]
+    registre = Budget(ctx.racine)
+    valeurs = {x: str(v).replace(".", ",") if v else "" for x, v in registre.mois(annee, mois).items()}
+    croissance = ctx.req.champ("croissance") or "5"
+    action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
+    etat, resultat = "Réel lu dans Sage (produits 4xxx, CMV 50xx, autres charges 51xx-59xx).", ""
+    if action == "Enregistrer le budget":
+        if not action_permise(ctx, "Enregistrer le budget"):
+            etat = "✘ Votre profil n'a pas le droit « Enregistrer le budget »."
+        else:
+            try:
+                nouveaux = {x: Decimal(ctx.req.champ(f"poste{k}").replace(" ", "").replace(",", ".") or 0)
+                            for k, x in enumerate(POSTES)}
+                with ctx.app.ecriture:
+                    Budget(ctx.racine).definir(annee, mois, nouveaux)
+                valeurs = {x: str(v).replace(".", ",") if v else "" for x, v in nouveaux.items()}
+                etat = f"✔ Budget de {mois_texte} enregistré."
+            except InvalidOperation:
+                etat = "✘ Montants en chiffres."
+    elif action == "Proposer d'après l'an dernier":
+        try:
+            taux = Decimal(croissance.replace(",", "."))
+        except InvalidOperation:
+            taux = Decimal(0)
+        lignes = lire_ou_vide(ctx, lambda b: cp.etat_resultats(b, annee, mois))
+        valeurs = {x: str(v).replace(".", ",") for x, v in proposer(reel(lignes, 3), taux).items()}
+        etat = f"Proposé d'après {annee - 1}-{mois:02d} : vérifiez puis « Enregistrer le budget »."
+    if action == "Comparer au réel" or ctx.req.query.get("comparer"):
+        reels = lire_ou_vide(ctx, lambda b: [reel(cp.etat_resultats(b, annee, m)) for m in range(1, mois + 1)])
+        budget_ = Budget(ctx.racine)
+        cumul_r = {x: sum((r[x] for r in reels), Decimal(0)) for x in POSTES}
+        cumul_b = {x: sum((budget_.mois(annee, m)[x] for m in range(1, mois + 1)), Decimal(0)) for x in POSTES}
+        resultat = tableau_section(Section(f"Budget et écarts de {mois_texte}", ENTETES_BUDGET,
+                                           ecarts(reels[-1] if reels else {x: Decimal(0) for x in POSTES},
+                                                  budget_.mois(annee, mois), cumul_r, cumul_b),
+                                           "Écart = réel − budget ; depuis janvier = cumul de l'année."))
+    options = "".join(f"<option{' selected' if x == mois_texte else ''}>{x}</option>" for x in mois_choix)
+    postes = "".join(f"<div><label>{e(x)}</label><input name='poste{k}' value='{e(valeurs.get(x, ''))}' size='10'>"
+                     "</div>" for k, x in enumerate(POSTES))
+    corps = (onglets("Budget et écarts", ctx) + "<div class='onglet-corps'>"
+             + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><div><label>Mois</label><select name='mois'>"
+               f"{options}</select></div>{postes}<button class='second' name='action' value='Enregistrer le budget'>✔ "
+               "Enregistrer le budget</button><div><label>Croissance (%)</label><input name='croissance' "
+               f"value='{e(croissance)}' size='5'></div><button class='second' name='action' value=\"Proposer d'après "
+               "l'an dernier\">💡 Proposer d'après l'an dernier</button><button name='action' value='Comparer au "
+               "réel'>🔍 Comparer au réel</button></div></form>"
+             + f"<p class='{'erreur-texte' if etat.startswith('✘') else 'note'}'>{e(etat)}</p>" + resultat + "</div>")
+    return Reponse(corps=page(ctx, "Comptabilité", corps))
+
+
 FONCTIONS = [
     Fonction("/pertes", "Pertes et démarque", "correspondance", pertes, "🗑", "Stock", menu=False),
     Fonction("/promotions", "Promotions", "correspondance", promotions, "🏷", "Articles", menu=False),
@@ -779,7 +997,10 @@ FONCTIONS = [
     Fonction("/couts-clover", "Coûts Clover depuis Sage", "correspondance", couts_clover, "💲", "Articles", menu=False),
     Fonction("/comptes-categories", "Comptes Sage par catégorie", "correspondance", comptes_categories, "🧾",
              "Comptabilité", menu=False),
+    Fonction("/plan-comptable", "Plan comptable", "rapprochement", plan_comptable, "📒", "Comptabilité", menu=False),
+    Fonction("/budget", "Budget et écarts", "rapprochement", budget, "📐", "Comptabilité", menu=False),
 ]
 WEB = {"Pertes et démarque": "/pertes", "Promotions": "/promotions", "Étiquettes de prix": "/etiquettes",
        "Prix et marges": "/prix-marges", "Coûts Clover depuis Sage": "/couts-clover",
-       "Comptes Sage par catégorie": "/comptes-categories"}
+       "Comptes Sage par catégorie": "/comptes-categories", "Plan comptable": "/plan-comptable",
+       "Budget et écarts": "/budget"}

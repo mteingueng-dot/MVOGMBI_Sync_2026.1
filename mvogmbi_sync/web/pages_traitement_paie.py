@@ -6,7 +6,7 @@ Mêmes règles : jamais de paie dans le futur, jamais deux fois la même paie, u
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import tempfile
 from datetime import date, timedelta
@@ -107,9 +107,12 @@ def traitement(ctx: Contexte) -> Reponse:
     vue = ctx.req.query.get("vue") or VUES[0]
     choix_vue = ("" if onglet == "validees" else "<div><label>Affichage</label><select name='vue'>" + "".join(
         f"<option{' selected' if v == vue else ''}>{e(v)}</option>" for v in VUES) + "</select></div>")
-    choix = (f"<form class='ligne' method='get'><input type='hidden' name='onglet' value='{e(onglet)}'><div><label>"
-             f"Période de paie</label><select name='periode'>{options}</select></div>{choix_vue}<button "
-             "class='second'>Afficher</button></form>")
+    choix = (f"<form class='barre-onglet' method='get'><input type='hidden' name='onglet' value='{e(onglet)}'><div>"
+             f"<label>Période de paie</label><select name='periode'>{options}</select></div>{choix_vue}<button "
+             "class='second'>🔄 Actualiser</button>"
+             + (f"<a class='ouvrir' href='/feuilles?debut={debut}'>✔ Approuver les feuilles de temps…</a><a "
+                f"class='ouvrir' href='/traitement-paie?onglet=validees&periode={debut}&op=traiter'>💵 Traiter la paie "
+                "dans Sage…</a>" if onglet == "validees" else "") + "</form>")
     if onglet == "validees":
         lignes = pa.validees(feuilles, extras)
         approuvees = [l for l in lignes if l[8] != pt.A_APPROUVER]
@@ -122,12 +125,13 @@ def traitement(ctx: Contexte) -> Reponse:
                                           f"{len(approuvees)} feuille(s) approuvée(s) ; les autres attendent "
                                           "l'approbation (Paie > Feuilles de temps).")])
                  + (_message(erreur="Sans lien avec Sage (ignorés) : " + ", ".join(sans_lien)) if sans_lien else "")
-                 + f"<form method='post' class='ligne'>{csrf(ctx)}<input type='hidden' name='periode' value='{debut}'>"
-                   "<input type='hidden' name='onglet' value='validees'>"
-                   f"<div><label>Date des chèques</label><input type='date' name='jour' value='{jour}' "
-                   f"max='{date.today()}'></div><button>Traiter la paie dans Sage</button></form><p class='note'>Sage "
-                   "doit être fermé sur le serveur : l'application l'ouvre elle-même. Une paie déjà traitée pour la "
-                   "période ne l'est jamais deux fois.</p>")
+                 + (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='periode' value='{debut}'>"
+                    "<input type='hidden' name='onglet' value='validees'><h2>Traiter la paie dans Sage</h2>"
+                    f"<div class='ligne'><div><label>Date des chèques</label><input type='date' name='jour' "
+                    f"value='{jour}' max='{date.today()}'></div><button>💵 Traiter la paie dans Sage</button></div>"
+                    "<p class='note'>Sage doit être fermé sur le serveur : l'application l'ouvre elle-même. Une paie "
+                    "déjà traitée pour la période ne l'est jamais deux fois.</p></form>"
+                    if ctx.req.query.get("op") == "traiter" or ctx.req.methode == "POST" else ""))
         return Reponse(corps=page(ctx, "Traitement de la paie", corps))
     planning = Planning(ctx.racine)
     if vue == VUES[1]:
@@ -162,17 +166,35 @@ def paies_sage(ctx: Contexte) -> Reponse:
         paies_annee = [p for p in _paies_annee(ctx, du.year) if p.jour <= au]
     except (Exception, SystemExit) as erreur:  # noqa: BLE001
         ctx.app.noter(f"Paies Sage : {erreur!r}")
-        return Reponse(corps=page(ctx, "Traitement de la paie", _onglets("Paies dans Sage") + _message(
-            erreur="Les paies se lisent dans Sage, qui ne répond pas sur le serveur pour l'instant.")))
+        paies_annee = []  # Sage absent : barre et tableau vides, comme Windows
+        ctx.absents.add("Sage")
     paies = [p for p in paies_annee if p.jour >= du]
     registre = pt.Registre(ctx.racine)
     message = ""
-    if ctx.req.methode == "POST":
+    action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
+    if action:
         choisies = [p for p in paies if str(p.ident) in set(ctx.req.champs("paie"))]
-        if not action_permise(ctx, ENVOYER):
+        if action in ("tout_imprimer",):
+            choisies = list(paies)
+        if not choisies:
+            message = _message(erreur="Choisissez une ou plusieurs paies dans la liste.")
+        elif action in ("imprimer", "tout_imprimer", "pdf"):
+            pages_ = [fiche_html(ctx, registre, pa.employe_de(p, registre.employes), p, paies_annee)
+                      for p in sorted(choisies, key=lambda p: (p.jour, p.employe))]
+            html = _une_page(pages_)
+            if action != "pdf":
+                return Reponse(corps=html, style_en_ligne=True)
+            from ..export_tableau import pdf_depuis_html
+
+            nom = choisies[0].employe if len(choisies) == 1 else f"{len(choisies)} employés"
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
+                chemin = Path(dossier) / "bulletins.pdf"
+                pdf_depuis_html(html, chemin)
+                contenu = chemin.read_bytes()
+            return Reponse(corps=contenu, type="application/pdf", entetes={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(f'Bulletins de paie {nom} {date.today()}.pdf')}"})
+        elif not action_permise(ctx, ENVOYER):
             message = _message(erreur=f"Votre profil n'a pas le droit « {ENVOYER} ».")
-        elif not choisies:
-            message = _message(erreur="Cochez une ou plusieurs paies.")
         else:
             envois = [(p, x) for p in choisies if (x := pa.employe_de(p, registre.employes)) and x.courriel]
             sans = [p.employe for p in choisies if not ((x := pa.employe_de(p, registre.employes)) and x.courriel)]
@@ -195,27 +217,51 @@ def paies_sage(ctx: Contexte) -> Reponse:
                         resultats.append(f"✘ {p.employe} : {exc}")
                 return resultats + ([f"Sans courriel (non envoyés) : {', '.join(sans)}"] if sans else [])
 
-            return taches.lancer(ctx, f"Bulletins de paie ({len(envois)})", envoyer, f"/paies-sage?du={du}&au={au}")
+            if not envois:
+                message = _message(erreur="Aucun employé choisi n'a de courriel : ajoutez-le dans « Employés et NIP » "
+                                          "(« Courriel… »). " + ", ".join(sans))
+            else:
+                return taches.lancer(ctx, f"Bulletins de paie ({len(envois)})", envoyer,
+                                     f"/paies-sage?du={du}&au={au}")
     deja = pa.bulletins_envoyes(ctx.racine)
+    choisies = set(ctx.req.champs("paie"))
     lignes = []
     for p in sorted(paies, key=lambda p: (p.jour, p.employe), reverse=True):
         x = pa.employe_de(p, registre.employes)
         lien = (f"<a href='/bulletin?employe={e(x.id)}&annee={p.jour.year}&paie={p.ident}'>{p.jour:%Y-%m-%d}</a>"
                 if x else f"{p.jour:%Y-%m-%d}")
-        lignes.append([f"<input type='checkbox' name='paie' value='{p.ident}'>", lien, e(p.source), e(p.employe),
+        lignes.append([f"<input type='checkbox' name='paie' value='{p.ident}'"
+                       f"{' checked' if str(p.ident) in choisies else ''}>", lien, e(p.source), e(p.employe),
                        argent(p.brut), argent(p.total_retenues), argent(p.net),
                        "envoyé" if pa.cle_bulletin(p) in deja else "", e(x.courriel if x else "")])
-    corps = (_onglets("Paies dans Sage") + message
-             + f"<form class='ligne' method='get'><div><label>Du</label><input type='date' name='du' value='{du}'></div>"
-               f"<div><label>Au</label><input type='date' name='au' value='{au}'></div><button class='second'>Afficher"
-               "</button></form>"
+    periode = _periodes(ctx)[1]
+    barre = (f"<form class='barre-onglet' method='get'><div><label>Du</label><input type='date' name='du' "
+             f"value='{du}'></div><div><label>au</label><input type='date' name='au' value='{au}'></div><button "
+             "class='second'>🔍 Lire les paies</button>"
+             + ("" if not ctx.voit_tous() else
+                f"<a class='ouvrir accent' href='/traitement-paie?onglet=validees&periode={periode}&op=traiter'>💵 Créer "
+                "les paies de la période dans Sage…</a>") + "</form>")
+    envoi = ("<button class='second' name='action' value='envoyer'>✉ Envoyer les bulletins par courriel…</button>"
+             if ctx.voit_tous() else "")
+    corps = (_onglets("Paies dans Sage") + message + barre
              + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='du' value='{du}'><input type='hidden' "
-               f"name='au' value='{au}'>"
+               f"name='au' value='{au}'><div class='barre-onglet'>"
+               "<button class='second' name='action' value='imprimer'>🖨 Imprimer les bulletins choisis</button>"
+               "<button class='second' name='action' value='tout_imprimer'>🖨 Imprimer tous les bulletins</button>"
+               f"{envoi}<button class='second' name='action' value='pdf'>📕 Bulletins en PDF…</button></div>"
              + tableau(["", "Date", "Source", "Employé", "Brut", "Retenues", "Net", "Bulletin", "Courriel"], lignes,
                        {4, 5, 6})
-             + "<div class='boutons'><button>Envoyer les bulletins cochés (chacun à son employé)</button></div></form>"
-               "<p class='note'>Cliquez sur une date pour le bulletin (imprimable par le navigateur).</p>")
+             + "</form><div class='ligne-etat'>Choisissez les dates puis « Lire les paies » ; cliquez sur une date : "
+               "bulletin de paie ; plusieurs paies : cochez-les.</div>")
     return Reponse(corps=page(ctx, "Traitement de la paie", corps))
+
+
+def _une_page(pages_: list[str]) -> str:
+    """FenetrePaie._page : une page HTML, une fiche par paie (saut de page entre deux), sans script."""
+    tete = pages_[0].split("<body>", 1)[0].replace(
+        "</head>", "<style>.saut-page { page-break-after: always; }</style></head>", 1)
+    corps = [x.split("<body>", 1)[1].rsplit("</body>", 1)[0] for x in pages_]
+    return tete + "<body>" + "<div class='saut-page'></div>".join(corps) + "</body></html>"
 
 
 def fin_annee(ctx: Contexte) -> Reponse:
@@ -233,54 +279,81 @@ def fin_annee(ctx: Contexte) -> Reponse:
         paies = _paies_annee(ctx, annee)
     except (Exception, SystemExit) as erreur:  # noqa: BLE001
         ctx.app.noter(f"Fin d'année : {erreur!r}")
-        return Reponse(corps=page(ctx, "Traitement de la paie", _onglets("Fin d'année (T4 / RL-1)") + _message(
-            erreur="Les paies se lisent dans Sage, qui ne répond pas sur le serveur pour l'instant.")))
+        paies = []
+        ctx.absents.add("Sage")
     registre = pt.Registre(ctx.racine)
     feuillets = fe.calculer(paies, annee, registre.employes)
-    if ctx.req.methode == "POST":
-        choisis = [f for f in feuillets if f.employe in set(ctx.req.champs("employe"))]
+    action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
+    message = ""
+    if action == "numero":
+        if not ctx.voit_tous():
+            message = _message(erreur="Votre profil ne permet pas de changer le n° d'employeur.")
+        else:
+            fe.definir_numero_employeur(ctx.racine, ctx.req.champ("numero").strip())
+            message = _message("N° d'employeur enregistré.")
+    elif action:
+        choisis = feuillets if action == "tout_imprimer" else [
+            f for f in feuillets if f.employe in set(ctx.req.champs("employe"))]
         if not choisis:
-            return Reponse(corps=page(ctx, "Traitement de la paie", _message(erreur="Cochez un ou plusieurs employés.")))
-        if ctx.req.champ("action") == "PDF":
+            message = _message(erreur="Choisissez un ou plusieurs employés dans la liste." if feuillets else
+                               "Cliquez d'abord sur « Calculer ».")
+        elif action in ("imprimer", "tout_imprimer", "pdf"):
             contenu = fe.pdf_officiels(choisis, entreprise(ctx.racine), fe.numero_employeur(ctx.racine),
                                        racine=ctx.racine, config_toml=ctx.config)
-            return Reponse(corps=contenu, type="application/pdf",
-                           entetes={"Content-Disposition": f"inline; filename=T4_RL-1_{annee}.pdf"})
-        if not action_permise(ctx, ENVOYER):
-            return Reponse(corps=page(ctx, "Traitement de la paie", _message(
-                erreur=f"Votre profil n'a pas le droit « {ENVOYER} ».")))
+            nom = choisis[0].employe if len(choisis) == 1 else f"{len(choisis)} employés"
+            dispo = "attachment" if action == "pdf" else "inline"
+            return Reponse(corps=contenu, type="application/pdf", entetes={
+                "Content-Disposition": f"{dispo}; filename*=UTF-8''{quote(f'T4 RL-1 {annee} {nom}.pdf')}"})
+        elif not action_permise(ctx, ENVOYER):
+            message = _message(erreur=f"Votre profil n'a pas le droit « {ENVOYER} ».")
+        else:
+            def envoyer(journal):
+                resultats = []
+                employeur, numero = entreprise(ctx.racine), fe.numero_employeur(ctx.racine)
+                for f in choisis:
+                    if not f.courriel:
+                        resultats.append(f"✘ {f.employe} : pas de courriel")
+                        continue
+                    try:
+                        fe.envoyer(ctx.config, f, fe.pdf_officiels([f], employeur, numero, racine=ctx.racine,
+                                                                   config_toml=ctx.config))
+                        fe.noter_envoi(ctx.racine, f)
+                        resultats.append(f"✔ {f.employe} → {f.courriel}")
+                    except Exception as exc:  # noqa: BLE001
+                        resultats.append(f"✘ {f.employe} : {exc}")
+                return resultats
 
-        def envoyer(journal):
-            resultats = []
-            employeur, numero = entreprise(ctx.racine), fe.numero_employeur(ctx.racine)
-            for f in choisis:
-                if not f.courriel:
-                    resultats.append(f"✘ {f.employe} : pas de courriel")
-                    continue
-                try:
-                    fe.envoyer(ctx.config, f, fe.pdf_officiels([f], employeur, numero, racine=ctx.racine,
-                                                               config_toml=ctx.config))
-                    fe.noter_envoi(ctx.racine, f)
-                    resultats.append(f"✔ {f.employe} → {f.courriel}")
-                except Exception as exc:  # noqa: BLE001
-                    resultats.append(f"✘ {f.employe} : {exc}")
-            return resultats
-
-        return taches.lancer(ctx, f"T4 et Relevés 1 {annee}", envoyer, f"/fin-annee?annee={annee}")
+            return taches.lancer(ctx, f"T4 et Relevés 1 {annee}", envoyer, f"/fin-annee?annee={annee}")
     deja = fe.envoyes(ctx.racine)
     lignes = [[f"<input type='checkbox' name='employe' value='{e(f.employe)}'>", e(f.employe), argent(f.brut),
                e(f.courriel or "—"), "envoyé" if f.cle in deja else ""] for f in feuillets]
-    corps = (_onglets("Fin d'année (T4 / RL-1)")
-             + f"<form class='ligne' method='get'><div><label>Année</label><input name='annee' value='{annee}' "
-               "size='5'></div><button class='second'>Calculer</button></form>"
-             + sections_html([Section(f"Concordance {annee}", ENTETES_CONCORDANCE,
+    annees = "".join(f"<option{' selected' if a == annee else ''}>{a}</option>"
+                     for a in (date.today().year - i for i in range(3)))
+    envoi = ("<button class='second' name='action' value='envoyer'>✉ Envoyer les T4 / RL-1 par courriel…</button>"
+             "<a class='ouvrir' href='?annee={a}&op=numero'>🔢 N° d'employeur…</a>".replace("{a}", str(annee))
+             if ctx.voit_tous() else "")
+    numero = (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='annee' value='{annee}'>"
+              "<h2>N° d'employeur</h2><div class='ligne'><div><label>N° de compte de l'employeur (case 54 du T4) :"
+              f"</label><input name='numero' value='{e(fe.numero_employeur(ctx.racine))}' size='20'></div><button "
+              "name='action' value='numero'>✔ Enregistrer</button></div></form>"
+              if ctx.req.query.get("op") == "numero" and ctx.voit_tous() else "")
+    corps = (_onglets("Fin d'année (T4 / RL-1)") + message
+             + "<form method='get' id='annee-fa'></form>"
+             + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='annee' value='{annee}'><div "
+               f"class='barre-onglet'><div><label>Année</label><select name='annee' form='annee-fa'>{annees}</select>"
+               "</div><button class='second' form='annee-fa'>🔍 Calculer</button>"
+               "<button class='second' name='action' value='imprimer' formtarget='_blank'>🖨 Imprimer T4 / RL-1 choisis"
+               "</button><button class='second' name='action' value='tout_imprimer' formtarget='_blank'>🖨 Imprimer "
+               "tous les T4 / RL-1</button><button class='second' name='action' value='pdf'>📕 T4 / RL-1 en PDF…"
+               f"</button>{envoi}</div>"
+             + "<div class='ligne-etat'>Cumuls des paies de Sage de l'année par employé. « Calculer », puis cochez un "
+               "ou plusieurs employés : T4 et Relevé 1 imprimés ou envoyés à chacun. Les feuillets officiels restent "
+               "ceux de Sage, à transmettre avant la fin février.</div>"
+             + numero
+             + sections_html([Section(f"Concordance de fin d'année {annee}", ENTETES_CONCORDANCE,
                                       concordance(paies, registre, annee))])
-             + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='annee' value='{annee}'><h2>T4 et Relevé 1</h2>"
-             + tableau(["", "Employé", "Brut", "Courriel", "Envoi"], lignes, {2})
-             + "<div class='boutons'><button class='second' name='action' value='PDF'>PDF (formulaires officiels)"
-               "</button><button name='action' value='Envoyer'>Envoyer à chaque employé</button></div></form>"
-               "<p class='note'>Le NAS n'est jamais écrit. Les feuillets transmis aux gouvernements restent ceux de "
-               "Sage.</p>")
+             + "<h2>T4 et Relevé 1</h2>" + tableau(["", "Employé", "Brut", "Courriel", "Envoi"], lignes, {2})
+             + "</form><p class='note'>Le NAS n'est jamais écrit.</p>")
     return Reponse(corps=page(ctx, "Traitement de la paie", corps))
 
 
@@ -328,7 +401,8 @@ def fin_emploi(ctx: Contexte) -> Reponse:
              + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='employe' "
                f"value='{e(employe.id if employe else '')}'>"
              + (f"<a class='ouvrir' href='?{e(urlencode(ctx.req.query))}"
-                "&amp;exporter=0&amp;format=imprimer' target='_blank'>🖨 Imprimer</a>" if resultat else "")
+                "&amp;exporter=0&amp;format=imprimer' target='_blank'>🖨 Imprimer</a>" if resultat else
+                "<span class='ouvrir inactif' title='Préparez d’abord le relevé'>🖨 Imprimer</span>")
              + "<button class='danger' name='action' value='Désactiver'>⏻ Désactiver l'employé (poste de pointage)"
                "</button></form><p class='note'>Le RE se produit dans RE Web de Service Canada (ou par Sage) dans les "
                "5 jours ; l'application en prépare les données.</p>" + resultat)

@@ -195,7 +195,9 @@ def correspondance(ctx: Contexte) -> Reponse:
 
             return taches.lancer(ctx, "Mise à jour de la correspondance", mettre_a_jour,
                                  f"/correspondance?pv={code}&filtre={filtre}")
-        if action in ("Confirmer l'article choisi", "Confirmer quand même", "Accepter la proposition",
+        if action == "Enregistrer les modifications":  # chaque décision est déjà enregistrée en cliquant
+            message = _message("✔ Correspondance enregistrée (chaque décision l'est dès son clic).")
+        elif action in ("Confirmer l'article choisi", "Confirmer quand même", "Accepter la proposition",
                       "Retirer la confirmation"):
             message = _decider_correspondance(ctx, chemin, ident, action)
     lignes_c = co.lire_correspondances(chemin)
@@ -286,7 +288,8 @@ def _article_selectionne(ctx: Contexte, lignes_c, ident, articles, code, filtre,
             + "</div><div class='boutons-colonne'><button name='action' value=\"Confirmer l'article choisi\">✔ Confirmer "
               "l'article choisi</button><button class='second' name='action' value='Accepter la proposition'>Accepter "
               "la proposition</button><button class='danger' name='action' value='Retirer la confirmation'>Retirer la "
-              f"confirmation</button>{creer}</div></form></div>")
+              f"confirmation</button>{creer}<button class='accent' name='action' value='Enregistrer les "
+              "modifications'>💾 Enregistrer les modifications</button></div></form></div>")
 
 
 def _decider_correspondance(ctx: Contexte, chemin: Path, ident: str, action: str) -> str:
@@ -380,7 +383,18 @@ def creer_article(ctx: Contexte) -> Reponse:
     v = {k: ctx.req.champ(k).strip() for k in ("nature", "nom", "cout", "prix", "peremption", "categorie", "type_prix",
                                                 "unite", "taxes", "code", "stock", "numero", "description",
                                                 "charges", "produits", "id_clover")}
-    if ctx.req.methode == "GET":  # « 🆕 Créer l'article » d'une facture fournisseur ou de la correspondance
+    cle_saisie = ("creer_article", ctx.session.jeton)
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "Comptes par catégorie":
+        # « Comptes par catégorie… » : la table s'ouvre en mode choix ; « Valider la sélection » revient ici
+        ctx.app.memoire[cle_saisie] = dict(v)
+        from .serveur import redirection
+
+        return redirection(f"/comptes-categories?selection=1&categorie={quote(v['categorie'])}")
+    if ctx.req.methode == "GET" and ctx.req.query.get("reprendre"):  # retour de la table des catégories
+        v.update(ctx.app.memoire.get(cle_saisie) or {})
+        if ctx.req.query.get("categorie"):
+            v["categorie"], v["numero"] = ctx.req.query["categorie"], ""
+    elif ctx.req.methode == "GET":  # « 🆕 Créer l'article » d'une facture fournisseur ou de la correspondance
         for k in ("nom", "cout", "categorie", "id_clover"):
             v[k] = v[k] or ctx.req.query.get(k, "")
     existant = bool(v["id_clover"])  # article Clover existant : fiche Sage seulement, puis liaison « Confirmé »
@@ -487,7 +501,8 @@ def creer_article(ctx: Contexte) -> Reponse:
                   + ("<p class='note'>Service : n° commençant par S, créé dans Sage seulement.</p>" if service else
                      "<p class='note'>Comptes de la catégorie choisie (« Comptabilité > Comptes Sage par catégorie »)."
                      "</p>")
-                  + "<p><a class='ouvrir' href='/comptes-categories'>Comptes par catégorie…</a></p>"
+                  + "<p><button class='second' name='action' value='Comptes par catégorie'>Comptes par catégorie…"
+                    "</button></p>"
                   "<label class='case'><input type='checkbox' name='sage' value='1' checked> Créer dans Sage</label>"
                   "</fieldset>")
     corps = (message + f"<form method='post'>{csrf(ctx)}"

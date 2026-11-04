@@ -23,6 +23,12 @@ fieldset.groupe legend { padding: 0 4px; color: var(--vert); font-weight: 600; f
 .ligne-etat { border-top: 1px solid var(--bord); color: var(--gris); font-size: 12.5px; padding: 6px 2px 0; margin-top: 10px; }
 .grille-coupures { display: grid; grid-template-columns: auto 90px auto 90px; gap: 6px 10px; align-items: center; }
 .grille-coupures label { margin: 0; text-align: right; color: var(--texte); font-size: 13px; }
+.grille-tiers { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 10px; align-items: center; }
+.grille-tiers label { margin: 0; }
+@media (max-width: 820px) { .grille-tiers { grid-template-columns: auto 1fr; } }
+.ouvrir.inactif { opacity: .45; cursor: default; }
+.deux-colonnes { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.deux-colonnes > fieldset { flex: 1 1 320px; }
 .grille-champs { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin-top: 12px; }
 .grille-champs label { margin: 0; color: var(--texte); font-size: 13px; }
 .texte-fixe { white-space: pre-line; font-size: 13px; line-height: 1.55; }
@@ -41,7 +47,8 @@ tr.total td { font-weight: 600; background: #e8f3ea !important; }
 .carte-bord .ic { font-size: 26px; } .carte-bord .t { color: var(--gris); font-size: 12px; }
 .carte-bord .v { font-size: 19px; font-weight: 600; }
 pre.sortie { background: #f6f8f7; color: #24332a; border: 1px solid #dfe6e1; font-family: "Cascadia Mono", Consolas,
-  monospace; font-size: 12px; padding: 8px 10px; max-height: 360px; overflow: auto; white-space: pre-wrap; margin-top: 14px; }
+  monospace; font-size: 12px; padding: 8px 10px; max-height: 360px; overflow: auto; white-space: pre-wrap; margin-top: 14px; min-height: 64px; }
+td.centre { text-align: center; }
 pre.sortie .ok { color: #13772d; font-weight: normal; } pre.sortie .erreur { color: var(--rouge); }
 pre.sortie .attention { color: #9a6a00; }
 .poste-haut { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -61,6 +68,9 @@ main button.poste-touche { font-size: 24px; height: 62px; background: var(--cart
   border: 1px solid var(--bord); }
 .poste-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
 main button.poste-action { font-size: 18px; padding: 14px 26px; }
+.fenetre-choix { max-width: 380px; } .fenetre-choix h2 { margin-top: 0; }
+label.choix-radio { display: flex; gap: 10px; align-items: center; font-size: 15px; color: var(--texte); padding: 6px 0; }
+label.choix-radio input { width: 20px; height: 20px; accent-color: #13772d; }
 .cartes-trois { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
 .cartes-six { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 6px 0; }
 @media (max-width: 820px) { .cartes-six { grid-template-columns: 1fr 1fr; } }

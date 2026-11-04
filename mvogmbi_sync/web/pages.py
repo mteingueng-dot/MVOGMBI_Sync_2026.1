@@ -572,13 +572,33 @@ def feuilles(ctx: Contexte) -> Reponse:
 
 
 def tableau_gerant(ctx: Contexte) -> Reponse:
-    from ..paquet3 import dossier_tableau
+    """Comme fenetres_gestion4.FenetreTableau : explication, dossier de la page, « 🔄 Mettre à jour maintenant »,
+    « 👁 Ouvrir la page » (la page elle-même : `?voir=1`)."""
+    from ..paquet3 import dossier_tableau, ecrire_tableau
+    from . import taches
 
     chemin = dossier_tableau(ctx.racine, ctx.config) / "tableau_du_gerant.html"
-    if not chemin.exists():
-        return Reponse(corps=page(ctx, "Tableau du gérant", "<p>Le tableau est écrit chaque nuit par le traitement "
-                                                            "automatique : il n'existe pas encore.</p>"))
-    return Reponse(corps=chemin.read_text(encoding="utf-8"), style_en_ligne=True)
+    if ctx.req.query.get("voir"):
+        if chemin.exists():
+            return Reponse(corps=chemin.read_text(encoding="utf-8"), style_en_ligne=True)
+        return Reponse(corps=page(ctx, "Tableau du gérant (téléphone)", "<p class='erreur-texte'>La page n'existe pas "
+                                                                         "encore : « Mettre à jour maintenant ».</p>"))
+    if ctx.req.methode == "POST":
+        def mettre_a_jour(journal):
+            journal("Calcul du résumé (Clover et Sage)…")
+            fait = ecrire_tableau(ctx.racine, ctx.config)
+            return [f"✔ Page mise à jour : {fait.name}"]
+
+        return taches.lancer(ctx, "Tableau du gérant", mettre_a_jour, "/tableau")
+    etat = (f"Dernière mise à jour : {datetime.fromtimestamp(chemin.stat().st_mtime):%Y-%m-%d %H:%M}"
+            if chemin.exists() else "La page n'existe pas encore.")
+    corps = ("<p class='note'>Chaque nuit, le traitement automatique écrit une page légère (ventes d'hier, marge, "
+             "factures à payer, alertes) dans ce dossier ; avec OneDrive, elle s'ouvre sur le téléphone. Elle contient "
+             "des données de l'entreprise : ne la partagez pas.</p>"
+             f"<p>{e(str(chemin))}</p><form method='post' class='barre-onglet'>{csrf(ctx)}<button>🔄 Mettre à jour "
+             "maintenant</button><a class='ouvrir' href='/tableau?voir=1' target='_blank'>👁 Ouvrir la page</a></form>"
+             f"<div class='ligne-etat'>{e(etat)}</div>")
+    return Reponse(corps=page(ctx, "Tableau du gérant (téléphone)", corps))
 
 
 # --------------------------------------------------------------------------------------------- statistiques
@@ -746,7 +766,7 @@ MODULES = ["pages_paie", "consultations", "pages_compta", "pages_tresorerie", "p
            "pages_ventes", "pages_documents", "pages_fournisseurs",
            "pages_achats", "pages_articles",
            "pages_catalogue", "pages_admin", "pages_traitement_paie",
-           "pages_statistiques", "pages_rapports_web"]
+           "pages_statistiques", "pages_rapports_web", "pages_dossiers", "pages_fiches"]
 
 _TOUTES: list[Fonction] = []
 

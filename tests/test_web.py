@@ -216,12 +216,12 @@ def test_pages_paie_du_gerant(site, tmp_path):
     _, page, _ = ouvrir(patron, base + f"/feuille?employe={awa.id}&debut={debut}")
     csrf = jeton_csrf(page)
     _, page, _ = ouvrir(patron, base + "/feuille", {"csrf": csrf, "employe": awa.id, "debut": str(debut),
-                                                    "type": "Arrivée", "jour": str(debut), "heure": "08:00",
-                                                    "motif": "oubli", "action": "Ajouter"})
-    assert "Pointage ajouté" in page and "Correction (Patron : oubli)" in page
+                                                    "type": "Arrivée", "moment": f"{debut} 08:00",
+                                                    "motif": "oubli", "action": "ajouter"})
+    assert "Pointage ajouté" in page and "oubli" in page and "Changer l'heure" in page
     ajoute = next(p for p in pt.Registre(tmp_path).valides(awa.id) if p.source == "Correction")
     _, page, _ = ouvrir(patron, base + "/feuille", {"csrf": csrf, "employe": awa.id, "debut": str(debut),
-                                                    "pointage": ajoute.id, "motif": "erreur", "action": "Annuler"})
+                                                    "pointage": ajoute.id, "motif": "erreur", "action": "annuler"})
     assert "Pointage annulé" in page
     # congés
     _, page, _ = ouvrir(patron, base + "/conges")
@@ -416,6 +416,16 @@ def test_documents_saisis(site, tmp_path):
     assert "CC-0001" in page and "en bleu : documents de l" in page and "🔀 Transformer" in page
     _, page, _ = ouvrir(patron, base + "/documents-vente?du=2026-11-01&au=2026-11-30&voir=1&op=ouvrir&ligne=app:doc:CC-0001")
     assert "/document?n=CC-0001" in page
+    _, page, _ = ouvrir(patron, base + "/document/choisir?cote=stock")
+    assert "Quel type de document de stock voulez-vous ajouter ?" in page and "Inventaire tournant" in page
+    statut, _, entetes = ouvrir(patron, base + "/document/choisir", {"csrf": jeton_csrf(page), "cote": "stock",
+                                                                    "type": "Entrée de stock", "action": "OK"})
+    assert statut == 303 and "sens=Entr" in entetes["Location"]
+    statut, _, entetes = ouvrir(patron, base + "/document/choisir", {"csrf": jeton_csrf(page), "cote": "stock",
+                                                                    "type": "Perte et démarque", "action": "OK"})
+    assert entetes["Location"] == "/pertes"
+    _, page, _ = ouvrir(patron, base + "/document/choisir?cote=vente")
+    assert "Quel type de document voulez-vous ajouter ?" in page
     awa = connecter(base, "Awa", "secret456")
     assert ouvrir(awa, base + "/document?n=CC-0001")[0] == 403
 
@@ -494,8 +504,13 @@ def test_achats_web(site, tmp_path):
     assert "Transformation de BC-0001" in page
     _, page, _ = ouvrir(patron, base + "/retours", {
         "csrf": jeton, "fournisseur": "Grossiste Afro", "facture": "A-12", "jour": "2026-11-03", "motif": "abîmé",
-        "article": ["B0000190", ""], "description": ["Plantain", ""], "quantite": ["2", ""], "prix": ["1,25", ""],
-        "taxe": ["", ""], "action": "Créer le retour"})
+        "article": "B0000190", "description": "Plantain", "quantite": "2", "prix": "1,25", "taxe": "",
+        "action": "Ajouter la ligne"})
+    assert "Retirer la ligne" in page and "B0000190" in page
+    _, page, _ = ouvrir(patron, base + "/retours", {
+        "csrf": jeton, "fournisseur": "Grossiste Afro", "facture": "A-12", "jour": "2026-11-03", "motif": "abîmé",
+        "l_article": "B0000190", "l_description": "Plantain", "l_quantite": "2", "l_prix": "1,25", "l_taxe": "",
+        "action": "Créer le retour"})
     assert "Retour R-A-12 créé" in page and "2,50 $" in page
     assert rt.Registre(tmp_path).retours[0].lignes[0].quantite == "2"
 
@@ -529,6 +544,19 @@ def test_articles_web(site, tmp_path, monkeypatch):
         "csrf": jeton_csrf(page), "pv": "1", "article": "Attiéké 1kg — 5.99 $", "prix": "4,99", "du": "2026-11-10",
         "au": "2026-11-16", "action": "Ajouter"})
     assert "PR-0001 prévue" in page and p3.Promotions(tmp_path).liste[0].prix_promo == "4.99"
+    from types import SimpleNamespace
+    from mvogmbi_sync import couts_clover as cc
+    propositions = [SimpleNamespace(nom="Plantain jaune", numero_sage="B0000190", prix=Decimal("1.99"),
+                                    cout_clover=Decimal("1.00"), cump=Decimal("1.20"), etat="À mettre à jour",
+                                    note="", permis=True, cochee_par_defaut=True),
+                    SimpleNamespace(nom="Attiéké 1kg", numero_sage="C0001", prix=Decimal("5.99"), cout_clover=None,
+                                    cump=Decimal("99"), etat="Valeur aberrante", note="", permis=False,
+                                    cochee_par_defaut=False)]
+    monkeypatch.setattr(cc, "lire", lambda racine, config: (propositions, 3))
+    _, page, _ = ouvrir(patron, base + "/couts-clover")
+    assert "Tout cocher" in page and "name='choix' value='0' checked" in page and "value='1'" not in page
+    _, page, _ = ouvrir(patron, base + "/couts-clover?filtre=Valeur%20aberrante")
+    assert "1 ligne(s) affichée(s)" in page
     _, page, _ = ouvrir(patron, base + "/etiquettes")
     _, page, _ = ouvrir(patron, base + "/etiquettes", {"csrf": jeton_csrf(page), "article": "Plantain jaune — ABC123",
                                                        "nombre": "2", "action": "Ajouter"})
@@ -576,6 +604,14 @@ def test_catalogue_web(site, tmp_path, monkeypatch):
     assert TableCategories(tmp_path).lignes["Féculents"].ecart == "5016" and "Table enregistrée" in page
     _, page, _ = ouvrir(patron, base + "/historique?type=Statistiques%20fournisseur")
     assert "Par :" in page and "Articles du" in page and "Statistiques employé" in page
+    _, page, _ = ouvrir(patron, base + "/budget")
+    _, page, _ = ouvrir(patron, base + "/budget", {"csrf": jeton_csrf(page), "mois": "2026-10", "poste0": "50000",
+                                                   "poste1": "35000", "poste2": "8000",
+                                                   "action": "Enregistrer le budget"})
+    from mvogmbi_sync.budget import Budget
+    assert "Budget de 2026-10 enregistré" in page and Budget(tmp_path).mois(2026, 10)["Autres charges"] == 8000
+    _, page, _ = ouvrir(patron, base + "/interrogation-fournisseur")
+    assert "<option selected>Fournisseur</option>" in page
     _, page, _ = ouvrir(patron, base + "/historique?type=Vente&chercher=1")
     assert "Résultats : Vente" in page
     for chemin in ("/inventaire", "/inventaire-tournant", "/transferts", "/creer-article"):
@@ -604,7 +640,7 @@ def test_administration_web(site, tmp_path, monkeypatch):
                                                          "mot_de_passe": "secret789", "action": "Ajouter"})
     assert RegistreU(tmp_path).trouver("Comptable 1").profil == "Comptable"
     _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "profil": "Employé", "fonction": ["Mon horaire"],
-                                                         "action": "Accès"})
+                                                         "pdv_tous": "1", "action": "Accès"})
     reg = RegistreU(tmp_path)
     assert reg.fonctions_permises["Employé"] == ["Mon horaire"] and "accueil" in reg.profils["Employé"]
     awa = connecter(base, "Awa", "secret456")

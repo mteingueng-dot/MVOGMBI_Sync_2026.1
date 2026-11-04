@@ -408,7 +408,7 @@ def historique(ctx: Contexte) -> Reponse:
         + (f"<div><label>Par :</label><select name='par'>{pars}</select></div>" if type_ in STATISTIQUES else "")
         + f"<div><label>Période du</label><input type='date' name='du' value='{du or ''}'></div><div><label>au</label>"
           f"<input type='date' name='au' value='{au or ''}'></div><button name='chercher' value='1'>🔍 Rechercher"
-          f"</button><a class='ouvrir' href='/historique?type={e(type_)}'>✖ Réinitialiser les filtres</a></div></form>")
+          f"</button><a class='ouvrir' href='?type={e(type_)}'>✖ Réinitialiser les filtres</a></div></form>")
     aide = AIDES_RECHERCHE[type_]
     resultat = ""
     if q.get("chercher"):
@@ -481,11 +481,28 @@ def _recherche_historique(ctx: Contexte, type_, valeur, categorie, de, a, par, d
     return fonction(h, valeur, du, au)
 
 
+def _interrogation(type_: str):
+    """Interrogation de compte = « Recherche dans l'historique » de ce type (Application.ouvrir_interrogation)."""
+    def gestionnaire(ctx: Contexte) -> Reponse:
+        # même page, sous l'adresse de l'interrogation : son droit suffit (comme dans Windows)
+        ctx.req.query.setdefault("type", type_)
+        return historique(ctx)
+    return gestionnaire
+
+
 FONCTIONS = [
+    Fonction("/interrogation-client", "Interrogation de compte client", "rapports", _interrogation("Client"), "🔎",
+             "Vente", menu=False),
+    Fonction("/interrogation-fournisseur", "Interrogation de compte fournisseur", "rapports",
+             _interrogation("Fournisseur"), "🔎", "Fournisseur", menu=False),
+    Fonction("/interrogation-article", "Interrogation de compte article", "rapports", _interrogation("Article"), "🔎",
+             "Articles", menu=False),
     Fonction("/historique", "Recherche dans l'historique", "rapports", historique, "🔎", "État", menu=False),
     Fonction("/suivi-ventes", "Suivi des ventes", "rapports", suivi_ventes, "📈", "État", menu=False),
     Fonction("/inactifs", "Produits inactifs", "rapports", inactifs, "💤", "État", menu=False),
     Fonction("/pareto", "Articles 20/80", "rapports", pareto, "🥇", "État", menu=False),
 ]
 WEB = {"Suivi des ventes": "/suivi-ventes", "Produits inactifs": "/inactifs", "Articles 20/80": "/pareto",
-       "Recherche dans l'historique": "/historique"}
+       "Recherche dans l'historique": "/historique", "Interrogation de compte client": "/interrogation-client",
+       "Interrogation de compte fournisseur": "/interrogation-fournisseur",
+       "Interrogation de compte article": "/interrogation-article"}

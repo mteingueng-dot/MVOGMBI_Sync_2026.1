@@ -66,7 +66,10 @@ def planning(ctx: Contexte) -> Reponse:
     ids = {x.id for x in employes}
     choisis = [i for i in (ctx.req.champs("employe") or [ctx.req.query.get("employe", "")]) if i in ids]
     message = ""
-    if ctx.req.methode == "POST":
+    ouvrir_horaire = ctx.req.methode == "POST" and ctx.req.champ("action") == "horaire"
+    if ouvrir_horaire and not choisis:
+        message, ouvrir_horaire = _message(erreur="Cochez au moins un employé dans la grille."), False
+    if ctx.req.methode == "POST" and ctx.req.champ("action") != "horaire":
         action = ctx.req.champ("action")
         try:
             with ctx.app.ecriture:
@@ -106,26 +109,31 @@ def planning(ctx: Contexte) -> Reponse:
                 f"aria-label='{e(x.nom)}'>")
         lignes.append([case, x.nom] + [q.texte().replace(" min)", ")") if q else "" for q in quarts]
                       + [f"{plan.heures(mois, x.id):.2f}".replace(".", ",")])
-    cases = "".join(f"<label><input type='checkbox' name='jours' value='{k}'> {j}</label> " for k, j in enumerate(JOURS))
+    cases = "".join(f"<label class='case'><input type='checkbox' name='jours' value='{k}'{' checked' if k < 5 else ''}>"
+                    f" {j}</label> " for k, j in enumerate(JOURS))
     fin_mois = jours[-1]
+    noms = ", ".join(x.nom for x in employes if x.id in choisis)
+    # DialogueHoraire : employés choisis, Du … au, jours de la semaine (lundi à vendredi cochés), Début / Fin /
+    # Pause (min), « ✖ Fermer », « Repos ces jours-là », « Appliquer l'horaire »
+    dialogue = ("<div class='carte'><h2>Horaire</h2>" + f"<p><strong>{e(noms)}</strong></p><div class='ligne'>"
+                f"<div><label>Du</label><input type='date' name='du' value='{premier}'></div>"
+                f"<div><label>au</label><input type='date' name='au' value='{fin_mois}'></div></div>"
+                f"<p>{cases}</p><div class='ligne'>"
+                "<div><label>Début</label><input name='debut' value='08:00' size='7'></div>"
+                "<div><label>Fin</label><input name='fin' value='16:00' size='7'></div>"
+                "<div><label>Pause (min)</label><input name='pause' value='30' size='5'></div></div>"
+                f"<div class='barre-onglet'><span class='a-droite'><a class='ouvrir' href='?mois={mois}'>✖ Fermer</a> "
+                "<button class='second' name='action' value='Repos'>Repos ces jours-là</button> <button name='action' "
+                "value='Définir'>Appliquer l'horaire</button></span></div></div>") if ouvrir_horaire else ""
     barre = (f"<div class='barre-onglet'><a class='ouvrir' href='?mois={_mois_suivant(mois, -1)}'>◀</a><strong "
-             f"class='periode'>{e(libelle)}</strong><a class='ouvrir' href='?mois={_mois_suivant(mois, 1)}'>▶</a></div>")
-    corps = (message + barre + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='mois' value='{mois}'>"
-             "<p class='note'>Cochez un ou plusieurs employés, puis « Horaire des employés choisis » : jours de la "
-             "semaine, période, heures de début et de fin, pause non payée, ou repos. « Publier le mois » : chaque "
-             "employé voit son horaire (« Paie > Mon horaire » et poste de pointage).</p>"
-             + tableau_section(Section(libelle, entetes, lignes, html={0}))
-             + "<div class='carte'><h2>🕑 Horaire des employés choisis</h2><div class='ligne'>"
-               f"<div><label>Du</label><input type='date' name='du' value='{premier}'></div>"
-               f"<div><label>Au</label><input type='date' name='au' value='{fin_mois}'></div>"
-               "<div><label>Début</label><input name='debut' placeholder='8:00' size='6'></div>"
-               "<div><label>Fin</label><input name='fin' placeholder='16:30' size='6'></div>"
-               "<div><label>Pause non payée (min)</label><input name='pause' value='30' size='4'></div></div>"
-               f"<p class='note'>Jours de la semaine (aucun coché = tous) : {cases}</p><div class='boutons'><button "
-               "name='action' value='Définir'>Enregistrer l'horaire</button><button class='second' name='action' "
-               "value='Repos'>Mettre en repos</button></div></div><div class='boutons'><button class='second' "
-               "name='action' value='Reprendre le mois précédent'>📋 Reprendre le mois précédent</button><button "
-               "name='action' value='Publier le mois'>📣 Publier le mois</button></div></form>")
+             f"class='periode'>{e(libelle)}</strong><a class='ouvrir' href='?mois={_mois_suivant(mois, 1)}'>▶</a>"
+             "<button name='action' value='horaire'>🕑 Horaire des employés choisis…</button><button class='second' "
+             "name='action' value='Reprendre le mois précédent'>📋 Reprendre le mois précédent</button><button "
+             "name='action' value='Publier le mois'>📣 Publier le mois</button></div>")
+    corps = (message + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='mois' value='{mois}'>" + barre
+             + "<p class='note'>Cochez un ou plusieurs employés, puis « Horaire des employés choisis… ». « Publier le "
+               "mois » : chaque employé voit son horaire (« Paie > Mon horaire » et poste de pointage).</p>"
+             + dialogue + tableau_section(Section(libelle, entetes, lignes, html={0})) + "</form>")
     return Reponse(corps=page(ctx, "Planning mensuel", corps))
 
 
@@ -163,6 +171,13 @@ def employes(ctx: Contexte) -> Reponse:
                 return [f"{n} employé(s) ajouté(s) depuis Clover. Définissez leur NIP."]
 
             return taches.lancer(ctx, "Employés de Clover", importer, "/employes")
+        elif action == "creer":
+            reponse = _creer_employe(ctx)
+            if isinstance(reponse, Reponse):
+                return reponse
+            message, op = reponse, ("ajouter" if "class='erreur'" in reponse else "")
+        elif action in ("lier_relier", "lier_retirer", "lier_accepter"):
+            message, op = _liens_sage(ctx, action), "sage"
         else:
             try:
                 with ctx.app.ecriture:
@@ -228,7 +243,7 @@ def _action_employe(ctx: Contexte, registre, op: str, choisi: str) -> str:
     if not op:
         return ""
     x = registre.employe(choisi) if choisi else None
-    if op not in ("importer", "ajouter") and x is None:
+    if op not in ("importer", "ajouter", "sage") and x is None:
         return "<p class='erreur-texte'>Choisissez un employé dans la liste.</p>"
 
     def forme(titre: str, contenu: str, bouton: str, classe: str = "") -> str:
@@ -240,10 +255,7 @@ def _action_employe(ctx: Contexte, registre, op: str, choisi: str) -> str:
         return forme("Importer les employés de Clover", "<p>Les employés de Clover absents de la liste sont ajoutés "
                                                         "(sans NIP).</p>", "⬇ Importer")
     if op == "ajouter":
-        return forme("Ajouter un employé", "<div><label>Nom de l'employé :</label><input name='nom' size='30' "
-                                           "required></div>", "➕ Ajouter") + (
-            "<p class='note'>Ajouté ici dans l'application. La création dans Clover et dans Sage Paie (NAS, taux) se "
-            "fait dans l'application Windows (« Ajouter » de cette fenêtre).</p>")
+        return _dialogue_employe(ctx)
     if op == "modifier":
         return forme(f"Modifier {x.nom}", f"<div><label>Nom de l'employé :</label><input name='nom' "
                                          f"value='{e(x.nom)}' size='30' required></div>", "✔ Enregistrer")
@@ -260,11 +272,9 @@ def _action_employe(ctx: Contexte, registre, op: str, choisi: str) -> str:
         comptes = "<option value=''>— aucun —</option>" + "".join(
             f"<option{' selected' if u.nom == x.compte else ''}>{e(u.nom)}</option>" for u in ctx.reg.utilisateurs)
         return forme(f"Relier {x.nom} à un compte", f"<div><label>Compte de l'application :</label><select "
-                                                    f"name='compte'>{comptes}</select></div>", "🔗 Relier")
+                                                    f"name='compte'>{comptes}</select></div>", "✔ Enregistrer")
     if op == "sage":
-        return forme(f"Lier {x.nom} à l'employé Sage", "<div><label>Nom de l'employé tel que Sage l'écrit :</label>"
-                                                       f"<input name='numero_sage' value='{e(x.numero_sage)}' "
-                                                       "size='30'></div>", "🔗 Lier")
+        return _fenetre_liens_sage(ctx, registre, choisi)
     if op == "courriel":
         return forme(f"Courriel de {x.nom} (bulletins de paie)", f"<div><label>Courriel :</label><input "
                                                                  f"name='courriel' type='email' value='{e(x.courriel)}' "
@@ -277,6 +287,247 @@ def _action_employe(ctx: Contexte, registre, op: str, choisi: str) -> str:
         return forme(f"{x.nom} : {'actif' if x.actif else 'inactif'}", "",
                      "⏻ Désactiver" if x.actif else "⏻ Activer")
     return ""
+
+
+
+# --------------------------------------------------------------------------------------------- nouvel employé
+ROLES_CLOVER = {"Employé": "EMPLOYEE", "Gérant": "MANAGER", "Administrateur": "ADMIN"}
+
+
+def _dialogue_employe(ctx: Contexte, v: dict | None = None) -> str:
+    """fenetre_feuilles_temps.DialogueEmploye : « Application et Clover » à gauche, « Sage Paie » à droite, cases
+    « Créer dans Clover » / « Créer dans Sage Paie (Sage fermé) », ligne d'explication, « ✔ Créer l'employé » et
+    « ✖ Fermer »."""
+    from ..fenetre_feuilles_temps import DialogueEmploye
+
+    v = v or {k: ctx.req.champ(k) for k, _ in DialogueEmploye.CHAMPS + DialogueEmploye.CHAMPS_SAGE}
+    v.setdefault("ville", "")
+    if ctx.req.methode == "GET":
+        v.update(role="Employé", ville="Sherbrooke", embauche=date.today().isoformat())
+
+    def champs(liste) -> str:
+        html = ""
+        for cle, libelle in liste:
+            if cle == "role":
+                options = "".join(f"<option{' selected' if r == (v.get('role') or 'Employé') else ''}>{e(r)}</option>"
+                                  for r in ROLES_CLOVER)
+                champ = f"<select name='role'>{options}</select>"
+            else:
+                type_ = "password" if cle in ("nip", "nas") else "text"
+                valeur = "" if type_ == "password" else e(v.get(cle) or "")
+                champ = (f"<input type='{type_}' name='{cle}' value='{valeur}' size='{28 if cle in ('nom', 'surnom', 'courriel', 'nip') else 22}'"
+                         + (" autocomplete='off'" if type_ == "password" else "") + ">")
+            html += f"<label>{e(libelle)}</label>{champ}"
+        return html
+
+    clover = ctx.req.methode == "GET" or bool(ctx.req.champ("clover"))
+    sage = ctx.req.methode == "GET" or bool(ctx.req.champ("sage"))
+    return (f"<form method='post' class='carte'>{csrf(ctx)}<h2>Nouvel employé</h2><div class='deux-colonnes'>"
+            f"<fieldset class='groupe'><legend>Application et Clover</legend><div class='grille-champs'>"
+            f"{champs(DialogueEmploye.CHAMPS)}</div><label class='case'><input type='checkbox' name='clover' "
+            f"value='1'{' checked' if clover else ''}> Créer dans Clover</label></fieldset>"
+            f"<fieldset class='groupe'><legend>Sage Paie</legend><div class='grille-champs'>"
+            f"{champs(DialogueEmploye.CHAMPS_SAGE)}</div><label class='case'><input type='checkbox' name='sage' "
+            f"value='1'{' checked' if sage else ''}> Créer dans Sage Paie (Sage fermé)</label></fieldset></div>"
+            "<p class='note'>Le courriel reçoit le bulletin de paie (et l'invitation de Clover) ; il est aussi inscrit "
+            "dans la fiche Sage. Le NAS n'est jamais gardé par l'application. Paie aux 2 semaines (26 périodes), "
+            "impôt du Québec. Le taux des heures supplémentaires vide = 1,5 × le taux horaire.</p>"
+            "<div class='barre-onglet'><span class='a-droite'><button name='action' value='creer'>✔ Créer l'employé"
+            "</button> <a class='ouvrir' href='/employes'>✖ Fermer</a></span></div></form>")
+
+
+def _creer_employe(ctx: Contexte):
+    """DialogueEmploye.creer : mêmes contrôles, Clover d'abord, puis l'application, puis Sage Paie (l'application
+    ouvre Sage elle-même, environ 2 minutes)."""
+    from decimal import Decimal
+
+    from .. import paie_temps as pt
+    from ..courriel import adresses_invalides
+    from . import taches
+
+    v = {k: ctx.req.champ(k).strip() for k in ("nom", "surnom", "role", "courriel", "nip", "rue", "ville",
+                                               "code_postal", "telephone", "nas", "naissance", "embauche", "taux",
+                                               "taux_supp")}
+    avec_clover, avec_sage = bool(ctx.req.champ("clover")), bool(ctx.req.champ("sage"))
+
+    def erreur(texte: str) -> str:
+        return _message(erreur=texte) + _dialogue_employe(ctx, v)
+
+    if avec_sage and not action_permise(ctx, "Créer un employé dans Sage"):
+        return erreur("Votre profil n'a pas le droit « Créer un employé dans Sage ».")
+    nom = " ".join(v["nom"].split())
+    if not nom:
+        return erreur("Le nom est obligatoire.")
+    if v["nip"] and not (v["nip"].isdigit() and 4 <= len(v["nip"]) <= 6):
+        return erreur("Le NIP doit compter 4 à 6 chiffres.")
+    if v["courriel"] and adresses_invalides(v["courriel"]):
+        return erreur("Adresse de courriel invalide.")
+    if avec_sage and not v["courriel"]:
+        return erreur("Le courriel est obligatoire pour la paie : chaque employé reçoit son bulletin de paie par "
+                      "courriel.")
+    if any(x.nom.casefold() == nom.casefold() for x in pt.Registre(ctx.racine).employes):
+        return erreur(f"« {nom} » existe déjà.")
+    fiche_sage = None
+    if avec_sage:
+        from ..robot_paie import EmployeSage
+
+        nas = "".join(c for c in v["nas"] if c.isdigit())
+        if len(nas) != 9:
+            return erreur("Le NAS doit compter 9 chiffres.")
+        try:
+            for cle in ("naissance", "embauche"):
+                date.fromisoformat(v[cle])
+        except ValueError:
+            return erreur("Date au format AAAA-MM-JJ.")
+        try:
+            taux = Decimal(v["taux"].replace(",", "."))
+            if taux <= 0:
+                raise ValueError
+        except Exception:  # noqa: BLE001
+            return erreur("Taux horaire invalide.")
+        supp = v["taux_supp"] or f"{taux * Decimal('1.5'):.2f}".replace(".", ",")
+        fiche_sage = EmployeSage(nom, v["rue"], v["ville"], "QC", v["code_postal"], v["telephone"], v["courriel"],
+                                 nas, v["naissance"], v["embauche"], v["taux"], supp)
+    v["nas"] = v["nip"] = ""  # jamais réaffichés
+
+    def travail(journal):
+        notes, id_clover = [], ""
+        if avec_clover:
+            try:
+                from ..points_vente import client
+
+                id_clover = client(ctx.racine).creer_employe(nom, v["surnom"], ROLES_CLOVER.get(v["role"], "EMPLOYEE"),
+                                                             v["courriel"]).get("id", "")
+                notes.append("Clover : créé")
+            except BaseException as exc:  # noqa: BLE001 — SystemExit compris (jeton absent)
+                notes.append(f"Clover : NON créé ({exc}) ; l'employé est créé sans Clover.")
+        with ctx.app.ecriture:
+            reg = pt.Registre(ctx.racine)
+            x = reg.ajouter(nom, id_clover)
+            x.courriel = v["courriel"]
+            if nip:
+                reg.definir_nip(x.id, nip)
+            reg.enregistrer()
+            try:  # date d'embauche : soldes de vacances et de congés (conges.py)
+                from ..conges import Registre as Conges
+
+                date.fromisoformat(v["embauche"])
+                conges = Conges(ctx.racine)
+                conges.embauches[x.id] = v["embauche"]
+                conges.enregistrer()
+            except ValueError:
+                pass
+        notes.append("Application : créé")
+        if fiche_sage is not None:
+            from ..robot_paie import dans_sage
+
+            journal("Création dans Sage Paie… (l'application ouvre Sage elle-même, environ 2 minutes)")
+            try:
+                bilan = dans_sage(ctx.racine, ctx.config, [fiche_sage], [])
+                r = (bilan.get("employes") or [{}])[0]
+                probleme = "" if r.get("fait") else " ; ".join(r.get("messages") or ["non créé"])
+            except Exception as exc:  # noqa: BLE001
+                probleme = str(exc)
+            if probleme:
+                notes.append(f"Sage Paie : NON créé ({probleme})")
+            else:
+                with ctx.app.ecriture:
+                    reg = pt.Registre(ctx.racine)
+                    reg.employe(x.id).numero_sage = nom  # relié : relevés et paies
+                    reg.enregistrer()
+                notes.append("Sage Paie : créé et relié")
+        return [nom] + notes
+
+    nip = ctx.req.champ("nip").strip()
+    return taches.lancer(ctx, f"Nouvel employé {nom}", travail, "/employes", sage=fiche_sage is not None)
+
+
+# --------------------------------------------------------------------------------------------- liens avec Sage Paie
+def _noms_sage(ctx: Contexte) -> tuple[list[str], str]:
+    from ..paie import employes_sage
+    from .consultations import lire_ou_vide
+
+    gardee = ctx.app.memoire.get("employes_sage")
+    if gardee and time.time() - gardee[0] < 300:
+        return gardee[1], ""
+    try:
+        noms = lire_ou_vide(ctx, employes_sage)
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001
+        return [], str(erreur) or type(erreur).__name__
+    if "Sage" in ctx.absents:
+        return [], "Sage ne répond pas"
+    ctx.app.memoire["employes_sage"] = (time.time(), noms)
+    return noms, ""
+
+
+def _fenetre_liens_sage(ctx: Contexte, registre, choisi: str) -> str:
+    """fenetre_feuilles_temps.LiensSage : ligne d'état, tableau Employé / Employé Clover / Employé Sage /
+    Proposition, « Employé Sage » (liste ou nom tapé), « 🔗 Relier », « ✖ Retirer le lien », « ✔ Accepter les
+    propositions », puis « ✔ Enregistrer » et « ✖ Fermer »."""
+    from ..paie import proposer_lien
+
+    noms, probleme = _noms_sage(ctx)
+    liste = sorted(registre.employes, key=lambda x: (not x.actif, x.nom.casefold()))
+    propositions = {x.id: proposer_lien(x, noms) for x in liste if not x.numero_sage}
+    n = sum(1 for p_ in propositions.values() if p_)
+    etat = (f"<p class='erreur-texte'>✘ Sage illisible : {e(probleme)} ; vous pouvez taper le nom de l'employé tel "
+            "que Sage l'écrit.</p>" if probleme else
+            f"<p class='note'>{len(noms)} employé(s) dans Sage, {n} proposition(s) par le nom : vérifiez puis "
+            "« Accepter les propositions ».</p>")
+    x_choisi = registre.employe(choisi) if choisi else None
+    lignes = [[f"<input type='radio' name='id' value='{e(x.id)}'{' checked' if x.id == choisi else ''}>", e(x.nom),
+               "Oui" if x.clover else "", e(x.numero_sage), e(propositions.get(x.id, ""))] for x in liste]
+    valeur = (x_choisi.numero_sage or propositions.get(x_choisi.id, "")) if x_choisi else ""
+    options = "".join(f"<option value='{e(n_)}'>" for n_ in noms)
+    return (f"<form method='post' class='carte'>{csrf(ctx)}<h2>Lier aux employés Sage</h2>{etat}"
+            + tableau_section(Section("Employés", ["", "Employé", "Employé Clover", "Employé Sage", "Proposition"],
+                                      lignes, html=set(range(5))))
+            + f"<div class='barre-onglet'><div><label>Employé Sage</label><input name='numero_sage' list='noms-sage' "
+              f"value='{e(valeur)}' size='34'><datalist id='noms-sage'>{options}</datalist></div>"
+              "<button name='action' value='lier_relier'>🔗 Relier</button>"
+              "<button class='second' name='action' value='lier_retirer'>✖ Retirer le lien</button>"
+              "<button class='second' name='action' value='lier_accepter'>✔ Accepter les propositions</button></div>"
+              "<div class='barre-onglet'><span class='a-droite'><a class='ouvrir' href='/employes'>✔ Enregistrer</a> "
+              "<a class='ouvrir' href='/employes'>✖ Fermer</a></span></div></form>")
+
+
+def _liens_sage(ctx: Contexte, action: str) -> str:
+    """Relier / Retirer le lien / Accepter les propositions (enregistrés tout de suite)."""
+    from .. import paie_temps as pt
+    from ..paie import proposer_lien
+
+    if not action_permise(ctx, "Lier aux employés Sage…"):
+        return _message(erreur="Votre profil n'a pas le droit « Lier aux employés Sage… ».")
+    noms, _ = _noms_sage(ctx) if action == "lier_accepter" else ([], "")
+    with ctx.app.ecriture:
+        reg = pt.Registre(ctx.racine)
+        x = reg.employe(ctx.req.champ("id")) if ctx.req.champ("id") else None
+        if action == "lier_accepter":
+            pris = {y.numero_sage for y in reg.employes if y.numero_sage}
+            n = 0
+            for y in reg.employes:
+                nom = "" if y.numero_sage else proposer_lien(y, noms)
+                if nom and nom not in pris:
+                    y.numero_sage = nom
+                    pris.add(nom)
+                    n += 1
+            reg.enregistrer()
+            return _message(f"{n} lien(s) accepté(s) et enregistré(s).")
+        if x is None:
+            return _message(erreur="Choisissez un employé puis son employé Sage.")
+        if action == "lier_retirer":
+            x.numero_sage = ""
+            reg.enregistrer()
+            return _message(f"Lien de {x.nom} retiré.")
+        nom = " ".join(ctx.req.champ("numero_sage").split())
+        if not nom:
+            return _message(erreur="Choisissez un employé puis son employé Sage.")
+        deja = next((y for y in reg.employes if y.id != x.id and y.numero_sage == nom), None)
+        if deja:
+            return _message(erreur=f"« {nom} » est déjà relié à {deja.nom}.")
+        x.numero_sage = nom
+        reg.enregistrer()
+        return _message(f"{x.nom} relié à « {nom} ».")
 
 
 def fiche_employe(ctx: Contexte) -> Reponse:
@@ -344,6 +595,9 @@ def fiche_employe(ctx: Contexte) -> Reponse:
 
 # --------------------------------------------------------------------------------------------- feuille de temps
 def feuille_detail(ctx: Contexte) -> Reponse:
+    """Comme fenetre_feuilles_temps.FenetreDetail : « ➕ Ajouter un pointage », « 🕑 Changer l'heure », « ✖ Annuler le
+    pointage », ligne d'explication, tableau Date / Heure / Pointage / Source / Auteur / Motif / En vigueur (annulés
+    grisés, corrections en jaune). Chaque correction demande la date et l'heure puis le motif (obligatoire)."""
     from .. import paie_temps as pt
 
     registre = pt.Registre(ctx.racine)
@@ -354,52 +608,93 @@ def feuille_detail(ctx: Contexte) -> Reponse:
         debut = pt.debut_periode(_date(ctx.req.query.get("debut") or ctx.req.champ("debut")), _reference(ctx.racine))
     except ValueError:
         debut = pt.debut_periode(date.today(), _reference(ctx.racine))
+    op = ctx.req.query.get("op") or ctx.req.champ("op")
+    choisi = ctx.req.query.get("pointage") or ctx.req.champ("pointage")
     message = ""
-    if ctx.req.methode == "POST":
-        motif = ctx.req.champ("motif")
+    if ctx.req.methode == "POST" and ctx.req.champ("action"):
+        action, motif = ctx.req.champ("action"), ctx.req.champ("motif").strip()
         try:
+            if not motif:
+                raise ValueError("Le motif de la correction est obligatoire.")
             with ctx.app.ecriture:
                 registre = pt.Registre(ctx.racine)
-                if ctx.req.champ("action") == "Annuler":
-                    ident = ctx.req.champ("pointage")
-                    if not any(p.id == ident and p.employe == employe.id for p in registre.pointages):
-                        raise ValueError("Pointage introuvable.")
-                    registre.annuler(ident, ctx.u.nom, motif)
+                p_ = next((x for x in registre.pointages if x.id == choisi and x.employe == employe.id), None)
+                if action in ("changer", "annuler") and p_ is None:
+                    raise ValueError("Choisissez un pointage.")
+                if action == "annuler":
+                    registre.annuler(p_.id, ctx.u.nom, motif)
                     message = _message("Pointage annulé.")
                 else:
-                    moment = datetime.fromisoformat(f"{_date(ctx.req.champ('jour'))}T{ctx.req.champ('heure')}")
-                    registre.corriger(employe.id, ctx.req.champ("type"), moment, ctx.u.nom, motif)
-                    message = _message("Pointage ajouté.")
+                    try:
+                        moment = datetime.strptime(ctx.req.champ("moment").strip(), "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        raise ValueError("Format attendu : AAAA-MM-JJ HH:MM (ex. 2026-10-20 08:30).") from None
+                    if action == "changer":
+                        registre.corriger(employe.id, p_.type, moment, ctx.u.nom, motif, remplace=p_.id)
+                        message = _message("Heure changée.")
+                    else:
+                        registre.corriger(employe.id, ctx.req.champ("type"), moment, ctx.u.nom, motif)
+                        message = _message("Pointage ajouté.")
+            op = ""
         except (ValueError, pt.ErreurPointage) as erreur:
             message = _message(erreur=str(erreur))
     fin = debut + timedelta(days=pt.JOURS_PERIODE)
+    valides = {x.id for x in registre.valides(employe.id)}
+    pointages = sorted((x for x in registre.pointages if x.employe == employe.id and not x.annule
+                        and debut.isoformat() <= x.moment[:10] < fin.isoformat()), key=lambda x: x.moment)
+    lignes, classes = [], []
+    for x in pointages:
+        lignes.append([f"<input type='radio' name='pointage' value='{e(x.id)}'{' checked' if x.id == choisi else ''}>",
+                       e(x.moment[:10]), e(x.moment[11:16]), e(x.type), e(x.source), e(x.auteur), e(x.motif),
+                       "Oui" if x.id in valides else "Annulé"])
+        classes.append("termine" if x.id not in valides else ("etat-a-saisir" if x.source == "Correction" else ""))
+    caches = (f"<input type='hidden' name='employe' value='{e(employe.id)}'><input type='hidden' name='debut' "
+              f"value='{debut}'>")
     f = pt.feuille(registre, employe, debut)
-    lignes = []
-    for p in registre.valides(employe.id):
-        if not debut.isoformat() <= p.moment[:10] < fin.isoformat():
-            continue
-        annuler = (f"<form method='post' class='ligne'>{csrf(ctx)}<input type='hidden' name='employe' "
-                   f"value='{e(employe.id)}'><input type='hidden' name='debut' value='{debut}'><input type='hidden' "
-                   f"name='pointage' value='{e(p.id)}'><input name='motif' placeholder='Motif' required size='12'>"
-                   "<button class='second' name='action' value='Annuler'>Annuler</button></form>")
-        lignes.append([f"{JOURS[p.quand.weekday()]} {p.quand:%d/%m %H:%M}", e(p.type),
-                       e(p.source + (f" ({p.auteur} : {p.motif})" if p.source == "Correction" else "")), annuler])
-    types = "".join(f"<option>{e(t)}</option>" for t in pt.TYPES)
-    corps = (message + f"<p><a href='/feuilles?debut={debut}'>◀ Feuilles de temps</a></p>"
-             f"<h2>Du {debut:%d/%m} au {(fin - timedelta(days=1)):%d/%m/%Y} · normales {heures(f.normales)} h · "
-             f"supp. {heures(f.supplementaires)} h · <span class='etat'>{e(f.etat)}</span></h2>"
-             + ("<ul>" + "".join(f"<li class='erreur'>{e(a)}</li>" for a in f.anomalies) + "</ul>" if f.anomalies else "")
-             + tableau(["Moment", "Pointage", "Source", ""], lignes)
-             + f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='employe' value='{e(employe.id)}'>"
-               f"<input type='hidden' name='debut' value='{debut}'><h2>Ajouter un pointage</h2><div class='ligne'>"
-               f"<div><label>Type</label><select name='type'>{types}</select></div>"
-               f"<div><label>Jour</label><input type='date' name='jour' value='{debut}' required></div>"
-               "<div><label>Heure</label><input type='time' name='heure' required></div>"
-               "<div><label>Motif</label><input name='motif' required></div></div><div class='boutons'>"
-               "<button name='action' value='Ajouter'>Ajouter le pointage</button></div></form>"
-               "<p class='note'>Une correction ne remplace jamais un pointage : elle s'ajoute, avec votre nom et le "
-               "motif ; une feuille corrigée revient « À approuver ».</p>")
-    return Reponse(corps=page(ctx, f"Feuille de {employe.nom}", corps))
+    barre = (f"<div class='barre-onglet'><button class='second' name='op' value='ajouter'>➕ Ajouter un pointage</button>"
+             "<button class='second' name='op' value='changer'>🕑 Changer l'heure</button>"
+             "<button class='second' name='op' value='annuler'>✖ Annuler le pointage</button>"
+             f"<a class='ouvrir a-droite' href='/feuilles?debut={debut}'>◀ Feuilles de temps</a></div>")
+    corps = (message + f"<form method='get'>{caches}{barre}"
+             "<p class='note'>Chaque correction garde le pointage d'origine, l'auteur et le motif.</p>"
+             + tableau_section(Section(
+                 f"Du {debut:%d/%m} au {(fin - timedelta(days=1)):%d/%m/%Y} · normales {heures(f.normales)} h · supp. "
+                 f"{heures(f.supplementaires)} h · {f.etat}",
+                 ["", "Date", "Heure", "Pointage", "Source", "Auteur", "Motif", "En vigueur"], lignes,
+                 classes=classes, html={0}))
+             + "</form>"
+             + ("<ul>" + "".join(f"<li class='erreur-texte'>{e(a)}</li>" for a in f.anomalies) + "</ul>"
+                if f.anomalies else "")
+             + _correction(ctx, op, choisi, pointages, caches, debut))
+    return Reponse(corps=page(ctx, f"Pointages de {employe.nom}", corps))
+
+
+def _correction(ctx: Contexte, op: str, choisi: str, pointages: list, caches: str, debut: date) -> str:
+    """Petites boîtes de Windows (type du pointage, date et heure, motif), ouvertes sous la liste."""
+    from .. import paie_temps as pt
+
+    if not op:
+        return ""
+    p_ = next((x for x in pointages if x.id == choisi), None)
+    if op in ("changer", "annuler") and p_ is None:
+        return "<p class='erreur-texte'>Choisissez un pointage.</p>"
+    motif = "<div><label>Motif de la correction (obligatoire) :</label><input name='motif' size='34' required></div>"
+    moment = ("<div><label>Date et heure (AAAA-MM-JJ HH:MM) :</label><input name='moment' value='{v}' size='17' "
+              "required></div>")
+    if op == "ajouter":
+        types = "".join(f"<option>{e(t)}</option>" for t in pt.TYPES)
+        contenu = (f"<div><label>Type :</label><select name='type'>{types}</select></div>"
+                   + moment.format(v=f"{debut:%Y-%m-%d} 08:00") + motif)
+        titre, bouton = "Ajouter un pointage", "Continuer"
+    elif op == "changer":
+        contenu = moment.format(v=e(p_.moment[:16].replace("T", " "))) + motif
+        titre, bouton = f"Changer l'heure : {p_.type} du {p_.moment[:10]}", "✔ Enregistrer"
+    else:
+        contenu = motif
+        titre, bouton = f"Annuler le pointage : {p_.type} du {p_.moment[:16].replace('T', ' ')}", "✖ Annuler le pointage"
+    return (f"<form method='post' class='carte'>{csrf(ctx)}{caches}<input type='hidden' name='pointage' "
+            f"value='{e(choisi)}'><input type='hidden' name='op' value='{op}'><h2>{e(titre)}</h2><div class='ligne'>"
+            f"{contenu}<button name='action' value='{op}'>{e(bouton)}</button></div></form>")
 
 
 # --------------------------------------------------------------------------------------------- congés

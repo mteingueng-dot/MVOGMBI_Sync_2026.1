@@ -11,7 +11,7 @@ import time
 from datetime import date, timedelta
 
 from .consultations import lire_ou_vide, Section, sections_html
-from .pages import Contexte, Fonction, argent, csrf, page
+from .pages import Contexte, Fonction, argent, csrf, page, permis as permis_page
 from .pages_compta import _message, action_permise
 from .serveur import Reponse, echapper as e
 
@@ -114,6 +114,8 @@ def tableau_ventes(ctx: Contexte) -> Reponse:
 
     sortie = "".join(f"<span class='{classe(l)}'>{e(l)}</span>\n" for l in texte.splitlines()[-60:])
     excel = ("<a class='ouvrir' href='/ventes-sage?excel=1'>📗 Excel</a>" if ctx.reg.peut_exporter(ctx.u) else "")
+    if permis_page(ctx.reg, ctx.u, Fonction("", "utilisateurs", "utilisateurs", None, "", "", page_entiere=True)):
+        excel += "<a class='ouvrir' href='/dossier-donnees'>📁 Dossier des données</a>"  # tout donnees/
     corps = (message + f"<div class='cartes-bord'>{cartes}</div>"
              + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><div><label>Point de vente :</label>"
                f"<select name='pv'>{options}</select></div></div><div class='barre-onglet'><button name='action' "
@@ -156,8 +158,8 @@ def relances(ctx: Contexte) -> Reponse:
         clients = _clients(ctx, forcer=bool(ctx.req.query.get("actualiser")))
     except (Exception, SystemExit) as erreur:  # noqa: BLE001
         ctx.app.noter(f"Relances : {erreur!r}")
-        return Reponse(corps=page(ctx, "Clients professionnels et relances", _message(
-            erreur="Lecture impossible : Sage ne répond pas sur le serveur pour l'instant.")))
+        ctx.absents.add("Sage")
+        clients = []
     if ctx.req.methode == "POST":
         c = next((x for x in clients if x.nom == ctx.req.champ("client")), None)
         if c is None or not c.echu:
@@ -189,19 +191,25 @@ def relances(ctx: Contexte) -> Reponse:
 
                 return taches.lancer(ctx, f"Rappel de paiement à {c.nom}", envoyer, "/relances")
     dernieres = p3.derniere_relance(ctx.racine)
-    lignes = [[c.nom, c.courriel, len(c.factures), c.solde, c.echu, c.plus_30, c.limite or "",
-               "Oui" if c.depasse else "", dernieres.get(c.nom, "")] for c in clients]
-    echus = [c for c in clients if c.echu]
-    choix = "".join(f"<option>{e(c.nom)}</option>" for c in echus)
-    corps = (message + "<p><a href='?actualiser=1'>⟳ Actualiser</a></p>"
-             + sections_html([Section("Clients avec des factures ouvertes", [
-                 "Client", "Courriel", "Factures", "Solde", "Échu", "Plus de 30 jours", "Limite de crédit",
-                 "Dépassement", "Dernière relance"], lignes)])
-             + (f"<form method='post' class='ligne' target='_self'>{csrf(ctx)}<div><label>Client</label><select "
-                f"name='client'>{choix}</select></div><button name='action' value='Imprimer' formaction='/relance-lettre' "
-                "formmethod='get' class='second'>Lettre de rappel (imprimer)</button><button name='action' "
-                "value='Envoyer'>Envoyer le rappel par courriel</button></form>" if echus else
-                "<p>Aucune facture échue.</p>"))
+    choisi = ctx.req.champ("client")
+    lignes = [[f"<input type='radio' name='client' value='{e(c.nom)}'{' checked' if c.nom == choisi else ''}>",
+               e(c.nom), e(c.courriel), str(len(c.factures)), argent(c.solde), argent(c.echu), argent(c.plus_30),
+               argent(c.limite) if c.limite else "", "Oui" if c.depasse else "", e(dernieres.get(c.nom, ""))]
+              for c in clients]
+    classes = ["etat-ecart" if c.plus_30 or c.depasse else "" for c in clients]
+    from .consultations import tableau_section
+
+    corps = (message + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><a class='ouvrir' "
+             "href='/relances?actualiser=1'>🔍 Lire dans Sage</a><button class='second' name='action' value='Imprimer' "
+             "formaction='/relance-lettre' formtarget='_blank'>🖨 Imprimer la lettre de relance"
+             "</button><button class='second' name='action' value='Envoyer'>✉ Envoyer la relance par courriel…</button>"
+             "</div><p class='note'>Factures ouvertes des clients de Sage (hors ventes Clover), limite de crédit et "
+             "retards. En rose : plus de 30 jours ou limite de crédit dépassée.</p>"
+             + tableau_section(Section("Clients professionnels", ["", "Client", "Courriel", "Factures", "Solde", "Échu",
+                                                                  "Plus de 30 jours", "Limite de crédit", "Dépassement",
+                                                                  "Dernière relance"], lignes, classes=classes,
+                                       html=set(range(10))))
+             + f"</form><div class='ligne-etat'>{len(clients)} client(s) avec des factures ouvertes.</div>")
     return Reponse(corps=page(ctx, "Clients professionnels et relances", corps))
 
 
@@ -209,7 +217,7 @@ def lettre(ctx: Contexte) -> Reponse:
     from .. import paquet3 as p3
     from ..export_tableau import page_html
 
-    c = next((x for x in (ctx.app.memoire.get("clients_pro") or (0, []))[1] if x.nom == ctx.req.query.get("client")),
+    c = next((x for x in (ctx.app.memoire.get("clients_pro") or (0, []))[1] if x.nom == (ctx.req.query.get("client") or ctx.req.champ("client"))),
              None)
     if c is None or not c.echu:
         return Reponse(404, page(ctx, "Rappel de paiement", "<p>Client introuvable : actualisez la liste.</p>"))
