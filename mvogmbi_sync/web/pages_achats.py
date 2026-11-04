@@ -56,40 +56,188 @@ def saisir_facture(ctx: Contexte) -> Reponse:
 
 # --------------------------------------------------------------------------------------------- bons de commande
 def bons(ctx: Contexte) -> Reponse:
+    """Comme fenetre_bons_commande.FenetreBons : « 🔄 Actualiser », « 📂 Ouvrir » (PDF), « ➕ Ajouter », « ✎ Modifier »,
+    « 🗑 Supprimer », « 🧮 Proposer les commandes… », « 🔁 Refaire le PDF », « ⚖ Comparer avec la facture »,
+    « 🔀 Transformer… » ; liste des bons ; « Comparaison avec la facture » et « ✔ Marquer reçu »."""
     from .. import bons_commande as bc
+    from .. import documents as dc
+    from .consultations import Section, tableau_section
     from . import taches
 
-    message = ""
-    if ctx.req.methode == "POST":
-        action = ctx.req.champ("action")
-        if action == "Proposer":
-            try:
-                jours = max(7, min(28, int(ctx.req.champ("jours") or 14)))
-            except ValueError:
-                jours = 14
-
-            def proposer(journal):
-                journal("Lecture des ventes Clover, du stock et des derniers achats dans Sage…")
-                propositions = bc.lire(ctx.racine, ctx.config, jours)
-                ctx.app.memoire["propositions"] = (time.time(), propositions)
-                a_commander = [p for p in propositions if p.permis]
-                return [f"{len(a_commander)} article(s) à commander chez "
-                        f"{len({p.fournisseur for p in a_commander})} fournisseur(s). Ouvrez « Bons de commande » > "
-                        "« Voir la proposition »."]
-
-            return taches.lancer(ctx, f"Proposition des commandes ({jours} jours)", proposer, "/bons-proposition")
+    choisi = ctx.req.champ("bon") or ctx.req.query.get("bon", "")
+    op = ctx.req.champ("op") or ctx.req.query.get("op", "")
+    message, bas = "", ""
     registre = bc.Registre(ctx.racine)
-    lignes = [[f"<a href='/bon?n={e(b.numero)}'>{e(b.numero)}</a>", e(b.fournisseur), e(b.date), len(b.lignes),
-               argent(b.total), e(b.etat), e(b.facture)]
-              for b in sorted(registre.bons, key=lambda b: (b.date, b.numero), reverse=True)]
-    corps = (message + f"<form method='post' class='ligne'>{csrf(ctx)}<div><label>Couvrir (jours de ventes)</label>"
-             "<select name='jours'>" + "".join(f"<option{' selected' if j == 14 else ''}>{j}</option>"
-                                                for j in (7, 14, 21, 28))
-             + "</select></div><button name='action' value='Proposer'>Proposer les commandes…</button>"
-               "<a class='ouvrir' href='/bons-proposition'>Voir la proposition</a></form>"
-             + tableau(["N°", "Fournisseur", "Date", "Lignes", "Total", "État", "Facture"],
-                       [[l[0], l[1], l[2], str(l[3]), l[4], l[5], l[6]] for l in lignes], {3, 4}))
+    b = next((x for x in registre.bons if x.numero == choisi), None)
+    action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
+    if action:
+        try:
+            if action == "Proposer":
+                jours = max(7, min(28, int(ctx.req.champ("jours") or 14)))
+
+                def proposer(journal):
+                    journal("Lecture des ventes Clover, du stock et des derniers achats dans Sage…")
+                    propositions = bc.lire(ctx.racine, ctx.config, jours)
+                    ctx.app.memoire["propositions"] = (time.time(), propositions)
+                    a_commander = [x for x in propositions if x.permis]
+                    return [f"{len(a_commander)} article(s) à commander chez "
+                            f"{len({x.fournisseur for x in a_commander})} fournisseur(s)."]
+
+                return taches.lancer(ctx, f"Proposition des commandes ({jours} jours)", proposer, "/bons-proposition")
+            if action in ("Créer le bon de commande", "Enregistrer le bon"):
+                message = _enregistrer_bon(ctx, b if action == "Enregistrer le bon" else None)
+                op = ""
+            elif b is None:
+                raise ValueError("Choisissez un bon dans la liste.")
+            elif action == "Supprimer":
+                if not action_permise(ctx, "Supprimer"):
+                    raise ValueError("Votre profil n'a pas le droit « Supprimer ».")
+                with ctx.app.ecriture:
+                    bc.supprimer_bon(ctx.racine, b.numero)
+                message, b = _message(f"{choisi} supprimé."), None
+            elif action == "Refaire le PDF":
+                bc.refaire_pdf(ctx.racine, b.numero)
+                message = _message("✔ PDF refait.")
+            elif action == "Transformer":
+                from ..chaine_documents import transformer_achat
+
+                cree = transformer_achat(ctx.racine, ("bc", b.numero), ctx.req.champ("cible"), ctx.req.champ("jour"),
+                                         ctx.u.nom, ctx.req.champ("numero_facture").strip())
+                message, op = _message(f"{cree} créé à partir de {b.numero}."), ""
+            elif action == "Marquer reçu":
+                f = next((x for x in bc.factures_du_fournisseur(ctx.racine, b)
+                          if x.numero == ctx.req.champ("facture")), None)
+                if f is None:
+                    raise ValueError("Choisissez la facture du fournisseur.")
+                _lignes, conforme = bc.comparer(b, f)
+                with ctx.app.ecriture:
+                    bc.noter_reception(ctx.racine, b.numero, f.numero, conforme)
+                message = _message(f"Bon marqué « {'Reçu' if conforme else 'Reçu avec écarts'} ».")
+        except (ValueError, RuntimeError, InvalidOperation) as erreur:
+            message = _message(erreur=str(erreur) or "Nombre invalide.")
+        registre = bc.Registre(ctx.racine)
+        b = next((x for x in registre.bons if x.numero == choisi), None)
+    if op == "ouvrir" and b is not None:  # « 📂 Ouvrir » : le PDF du bon
+        chemin = bc.refaire_pdf(ctx.racine, b.numero)
+        return Reponse(corps=chemin.read_bytes(), type="application/pdf",
+                       entetes={"Content-Disposition": f"inline; filename={b.numero}.pdf"})
+    if op in ("modifier", "comparer", "transformer", "ouvrir") and b is None:
+        bas = "<p class='erreur-texte'>Choisissez un bon dans la liste.</p>"
+    elif op == "ajouter" or (op == "modifier" and b is not None):
+        if op == "modifier" and b.etat != bc.CREE:
+            bas = f"<p class='erreur-texte'>{e(b.numero)} ({e(b.etat)}) ne peut plus être modifié.</p>"
+        else:
+            bas = _saisie_bon(ctx, b if op == "modifier" else None)
+    elif op == "comparer" and b is not None:
+        factures = bc.factures_du_fournisseur(ctx.racine, b)
+        facture = next((x for x in factures if x.numero == ctx.req.query.get("facture")), factures[0] if factures else None)
+        lignes_c, conforme = bc.comparer(b, facture) if facture else ([], False)
+        options = "".join(f"<option{' selected' if facture and x.numero == facture.numero else ''}>{e(x.numero)}"
+                          "</option>" for x in factures)
+        bas = (f"<form method='get' class='barre-onglet'><input type='hidden' name='bon' value='{e(b.numero)}'><input "
+               f"type='hidden' name='op' value='comparer'><div><label>Facture du fournisseur</label><select "
+               f"name='facture'>{options}</select></div><button class='second'>⚖ Comparer</button></form>"
+               + tableau_section(Section("Comparaison avec la facture", bc.ENTETES_COMPARAISON, lignes_c,
+                                         ("Conforme." if conforme else "Écarts à vérifier.") if facture else
+                                         "Aucune facture de ce fournisseur datée du bon ou après.",
+                                         classes=["etat-ecart" if l and str(l[-1]).startswith("⚠") else ""
+                                                  for l in lignes_c]))
+               + (f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='bon' "
+                  f"value='{e(b.numero)}'><input type='hidden' name='facture' value='{e(facture.numero)}'><button "
+                  "name='action' value='Marquer reçu'>✔ Marquer reçu</button></form>" if facture else ""))
+    elif op == "transformer" and b is not None:
+        cibles = "".join(f"<option value='{c}'>{e(dc.libelle(c))}</option>"
+                         for c in dc.TRANSFORMATIONS[dc.COMMANDE_ACHAT])
+        bas = (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='bon' value='{e(b.numero)}'>"
+               f"<h2>Transformation de {e(b.numero)}</h2><div class='ligne'><div><label>Vers quel type ?</label><select "
+               f"name='cible'>{cibles}</select></div><div><label>Date</label><input type='date' name='jour' "
+               f"value='{date.today()}'></div><div><label>N° de facture du fournisseur</label><input "
+               "name='numero_facture' size='16'></div><button name='action' value='Transformer'>🔀 Transformer</button>"
+               "</div></form>")
+    bons_ = sorted(registre.bons, key=lambda x: x.numero, reverse=True)
+    lignes = [[f"<input type='radio' name='bon' value='{e(x.numero)}'{' checked' if x.numero == choisi else ''}>",
+               e(x.numero), e(x.date), e(x.fournisseur), str(len(x.lignes)), argent(x.total), e(x.etat), e(x.facture)]
+              for x in bons_]
+    jours = "".join(f"<option{' selected' if j_ == 14 else ''}>{j_}</option>" for j_ in (7, 14, 21, 28))
+    corps = (message + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><a class='ouvrir' href='/bons-commande'>🔄 "
+             "Actualiser</a><button class='second' name='op' value='ouvrir' formtarget='_blank'>📂 Ouvrir</button>"
+             "<button class='second' name='op' value='ajouter'>➕ Ajouter</button><button class='second' name='op' "
+             "value='modifier'>✎ Modifier</button><button class='danger' name='action' "
+             "value='Supprimer'>🗑 Supprimer</button><button class='second' name='action' "
+             "value='Refaire le PDF'>🔁 Refaire le PDF</button><button class='second' name='op' value='comparer'>⚖ "
+             "Comparer avec la facture</button><button class='second' name='op' value='transformer'>🔀 Transformer…"
+             "</button></div>"
+             f"<p class='note'>{len(bons_)} bon(s). « Comparer avec la facture » : la facture du même fournisseur reçue "
+             "depuis le bon (factures fournisseurs) est comparée au bon.</p>"
+             + tableau_section(Section("Bons de commande", ["", "N°", "Date", "Fournisseur", "Articles", "Total", "État",
+                                                           "Facture"], lignes, html=set(range(8))))
+             + "</form>"
+             + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<div><label>Couvrir (jours de ventes)</label><select "
+               f"name='jours'>{jours}</select></div><button name='action' value='Proposer'>🧮 Proposer les commandes…"
+               "</button><a class='ouvrir' href='/bons-proposition'>Voir la proposition</a></form>" + bas)
     return Reponse(corps=page(ctx, "Bons de commande", corps))
+
+
+def _saisie_bon(ctx: Contexte, b) -> str:
+    """Saisie d'un bon (fenetre_gestion.saisir_bon_commande) : fournisseur, date, lignes en unités du fournisseur."""
+    from .pages_fournisseurs import _listes
+
+    noms, articles = _listes(ctx.racine)
+    lignes = list(b.lignes) if b else []
+    rangees = ""
+    for k in range(max(len(lignes) + 3, 6)):
+        l = lignes[k] if k < len(lignes) else None
+        rangees += (f"<tr><td><input name='l_numero' list='articles-sage' value='{e(l.numero_sage if l else '')}' "
+                    f"size='14'></td><td><input name='l_description' value='{e(l.description if l else '')}' size='30'>"
+                    f"</td><td><input name='l_quantite' value='{e(l.quantite if l else '')}' size='6'></td><td><input "
+                    f"name='l_prix' value='{e(l.prix if l else '')}' size='8'></td><td><input name='l_facteur' "
+                    f"value='{e(l.facteur if l else '1')}' size='5'></td></tr>")
+    liste_f = "<datalist id='fournisseurs'>" + "".join(f"<option value='{e(n)}'>" for n in noms) + "</datalist>"
+    liste_a = "<datalist id='articles-sage'>" + "".join(f"<option value='{e(a.numero)}'>{e(a.description)}</option>"
+                                                        for a in articles) + "</datalist>"
+    return (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='bon' value='{e(b.numero if b else '')}'>"
+            f"<h2>{'Modifier ' + e(b.numero) if b else 'Saisir une commande fournisseur'}</h2><div class='ligne'><div>"
+            f"<label>Fournisseur *</label><input name='fournisseur' list='fournisseurs' value='{e(b.fournisseur if b else '')}' "
+            f"size='34'>{liste_f}</div><div><label>Date</label><input type='date' name='jour' "
+            f"value='{e(b.date if b else date.today().isoformat())}'></div></div>{liste_a}<div class='defile'><table><tr>"
+            "<th>N° Sage</th><th>Description</th><th>Quantité</th><th>Prix d'achat</th><th>Facteur</th></tr>"
+            f"{rangees}</table></div><div class='barre-onglet'><button name='action' value='"
+            + ("Enregistrer le bon'>💾 Enregistrer" if b else "Créer le bon de commande'>➕ Créer le bon de commande")
+            + "</button></div><p class='note'>Quantité et prix en unités du fournisseur ; facteur = unités Sage par "
+              "unité du fournisseur.</p></form>")
+
+
+def _enregistrer_bon(ctx: Contexte, b) -> str:
+    from .. import bons_commande as bc
+    from .pages_fournisseurs import _listes
+
+    _noms, articles = _listes(ctx.racine)
+    descriptions = {a.numero: a.description for a in articles}
+    fournisseur, jour = ctx.req.champ("fournisseur").strip(), ctx.req.champ("jour").strip() or date.today().isoformat()
+    if not fournisseur:
+        raise ValueError("Choisissez le fournisseur.")
+    lignes = []
+    for n, d, q, pr, f in zip(ctx.req.champs("l_numero"), ctx.req.champs("l_description"), ctx.req.champs("l_quantite"),
+                              ctx.req.champs("l_prix"), ctx.req.champs("l_facteur")):
+        n = n.strip().split(" ")[0]
+        if not n or not q.strip():
+            continue
+        quantite = Decimal(q.replace(",", "."))
+        prix = Decimal((pr or "0").replace(",", ".").replace("$", "").strip() or "0")
+        facteur = Decimal((f or "1").replace(",", ".") or "1")
+        lignes.append((n, d.strip() or descriptions.get(n, ""), quantite, prix, facteur))
+    if not lignes:
+        raise ValueError("Ajoutez au moins une ligne (n° Sage et quantité).")
+    with ctx.app.ecriture:
+        if b is not None:
+            modifie = bc.modifier_bon(ctx.racine, b.numero, fournisseur, jour, [
+                bc.LigneBon(n, d, str(q), str(pr), str((q * pr).quantize(Decimal("0.01"))), str(f))
+                for n, d, q, pr, f in lignes])
+            return _message(f"✔ {modifie.numero} enregistré.")
+        propositions = [bc.Proposition(n, d, "", Decimal(0), Decimal(0), q, fournisseur, pr, facteur=f)
+                        for n, d, q, pr, f in lignes]
+        crees = bc.creer_bons(ctx.racine, propositions, date.fromisoformat(jour))
+    return _message(f"✔ Bon {crees[0].numero} créé pour {fournisseur}.")
 
 
 def proposition(ctx: Contexte) -> Reponse:
@@ -247,14 +395,15 @@ def retours(ctx: Contexte) -> Reponse:
                 valeurs = {k: "" for k in valeurs}
         except (ValueError, InvalidOperation) as erreur:
             message = _message(erreur=str(erreur) or "Quantité ou prix invalide.")
+    from .consultations import Section, tableau_section
+
     registre = rt.Registre(ctx.racine)
-    lignes = []
-    for r in sorted(registre.retours, key=lambda r: r.jour, reverse=True):
-        bouton = (f"<form method='post'>{csrf(ctx)}<input type='hidden' name='numero' value='{e(r.numero)}'><button "
-                  "name='action' value='Importer dans Sage'>Importer dans Sage</button></form>"
-                  if r.etat != rt.IMPORTE else "")
-        lignes.append([e(r.numero), e(r.fournisseur_sage), e(r.facture_origine), e(r.jour), len(r.lignes),
-                       argent(-sum((l.montant for l in r.lignes), Decimal(0))), e(r.etat), bouton])
+    lignes = [[f"<input type='radio' name='numero' value='{e(r.numero)}'>", e(r.jour), e(r.numero),
+               e(r.fournisseur_sage), e(r.facture_origine), str(len(r.lignes)),
+               argent(sum((l.montant for l in r.lignes), Decimal(0))), e(r.etat), e(" ; ".join(r.messages))]
+              for r in sorted(registre.retours, key=lambda r: r.cree, reverse=True)]
+    classes = ["termine" if r.etat == rt.IMPORTE else "" for r in sorted(registre.retours, key=lambda r: r.cree,
+                                                                           reverse=True)]
     liste = "<datalist id='fournisseurs'>" + "".join(f"<option value='{e(n)}'>" for n in noms) + "</datalist>"
     rangees = []
     for l in lignes_proposees + [rt.LigneRetour("", "", "", "")] * 4:
@@ -262,22 +411,26 @@ def retours(ctx: Contexte) -> Reponse:
                        f"name='description' value='{e(l.description)}' size='28'></td><td><input name='quantite' "
                        f"value='{e(l.quantite)}' size='6'></td><td><input name='prix' value='{e(l.prix)}' size='8'></td>"
                        f"<td><select name='taxe'>" + "".join(
-                           f"<option value='{x}'{' selected' if x == l.taxe else ''}>{x or 'aucune'}</option>"
+                           f"<option value='{x}'{' selected' if x == l.taxe else ''}>{x or 'Aucune'}</option>"
                            for x in ("", "GQ", "G", "Q")) + "</select></td></tr>")
-    corps = (message + tableau(["N°", "Fournisseur", "Facture d'origine", "Date", "Lignes", "Montant", "État", ""],
-                               [[l[0], l[1], l[2], l[3], str(l[4]), l[5], l[6], l[7]] for l in lignes], {4, 5})
-             + f"<form method='post' class='carte'>{csrf(ctx)}<h2>Nouveau retour</h2><div class='ligne'><div><label>"
-               f"Fournisseur Sage</label><input name='fournisseur' list='fournisseurs' value='{e(valeurs['fournisseur'])}' "
-               f"size='28' required>{liste}</div><div><label>Facture d'origine</label><input name='facture' "
-               f"value='{e(valeurs['facture'])}' required></div><div><label>Date</label><input type='date' name='jour' "
-               f"value='{e(valeurs['jour'] or date.today().isoformat())}'></div><div><label>Motif</label><input "
-               f"name='motif' value='{e(valeurs['motif'])}'></div><button class='second' name='action' "
-               "value='Reprendre les lignes' formnovalidate>Reprendre les lignes de la facture</button></div>"
-               "<div class='defile'><table><tr><th>N° Sage</th><th>Description</th><th>Qté Sage</th><th>Prix Sage</th>"
-               f"<th>Taxes</th></tr>{''.join(rangees)}</table></div><div class='boutons'><button name='action' "
-               "value='Créer le retour'>Créer le retour</button></div></form>"
-               "<p class='note'>Le retour est une facture d'achat aux quantités et montants négatifs ; à l'import, "
-               "le stock Clover des articles reliés diminue aussi.</p>")
+    corps = (message + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><div><label>Fournisseur Sage *"
+             f"</label><input name='fournisseur' list='fournisseurs' value='{e(valeurs['fournisseur'])}' size='28'>"
+             f"{liste}</div><div><label>Facture d'origine *</label><input name='facture' "
+             f"value='{e(valeurs['facture'])}' size='14'></div><div><label>Motif</label><input name='motif' "
+             f"value='{e(valeurs['motif'])}' size='20'></div><div><label>Date</label><input type='date' name='jour' "
+             f"value='{e(valeurs['jour'] or date.today().isoformat())}'></div><button class='second' name='action' "
+             "value='Reprendre les lignes'>📥 Reprendre les lignes de la facture</button></div>"
+             "<div class='defile'><table><tr><th>N° Sage</th><th>Description</th><th>Quantité</th><th>Prix</th>"
+             f"<th>Taxes</th></tr>{''.join(rangees)}</table></div><div class='barre-onglet'><button name='action' "
+             "value='Créer le retour'>✔ Enregistrer le retour</button></div></form>"
+             + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><button class='second' name='action' "
+               "value='Importer dans Sage'>📤 Importer le retour choisi dans Sage</button></div>"
+               "<p class='note'>Le retour est importé dans Sage comme une facture d'achat négative (« R-n° de facture ») ;"
+               " le stock Clover des articles reliés diminue.</p>"
+             + tableau_section(Section("Retours", ["", "Date", "N°", "Fournisseur", "Facture d'origine", "Lignes",
+                                                  "Montant", "État", "Messages"], lignes, classes=classes,
+                                       html=set(range(9))))
+             + "</form>")
     return Reponse(corps=page(ctx, "Retours fournisseurs", corps))
 
 

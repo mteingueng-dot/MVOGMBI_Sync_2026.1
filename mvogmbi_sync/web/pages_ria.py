@@ -6,92 +6,191 @@ traités en opérations), comptes RIA (vérifiés dans le plan comptable).
 from __future__ import annotations
 
 import tempfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from .consultations import Section, sections_html
+from .consultations import Section, sections_html, tableau_section
 from .pages import Contexte, Fonction, argent, csrf, page
-from .pages_compta import _message
+from .pages_compta import _message, action_permise
 from .serveur import Reponse, echapper as e
 
 
-def operations(ctx: Contexte) -> Reponse:
+def _lignes_ria(ctx: Contexte, du: date, au: date, forcer: bool = False):
+    """Comme FenetreRia.actualiser + _afficher : mouvements RIA des relevés (rapprochés de Sage), dépôts d'espèces
+    (surplus), opérations ; gardé 5 min."""
+    import time
+
     from .. import ria
+    from ..ria_etats import Registre as RegistreEtats, commissions_reconnues
+    from .consultations import lire_ou_vide
+
+    cle = ("ria", du, au)
+    gardee = ctx.app.memoire.get(cle)
+    if gardee and not forcer and time.time() - gardee[0] < 300:
+        mouvements, depots = gardee[1]
+    else:
+        from ..__main__ import charger_config
+        from ..api_clover import ClientClover
+        from ..encaissements import calculer, numero_compte_sage
+        from ..points_vente import points_de_vente
+        from ..rapprochement import RegistreReleves, mouvements_sage, periode_des, rapprocher
+
+        def lire(base):
+            releves = RegistreReleves(ctx.racine).lire()
+            bornes = periode_des(releves)
+            if not bornes:
+                return [], []
+            banque = [m for r in releves for m in r.mouvements]
+            rapprocher(banque, mouvements_sage(base, bornes[0] - timedelta(days=7), bornes[1] + timedelta(days=7)))
+            mouvements = [m for m in banque if ria.est_ria(m) and du <= date.fromisoformat(m.date) <= au]
+            depots = []
+            try:
+                pdv = next(p for p in points_de_vente(ctx.config, actifs=True) if p.principal)
+                client = ClientClover(charger_config(ctx.racine / "config.toml", pdv))
+                compte = numero_compte_sage(ctx.config.get("encaissements", {}).get("compte_depot", "1055"))
+                depots = calculer(client, base, pdv.client_sage, compte, du, au, racine=ctx.racine,
+                                  prefixe=pdv.prefixe)
+            except (Exception, SystemExit):  # noqa: BLE001 — Clover illisible : mouvements du relevé seulement
+                ctx.absents.add("Clover")
+            return mouvements, depots
+
+        mouvements, depots = lire_ou_vide(ctx, lire)
+        if "Sage" not in ctx.absents:
+            ctx.app.memoire[cle] = (time.time(), (mouvements, depots))
+    with ctx.app.ecriture:
+        registre = ria.Registre(ctx.racine)
+        nouvelles = [c for c in commissions_reconnues(mouvements, RegistreEtats(ctx.racine).etats)
+                     if c not in registre.commissions]
+        if nouvelles:  # dépôt égal à la commission payée d'un état de compte : « Commission » d'office
+            registre.commissions += nouvelles
+            registre.enregistrer()
+    return registre.lignes(mouvements, depots, du, au)
+
+
+def operations(ctx: Contexte) -> Reponse:
+    """Comme fenetre_ria.FenetreRia : Du … au, « 🔄 Actualiser », « ✔ Confirmer le surplus », « 💵 Commission »,
+    « ➕ Paiement en espèces… », « 🗑 Supprimer », « 🔢 Comptes… », « 📒 Saisir dans Sage », « 📑 États de compte RIA… » ;
+    ligne d'état ; 6 cartes (dépôts, surplus, retraits, paiements, commissions, solde dû à RIA) ; tableau coloré
+    (bleu : surplus à confirmer, jaune : à saisir, gris : fait)."""
+    from .. import ria
+    from ..rapprochement import A_SAISIR as ABSENT, CONFIRME, RegistreReleves
     from . import taches
 
+    def jour(cle, defaut):
+        try:
+            return date.fromisoformat(ctx.req.query.get(cle) or ctx.req.champ(cle))
+        except (TypeError, ValueError):
+            return defaut
+
+    du, au = jour("du", date.today() - timedelta(days=45)), jour("au", date.today())
+    retour = f"/ria?du={du}&au={au}"
     message = ""
+    lignes, bilan = _lignes_ria(ctx, du, au, forcer=bool(ctx.req.query.get("actualiser")))
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
+        choisies = [lignes[int(k)] for k in ctx.req.champs("ligne") if k.isdigit() and int(k) < len(lignes)]
         try:
             with ctx.app.ecriture:
                 registre = ria.Registre(ctx.racine)
-                if action == "Ajouter":
-                    montant = Decimal(ctx.req.champ("montant").replace(",", ".").replace("$", "").replace(" ", ""))
-                    o = registre.ajouter(ctx.req.champ("jour"), ctx.req.champ("genre"), montant,
-                                         ctx.req.champ("description").strip(), auteur=ctx.u.nom)
-                    registre.enregistrer()
-                    message = _message(f"Opération {o.numero} ajoutée.")
+                if action == "Confirmer le surplus":
+                    choix = [l for l in choisies if l["sorte"] == "surplus"]
+                    if not choix:
+                        raise ValueError("Choisissez une ou plusieurs lignes « surplus » dans la liste.")
+                    for l in choix:
+                        d = l["depot"]
+                        registre.ajouter(d.date.isoformat(), ria.SURPLUS, d.ria, d.origine, d.cle, ctx.u.nom)
+                elif action == "Commission":
+                    choix = [l for l in choisies if l["sorte"] == "releve" and l["montant"] > 0]
+                    if not choix:
+                        raise ValueError("Choisissez un dépôt de RIA du relevé dans la liste.")
+                    for l in choix:
+                        c = l["mouvement"].cle
+                        (registre.commissions.remove if c in registre.commissions else registre.commissions.append)(c)
+                elif action == "Paiement en espèces":
+                    from ..design import montant_saisi
+
+                    registre.ajouter(ctx.req.champ("jour").strip(), ria.ESPECES, montant_saisi(ctx.req.champ("montant")),
+                                     ctx.req.champ("description").strip(), auteur=ctx.u.nom)
                 elif action == "Supprimer":
-                    registre.supprimer(ctx.req.champ("numero"))
-                    registre.enregistrer()
-                    message = _message("Opération supprimée.")
-            if action == "Saisir dans Sage":
-                registre = ria.Registre(ctx.racine)
-                if registre.comptes_manquants():
-                    raise ValueError("Comptes à renseigner d'abord (Comptabilité > Comptes RIA) : "
-                                     + ", ".join(registre.comptes_manquants()))
-                if not registre.a_saisir():
-                    raise ValueError("Aucune opération à saisir dans Sage.")
+                    if not action_permise(ctx, "Supprimer"):
+                        raise ValueError("Votre profil n'a pas le droit « Supprimer ».")
+                    choix = [l for l in choisies if l["sorte"] == "operation"]
+                    if not choix:
+                        raise ValueError("Choisissez une ou plusieurs opérations dans la liste.")
+                    for l in choix:
+                        registre.supprimer(l["operation"].numero)
+                elif action == "Saisir dans Sage":
+                    if not action_permise(ctx, "Saisir les dépenses dans Sage"):
+                        raise ValueError("Votre profil n'a pas le droit « Saisir les dépenses dans Sage ».")
+                    manquants = registre.comptes_manquants()
+                    if manquants:
+                        raise ValueError("Comptes à renseigner (« Comptes… ») : " + ", ".join(manquants))
+                    a_saisir = [l for l in lignes if l["sorte"] == "releve" and l["mouvement"].etat in (ABSENT, CONFIRME)]
+                    operations_ = registre.mouvements_a_saisir()
+                    if not a_saisir and not operations_:
+                        raise ValueError("Rien à saisir dans Sage.")
+                    releves = RegistreReleves(ctx.racine)
+                    for l in a_saisir:
+                        m = l["mouvement"]
+                        m.compte = registre.comptes["commissions" if l["genre"] == ria.COMMISSION else "ria"]
+                        m.etat = CONFIRME
+                        releves.retenir(m)
+                    releves.enregistrer()
+                    n = len(a_saisir) + len(operations_)
 
-                def travail(journal):
-                    b = taches.executer_sage(ctx.racine, ["journal-bureau"], journal)
-                    return [f"{len(b.get('saisis', []))} écriture(s) enregistrée(s)."] + b.get("a_verifier", []) + \
-                        ([b["erreur"]] if b.get("erreur") else [])
+                    def travail(journal):
+                        b = taches.executer_sage(ctx.racine, ["journal-bureau"], journal)
+                        ctx.app.memoire.pop(("ria", du, au), None)
+                        return [f"{len(b.get('saisis', []))} écriture(s) enregistrée(s)."] + b.get("a_verifier", []) \
+                            + ([b["erreur"]] if b.get("erreur") else [])
 
-                return taches.lancer(ctx, f"Saisie de {registre.a_saisir()} opération(s) RIA", travail, "/ria",
-                                     sage=True)
-        except (ValueError, InvalidOperation, StopIteration) as erreur:
-            message = _message(erreur=str(erreur) or "Montant invalide.")
+                    return taches.lancer(ctx, f"Saisie de {n} écriture(s) RIA", travail, retour, sage=True)
+                registre.enregistrer()
+            lignes, bilan = _lignes_ria(ctx, du, au)
+        except (ValueError, InvalidOperation) as erreur:
+            message = _message(erreur=str(erreur) or "Montant ou date invalide.")
     registre = ria.Registre(ctx.racine)
-    lignes, bilan = [], ria.Bilan()
-    for o in sorted(registre.operations, key=lambda o: o.jour, reverse=True):
-        signe = -1 if o.genre == ria.ESPECES else 1
-        lignes.append([o.numero, o.jour, o.genre, signe * Decimal(o.montant), o.description, o.etat, o.ecriture or "",
-                       o.auteur])
-        if o.genre == ria.ESPECES:
-            bilan.paiements += Decimal(o.montant)
-        elif o.genre == ria.ENVOI:
-            bilan.depots += Decimal(o.montant)
-        elif o.genre == ria.SURPLUS:
-            bilan.surplus += Decimal(o.montant)
+    from .consultations import Section, tableau_section
+
+    def couleur(l) -> str:
+        if l["sorte"] == "surplus":
+            return "etat-ria"
+        return "termine" if l["etat"] in ("Dans Sage", ria.SAISIE) else "etat-a-saisir"
+
+    rangees = [[f"<input type='checkbox' name='ligne' value='{n}'>", e(l["date"]), e(l["genre"]), e(l["description"]),
+                argent(l["montant"]), e(l["etat"])] for n, l in enumerate(lignes)]
     manquants = registre.comptes_manquants()
-    genres = "".join(f"<option>{e(g)}</option>" for g in (ria.ENVOI, ria.ESPECES, ria.SURPLUS))
-    supprimables = [o for o in registre.operations if o.etat != ria.SAISIE]
-    choix = "".join(f"<option>{e(o.numero)}</option>" for o in supprimables)
-    corps = (message
-             + (f"<p class='erreur'>Comptes à renseigner avant toute saisie : {e(', '.join(manquants))} "
-                "(<a href='/comptes-ria'>Comptes RIA</a>).</p>" if manquants else "")
-             + f"<div class='cartes'><div class='carte'><div class='t'>Envois reçus en espèces</div><div class='v'>"
-               f"{argent(bilan.depots)}</div></div><div class='carte'><div class='t'>Surplus de dépôts</div>"
-               f"<div class='v'>{argent(bilan.surplus)}</div></div><div class='carte'><div class='t'>Versements payés en "
-               f"espèces</div><div class='v'>{argent(bilan.paiements)}</div></div><div class='carte'><div class='t'>"
-               f"À saisir dans Sage</div><div class='v'>{registre.a_saisir()}</div></div></div>"
-             + f"<form method='post' class='carte'>{csrf(ctx)}<h2>Nouvelle opération</h2><div class='ligne'>"
-               f"<div><label>Date</label><input type='date' name='jour' value='{date.today()}' required></div>"
-               f"<div><label>Opération</label><select name='genre'>{genres}</select></div><div><label>Montant</label>"
-               "<input name='montant' size='9' required></div><div><label>Description</label><input name='description' "
-               "size='30'></div></div><div class='boutons'><button name='action' value='Ajouter'>Ajouter</button></div>"
-               "</form>"
-             + sections_html([Section("Opérations RIA", ["N°", "Date", "Opération", "Montant", "Description", "État",
-                                                         "Écriture", "Par"], lignes,
-                                      "Mouvements RIA des relevés et surplus des dépôts d'espèces : voir aussi "
-                                      "Rapprochement et Encaissements.")])
-             + (f"<form method='post' class='ligne'>{csrf(ctx)}<div><label>Supprimer l'opération</label><select "
-                f"name='numero'>{choix}</select></div><button class='second' name='action' value='Supprimer'>Supprimer"
-                "</button></form>" if supprimables else "")
-             + (f"<form method='post' class='boutons'>{csrf(ctx)}<button name='action' value='Saisir dans Sage'>Saisir "
-                f"{registre.a_saisir()} opération(s) dans Sage</button></form>" if registre.a_saisir() else ""))
+    etat = f"{len(lignes)} opération(s). Bleu : surplus à confirmer ; jaune : à saisir dans Sage." + (
+        f" ⚠ Comptes à renseigner (« Comptes… ») : {', '.join(manquants)}" if manquants else "")
+    cartes = "".join(f"<div class='carte-total'><div class='t'>{titre}</div><div class='v'>{argent(v)}</div></div>"
+                     for titre, v in (("Dépôts de RIA", bilan.depots), ("Surplus de dépôts", bilan.surplus),
+                                      ("Retraits par RIA", bilan.retraits), ("Paiements", bilan.paiements),
+                                      ("Commissions", bilan.commissions), ("Solde dû à RIA", bilan.solde)))
+    paiement = ""
+    if ctx.req.query.get("op") == "paiement":
+        paiement = (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='du' value='{du}'>"
+                    f"<input type='hidden' name='au' value='{au}'><h2>Paiement en espèces</h2><div class='ligne'><div>"
+                    f"<label>Date du paiement :</label><input type='date' name='jour' value='{date.today()}' required>"
+                    "</div><div><label>Montant payé en espèces :</label><input name='montant' size='10' required></div>"
+                    "<div class='large'><label>Description (facultatif) :</label><input name='description' size='30'>"
+                    "</div><button name='action' value='Paiement en espèces'>✔ Ajouter</button></div></form>")
+    corps = (message + paiement
+             + f"<form method='get' class='barre-onglet'><div><label>Du</label><input type='date' name='du' value='{du}'>"
+               f"</div><div><label>au</label><input type='date' name='au' value='{au}'></div><button name='actualiser' "
+               "value='1'>🔄 Actualiser</button></form>"
+             + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='du' value='{du}'><input type='hidden' "
+               f"name='au' value='{au}'><div class='barre-onglet'><button class='second' name='action' value='Confirmer "
+               "le surplus'>✔ Confirmer le surplus</button><button class='second' name='action' value='Commission'>💵 "
+               f"Commission</button><a class='ouvrir' href='/ria?du={du}&amp;au={au}&amp;op=paiement'>➕ Paiement en "
+               "espèces…</a><button class='danger' name='action' value='Supprimer'>🗑 Supprimer</button><a "
+               "class='ouvrir' href='/comptes-ria'>🔢 Comptes…</a><button class='accent' name='action' value='Saisir "
+               "dans Sage'>📒 Saisir dans Sage</button><a class='ouvrir' href='/etats-ria'>📑 États de compte RIA…</a>"
+               f"</div><p class='{'erreur-texte' if manquants else 'note'}'>{e(etat)}</p>"
+               f"<div class='cartes-six'>{cartes}</div>"
+             + tableau_section(Section("Opérations RIA", ["", "Date", "Opération", "Description", "Montant", "État"],
+                                       rangees, classes=[couleur(l) for l in lignes], html=set(range(6))))
+             + "</form>")
     return Reponse(corps=page(ctx, "Opérations RIA", corps))
 
 
@@ -141,27 +240,43 @@ def etats(ctx: Contexte) -> Reponse:
                 registre.enregistrer()
             message = _message("État retiré.")
     registre = re_.Registre(ctx.racine)
-    lignes = [[x.agence, x.debut, x.fin, Decimal(x.solde_precedent), Decimal(x.total), Decimal(x.commission_payee),
-               x.mois_commission_payee, Decimal(x.commission_courue), len(x.lignes), "; ".join(x.remarques) or "✔"]
-              for x in registre.etats]
-    choix = "".join(f"<option value='{e(x.cle)}'>{e(x.agence)} {e(x.debut)} → {e(x.fin)}</option>"
-                    for x in registre.etats)
+    etats_ = registre.etats
+    choisi = ctx.req.query.get("cle") or (etats_[0].cle if etats_ else "")
+    x_choisi = next((x for x in etats_ if x.cle == choisi), None)
+    if ctx.req.query.get("op") == "voir" and x_choisi is not None:  # « 👁 Voir l'état » : le PDF
+        chemin = ctx.racine / "donnees" / "etats_ria" / x_choisi.fichier
+        if chemin.exists():
+            return Reponse(corps=chemin.read_bytes(), type="application/pdf", entetes={"Content-Disposition": "inline"})
+    lignes = [[f"<input type='radio' name='cle' value='{e(x.cle)}'{' checked' if x.cle == choisi else ''}>",
+               e(x.debut), e(x.fin), e(x.agence), argent(Decimal(x.solde_precedent)), argent(Decimal(x.debits)),
+               argent(Decimal(x.credits)), argent(Decimal(x.total)), argent(Decimal(x.commission_payee)),
+               argent(Decimal(x.commission_courue)),
+               e(f"{x.dernier_depot} — {x.montant_dernier_depot} $" if x.dernier_depot else ""),
+               "✔" if not x.remarques else e("⚠ " + " ".join(x.remarques))] for x in etats_]
+    detail = [[l.jour, l.activite, l.reference, l.description, Decimal(l.montant), Decimal(l.frais),
+               Decimal(l.commission), Decimal(l.mouvement), Decimal(l.solde)]
+              for l in (x_choisi.lignes if x_choisi else [])]
     corps = (message
-             + f"<form method='post' enctype='multipart/form-data' class='ligne'>{csrf(ctx)}<div><label>État de "
-               "compte RIA (PDF)</label><input type='file' name='etat' accept='.pdf' required></div><button "
-               "class='second' name='action' value='Importer'>Importer</button></form>"
-             + f"<form method='post' class='boutons'>{csrf(ctx)}<button class='second' name='action' value='Lire le "
-               "courriel'>Lire le courriel</button><button name='action' value='Traiter dans Sage'>Traiter dans Sage"
-               "</button></form>"
-             + sections_html([Section("États de compte RIA", ["Agence", "Du", "Au", "Solde précédent", "Total",
-                                                              "Commission payée", "Mois", "Commission courue",
-                                                              "Lignes", "Contrôle"], lignes,
-                                      "Traiter : chaque envoi (espèces reçues pour RIA) et chaque versement payé en "
-                                      "espèces devient une opération RIA ; un versement par virement Interac est "
-                                      "laissé à la banque.")])
-             + (f"<form method='post' class='ligne'>{csrf(ctx)}<div><label>Retirer l'état</label><select name='cle'>"
-                f"{choix}</select></div><button class='second' name='action' value='Supprimer'>Retirer</button></form>"
-                if registre.etats else ""))
+             + f"<form method='post' enctype='multipart/form-data' class='barre-onglet'>{csrf(ctx)}<input type='file' "
+               "name='etat' accept='.pdf'><button name='action' value='Importer'>📥 Importer des états…</button><button "
+               "class='second' name='action' value='Lire le courriel'>📧 Lire le courriel</button><button class='second' "
+               "form='liste-etats' name='op' value='voir' formtarget='_blank'>👁 Voir l'état</button><button "
+               "class='danger' name='action' value='Supprimer' form='supprimer-etat'>🗑 Supprimer</button><button "
+               "class='accent' name='action' value='Traiter dans Sage'>📒 Traiter dans Sage</button></form>"
+             + f"<p class='note'>{len(etats_)} état(s). Solde négatif : RIA doit au marché ; positif : le marché doit à "
+               "RIA. La commission payée reconnaît son dépôt dans le relevé de la caisse.</p>"
+             + "<form method='get' id='liste-etats'>"
+             + tableau_section(Section("États de compte RIA", ["", "Du", "au", "Agence", "Solde précédent",
+                                                              "Envois (débits)", "Versements (crédits)", "Solde",
+                                                              "Commission payée", "Commission courue",
+                                                              "Dernier dépôt RIA", "Contrôle"], lignes,
+                                       html=set(range(12))))
+             + "<button class='second'>Afficher les opérations de l'état choisi</button></form>"
+             + f"<form method='post' id='supprimer-etat'>{csrf(ctx)}<input type='hidden' name='cle' value='{e(choisi)}'>"
+               "</form>"
+             + tableau_section(Section("Opérations de l'état choisi", ["Date", "Opération", "Réf.", "Description",
+                                                                      "Montant", "Frais", "Commission",
+                                                                      "Débit / crédit", "Solde"], detail)))
     return Reponse(corps=page(ctx, "États de compte RIA", corps))
 
 

@@ -9,8 +9,8 @@ limité à son employé (utilisateurs.LIMITES_DEFAUT) ne voit que l'employé rel
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from datetime import date, timedelta
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Callable
 
@@ -41,6 +41,7 @@ class Contexte:
     reg: object
     u: object
     session: object
+    absents: set = field(default_factory=set)  # « Sage », « Clover » : sources qui n'ont pas répondu (tableaux vides)
 
     @property
     def racine(self):
@@ -153,7 +154,12 @@ def page(ctx: Contexte, titre: str, corps: str) -> str:
     """Page avec le menu de gauche de l'application Windows (menu.py)."""
     from .menu import barre
 
-    return _document(titre, f"<h1 class='titre-page'>{e(titre)}</h1>{corps}", ctx, barre(ctx))
+    absents = sorted(getattr(ctx, "absents", ()) or ())
+    alerte = ("<p class='alerte-source'>⚠ " + e(" et ".join(absents)) + " ne répond pas sur le serveur pour l'instant : "
+              "les tableaux sont affichés vides, ils se rempliront dès que la connexion sera faite.</p>") if absents else ""
+    fermer = "" if titre == "Accueil" else "<a class='fermer' href='/'>✖ Fermer</a>"  # bandeau des fenêtres de travail
+    return _document(titre, f"<div class='entete-outil'><h1 class='titre-page'>{e(titre)}</h1>{fermer}</div>{alerte}"
+                            f"<div class='zone-outil'>{corps}</div>", ctx, barre(ctx))
 
 
 def page_simple(titre: str, message: str) -> str:
@@ -267,38 +273,32 @@ def sans_employe(ctx: Contexte) -> str:
 
 
 def mon_horaire(ctx: Contexte) -> Reponse:
+    """Comme fenetre_planning.FenetreMonHoraire : horaire publié des 5 semaines à partir d'aujourd'hui, cartes
+    (prochain quart, heures sur 5 semaines, jours de travail), tableau regroupé par semaine (dimanche à samedi)."""
     from .. import paie_temps as pt
     from .. import planning as pl
+    from ..fenetre_planning import ENTETES_HORAIRE, lignes_horaire, semaines_horaire
+    from .consultations import Section, tableau_section
 
     registre = pt.Registre(ctx.racine)
     employe, choix = _choisir_employe(ctx, registre)
     if employe is None:
-        return Reponse(corps=page(ctx, "Mon horaire", sans_employe(ctx)))
-    lundi = date.today() - timedelta(days=date.today().weekday())
-    horaire = pl.Planning(ctx.racine).horaire_employe(employe.id, lundi, 35)
-    if not horaire:
-        return Reponse(corps=page(ctx, "Mon horaire", choix + "<p>Aucun horaire publié pour les semaines à venir.</p>"))
-    corps, semaine, lignes, total = choix, None, [], Decimal(0)
-
-    def fermer():
-        nonlocal corps
-        if lignes:
-            corps += (f"<h2>Semaine du {semaine:%d/%m/%Y} · {heures(total)} h</h2>"
-                      + tableau(["Jour", "Horaire", "Pause", "Heures"], lignes, {3}))
-
-    for jour, quart in horaire:
-        debut = jour - timedelta(days=jour.weekday())
-        if debut != semaine:
-            fermer()
-            semaine, lignes, total = debut, [], Decimal(0)
-        aujourdhui = " <span class='etat'>aujourd'hui</span>" if jour == date.today() else ""
-        if quart:
-            total += quart.heures
-            lignes.append([f"{pl.JOURS[jour.weekday()]} {jour:%d/%m}{aujourdhui}", f"{e(quart.debut)} – {e(quart.fin)}",
-                           f"{quart.pause} min" if quart.pause else "", heures(quart.heures)])
-        else:
-            lignes.append([f"{pl.JOURS[jour.weekday()]} {jour:%d/%m}{aujourdhui}", "Repos", "", ""])
-    fermer()
+        return Reponse(corps=page(ctx, "Mon horaire", "<p class='note'>Votre compte n'est relié à aucun employé : "
+                                                      "demandez au gérant de le relier dans « Paie > Employés et NIP »."
+                                                      "</p>"))
+    lignes, semaines = semaines_horaire(lignes_horaire(pl.Planning(ctx.racine), employe.id, date.today()))
+    travailles = [l for l in lignes if l[-1] == "quart"]
+    prochain = f"{travailles[0][0]}  {travailles[0][1]}" if travailles else "Aucun quart publié"
+    total = sum(semaines, Decimal(0))
+    cartes = "".join(f"<div class='carte-total'><div class='t'>{titre}</div><div class='v'>{e(valeur)}</div></div>"
+                     for titre, valeur in (("Prochain quart", prochain),
+                                           ("Heures sur 5 semaines", f"{total:.2f} h".replace(".", ",")),
+                                           ("Jours de travail", str(len(travailles)))))
+    classes = {"repos": "termine", "semaine": "total", "quart": ""}
+    corps = (choix + f"<p class='note'>Horaire publié de {e(employe.nom)}, 5 semaines à partir d'aujourd'hui.</p>"
+             f"<div class='cartes-trois'>{cartes}</div>"
+             + tableau_section(Section("Mon horaire", ENTETES_HORAIRE, [l[:-1] for l in lignes],
+                                       classes=[classes.get(l[-1], "") for l in lignes])))
     return Reponse(corps=page(ctx, f"Horaire de {employe.nom}" if ctx.voit_tous() else "Mon horaire", corps))
 
 
@@ -309,31 +309,54 @@ def _reference(racine) -> date:
 
 
 def mes_heures(ctx: Contexte) -> Reponse:
+    """« Mes heures et mes paies » : la fenêtre de la paie (fenetre_paie.FenetrePaie) réduite à l'employé relié au
+    compte : période de paie, heures planifiées et réalisées (par semaine ou par jour), feuille de temps, puis ses
+    paies et bulletins."""
+    from .. import paie as pa
     from .. import paie_temps as pt
+    from ..fenetre_paie import VUES
+    from ..planning import Planning
+    from .consultations import Section, tableau_section
 
     registre = pt.Registre(ctx.racine)
     employe, choix = _choisir_employe(ctx, registre)
     if employe is None:
-        return Reponse(corps=page(ctx, "Mes heures", sans_employe(ctx)))
-    debut = pt.debut_periode(date.today(), _reference(ctx.racine))
-    corps = choix
-    for libelle, d in (("Période en cours", debut), ("Période précédente", debut - timedelta(days=pt.JOURS_PERIODE))):
-        f = pt.feuille(registre, employe, d)
-        lignes = [[f"{JOURS[(d + timedelta(days=i)).weekday()]} {(d + timedelta(days=i)):%d/%m}", heures(h)]
-                  for i, h in enumerate(f.jours) if h]
-        fin = d + timedelta(days=pt.JOURS_PERIODE - 1)
-        corps += (f"<h2>{libelle} : du {d:%d/%m} au {fin:%d/%m/%Y}</h2>"
-                  f"<div class='cartes'><div class='carte'><div class='t'>Heures normales</div>"
-                  f"<div class='v'>{heures(f.normales)}</div></div><div class='carte'><div class='t'>Heures "
-                  f"supplémentaires</div><div class='v'>{heures(f.supplementaires)}</div></div><div class='carte'>"
-                  f"<div class='t'>Feuille</div><div class='v'><span class='etat'>{e(f.etat)}</span></div></div></div>")
-        if lignes:
-            corps += "<p></p>" + tableau(["Jour", "Heures"], lignes, {1})
-        if f.anomalies:
-            corps += "<p class='erreur'>À corriger par le gérant :</p><ul>" + "".join(
-                f"<li>{e(a)}</li>" for a in f.anomalies) + "</ul>"
-    corps += f"<p><a href='/paies?employe={e(employe.id)}'>💵 Paies et bulletins de paie</a></p>"
-    titre = f"Heures de {employe.nom}" if ctx.voit_tous() else "Mes heures"
+        return Reponse(corps=page(ctx, "Mes heures et mes paies", sans_employe(ctx)))
+    reference = _reference(ctx.racine)
+    actuelle = pt.debut_periode(date.today(), reference)
+    periodes = [actuelle - timedelta(days=pt.JOURS_PERIODE * i) for i in range(13)]
+    try:
+        debut = pt.debut_periode(date.fromisoformat(ctx.req.query.get("periode", "")), reference)
+    except ValueError:
+        debut = actuelle
+    fin = debut + timedelta(days=pt.JOURS_PERIODE - 1)
+    vue = ctx.req.query.get("vue") if ctx.req.query.get("vue") in VUES else VUES[0]
+    f = pt.feuille(registre, employe, debut)
+    planning = Planning(ctx.racine)
+    if vue == VUES[1]:
+        lignes = [[l[0], l[1], l[2], pa.heures(l[3]), pa.heures(l[4]), l[5]] for l in pa.jours([f], planning)]
+        section = Section(f"Heures par jour du {debut} au {fin}", pa.ENTETES_JOURS, lignes)
+    else:
+        section = Section(f"Heures par semaine du {debut} au {fin}", pa.ENTETES_SEMAINES,
+                          [[l.debut, l.fin, l.employe, pa.heures(l.planifiees), pa.heures(l.realisees), l.ecart, l.etat]
+                           for l in pa.semaines([f], planning)])
+    options = "".join(f"<option value='{x}'{' selected' if x == debut else ''}>{x} au "
+                      f"{x + timedelta(days=pt.JOURS_PERIODE - 1)}</option>" for x in periodes)
+    vues = "".join(f"<option{' selected' if x == vue else ''}>{e(x)}</option>" for x in VUES)
+    cartes = "".join(f"<div class='carte-total'><div class='t'>{t_}</div><div class='v'>{v_}</div></div>"
+                     for t_, v_ in (("Heures normales", heures(f.normales)),
+                                    ("Heures supplémentaires", heures(f.supplementaires)),
+                                    ("Feuille de temps", e(f.etat))))
+    corps = (choix + "<nav class='onglets'><a class='onglet actif' href='#'>Heures planifiées et réalisées</a>"
+             f"<a class='onglet' href='/paies?employe={e(employe.id)}'>Paies dans Sage</a></nav><div class='onglet-corps'>"
+             f"<form class='barre-onglet' method='get'><input type='hidden' name='employe' value='{e(employe.id)}'>"
+             f"<div><label>Période de paie</label><select name='periode'>{options}</select></div><div><label>Affichage"
+             f"</label><select name='vue'>{vues}</select></div><button class='second'>Afficher</button></form>"
+             f"<div class='cartes-trois'>{cartes}</div>" + tableau_section(section)
+             + ("<p class='erreur-texte'>À corriger par le gérant : " + e(" ; ".join(f.anomalies)) + "</p>"
+                if f.anomalies else "")
+             + "<div class='ligne-etat'>Heures réalisées = pointages ; heures planifiées = planning mensuel.</div></div>")
+    titre = f"Heures et paies de {employe.nom}" if ctx.voit_tous() else "Mes heures et mes paies"
     return Reponse(corps=page(ctx, titre, corps))
 
 
@@ -346,7 +369,17 @@ def _poste_permis(ctx: Contexte) -> bool:
     return any(p.strip() and ctx.req.adresse.startswith(p.strip()) for p in postes)
 
 
+RETOUR_POSTE = 12  # secondes avant le retour à la liste des noms (fenetre_pointage.RETOUR_ACCUEIL_MS)
+JOURS_LONGS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
 def pointage(ctx: Contexte) -> Reponse:
+    """Comme fenetre_pointage.PostePointage, en 3 étapes : « Touchez votre nom » (grille, présent / en pause / NIP à
+    créer), « Tapez votre NIP » (pavé ; les chiffres restent sur le serveur, jamais dans la page), puis les actions
+    permises (Départ en rouge), le résumé du jour et de la semaine, « 📅 Mon horaire », « ◀ Retour ». Retour à la
+    liste après 12 s. Seulement depuis un poste du magasin ([web] postes_pointage)."""
+    import time
+
     from .. import paie_temps as pt
 
     if not _poste_permis(ctx):
@@ -356,30 +389,121 @@ def pointage(ctx: Contexte) -> Reponse:
                                                    "dans config.toml, [web] postes_pointage.</p>"))
     registre = pt.Registre(ctx.racine)
     employes = registre.actifs()
-    message = ""
-    if ctx.req.methode == "POST":
-        ident, type_ = ctx.req.champ("employe"), ctx.req.champ("action")
+    par_id = {x.id: x for x in employes}
+    cle = ("poste", ctx.session.jeton)  # étape en cours de ce poste : {employe, nip, verifie, quand}
+    etat = ctx.app.memoire.get(cle) or {}
+    if etat and time.time() - etat.get("quand", 0) > RETOUR_POSTE * 5:
+        etat = {}
+    message, classe = "", "ok-texte"
+    action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
+    choisi = ctx.req.query.get("employe", "")
+    if action == "Retour" or ctx.req.query.get("retour"):
+        etat = {}
+    elif choisi in par_id and not action:
+        if not par_id[choisi].nip:
+            message, classe = (f"{par_id[choisi].nom} n'a pas encore de NIP : le gérant le crée dans « Paie > Employés et "
+                               "NIP »."), "erreur-texte"
+            etat = {}
+        else:
+            etat = {"employe": choisi, "nip": "", "verifie": False}
+    elif action.startswith("touche:") and etat.get("employe") in par_id and not etat.get("verifie"):
+        touche = action[7:]
+        if touche == "✖":
+            etat["nip"] = ""
+        elif touche == "✔":
+            try:
+                registre._echecs = dict(ctx.app.echecs_nip)
+                bon = registre.verifier_nip(etat["employe"], etat["nip"])
+                ctx.app.echecs_nip.update(registre._echecs)
+                if bon:
+                    etat["verifie"] = True
+                else:
+                    message, classe = "NIP incorrect.", "erreur-texte"
+            except pt.ErreurPointage as erreur:
+                message, classe = str(erreur), "erreur-texte"
+            etat["nip"] = ""
+        elif touche.isdigit() and len(etat["nip"]) < 6:
+            etat["nip"] += touche
+    elif action == "NIP" and etat.get("employe") in par_id:  # NIP tapé au clavier, puis Entrée
+        etat["nip"] = "".join(c for c in ctx.req.champ("nip") if c.isdigit())[:6]
         try:
-            if ident not in {x.id for x in employes}:
-                raise pt.ErreurPointage("Choisissez votre nom.")
             registre._echecs = dict(ctx.app.echecs_nip)
-            bon = registre.verifier_nip(ident, ctx.req.champ("nip"))
+            bon = registre.verifier_nip(etat["employe"], etat["nip"])
             ctx.app.echecs_nip.update(registre._echecs)
+            etat["verifie"] = bool(bon)
             if not bon:
-                raise pt.ErreurPointage("NIP incorrect.")
-            with ctx.app.ecriture:
-                p = registre.pointer(ident, type_)
-            message = f"<p class='ok'>{e(registre.employe(ident).nom)} : {e(p.type)} à {p.quand:%H:%M}.</p>"
+                message, classe = "NIP incorrect.", "erreur-texte"
         except pt.ErreurPointage as erreur:
-            message = f"<p class='erreur'>{e(erreur)}</p>"
-    options = "<option value=''>— Votre nom —</option>" + "".join(
-        f"<option value='{e(x.id)}'>{e(x.nom)}{'' if x.nip else ' (NIP à créer)'}</option>" for x in employes)
-    boutons = "".join(f"<button type='submit' name='action' value='{e(t)}'>{e(t)}</button>" for t in pt.TYPES)
-    corps = (message + f"<form method='post' class='boite'>{csrf(ctx)}<label for='employe'>Employé</label>"
-             f"<select id='employe' name='employe' required>{options}</select><p></p><label for='nip'>NIP</label>"
-             "<input id='nip' name='nip' type='password' inputmode='numeric' pattern='[0-9]{4,6}' "
-             f"autocomplete='off' required><div class='boutons'>{boutons}</div></form>"
-             "<p class='note'>Seules les actions possibles sont enregistrées (arrivée, puis pause ou départ).</p>")
+            message, classe = str(erreur), "erreur-texte"
+        etat["nip"] = ""
+    elif action.startswith("pointer:") and etat.get("verifie") and etat.get("employe") in par_id:
+        try:
+            with ctx.app.ecriture:
+                registre = pt.Registre(ctx.racine)
+                pointe = registre.pointer(etat["employe"], action[8:])
+            message = f"{par_id[etat['employe']].nom} : {pointe.type} à {pointe.quand:%H:%M} — merci !"
+            etat = {}
+        except pt.ErreurPointage as erreur:
+            message, classe = str(erreur), "erreur-texte"
+    etat["quand"] = time.time()
+    ctx.app.memoire[cle] = etat
+    maintenant = datetime.now()
+    entete = (f"<div class='poste-haut'><span class='horloge'>{JOURS_LONGS[maintenant.weekday()].capitalize()} "
+              f"{maintenant:%d/%m/%Y  %H:%M}</span><span class='note'>Pointage des employés</span></div>"
+              + (f"<p class='{classe} poste-message'>{e(message)}</p>" if message else ""))
+    employe = par_id.get(etat.get("employe", ""))
+    if employe is None:  # étape 1 : le nom
+        registre = pt.Registre(ctx.racine)
+        cases = ""
+        for x in employes:
+            present = registre.etat_actuel(x.id)
+            sous = ("● présent" if present in (pt.ARRIVEE, pt.FIN_PAUSE) else "● en pause" if present == pt.PAUSE
+                    else "NIP à créer" if not x.nip else "")
+            cases += (f"<a class='poste-nom' href='/pointage?employe={e(x.id)}'>{e(x.nom)}"
+                      + (f"<span>{e(sous)}</span>" if sous else "") + "</a>")
+        corps = (entete + "<h2>Touchez votre nom</h2>"
+                 + (f"<div class='poste-grille'>{cases}</div>" if cases else
+                    "<p class='note'>Aucun employé à afficher.</p>"))
+        return Reponse(corps=page(ctx, "Pointage", corps))
+    retour = f"<meta http-equiv='refresh' content='{RETOUR_POSTE};url=/pointage?retour=1'>"
+    if not etat.get("verifie"):  # étape 2 : le NIP
+        touches = "".join(f"<button class='poste-touche' name='action' value='touche:{x}'>{x}</button>"
+                          for x in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "✖", "0", "✔"])
+        corps = (retour + entete + f"<div class='poste-centre'><div class='poste-employe'>{e(employe.nom)}</div>"
+                 "<p class='note'>Tapez votre NIP</p>"
+                 f"<div class='poste-nip'>{'●' * len(etat.get('nip', '')) or '&nbsp;'}</div>"
+                 f"<form method='post'>{csrf(ctx)}<div class='poste-pave'>{touches}</div></form>"
+                 f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input name='nip' type='password' "
+                 "inputmode='numeric' autocomplete='off' size='8' placeholder='ou au clavier' autofocus><button "
+                 "class='second' name='action' value='NIP'>Entrée</button><button class='second' name='action' "
+                 "value='Retour' formnovalidate>◀ Retour</button></form></div>")
+        return Reponse(corps=page(ctx, "Pointage", corps))
+    # étape 3 : les actions permises
+    registre = pt.Registre(ctx.racine)
+    if ctx.req.query.get("horaire"):
+        from .. import planning as pl
+        from ..fenetre_planning import lignes_horaire
+
+        lignes = lignes_horaire(pl.Planning(ctx.racine), employe.id, date.today())
+        texte = "\n".join(f"{l[1]} {l[0][8:]}/{l[0][5:7]}   " + (f"{l[2]} – {l[3]}" if l[3] else l[2])
+                          for l in lignes) or "Aucun horaire publié."
+        corps = (retour + entete + f"<div class='poste-centre'><div class='poste-employe'>Horaire de {e(employe.nom)}"
+                 f"</div><pre class='texte-fixe'>{e(texte)}</pre><form method='post'>{csrf(ctx)}<button "
+                 "class='second' name='action' value='Retour'>◀ Retour</button></form></div>")
+        return Reponse(corps=page(ctx, "Pointage", corps))
+    boutons = "".join(f"<button class='{'danger' if a == pt.DEPART else ''} poste-action' name='action' "
+                      f"value='pointer:{e(a)}'>{e(a)}</button>" for a in registre.actions_permises(employe.id))
+    aujourdhui = date.today()
+    pointes = [x for x in registre.valides(employe.id) if x.moment[:10] == aujourdhui.isoformat()]
+    feuille = pt.feuille(registre, employe, pt.debut_periode(aujourdhui, _reference(ctx.racine)))
+    semaine = feuille.semaines[0 if aujourdhui < feuille.debut + timedelta(days=7) else 1]
+    resume = (f"Aujourd'hui : {', '.join(f'{x.type} {x.quand:%H:%M}' for x in pointes) or '—'}\n"
+              f"Cette semaine : {str(semaine).replace('.', ',')} h")
+    corps = (retour + entete + f"<div class='poste-centre'><div class='poste-employe'>{e(employe.nom)}</div>"
+             f"<form method='post'>{csrf(ctx)}<div class='poste-actions'>{boutons}</div></form>"
+             f"<p class='texte-fixe note'>{e(resume)}</p><form method='post' class='barre-onglet poste-bas'>{csrf(ctx)}"
+             "<a class='ouvrir' href='/pointage?horaire=1'>📅 Mon horaire</a><button class='second' name='action' "
+             "value='Retour'>◀ Retour</button></form></div>")
     return Reponse(corps=page(ctx, "Pointage", corps))
 
 

@@ -9,6 +9,8 @@ une page web n'ouvre jamais Sage elle-même ; lecture gardée 5 min.
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -49,15 +51,65 @@ class Consultation:
 
 
 # --------------------------------------------------------------------------------------------- outils
-def sage(ctx: Contexte, fonction, cle):
+class _Vide(list):
+    """Résultat vide qui sert de liste comme de dictionnaire."""
+
+    def get(self, _cle, defaut=None):
+        return defaut
+
+    def keys(self):
+        return []
+
+    def values(self):
+        return []
+
+    def items(self):
+        return []
+
+
+class BaseVide:
+    """Base Sage sans aucune ligne : quand Sage ne répond pas, les fonctions de lecture tournent quand même sur elle et
+    rendent leurs tableaux vides avec toutes leurs colonnes (demande du propriétaire du 2026-11-04 : jamais de page
+    vide)."""
+
+    def requete(self, sql: str = "", parametres: tuple = ()) -> list:
+        return []
+
+    def __getattr__(self, _nom):
+        return lambda *a, **k: _Vide()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+
+def lire_ou_vide(ctx: Contexte, fonction, **options):
+    """`lire_sage(…, ouvrir=False)` ; Sage injoignable : la même fonction sur `BaseVide` (tableaux vides), et la page
+    signale « Sage ne répond pas »."""
     from ..__main__ import lire_sage
 
+    try:
+        return lire_sage(ctx.config, fonction, ouvrir=False, **options)
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — Sage absent du serveur, refus, base fermée
+        ctx.app.noter(f"Sage injoignable : {erreur!r}")
+        try:
+            resultat = fonction(BaseVide())
+        except Exception:  # noqa: BLE001 — fonction qui ne sait pas tourner à vide : erreur d'origine
+            raise erreur from None
+        ctx.absents.add("Sage")
+        return resultat
+
+
+def sage(ctx: Contexte, fonction, cle):
     cle = ("sage",) + tuple(cle)
     gardee = ctx.app.memoire.get(cle)
     if gardee and time.time() - gardee[0] < DUREE:
         return gardee[1]
-    resultat = lire_sage(ctx.config, fonction, ouvrir=False)
-    ctx.app.memoire[cle] = (time.time(), resultat)
+    resultat = lire_ou_vide(ctx, fonction)
+    if "Sage" not in ctx.absents:  # une lecture vide n'est jamais gardée
+        ctx.app.memoire[cle] = (time.time(), resultat)
     return resultat
 
 
@@ -84,8 +136,12 @@ def _numerique(lignes: list[list], i: int) -> bool:
 
 
 def tableau_section(s: Section, limite: int = 2000) -> str:
-    if not s.lignes:
-        return f"<h2>{e(s.titre)}</h2><p>Aucune ligne.</p>" + (f"<p class='note'>{e(s.note)}</p>" if s.note else "")
+    if not s.lignes:  # tableau vide : ses colonnes restent affichées, comme dans Windows
+        th = "".join(f"<th>{e(c)}</th>" for c in s.entetes)
+        vide = (f"<tr><td class='vide' colspan='{max(len(s.entetes), 1)}'>Aucune ligne.</td></tr>")
+        return (f"<h2>{e(s.titre)} <span class='etat'>0</span></h2><div class='defile'><table>"
+                + (f"<tr>{th}</tr>" if th else "") + f"{vide}</table></div>"
+                + (f"<p class='note'>{e(s.note)}</p>" if s.note else ""))
     nombres = {i for i in range(len(s.entetes)) if _numerique(s.lignes, i)}
     th = "".join(f"<th class='{'n' if i in nombres else ''}'>{e(c)}</th>" for i, c in enumerate(s.entetes))
     corps = []
@@ -314,9 +370,9 @@ def _formulaire(ctx: Contexte, c: Consultation, v: dict) -> str:
     champs = []
     f = c.filtres
     if "periode" in f or "du" in f:
-        champs.append(f"<div><label>Du</label><input type='date' name='du' value='{v['du']}'></div>")
+        champs.append(f"<div><label>Période du</label><input type='date' name='du' value='{v['du']}'></div>")
     if "periode" in f or "au" in f:
-        champs.append(f"<div><label>Au</label><input type='date' name='au' value='{v['au']}'></div>")
+        champs.append(f"<div><label>au</label><input type='date' name='au' value='{v['au']}'></div>")
     if "mois" in f:
         champs.append(f"<div><label>Mois</label><input type='month' name='mois' value='{e(v.get('mois', ''))}'></div>")
     for genre, table in (("client", "tcustomr"), ("fournisseur", "tvendor"), ("article", "")):
@@ -348,9 +404,24 @@ def _formulaire(ctx: Contexte, c: Consultation, v: dict) -> str:
     if "source" in f:
         champs.append(f"<div><label>Source</label><input name='source' value='{e(v.get('source', ''))}' size='14'></div>")
     if "texte" in f:
-        champs.append(f"<div><label>Rechercher</label><input name='texte' value='{e(v.get('texte', ''))}'></div>")
-    return (f"<form class='ligne' method='get'>{''.join(champs)}<input type='hidden' name='voir' value='1'>"
-            f"<button class='second' type='submit'>Afficher</button></form>")
+        champs.append(f"<div><label>Rechercher :</label><input name='texte' value='{e(v.get('texte', ''))}' "
+                      "size='24'></div>")
+    return (f"<form class='barre-onglet' method='get'>{''.join(champs)}<input type='hidden' name='voir' value='1'>"
+            "<button type='submit' name='actualiser' value='1'>🔄 Actualiser</button></form>")
+
+
+# listes de fenetre_gestion.ouvrir_liste : genre (fiches.ouvrir_fiche) et page web de « ➕ Ajouter »
+LISTES = {"/clients": ("clients", ""), "/fournisseurs-liste": ("fournisseurs", ""),
+          "/articles": ("articles", "/creer-article"), "/livre-inventaire": ("livre", "/creer-article"),
+          "/documents-vente": ("documents_vente", "/document/saisie?genre=facture"),
+          "/documents-achat": ("documents_achat", "/saisir-facture-achat"),
+          "/documents-stock": ("documents_stock", "/document/saisie?genre=stock")}
+MESSAGE_MODIFIER = ("Les fiches et les documents enregistrés dans Sage se modifient dans Sage. La fiche s'ouvre pour "
+                    "consultation ; les documents saisis dans l'application se modifient dans leur liste (Vente, "
+                    "Articles).")
+MESSAGE_SUPPRIMER = ("Une fiche ou un document de Sage ne se supprime pas d'ici : dans Sage, rendez la fiche inactive, "
+                     "ou corrigez / annulez le document. Les documents saisis dans l'application se suppriment dans "
+                     "leur liste.")
 
 
 def consulter(c: Consultation):
@@ -359,21 +430,144 @@ def consulter(c: Consultation):
         aujourdhui = date.today()
         v = dict(c.defauts) | {k: q[k] for k in q if q[k] != ""}
         v["du"] = _date(q.get("du"), c.defauts.get("du", aujourdhui.replace(day=1)))
-        v["au"] = _date(q.get("au"), aujourdhui)
+        v["au"] = _date(q.get("au"), c.defauts.get("au", aujourdhui))
         v.setdefault("mois", f"{aujourdhui:%Y-%m}")
         from .pages_rapports_web import est_onglet, onglets
 
-        corps = (onglets(c.titre, ctx) if est_onglet(c.titre) else "") + (
-            f"<p class='note'>{e(c.explication)}</p>" if c.explication else "") + _formulaire(ctx, c, v)
+        if q.get("actualiser"):  # « 🔄 Actualiser » : relu dans Sage
+            for cle in [k for k in list(ctx.app.memoire) if isinstance(k, tuple) and k and k[0] == "sage"]:
+                ctx.app.memoire.pop(cle, None)
+        liste = LISTES.get(c.chemin)
+        corps = (onglets(c.titre, ctx) if est_onglet(c.titre) else "") + _formulaire(ctx, c, v)
+        if liste:
+            corps = corps.replace("</form>", (
+                f"<a class='ouvrir' href='{liste[1]}'>➕ Ajouter</a>" if liste[1] else
+                f"<a class='ouvrir' href='{c.chemin}?ajouter=1'>➕ Ajouter</a>") + "</form>", 1)
         try:
             sections = c.calcul(ctx, v)
-            corps += "".join(tableau_section(s) for s in sections)
-        except (Exception, SystemExit) as erreur:  # noqa: BLE001 — Sage absent, jeton Clover absent (SystemExit)
+        except (Exception, SystemExit) as erreur:  # noqa: BLE001 — jeton Clover absent (SystemExit), autre panne
             ctx.app.noter(f"{c.titre} : {erreur!r}")
-            source = "Clover" if c.sans_sage else "Sage"
-            corps += f"<p class='erreur'>Lecture impossible : {source} ne répond pas sur le serveur pour l'instant.</p>"
+            ctx.absents.add("Clover" if c.sans_sage else "Sage")
+            sections = []
+        if liste and sections:
+            corps += _liste_comme_windows(ctx, c, sections, v, liste[0])
+        else:
+            corps += "".join(tableau_section(x) for x in sections)
+            if not sections:
+                corps += tableau_section(Section(c.titre, [], []))
+        n = sum(len(x.lignes) for x in sections[:1])
+        etat = c.explication or ""
+        if q.get("ajouter") and liste and liste[0] in ("clients", "fournisseurs"):
+            etat = ("Les fiches de clients et de fournisseurs se créent dans Sage (Sage n'accepte pas leur import) : "
+                    "« Ajouter » de la liste de l'application Windows les crée en ouvrant Sage.")
+        corps += f"<div class='ligne-etat'>{e(etat + (' — ' if etat else '') + f'{n} ligne(s) affichée(s).')}</div>"
         return Reponse(corps=page(ctx, c.titre, corps))
     return gestionnaire
+
+
+def _rangees_application(ctx: Contexte, cote: str, v: dict) -> list:
+    """Lignes des documents de l'application, calculées par FenetreDocumentsChaine._rangees_application."""
+    from types import SimpleNamespace
+
+    from ..fenetre_chaine import FenetreDocumentsChaine
+
+    class _Date:
+        def __init__(self, valeur):
+            self.valeur = str(valeur or "")
+
+        def get(self):
+            return self.valeur
+
+    faux = SimpleNamespace(racine=ctx.racine, cote=cote, du=_Date(v.get("du")), au=_Date(v.get("au")))
+    try:
+        return FenetreDocumentsChaine._rangees_application(faux)
+    except Exception as erreur:  # noqa: BLE001
+        ctx.app.noter(f"Documents de l'application : {erreur!r}")
+        return []
+
+
+def _liste_comme_windows(ctx: Contexte, c: Consultation, sections: list, v: dict, genre: str) -> str:
+    """Tableau à choisir (une ligne) + « 📂 Ouvrir », « ✎ Modifier », « 🗑 Supprimer » ; fiche sous la liste."""
+    from .. import fiches
+
+    s0 = sections[0]
+    choisi = v.get("ligne", "")
+    cote = {"documents_vente": "vente", "documents_achat": "achat", "documents_stock": "stock"}.get(genre)
+    rangees = [(list(l), ("sage", str(n))) for n, l in enumerate(s0.lignes)]
+    entetes = list(s0.entetes)
+    if cote:  # FenetreDocumentsChaine : documents de Sage + documents de l'application (en bleu)
+        from ..fenetre_chaine import ENTETES_ACHAT, ENTETES_STOCK, ENTETES_VENTE
+
+        entetes = ENTETES_STOCK if cote == "stock" else ENTETES_ACHAT if cote == "achat" else ENTETES_VENTE
+        if cote == "stock":
+            rangees = [(l[:3] + [""] + l[3:] + ["Dans Sage"], r) for l, r in rangees]
+        rangees += [(l, ("app",) + ref) for l, ref in _rangees_application(ctx, cote, v)]
+        texte = str(v.get("texte", "")).strip().casefold()
+        rangees = [x for x in rangees if not texte or x[1][0] == "sage" or any(texte in str(c).casefold() for c in x[0])]
+        rangees.sort(key=lambda x: str(x[0][0]), reverse=True)
+    valeur = (lambda ref: ref[1] if ref[0] == "sage" else ":".join(ref))
+    lignes = [[f"<input type='radio' name='ligne' value='{e(valeur(ref))}'{' checked' if valeur(ref) == choisi else ''}>"]
+              + [e(formater(entetes[k], x)) for k, x in enumerate(l[:len(entetes)])]
+              for l, ref in rangees[:2000]]
+    classes_app = ["application" if ref[0] == "app" else ("total" if str(l[0]).startswith("Total") else "")
+                   for l, ref in rangees[:2000]]
+    caches = "".join(f"<input type='hidden' name='{k}' value='{e(v[k])}'>" for k in ("du", "au", "texte", "mois")
+                     if k in v and str(v[k]))
+    html = (f"<form method='get'>{caches}<input type='hidden' name='voir' value='1'><div class='barre-onglet'>"
+            "<button class='second' name='op' value='ouvrir'>📂 Ouvrir</button><button class='second' name='op' "
+            "value='modifier'>✎ Modifier</button><button class='danger' name='op' value='supprimer'>🗑 Supprimer"
+            "</button>"
+            + ("<button class='accent' name='op' value='piece'>⬆ Passer dans Sage et Clover</button>" if cote == "stock"
+               else "<button class='accent' name='op' value='piece'>🔀 Transformer</button><button class='second' "
+                    "name='op' value='piece'>⬆ Importer dans Sage</button>" if cote else "")
+            + "</div>"
+            + tableau_section(Section(s0.titre, [""] + list(entetes), lignes, s0.note, classes_app,
+                                      html=set(range(len(entetes) + 1))))
+            + (f"<p class='note'>{len(rangees)} document(s) ; en bleu : documents de l'application.</p>" if cote else "")
+            + "</form>" + "".join(tableau_section(x) for x in sections[1:]))
+    op = v.get("op")
+    if not op:
+        return html
+    if choisi.startswith("app:"):  # document de l'application : sa propre page (transformer, importer, passer)
+        _a, sorte, ident = (choisi.split(":", 2) + ["", ""])[:3]
+        adresse = {"doc": f"/document?n={quote(ident)}", "bc": "/bons-commande", "fa": "/factures-fournisseurs",
+                   "rt": "/retours"}.get(sorte, "/documents")
+        return html + (f"<div class='carte'><p>Document de l'application : <a class='ouvrir' href='{adresse}'>📂 Ouvrir "
+                       f"{e(ident)}</a> (modifier, transformer, importer ou passer dans Sage depuis sa page).</p></div>")
+    if op == "piece":
+        return html + ("<p class='note'>Ce document est déjà dans Sage : transformer, importer et passer dans Sage "
+                       "concernent les documents de l'application (en bleu).</p>")
+    if not choisi.isdigit() or int(choisi) >= len(s0.lignes):
+        return html + "<p class='erreur-texte'>Choisissez une ligne dans la liste.</p>"
+    ligne = list(s0.lignes[int(choisi)])
+    message = {"modifier": MESSAGE_MODIFIER, "supprimer": MESSAGE_SUPPRIMER}.get(op, "")
+    if op == "supprimer":
+        return html + f"<p class='note'>{e(message)}</p>"
+    valeur = dict(zip(s0.entetes, ligne))
+    if genre in ("clients", "fournisseurs"):
+        titre, lecture = f"Fiche : {ligne[0]}", (lambda b: fiches.lire_tiers(b, genre, str(ligne[0])))
+    elif genre in ("articles", "livre"):
+        numero = str(valeur.get("N° Sage") or "")
+        titre, lecture = f"Fiche article : {numero}", (lambda b: fiches.lire_article(b, numero))
+    elif genre in ("documents_vente", "documents_achat"):
+        cote = "ventes" if genre == "documents_vente" else "achats"
+        numero, tiers = str(valeur.get("Facture") or ""), str(valeur.get("Client") or valeur.get("Fournisseur") or "")
+        titre, lecture = f"Document : {numero}", (lambda b: fiches.lire_document(b, cote, numero, tiers))
+    else:
+        source, jour = str(valeur.get("Source") or ""), str(valeur.get("Date") or "")
+        titre, lecture = f"Document de stock : {source}", (lambda b: fiches.lire_document_stock(b, source, jour))
+    try:
+        infos, sections_fiche = sage(ctx, lecture, ("fiche", titre))
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001
+        ctx.app.noter(f"Fiche : {erreur!r}")
+        infos, sections_fiche = [], []
+    moitie = (len(infos) + 1) // 2
+    grille = "".join(f"<div class='colonne-fiche'>" + "".join(
+        f"<div class='t'>{e(k)}</div><div class='v'>{e(x)}</div>" for k, x in partie) + "</div>"
+        for partie in (infos[:moitie], infos[moitie:]))
+    return (html + f"<div class='carte'><h2>{e(titre)}</h2>" + (f"<p class='note'>{e(message)}</p>" if message else "")
+            + f"<div class='fiche-infos'>{grille}</div>"
+            + "".join(tableau_section(Section(t_, ent, lig)) for t_, ent, lig in sections_fiche) + "</div>")
 
 
 AN = date.today().replace(month=1, day=1)

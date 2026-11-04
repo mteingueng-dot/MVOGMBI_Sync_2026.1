@@ -9,7 +9,7 @@ import time
 from datetime import date, timedelta
 from decimal import Decimal
 
-from .consultations import Section, sections_html, tableau_section
+from .consultations import lire_ou_vide, Section, sections_html, tableau_section
 from .pages import Contexte, Fonction, argent, csrf, page
 from .pages_compta import _message, _point_vente
 from .serveur import Reponse, echapper as e
@@ -76,10 +76,11 @@ def encaissements(ctx: Contexte) -> Reponse:
 
                 client = ClientClover(charger_config(ctx.racine / "config.toml", pdv))
                 compte = en.numero_compte_sage(compte_depot)
-                depots = lire_sage(ctx.config, lambda b: en.calculer(
+                depots = lire_ou_vide(ctx, lambda b: en.calculer(
                     client, b, pdv.client_sage, compte, debut, fin, racine=ctx.racine if pdv.principal else None,
-                    prefixe=pdv.prefixe), ouvrir=False)
-                ctx.app.memoire[cle] = (time.time(), depots)
+                    prefixe=pdv.prefixe))
+                if "Sage" not in ctx.absents:
+                    ctx.app.memoire[cle] = (time.time(), depots)
             except (Exception, SystemExit) as erreur:  # noqa: BLE001
                 ctx.app.noter(f"Encaissements : {erreur!r}")
                 resume = f"✘ {erreur}"

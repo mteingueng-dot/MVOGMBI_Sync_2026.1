@@ -45,12 +45,11 @@ def _lire(ctx: Contexte, choix, forcer: bool = False):
         if periode[0] > periode[1]:
             periode = None
     if periode:
-        sage, solde, ouverture, comptes, paies = lire_sage(ctx.config, lambda base: (
+        sage, solde, ouverture, comptes, paies = lire_ou_vide(ctx, lambda base: (
             rp.mouvements_sage(base, periode[0], periode[1]), rp.solde_sage(base, periode[1]),
             rp.solde_sage(base, periode[0] - timedelta(days=1)), rp.comptes_sage(base),
             [s for s in rp.mouvements_sage(base, periode[0] - timedelta(days=rp.DELAI_PAIE),
-                                           periode[0] - timedelta(days=1)) if s.source.upper().startswith("PAY")]),
-            ouvrir=False)
+                                           periode[0] - timedelta(days=1)) if s.source.upper().startswith("PAY")]))
         banque, ouverture_banque, solde_banque = rp.restreindre(releves, *periode)
     else:
         sage, solde, ouverture, comptes, paies, banque, ouverture_banque, solde_banque = [], None, None, [], [], [], \
@@ -59,7 +58,8 @@ def _lire(ctx: Contexte, choix, forcer: bool = False):
     soldes = (solde_banque, solde, ouverture_banque, ouverture)
     etat = {"releves": releves, "banque": banque, "sage": sage, "comptes": comptes, "periode": periode,
             "soldes": soldes}
-    ctx.app.memoire[cle] = (time.time(), etat)
+    if "Sage" not in ctx.absents:  # une lecture vide n'est jamais gardée
+        ctx.app.memoire[cle] = (time.time(), etat)
     return etat
 
 
@@ -135,10 +135,10 @@ def rapprochement(ctx: Contexte) -> Reponse:
         return _rapport(ctx, choix)
     try:
         etat = _lire(ctx, choix, forcer=bool(ctx.req.query.get("actualiser")))
-    except (Exception, SystemExit) as erreur:  # noqa: BLE001
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — Sage absent : relevés seuls, tableaux affichés
         ctx.app.noter(f"Rapprochement : {erreur!r}")
-        etat = None
-        message += _message(erreur="Lecture impossible : Sage ne répond pas sur le serveur pour l'instant.")
+        ctx.absents.add("Sage")
+        etat = _sans_sage(ctx, choix)
     if etat and etat["periode"] and not (du or au) and not choix:
         du, au = etat["periode"][0].isoformat(), etat["periode"][1].isoformat()
     lien = f"du={du}&amp;au={au}&amp;filtre={e(filtre)}"
@@ -165,6 +165,22 @@ def rapprochement(ctx: Contexte) -> Reponse:
     return Reponse(corps=page(ctx, "Rapprochement bancaire", corps))
 
 
+def _sans_sage(ctx: Contexte, choix):
+    """Relevés et mouvements de banque sans les écritures de Sage (Sage ne répond pas)."""
+    from .. import rapprochement as rp
+
+    releves = rp.RegistreReleves(ctx.racine).lire()
+    periode = rp.periode_des(releves)
+    if periode and choix:
+        periode = (max(periode[0], choix[0]), min(periode[1], choix[1]))
+        if periode[0] > periode[1]:
+            periode = None
+    banque, ouverture, solde = rp.restreindre(releves, *periode) if periode else ([], None, None)
+    rp.rapprocher(banque, [], [])
+    return {"releves": releves, "banque": banque, "sage": [], "comptes": [], "periode": periode,
+            "soldes": (solde, None, ouverture, None)}
+
+
 def _oublier(ctx: Contexte) -> None:
     for cle in [c for c in list(ctx.app.memoire) if isinstance(c, tuple) and c and c[0] == "rapprochement"]:
         ctx.app.memoire.pop(cle, None)
@@ -177,7 +193,7 @@ COULEURS_MOUVEMENTS = {"Absent de Sage": "etat-a-saisir", "À encaisser sur les 
 
 def _corps(ctx: Contexte, etat: dict, filtre: str, du: str, au: str, cle_m: str, releve: str) -> str:
     from .. import rapprochement as rp
-    from .consultations import Section, tableau_section
+    from .consultations import lire_ou_vide, Section, tableau_section
 
     lien = f"du={du}&amp;au={au}&amp;filtre={e(filtre)}"
     releves, classes = [], []
@@ -319,7 +335,7 @@ def _factures_ventes(ctx: Contexte):
         etat = etat_factures_sage(base, CLIENT, compte, list(dates))
         return [(n, d, etat.get(n, {}).get("du")) for n, d in dates.items()]
 
-    return sorted(((n, d, du) for n, d, du in lire_sage(ctx.config, lire, ouvrir=False) if du and du > 0),
+    return sorted(((n, d, du) for n, d, du in lire_ou_vide(ctx, lire) if du and du > 0),
                   key=lambda x: (x[1], x[0]))
 
 

@@ -173,8 +173,10 @@ class Application:
             from .pages_rapports_web import STYLE_RAPPORTS
 
             from .export_web import STYLE_EXPORT
+            from .style_windows import STYLE_WINDOWS
 
-            return Reponse(corps=pages.STYLE + STYLE_MENU + STYLE_ACCUEIL + STYLE_STATS + STYLE_RAPPORTS + STYLE_EXPORT,
+            return Reponse(corps=pages.STYLE + STYLE_MENU + STYLE_ACCUEIL + STYLE_STATS + STYLE_RAPPORTS + STYLE_EXPORT
+                           + STYLE_WINDOWS,
                            type="text/css; charset=utf-8")
         if req.chemin == "/logo.png":
             from .accueil import logo

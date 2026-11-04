@@ -55,6 +55,50 @@ def _champ(nom: str, libelle: str, valeur, taille: int = 24, type_: str = "text"
             f"size='{taille}'></div>")
 
 
+def _titre(texte: str, sous_titre: str = "") -> str:
+    """Application._titre : titre vert, soulignement jaune et rouge, sous-titre."""
+    return (f"<div class='titre-admin'><div class='t'>{e(texte)}</div><div class='souligne'><span class='j'></span>"
+            f"<span class='r'></span></div>" + (f"<p>{e(sous_titre)}</p>" if sous_titre else "") + "</div>")
+
+
+def _carte(numero: str, titre: str, contenu: str, description: str = "", couleur: str = "") -> str:
+    """Application._carte : carte blanche à liseré, pastille numérotée et titre, zone des champs."""
+    return (f"<div class='carte-admin {couleur}'><div class='entete'><span class='pastille'>{e(numero)}</span>"
+            f"{e(titre)}</div>" + (f"<p class='desc'>{e(description)}</p>" if description else "")
+            + f"<div class='champs'>{contenu}</div></div>")
+
+
+def _ligne(libelle: str, champ: str, aide: str = "") -> str:
+    """Application._champ : libellé à gauche, champ large, aide en dessous."""
+    return (f"<label>{e(libelle)}</label><div>{champ}" + (f"<div class='aide'>{e(aide)}</div>" if aide else "")
+            + "</div>")
+
+
+def _entree(nom: str, valeur="", type_: str = "text", taille: int = 52) -> str:
+    return f"<input type='{type_}' name='{nom}' value='{e(valeur or '')}' size='{taille}'>"
+
+
+def _mot_de_passe(nom: str, cle_coffre: str) -> str:
+    from .. import coffre
+
+    try:
+        present = coffre.present(cle_coffre)
+    except Exception:  # noqa: BLE001
+        present = False
+    return (f"<input type='password' name='{nom}' autocomplete='new-password' size='52' placeholder='"
+            f"{'•••••••• (enregistré dans le coffre-fort : laissez vide pour le garder)' if present else ''}'>")
+
+
+def _sortie_test(ctx: Contexte, cle: str) -> str:
+    """Zone de sortie (Application._sortie) : résultat du dernier test lancé de cette page."""
+    texte = ctx.app.memoire.get(("test_admin", cle), "")
+    return f"<pre class='sortie'>{e(texte)}</pre>" if texte else ""
+
+
+ENREGISTRER_CONFIG = ("<div class='barre-onglet'><button class='a-droite' name='action' value='Enregistrer'>💾 "
+                      "Enregistrer la configuration</button></div>")
+
+
 def _refus_config(ctx: Contexte) -> str:
     return "" if action_permise(ctx, ENREGISTRER) else _message(erreur=f"Votre profil n'a pas le droit « {ENREGISTRER} ».")
 
@@ -87,16 +131,28 @@ def clover(ctx: Contexte) -> Reponse:
                 _garder_secrets(ctx, [("jeton", coffre.CLOVER_JETON)])
                 message = _message("Configuration Clover enregistrée.")
     c = ctx.config.get("clover", {})
-    corps = (message + f"<form method='post' class='carte'>{csrf(ctx)}<h2>Point de vente principal</h2>"
-             "<div class='ligne'>" + _champ("merchant_id", "Identifiant marchand *", c.get("merchant_id"), 16)
-             + _secret("jeton", "Jeton API *", coffre.CLOVER_JETON) + "</div><div class='boutons'><button "
-             "name='action' value='Enregistrer'>Enregistrer</button><button class='second' name='action' "
-             "value='Tester'>Tester la connexion</button></div></form>"
-             + tableau(["Point de vente", "Marchand", "Client Sage", "Dépôt Sage", "Préfixe", "Actif"],
-                       [[e(p.get("nom", "")), e(p.get("merchant_id", "")), e(p.get("client_sage", "")),
-                         e(p.get("depot_sage", "")), e(p.get("prefixe", "")), "Oui" if p.get("actif", True) else "Non"]
-                        for p in ctx.config.get("points_vente", [])])
-             + "<p class='note'>Autres points de vente : application complète (Administration > Clover).</p>")
+    points = [[e(x.get("code", "")), e(x.get("nom", "")), e(x.get("merchant_id", "")), e(x.get("client_sage", "")),
+               e(x.get("depot_sage", "")), e(x.get("prefixe", "")), "Oui" if x.get("actif", True) else "Non"]
+              for x in ctx.config.get("points_vente", [])]
+    from .consultations import Section, tableau_section
+
+    corps = (message + _titre("Accès à votre compte Clover (lecture des ventes)",
+                              "L'application lit les ventes payées dans Clover ; elle n'y modifie jamais rien.")
+             + f"<form method='post'>{csrf(ctx)}"
+             + _carte("1", "Identifiants Clover", _ligne(
+                 "Identifiant marchand", _entree("merchant_id", c.get("merchant_id")),
+                 "13 caractères, visibles dans l'adresse du tableau de bord Clover après « /m/ ».")
+                 + _ligne("Jeton API", _mot_de_passe("jeton", coffre.CLOVER_JETON),
+                          "Clover > Compte et configuration > Jetons API (droits en lecture). Laissez vide pour "
+                          "conserver le jeton enregistré.")
+                 + "<span></span><div><button name='action' value='Tester'>🔌 Tester la connexion à Clover</button>"
+                   "</div>")
+             + _carte("2", "Points de vente", tableau_section(Section("Points de vente", [
+                 "N°", "Point de vente", "Marchand", "Client Sage", "Dépôt Sage", "Préfixe", "Actif"], points,
+                 html=set(range(7)))), "Chaque point de vente Clover est un dépôt (emplacement d'inventaire) dans "
+                                       "Sage, avec son client Sage et ses factures (« Vente 2026-10-23 » pour le n° 1, "
+                                       "« V2 2026-10-23 » pour le n° 2…). Le n° 1 utilise les identifiants ci-dessus.")
+             + ENREGISTRER_CONFIG + "</form>")
     return Reponse(corps=page(ctx, "Clover", corps))
 
 
@@ -121,7 +177,19 @@ def sage(ctx: Contexte) -> Reponse:
                         cal.definir(jour.year, jour, int(ctx.req.champ("delai") or 15))
                         cal.enregistrer()
 
+                    depart, compte, enc = (ctx.req.champ(k).strip() for k in ("date_depart", "compte", "enc_depart"))
+                    for jour_ in (depart, enc):
+                        if jour_:
+                            date.fromisoformat(jour_)
+
                     def modifier(c):
+                        if depart:
+                            c.setdefault("automatique", {})["date_depart"] = depart
+                        if compte or enc:
+                            c.setdefault("encaissements", {}).update(compte_depot=compte or "1055",
+                                                                     date_depart=enc or date.today().isoformat())
+                            c["encaissements"].setdefault("mode", "Comptant")
+                            c["encaissements"].setdefault("automatique", True)
                         c.setdefault("sage_base", {}).update(utilisateur=ctx.req.champ("utilisateur").strip(),
                                                               fichier_entreprise=fichier)
                         c["sage_base"].pop("mot_de_passe", None)
@@ -133,20 +201,39 @@ def sage(ctx: Contexte) -> Reponse:
                     _garder_secrets(ctx, [("lecture", coffre.SAGE_LECTURE), ("import", coffre.SAGE_IMPORT)])
                     message = _message("Configuration Sage 50 enregistrée.")
                 except ValueError as erreur:
-                    message = _message(erreur=f"Première paie : {erreur}")
+                    message = _message(erreur=f"Vérifiez les dates (AAAA-MM-JJ) : {erreur}")
     b = ctx.config.get("sage_base", {})
     cal = Calendrier(ctx.racine)
     premiere = cal.premiere(date.today().year)
-    corps = (message + f"<form method='post' class='carte'>{csrf(ctx)}<h2>Fichier d'entreprise</h2><div class='ligne'>"
-             + _champ("fichier", "Fichier d'entreprise (.SAI, sur le serveur) *",
-                      b.get("fichier_entreprise") or ctx.config.get("sage_import", {}).get("fichier_entreprise"), 60)
-             + _champ("utilisateur", "Utilisateur Sage (lecture) *", b.get("utilisateur") or "mvogmbi_sync", 16)
-             + _secret("lecture", "Mot de passe de lecture", coffre.SAGE_LECTURE)
-             + _secret("import", "Mot de passe de l'import (sysadmin)", coffre.SAGE_IMPORT)
-             + "</div><h2>Paie</h2><div class='ligne'>"
-             + _champ("premiere", "Première paie de l'année", premiere.isoformat() if premiere else "", 10, "date")
-             + _champ("delai", "Délai après la période (jours)", cal.delai, 4)
-             + "</div><div class='boutons'><button>Enregistrer</button></div></form>")
+    a, en = ctx.config.get("automatique", {}), ctx.config.get("encaissements", {})
+    corps = (message + _titre("Fichier d'entreprise et comptes Sage") + f"<form method='post'>{csrf(ctx)}"
+             + _carte("1", "Fichier d'entreprise", _ligne(
+                 "Fichier d'entreprise (.SAI)", _entree("fichier", b.get("fichier_entreprise")
+                                                        or ctx.config.get("sage_import", {}).get("fichier_entreprise")),
+                 "Le fichier dans lequel les factures sont importées (chemin sur le serveur). Pour les essais : une "
+                 "COPIE.")
+                 + _ligne("Premier jour à importer", _entree("date_depart", a.get("date_depart", ""), "date", 12),
+                          "AAAA-MM-JJ. Utilisé seulement si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ ».")
+                 + _ligne("Compte de dépôt des encaissements", _entree("compte", en.get("compte_depot", "1055"),
+                                                                        taille=10),
+                          "Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins).")
+                 + _ligne("Encaisser à partir des ventes du", _entree("enc_depart", en.get("date_depart", ""), "date",
+                                                                       12),
+                          "AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés."))
+             + _carte("2", "Utilisateurs Sage", _ligne(
+                 "Utilisateur Sage (lecture)", _entree("utilisateur", b.get("utilisateur") or "mvogmbi_sync"),
+                 "Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » et accès Vue aux "
+                 "modules Stocks & Services et Clients & Ventes.")
+                 + _ligne("Mot de passe (lecture)", _mot_de_passe("lecture", coffre.SAGE_LECTURE))
+                 + _ligne("Mot de passe Sage pour l'import", _mot_de_passe("import", coffre.SAGE_IMPORT),
+                          "Mot de passe demandé par la fenêtre « Sage 50 - Password » de l'import (utilisateur "
+                          "sysadmin)."))
+             + _carte("3", "Paie", _ligne(
+                 "Première paie de l'année", _entree("premiere", premiere.isoformat() if premiere else "", "date", 12),
+                 "Date de la première paie de l'année : les paies suivantes (tous les 14 jours) et leurs périodes se "
+                 "calculent (« Paie > Calendrier de paie »).")
+                 + _ligne("Jours entre la fin de la période et la paie", _entree("delai", cal.delai, taille=5)))
+             + ENREGISTRER_CONFIG + "</form>")
     return Reponse(corps=page(ctx, "Sage 50", corps))
 
 
@@ -213,38 +300,66 @@ def courriel(ctx: Contexte) -> Reponse:
                     message = _message("Configuration du courriel enregistrée.")
     c, b = ctx.config.get("courriel", {}), ctx.config.get("boite_paiements", {})
     fc, r = ctx.config.get("factures_courriel", {}), ctx.config.get("ria", {})
-    securite = "".join(f"<option{' selected' if s == c.get('securite', 'STARTTLS') else ''}>{s}</option>"
-                       for s in ("STARTTLS", "SSL", "Aucune"))
-    corps = (message + f"<form method='post'>{csrf(ctx)}<div class='carte'><h2>1. Envoi du compte rendu</h2>"
-             "<div class='ligne'>" + _champ("serveur", "Serveur SMTP", c.get("serveur")) + _champ("port", "Port",
-                                                                                                  c.get("port", 587), 5)
-             + f"<div><label>Sécurité</label><select name='securite'>{securite}</select></div>"
-             + _champ("utilisateur", "Utilisateur", c.get("utilisateur")) + _secret("mdp", "Mot de passe",
-                                                                                     coffre.COURRIEL)
-             + _champ("expediteur", "Expéditeur", c.get("expediteur")) + _champ("destinataires", "Destinataires",
-                                                                                c.get("destinataires"), 40)
-             + _champ("copie", "Copie", c.get("copie"), 30) + _champ("cci", "Copie cachée (Cci)", c.get("cci"), 30)
-             + f"</div><p><label><input type='checkbox' name='si_succes' value='1'"
-               f"{' checked' if c.get('envoyer_si_succes', True) else ''}> Envoyer aussi quand tout va bien</label></p>"
-               "</div><div class='carte'><h2>2. Boîte des avis de paiement (IMAP, lecture seule)</h2><div class='ligne'>"
-             + _champ("b_serveur", "Serveur IMAP", b.get("serveur")) + _champ("b_utilisateur", "Adresse",
-                                                                             b.get("utilisateur"))
-             + _secret("b_mdp", "Mot de passe", coffre.BOITE_PAIEMENTS) + _champ("b_depuis", "Depuis", b.get("depuis"),
-                                                                                10, "date")
-             + "</div></div><div class='carte'><h2>3. Factures fournisseurs reçues par courriel</h2><div class='ligne'>"
-             + _champ("fc_expediteurs", "Expéditeurs", fc.get("expediteurs"), 40) + _champ("fc_textes", "Textes (« ; »)",
-                                                                                         fc.get("textes"), 30)
-             + _champ("fc_depuis", "Depuis", fc.get("depuis"), 10, "date")
-             + f"</div><p><label><input type='checkbox' name='fc_auto' value='1'"
-               f"{' checked' if fc.get('automatique', True) else ''}> Lire chaque nuit</label></p></div>"
-               "<div class='carte'><h2>4. États de compte RIA</h2><div class='ligne'>"
-             + _champ("ria_courriel", "Adresse", r.get("courriel")) + _champ("ria_serveur", "Serveur IMAP",
-                                                                            r.get("serveur"))
-             + _champ("ria_expediteurs", "Expéditeurs", r.get("expediteurs"), 30)
-             + _champ("ria_depuis", "Depuis", r.get("depuis"), 10, "date") + _secret("ria_mdp", "Mot de passe (si autre "
-                                                                                     "boîte)", coffre.BOITE_RIA)
-             + "</div></div><div class='boutons'><button name='action' value='Enregistrer'>Enregistrer</button>"
-               "<button class='second' name='action' value='Tester'>Envoyer un courriel d'essai</button></div></form>")
+    securite = "".join(f"<option{' selected' if x.casefold() == str(c.get('securite', 'starttls')).casefold() else ''}>"
+                       f"{x}</option>" for x in ("starttls", "ssl", "aucune"))
+
+    def case(nom: str, coche: bool, texte: str) -> str:
+        return (f"<span></span><div><label class='case'><input type='checkbox' name='{nom}' value='1'"
+                f"{' checked' if coche else ''}> {e(texte)}</label></div>")
+
+    corps = (message + _titre("Alertes par courriel") + f"<form method='post'>{csrf(ctx)}"
+             + _carte("1", "Serveur d'envoi", _ligne(
+                 "Serveur d'envoi (SMTP)", _entree("serveur", c.get("serveur")),
+                 "Ex. smtp.office365.com (Outlook) ou smtp.gmail.com (Gmail : mot de passe d'application).")
+                 + _ligne("Port", _entree("port", c.get("port", 587), taille=8))
+                 + _ligne("Sécurité", f"<select name='securite'>{securite}</select>")
+                 + _ligne("Utilisateur", _entree("utilisateur", c.get("utilisateur")))
+                 + _ligne("Mot de passe", _mot_de_passe("mdp", coffre.COURRIEL)))
+             + _carte("2", "Envoi du compte rendu", _ligne("Expéditeur", _entree("expediteur", c.get("expediteur")))
+                      + _ligne("Destinataire(s)", _entree("destinataires", c.get("destinataires")),
+                               "Une ou plusieurs adresses séparées par des virgules.")
+                      + _ligne("Copie cachée (Cci)", _entree("cci", c.get("cci")),
+                               "Reçoit en copie cachée chaque courriel envoyé par l'application (bulletins, T4 / RL-1, "
+                               "relances), sauf les comptes rendus du traitement automatique. Vide : le premier "
+                               "destinataire ci-dessus.")
+                      + _ligne("Autres destinataires", _entree("copie", c.get("copie")),
+                               "Facultatif : autres personnes à informer, adresses séparées par des virgules.")
+                      + case("si_succes", c.get("envoyer_si_succes", True), "Envoyer le compte rendu après chaque "
+                             "traitement, y compris en cas de succès (dates traitées et leur état)")
+                      + "<span></span><div><button name='action' value='Tester'>✉ Envoyer un courriel de test</button>"
+                        "</div>")
+             + _carte("3", "Avis de paiement (lecture de la boîte)", _ligne(
+                 "Serveur (IMAP)", _entree("b_serveur", b.get("serveur", "")))
+                 + _ligne("Adresse", _entree("b_utilisateur", b.get("utilisateur", "")))
+                 + _ligne("Mot de passe", _mot_de_passe("b_mdp", coffre.BOITE_PAIEMENTS))
+                 + _ligne("Lire les avis à partir du", _entree("b_depuis", b.get("depuis", "2026-08-01"), "date", 12)),
+                 "Boîte où arrivent les avis Interac de Desjardins : l'application les lit (sans les marquer comme "
+                 "lus) pour enregistrer les paiements aux fournisseurs.")
+             + _carte("4", "Factures fournisseurs reçues par courriel", _ligne(
+                 "Expéditeurs des factures", _entree("fc_expediteurs", fc.get("expediteurs", "")),
+                 "Adresses ou domaines séparés par des virgules. Vide : tout courriel dont le sujet ou la pièce jointe "
+                 "parle de facture.")
+                 + _ligne("Textes dans le courriel", _entree("fc_textes", fc.get("textes", "")),
+                          "Textes séparés par des points-virgules : les pièces jointes de tout courriel qui contient "
+                          "l'un d'eux (sujet, expéditeur, message ou nom du fichier) sont prises.")
+                 + _ligne("Lire les factures à partir du", _entree("fc_depuis", fc.get("depuis", b.get("depuis", "")),
+                                                                    "date", 12))
+                 + case("fc_auto", fc.get("automatique", True), "Les relever aussi pendant le traitement de nuit"),
+                 "Les factures (PDF ou photos) jointes aux courriels de cette même boîte sont copiées dans « Fournisseur "
+                 "> Factures fournisseurs », puis lues. Lecture seule : aucun courriel n'est marqué comme lu, déplacé "
+                 "ni supprimé ; chaque pièce jointe n'est prise qu'une fois.")
+             + _carte("5", "États RIA reçus par courriel", _ligne(
+                 "Courriel de réception des états RIA", _entree("ria_courriel", r.get("courriel", "")))
+                 + _ligne("Serveur (IMAP)", _entree("ria_serveur", r.get("serveur", "")),
+                          "Vide : le serveur de la boîte des avis de paiement.")
+                 + _ligne("Mot de passe", _mot_de_passe("ria_mdp", coffre.BOITE_RIA),
+                          "Vide si c'est la même adresse que la boîte des avis de paiement.")
+                 + _ligne("Expéditeurs des états", _entree("ria_expediteurs", r.get("expediteurs", "")),
+                          "Facultatif : adresses ou domaines de RIA séparés par des virgules.")
+                 + _ligne("Lire les états à partir du", _entree("ria_depuis", r.get("depuis", ""), "date", 12)),
+                 "Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit sans les "
+                 "marquer comme lus et les ajoute à « Comptabilité > États de compte RIA ».")
+             + ENREGISTRER_CONFIG + "</form>")
     return Reponse(corps=page(ctx, "Courriel", corps))
 
 
@@ -265,42 +380,35 @@ def automatisation(ctx: Contexte) -> Reponse:
 
             return taches.lancer(ctx, action, tache, "/admin/automatisation")
         if not message:
+            heure = ctx.req.champ("heure").strip()
             try:
-                depart, enc = ctx.req.champ("date_depart").strip(), ctx.req.champ("enc_depart").strip()
-                date.fromisoformat(depart)
-                date.fromisoformat(enc)
-                heure = ctx.req.champ("heure").strip()
                 h, m = heure.split(":")
                 assert 0 <= int(h) < 24 and 0 <= int(m) < 60
             except (ValueError, AssertionError):
-                message = _message(erreur="Vérifiez les dates (AAAA-MM-JJ) et l'heure (HH:MM).")
+                message = _message(erreur="Vérifiez l'heure (HH:MM).")
             else:
                 def modifier(c):
-                    c.setdefault("automatique", {}).update(date_depart=depart, heure=heure)
+                    c.setdefault("automatique", {})["heure"] = heure
                     c["automatique"].setdefault("delai_import", 3600)
-                    c.setdefault("encaissements", {}).update(compte_depot=ctx.req.champ("compte").strip() or "1055",
-                                                             date_depart=enc)
-                    c["encaissements"].setdefault("mode", "Comptant")
-                    c["encaissements"]["automatique"] = bool(ctx.req.champ("enc_auto"))
                 _ecrire(ctx, modifier)
-                message = _message("Automatisation enregistrée (réinstallez la tâche si l'heure a changé).")
+                message = _message("Configuration enregistrée (réinstallez la tâche si l'heure a changé).")
     try:
         etat = planification.etat()
     except Exception as erreur:  # noqa: BLE001
         etat = str(erreur)
-    a, en = ctx.config.get("automatique", {}), ctx.config.get("encaissements", {})
-    corps = (message + f"<form method='post' class='carte'>{csrf(ctx)}<div class='ligne'>"
-             + _champ("date_depart", "Facturer depuis", a.get("date_depart"), 10, "date")
-             + _champ("heure", "Heure du traitement de nuit", a.get("heure", "01:00"), 6)
-             + _champ("compte", "Compte de dépôt", en.get("compte_depot", "1055"), 6)
-             + _champ("enc_depart", "Encaisser les dépôts depuis", en.get("date_depart"), 10, "date")
-             + f"</div><p><label><input type='checkbox' name='enc_auto' value='1'"
-               f"{' checked' if en.get('automatique', True) else ''}> Encaisser les dépôts la nuit</label></p>"
-               "<div class='boutons'><button name='action' value='Enregistrer'>Enregistrer</button></div></form>"
-             + f"<div class='carte'><h2>Tâche planifiée du serveur</h2><pre class='resultat'>{e(etat)}</pre>"
-               f"<form method='post' class='boutons'>{csrf(ctx)}<button class='second' name='action' value='Installer la "
-               "tâche'>Installer la tâche</button><button class='second' name='action' value='Retirer la tâche'>Retirer "
-               "la tâche</button></form></div>")
+    a = ctx.config.get("automatique", {})
+    corps = (message + _titre("Traitement automatique quotidien") + f"<form method='post'>{csrf(ctx)}"
+             + _carte("1", "Tâche planifiée", _ligne(
+                 "Heure du traitement", _entree("heure", a.get("heure", "01:00"), taille=8),
+                 "HH:MM. Le serveur doit être allumé et la session Windows ouverte ; Sage peut être fermé.")
+                 + "<span></span><div class='barre-onglet'><button name='action' value='Installer la tâche'>⏰ Installer "
+                   "la tâche planifiée</button><button class='danger' name='action' value='Retirer la tâche'>Retirer la "
+                   "tâche</button><a class='ouvrir' href='/admin/automatisation'>État de la tâche</a></div>")
+             + f"<pre class='sortie'>{e(etat)}</pre>"
+             + _carte("2", "Outils", "<p class='desc'>« Créer un raccourci sur le Bureau » et « Reprendre une "
+                                     "configuration existante… » se font sur le poste, dans l'application Windows.</p>",
+                      couleur="jaune")
+             + ENREGISTRER_CONFIG + "</form>")
     return Reponse(corps=page(ctx, "Automatisation", corps))
 
 
@@ -319,6 +427,16 @@ def sauvegarde(ctx: Contexte) -> Reponse:
                 return f"{'✔' if etat.ok else '✘'} {etat.message or etat.fichier} ({etat.fichiers} fichiers)."
 
             return taches.lancer(ctx, "Sauvegarde des données", sauvegarder, "/sauvegarde")
+        if action == "Enregistrer le dossier":
+            message = _refus_config(ctx)
+            if not message:
+                dossier_ = ctx.req.champ("dossier").strip()
+
+                def modifier(c):
+                    c.setdefault("sauvegarde", {})["dossier"] = dossier_
+                _ecrire(ctx, modifier)
+                cible = sv.dossier(ctx.racine, ctx.config)
+                message = _message("Dossier des sauvegardes enregistré.")
         if action == "Restaurer":
             nom_action = "Restaurer une sauvegarde"
             archive = cible / Path(ctx.req.champ("archive")).name
@@ -339,20 +457,28 @@ def sauvegarde(ctx: Contexte) -> Reponse:
     derniere = sv.derniere(ctx.racine)
     retard = sv.en_retard(ctx.racine)
     archives = sv.archives(cible) if cible.exists() else []
-    lignes = [[e(p.name), f"{p.stat().st_size / 1_048_576:.1f} Mo".replace(".", ",")] for p in archives]
-    options = "".join(f"<option>{e(p.name)}</option>" for p in archives)
-    corps = (message + f"<div class='cartes'><div class='carte'><div class='t'>Dernière sauvegarde</div><div class='v'>"
-             f"{e(derniere.quand[:16].replace('T', ' ') or 'aucune')}</div><div class='d'>{e(derniere.message)}</div></div>"
-             f"<div class='carte'><div class='t'>Dossier</div><div class='d'>{e(str(cible))}</div></div></div>"
-             + (_message(erreur=retard) if retard else "")
-             + f"<form method='post' class='boutons'>{csrf(ctx)}<button name='action' value='Sauvegarder'>Sauvegarder "
-               "maintenant</button></form>"
-             + tableau(["Archive", "Taille"], lignes, {1})
-             + (f"<form method='post' class='carte'>{csrf(ctx)}<h2>Restaurer</h2><div class='ligne'><div><label>Archive"
-                f"</label><select name='archive'>{options}</select></div></div><p><label><input type='checkbox' "
-                "name='confirme' value='1'> Je remplace les données actuelles par cette sauvegarde</label></p><div "
-                "class='boutons'><button class='second' name='action' value='Restaurer'>Restaurer</button></div></form>"
-                if archives else ""))
+    from datetime import datetime
+
+    from .consultations import Section, tableau_section
+
+    lignes = [[f"<input type='radio' name='archive' value='{e(p.name)}'>",
+               datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"), e(p.name),
+               f"{p.stat().st_size / 1_048_576:.1f} Mo".replace(".", ",")] for p in archives]
+    etat = ("⚠ " + retard) if retard else (
+        f"✔ Dernière sauvegarde : {derniere.quand[:16].replace('T', ' ') or 'aucune'} — {derniere.message}")
+    corps = (message + "<p class='note'>Chaque nuit, le traitement automatique copie les données de l'application "
+             "(correspondance, pointages, feuilles de temps, registres, journaux) et la configuration dans une archive "
+             "vérifiée. Gardées : 14 jours, 8 semaines, 12 mois.</p>"
+             + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<div class='large'><label>Dossier des sauvegardes"
+               f"</label><input name='dossier' value='{e(str(cible))}' size='62'></div><button class='second' "
+               "name='action' value='Enregistrer le dossier'>✔ Enregistrer le dossier</button></form>"
+             + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><button name='action' value='Sauvegarder'>💾 "
+               "Sauvegarder maintenant</button><button class='danger' name='action' value='Restaurer'>↩ Restaurer la "
+               "sauvegarde choisie…</button><label class='case'><input type='checkbox' name='confirme' value='1'> Je "
+               "remplace les données actuelles par cette sauvegarde</label></div>"
+             + f"<p class='{'erreur-texte' if retard else 'ok-texte'}'>{e(etat)}</p>"
+             + tableau_section(Section("Sauvegardes", ["", "Date", "Sauvegarde", "Taille"], lignes, html={0, 1, 2, 3}))
+             + "</form>")
     return Reponse(corps=page(ctx, "Sauvegarde des données", corps))
 
 
@@ -368,6 +494,14 @@ def utilisateurs(ctx: Contexte) -> Reponse:
             with ctx.app.ecriture:
                 reg = Registre(ctx.racine)
                 nom = ctx.req.champ("nom").strip()
+                if action in ("Changer le profil", "Nouveau mot de passe", "Activer / désactiver", "Supprimer le compte"):
+                    nom = ctx.req.champ("compte").strip() or nom  # compte coché dans la liste
+                    if reg.trouver(nom) is None:
+                        raise ErreurUtilisateur("Choisissez un compte dans la liste.")
+                    action = {"Changer le profil": "Profil", "Nouveau mot de passe": "Mot de passe",
+                              "Supprimer le compte": "Supprimer"}.get(action, action)
+                    if action == "Activer / désactiver":
+                        action = "Désactiver" if reg.trouver(nom).actif else "Réactiver"
                 if action == "Ajouter":
                     reg.ajouter(nom, ctx.req.champ("profil"), ctx.req.champ("mot_de_passe"))
                 elif action == "Profil":
@@ -408,20 +542,11 @@ def utilisateurs(ctx: Contexte) -> Reponse:
             message = _message(erreur=str(erreur))
     reg = Registre(ctx.racine)
     profils = "".join(f"<option>{e(p)}</option>" for p in reg.profils)
-    lignes = []
-    for u in reg.utilisateurs:
-        cache = f"<input type='hidden' name='nom' value='{e(u.nom)}'>"
-        lignes.append([e(u.nom), e(u.profil), "Verrouillé" if u.verrouille else ("Actif" if u.actif else "Inactif"),
-                       e(u.derniere_connexion.replace("T", " ")),
-                       f"<form method='post' class='ligne'>{csrf(ctx)}{cache}<select name='profil'>"
-                       + "".join(f"<option{' selected' if p == u.profil else ''}>{e(p)}</option>" for p in reg.profils)
-                       + "</select><button class='second' name='action' value='Profil'>Profil</button></form>",
-                       f"<form method='post' class='ligne'>{csrf(ctx)}{cache}<input type='password' name='mot_de_passe' "
-                       "size='10' autocomplete='new-password' placeholder='6 caractères ou plus'><button class='second' "
-                       "name='action' value='Mot de passe'>Changer</button></form>",
-                       f"<form method='post' class='ligne'>{csrf(ctx)}{cache}<button class='second' name='action' "
-                       f"value='{'Désactiver' if u.actif else 'Réactiver'}'>{'Désactiver' if u.actif else 'Réactiver'}"
-                       "</button><button class='second' name='action' value='Supprimer'>Supprimer</button></form>"])
+    coche = ctx.req.champ("compte") or ctx.req.query.get("compte", "")
+    lignes = [[f"<input type='radio' name='compte' value='{e(u.nom)}'{' checked' if u.nom == coche else ''}>",
+               e(u.nom), e(u.profil), "Verrouillé" if u.verrouille else ("Actif" if u.actif else "Inactif"),
+               e(u.derniere_connexion.replace("T", " ")[:16])] for u in reg.utilisateurs]
+    classes = ["" if u.actif else "termine" for u in reg.utilisateurs]
     choisi = ctx.req.query.get("profil") or ctx.req.champ("profil") or next((p for p in reg.profils if p != ADMIN), "")
     acces = ""
     if choisi and choisi != ADMIN and choisi in reg.profils:
@@ -454,23 +579,34 @@ def utilisateurs(ctx: Contexte) -> Reponse:
                  f"name='export' value='1'{' checked' if choisi not in reg.sans_export else ''}> Exporter les données"
                  f"</label> <label><input type='checkbox' name='tous_employes' value='1'"
                  f"{' checked' if choisi not in reg.limites else ''}> Voir tous les employés</label></p><div "
-                 "class='boutons'><button name='action' value='Accès'>Enregistrer les accès</button></div></form>")
+                 "class='boutons'><button class='accent' name='action' value='Accès'>💾 Enregistrer les accès</button></div>"
+                 "</form>")
     choix_profil = "".join(f"<option{' selected' if p == choisi else ''}>{e(p)}</option>" for p in reg.profils
                            if p != ADMIN)
-    corps = (message + tableau(["Utilisateur", "Profil", "État", "Dernière connexion", "Changer le profil",
-                                "Nouveau mot de passe", ""], lignes)
-             + f"<form method='post' class='carte'>{csrf(ctx)}<h2>Nouvel utilisateur</h2><div class='ligne'>"
-               "<div><label>Nom</label><input name='nom' required></div><div><label>Profil</label><select name='profil'>"
-               f"{profils}</select></div><div><label>Mot de passe (6 caractères ou plus)</label><input type='password' "
-               "name='mot_de_passe' autocomplete='new-password' required></div><button name='action' value='Ajouter'>"
-               "Ajouter</button></div></form>"
-             + f"<form class='ligne' method='get'><div><label>Profil à régler</label><select name='profil'>{choix_profil}"
-               "</select></div><button class='second'>Afficher</button></form>"
-             + f"<form method='post' class='ligne'>{csrf(ctx)}<div><label>Nouveau profil</label><input "
-               "name='profil_nouveau'></div><button class='second' name='action' value='Nouveau profil'>Créer le profil"
-               "</button></form>" + acces
-             + "<p class='note'>Un compte verrouillé (3 mots de passe faux) se rouvre en lui donnant un nouveau mot de "
-               "passe. Il reste toujours au moins un administrateur actif.</p>")
+    from .consultations import Section, tableau_section
+
+    comptes = (f"<form method='post'>{csrf(ctx)}"
+               + tableau_section(Section("Comptes", ["", "Nom", "Profil", "État", "Dernière connexion"], lignes,
+                                         classes=classes, html=set(range(5))))
+               + "<div class='carte'><div class='ligne'><div><label>Nom</label><input name='nom' size='22'></div><div>"
+                 f"<label>Profil</label><select name='profil'>{profils}</select></div><div><label>Mot de passe (6 "
+                 "caractères min.)</label><input type='password' name='mot_de_passe' autocomplete='new-password' "
+                 "size='20'></div></div><div class='barre-onglet'><button name='action' value='Ajouter'>➕ Ajouter"
+                 "</button><button class='second' name='action' value='Changer le profil'>Changer le profil</button>"
+                 "<button class='second' name='action' value='Nouveau mot de passe'>Nouveau mot de passe</button>"
+                 "<button class='second' name='action' value='Activer / désactiver'>Activer / désactiver</button>"
+                 "<button class='danger' name='action' value='Supprimer le compte'>🗑 Supprimer</button></div>"
+                 "<p class='note'>Cochez un compte, puis choisissez son profil ou tapez son mot de passe. Un compte "
+                 "verrouillé (3 mots de passe faux) se rouvre en lui donnant un nouveau mot de passe. Il reste toujours "
+                 "au moins un administrateur actif.</p></div></form>")
+    profils_carte = (f"<div class='carte'><h2>Profils et fonctions permises</h2><form class='barre-onglet' "
+                     f"method='get'><div><label>Profil</label><select name='profil'>{choix_profil}</select></div>"
+                     "<button class='second'>Afficher</button></form>"
+                     f"<form method='post' class='barre-onglet'>{csrf(ctx)}<div><label>Nouveau profil</label><input "
+                     "name='profil_nouveau' size='16'></div><button class='second' name='action' value='Nouveau "
+                     "profil'>➕</button></form><p class='note'>Cliquez pour cocher ou décocher les fonctions de chaque "
+                     f"rubrique.</p>{acces}</div>")
+    corps = message + f"<div class='colonnes'><div>{comptes}</div><div>{profils_carte}</div></div>"
     return Reponse(corps=page(ctx, "Utilisateurs", corps))
 
 

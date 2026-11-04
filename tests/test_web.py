@@ -114,13 +114,19 @@ def test_pointage_et_approbation(site, tmp_path):
     base, srv, awa = site
     nav = connecter(base, "Awa", "secret456")
     _, page, _ = ouvrir(nav, base + "/pointage")
+    assert "Touchez votre nom" in page and "Awa Mballa" in page
+    _, page, _ = ouvrir(nav, base + f"/pointage?employe={awa.id}")
     csrf = jeton_csrf(page)
-    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "employe": awa.id, "nip": "9999", "action": "Arrivée"})
+    assert "Tapez votre NIP" in page
+    for touche in "9999":
+        _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "action": f"touche:{touche}"})
+    assert "●●●●" in page and "9999" not in page          # le NIP reste sur le serveur
+    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "action": "touche:✔"})
     assert "NIP incorrect" in page
-    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "employe": awa.id, "nip": "1234", "action": "Départ"})
-    assert "pas possible" in page
-    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "employe": awa.id, "nip": "1234", "action": "Arrivée"})
-    assert "Arrivée à" in page
+    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "nip": "1234", "action": "NIP"})
+    assert "pointer:Arrivée" in page and "pointer:Départ" not in page and "Mon horaire" in page
+    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "action": "pointer:Arrivée"})
+    assert "Arrivée à" in page and "Touchez votre nom" in page
     assert pt.Registre(tmp_path).etat_actuel(awa.id) == pt.ARRIVEE
     # pointage refusé depuis un appareil hors du magasin
     srv.app.config["web"]["postes_pointage"] = ["10.0.0."]
@@ -192,11 +198,12 @@ def test_pages_paie_du_gerant(site, tmp_path):
     assert "publié" in page
     # employés : ajout, NIP, compte relié
     _, page, _ = ouvrir(patron, base + "/employes")
-    statut, _, entetes = ouvrir(patron, base + "/employes", {"csrf": jeton_csrf(page), "nom": "Ben Ndi",
-                                                             "action": "Ajouter"})
-    assert statut == 303 and entetes["Location"].startswith("/employe?id=")
-    ident = entetes["Location"].split("=")[1]
-    _, page, _ = ouvrir(patron, base + entetes["Location"])
+    _, page, _ = ouvrir(patron, base + "/employes", {"csrf": jeton_csrf(page), "nom": "Ben Ndi", "action": "ajouter"})
+    assert "Enregistré" in page and "Ben Ndi" in page
+    ident = next(x.id for x in pt.Registre(tmp_path).employes if x.nom == "Ben Ndi")
+    _, page, _ = ouvrir(patron, base + "/employes?op=nip&id=" + ident)
+    assert "Définir le NIP" in page
+    _, page, _ = ouvrir(patron, base + f"/employe?id={ident}")
     _, page, _ = ouvrir(patron, base + "/employe", {"csrf": jeton_csrf(page), "id": ident, "nip": "4321",
                                                     "action": "Changer le NIP"})
     assert "Enregistré" in page
@@ -220,9 +227,11 @@ def test_pages_paie_du_gerant(site, tmp_path):
     _, page, _ = ouvrir(patron, base + "/conges")
     jour = str(date.today() + timedelta(days=3))
     _, page, _ = ouvrir(patron, base + "/conges", {"csrf": jeton_csrf(page), "employe": awa.id, "type": "Vacances",
-                                                   "du": jour, "au": jour, "heures": "8", "action": "Ajouter"})
+                                                   "du": jour, "au": jour, "heures": "8", "onglet": "conges",
+                                                   "action": "Ajouter le congé"})
     assert "1 jour(s) de congé" in page
     assert [c.jour for c in co.Registre(tmp_path).conges] == [jour]
+    assert "Soldes de congés" in ouvrir(patron, base + "/conges?onglet=soldes")[1]
 
 
 def test_paies_web_et_droits(site, monkeypatch):
@@ -357,16 +366,17 @@ def test_vague_comptabilite(site, tmp_path):
         assert statut == 200, chemin
     _, page, _ = ouvrir(patron, base + "/ria")
     jeton = jeton_csrf(page)
-    _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "jour": "2026-11-02", "genre": ria.ENVOI,
-                                                "montant": "250,00", "description": "envoi", "action": "Ajouter"})
-    assert "RI-0001 ajoutée" in page and "250,00 $" in page
+    assert "Solde dû à RIA" in page and "Confirmer le surplus" in page
+    _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "jour": str(date.today()), "montant": "250,00",
+                                                "description": "paiement", "action": "Paiement en espèces"})
+    assert ria.Registre(tmp_path).operations[0].numero == "RI-0001" and "250,00 $" in page
     _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "action": "Saisir dans Sage"})
     assert "Comptes à renseigner" in page          # aucun travail sur Sage sans les comptes
     _, page, _ = ouvrir(patron, base + "/comptes-ria", {"csrf": jeton, "ria": "2410", "commissions": "4090",
                                                         "especes": "1050", "action": "Enregistrer"})
     assert "enregistrés" in page and ria.Registre(tmp_path).comptes["ria"] == "2410"
-    _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "numero": "RI-0001", "action": "Supprimer"})
-    assert "supprimée" in page and not ria.Registre(tmp_path).operations
+    _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "ligne": "0", "action": "Supprimer"})
+    assert not ria.Registre(tmp_path).operations
     # relevé : seul un PDF est accepté
     limite = "----X"
     corps = (f"--{limite}\r\nContent-Disposition: form-data; name=\"csrf\"\r\n\r\n{jeton}\r\n"
@@ -402,6 +412,10 @@ def test_documents_saisis(site, tmp_path):
     facture = entetes["Location"].split("=")[1]
     statut, _, entetes = ouvrir(patron, base + "/document", {"csrf": jeton, "n": facture, "action": "Supprimer"})
     assert statut == 303 and dc.Registre(tmp_path).document("CC-0001").etat == dc.OUVERTE
+    _, page, _ = ouvrir(patron, base + "/documents-vente?du=2026-11-01&au=2026-11-30&voir=1")
+    assert "CC-0001" in page and "en bleu : documents de l" in page and "🔀 Transformer" in page
+    _, page, _ = ouvrir(patron, base + "/documents-vente?du=2026-11-01&au=2026-11-30&voir=1&op=ouvrir&ligne=app:doc:CC-0001")
+    assert "/document?n=CC-0001" in page
     awa = connecter(base, "Awa", "secret456")
     assert ouvrir(awa, base + "/document?n=CC-0001")[0] == 403
 
@@ -468,12 +482,21 @@ def test_achats_web(site, tmp_path):
         "csrf": jeton, "fournisseur": "Grossiste Afro", "numero": "A-12", "date": "2026-11-02"})
     assert statut == 303 and entetes["Location"] == "/facture-fournisseur?i=0"
     assert fo.Registre(tmp_path).factures[0].modele == "Saisie manuelle"
-    assert ouvrir(patron, base + "/bons-commande")[0] == 200
+    _, page, _ = ouvrir(patron, base + "/bons-commande")
+    assert "Proposer les commandes" in page and "Comparer avec la facture" in page
+    _, page, _ = ouvrir(patron, base + "/bons-commande", {
+        "csrf": jeton_csrf(page), "fournisseur": "Grossiste Afro", "jour": "2026-11-04", "l_numero": ["B0000190", ""],
+        "l_description": ["Plantain", ""], "l_quantite": ["2", ""], "l_prix": ["10", ""], "l_facteur": ["12", ""],
+        "action": "Créer le bon de commande"})
+    assert "Bon BC-0001 créé" in page
+    _, page, _ = ouvrir(patron, base + "/bons-commande", {"csrf": jeton_csrf(page), "bon": "BC-0001",
+                                                          "op": "transformer"})
+    assert "Transformation de BC-0001" in page
     _, page, _ = ouvrir(patron, base + "/retours", {
         "csrf": jeton, "fournisseur": "Grossiste Afro", "facture": "A-12", "jour": "2026-11-03", "motif": "abîmé",
         "article": ["B0000190", ""], "description": ["Plantain", ""], "quantite": ["2", ""], "prix": ["1,25", ""],
         "taxe": ["", ""], "action": "Créer le retour"})
-    assert "Retour R-A-12 créé" in page and "-2,50 $" in page
+    assert "Retour R-A-12 créé" in page and "2,50 $" in page
     assert rt.Registre(tmp_path).retours[0].lignes[0].quantite == "2"
 
 
@@ -487,21 +510,32 @@ def test_articles_web(site, tmp_path, monkeypatch):
     monkeypatch.setattr(pe, "appliquer", lambda racine, config, numero, client=None: pe.Registre(racine).perte(numero))
     base, _, _ = site
     patron = connecter(base, "Patron", "secret123")
-    _, page, _ = ouvrir(patron, base + "/pertes?q=plantain")
-    assert "Plantain jaune" in page and "Attiéké" not in page
-    statut, _, entetes = ouvrir(patron, base + "/pertes", {
-        "csrf": jeton_csrf(page), "pv": "1", "id": "ABC123", "quantite": "3", "jour": "2026-11-03",
-        "motif": pe.MOTIFS[0], "remarque": ""})
+    _, page, _ = ouvrir(patron, base + "/pertes")
+    assert "Déclarer une perte" in page and "Rapport des pertes" in page and "Plantain jaune — ABC123" in page
+    commun = {"csrf": jeton_csrf(page), "pv": "1", "jour": "2026-11-03", "motif": pe.MOTIFS[0], "remarque": ""}
+    _, page, _ = ouvrir(patron, base + "/pertes", {**commun, "article": "Plantain jaune — ABC123", "quantite": "3",
+                                                    "action": "Ajouter la ligne"})
+    assert "1 ligne(s)" in page and "name='lid' value='ABC123'" in page
+    statut, _, entetes = ouvrir(patron, base + "/pertes", {**commun, "lid": "ABC123", "lq": "3",
+                                                           "action": "Enregistrer et sortir du stock"})
     assert statut == 303 and entetes["Location"].startswith("/tache?id=")
     p = pe.Registre(tmp_path).pertes[0]
     assert p.numero == "PE-0001" and p.lignes[0].quantite == "3"
-    _, page, _ = ouvrir(patron, base + "/promotions?q=attieke")
+    _, page, _ = ouvrir(patron, base + "/pertes?onglet=liste&perte=PE-0001")
+    assert "Lignes de PE-0001" in page and "Refaire la sortie du stock Clover" in page
+    assert ouvrir(patron, base + "/pertes?onglet=rapport&afficher=1")[0] == 200
+    _, page, _ = ouvrir(patron, base + "/promotions")
     _, page, _ = ouvrir(patron, base + "/promotions", {
-        "csrf": jeton_csrf(page), "pv": "1", "id": "DEF456", "prix": "4,99", "du": "2026-11-10", "au": "2026-11-16",
-        "action": "Ajouter"})
+        "csrf": jeton_csrf(page), "pv": "1", "article": "Attiéké 1kg — 5.99 $", "prix": "4,99", "du": "2026-11-10",
+        "au": "2026-11-16", "action": "Ajouter"})
     assert "PR-0001 prévue" in page and p3.Promotions(tmp_path).liste[0].prix_promo == "4.99"
-    _, page, _ = ouvrir(patron, base + "/etiquettes?q=plantain")
-    _, page, _ = ouvrir(patron, base + "/etiquettes", {"csrf": jeton_csrf(page), "id": "ABC123"})
+    _, page, _ = ouvrir(patron, base + "/etiquettes")
+    _, page, _ = ouvrir(patron, base + "/etiquettes", {"csrf": jeton_csrf(page), "article": "Plantain jaune — ABC123",
+                                                       "nombre": "2", "action": "Ajouter"})
+    assert "2 étiquette(s)" in page
+    _, page, _ = ouvrir(patron, base + "/etiquettes", {"csrf": jeton_csrf(page), "eid": ["ABC123"],
+                                                       "format": "Feuille Avery 5160 / 8160 (3 × 10)",
+                                                       "action": "Imprimer les étiquettes"})
     assert "Plantain jaune" in page and "1,99 $" in page
 
 
@@ -520,14 +554,30 @@ def test_catalogue_web(site, tmp_path, monkeypatch):
     _, page, _ = ouvrir(patron, base + "/articles-clover?ugs=1")
     assert "Plantain jaune" in page and "Attiéké" not in page        # UGS « LOT-7 » n'est pas une date
     _, page, _ = ouvrir(patron, base + "/correspondance")
-    assert "Attiéké 1kg" in page
-    _, page, _ = ouvrir(patron, base + "/correspondance-ligne?i=0", {
-        "csrf": jeton_csrf(page), "i": "0", "numero": "C0001", "statut": co.CONFIRME})
-    assert "Formats différents" in page                              # 1kg / 500g : refusé sans « quand même »
-    statut, _, _ = ouvrir(patron, base + "/correspondance-ligne?i=0", {
-        "csrf": jeton_csrf(page), "i": "0", "numero": "C0001", "statut": co.CONFIRME, "quand_meme": "1"})
-    assert statut == 303 and co.lire_correspondances(tmp_path / "donnees" / "correspondance_articles.xlsx")[0].statut \
-        == co.CONFIRME
+    assert "Attiéké 1kg" in page and "Article sélectionné" in page
+    from mvogmbi_sync.articles_sage import ArticleSage, ecrire_copie
+    ecrire_copie([ArticleSage("C0001", "Attiéké 500g", "Stock", "4016")], tmp_path / "donnees" / "articles_sage.csv")
+    _, page, _ = ouvrir(patron, base + "/correspondance?filtre=Tous&id=DEF456")
+    assert "C0001" in page and "(autre format)" in page and "Créer l'article dans Sage" in page
+    donnees = {"csrf": jeton_csrf(page), "pv": "1", "filtre": "Tous", "q": "", "id": "DEF456", "numero": "C0001"}
+    _, page, _ = ouvrir(patron, base + "/correspondance", {**donnees, "action": "Confirmer l'article choisi"})
+    assert "pas le même format" in page                              # 1kg / 500g : refusé sans « quand même »
+    _, page, _ = ouvrir(patron, base + "/correspondance", {**donnees, "action": "Confirmer quand même"})
+    assert co.lire_correspondances(tmp_path / "donnees" / "correspondance_articles.xlsx")[0].statut == co.CONFIRME
+    _, page, _ = ouvrir(patron, base + "/creer-article?nom=Atti%C3%A9k%C3%A9&id_clover=DEF456")
+    assert "Article Clover existant" in page
+    _, page, _ = ouvrir(patron, base + "/comptes-categories")
+    _, page, _ = ouvrir(patron, base + "/comptes-categories", {"csrf": jeton_csrf(page), "nouvelle": "Féculents",
+                                                               "action": "➕"})
+    _, page, _ = ouvrir(patron, base + "/comptes-categories", {
+        "csrf": jeton_csrf(page), "categorie": "Féculents", "prefixe": "C", "actif": "1516", "produits": "4016",
+        "cmv": "5016", "ecart": "", "action": "Appliquer"})
+    from mvogmbi_sync.creation_articles import TableCategories
+    assert TableCategories(tmp_path).lignes["Féculents"].ecart == "5016" and "Table enregistrée" in page
+    _, page, _ = ouvrir(patron, base + "/historique?type=Statistiques%20fournisseur")
+    assert "Par :" in page and "Articles du" in page and "Statistiques employé" in page
+    _, page, _ = ouvrir(patron, base + "/historique?type=Vente&chercher=1")
+    assert "Résultats : Vente" in page
     for chemin in ("/inventaire", "/inventaire-tournant", "/transferts", "/creer-article"):
         assert ouvrir(patron, base + chemin)[0] == 200, chemin
 

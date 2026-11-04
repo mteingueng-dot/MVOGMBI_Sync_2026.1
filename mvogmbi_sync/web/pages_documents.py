@@ -190,7 +190,14 @@ def _listes(ctx: Contexte, cote: str) -> tuple[list[str], dict[str, str]]:
             if cote != "stock" else []
         articles = sage(ctx, descriptions_sage, ("descriptions",))
     except (Exception, SystemExit):  # noqa: BLE001
-        return [], {}
+        tiers, articles = [], {}
+    if not articles or (cote == "achat" and not tiers):  # Sage ne répond pas : copies locales des listes de Sage
+        from .pages_fournisseurs import _listes as copies
+
+        fournisseurs, articles_copie = copies(ctx.racine)
+        articles = articles or {a.numero: a.description for a in articles_copie}
+        if cote == "achat" and not tiers:
+            tiers = fournisseurs
     return tiers, articles
 
 
@@ -220,66 +227,125 @@ def saisie(ctx: Contexte) -> Reponse:
                "depot": doc.depot if doc else ""}
     lignes_doc = [(l.numero_sage, l.description, l.quantite, l.prix, l.taxe or ("GQ" if l.taxable else ""))
                   for l in doc.lignes] if doc else []
-    nombre = LIGNES_SAISIE
     if ctx.req.methode == "POST":
         valeurs = {k: ctx.req.champ(k).strip() for k in valeurs}
-        lignes_doc = list(zip(ctx.req.champs("article"), ctx.req.champs("description"), ctx.req.champs("quantite"),
-                              ctx.req.champs("prix"), ctx.req.champs("taxe")))
-        nombre = max(LIGNES_SAISIE, len(lignes_doc)) + (LIGNES_SAISIE if ctx.req.champ("action") == "Plus" else 0)
-        if ctx.req.champ("action") == "Enregistrer":
-            try:
-                lignes = []
-                for article, description, quantite, prix, taxe in lignes_doc:
-                    if not article.strip() and not quantite.strip():
-                        continue
-                    article = article.strip().split(" ")[0]
-                    if not article:
-                        raise ValueError("Chaque ligne doit avoir un n° d'article Sage.")
-                    q = Decimal(quantite.replace(",", ".").strip() or "0")
-                    p = Decimal((prix or "0").replace(",", ".").replace("$", "").replace(" ", "") or "0")
-                    lignes.append(dc.LigneDocument(article, description.strip() or articles.get(article, ""), str(q),
-                                                   str(p), taxe in ("GQ", "G", "Q"), taxe=taxe if taxe in TAXES else ""))
-                depot = valeurs["depot"] if valeurs["depot"] in depots.values() else ""
-                with ctx.app.ecriture:
-                    r = dc.Registre(ctx.racine)
-                    if doc:
-                        d = r.modifier(doc.numero, valeurs["tiers"], valeurs["jour"], lignes, valeurs["remarque"],
-                                       valeurs["sens"], depot)
-                    else:
-                        d = r.ajouter(genre, valeurs["tiers"], valeurs["jour"], lignes, valeurs["remarque"],
-                                      valeurs["sens"] if cote == "stock" else "", ctx.u.nom, depot)
-                return redirection(f"/document?n={d.numero}")
-            except (ValueError, InvalidOperation) as erreur:
-                message = _message(erreur=str(erreur) or "Quantité ou prix invalide.")
+        lignes_doc = [x for x in zip(ctx.req.champs("article"), ctx.req.champs("description"), ctx.req.champs("quantite"),
+                                     ctx.req.champs("prix"), ctx.req.champs("taxe")) if x[0].strip() or x[2].strip()]
+    action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
+    edition = ctx.req.champ("edition")
+    edition = int(edition) if edition.isdigit() else None
+    ajout = {"a_article": "", "a_quantite": "", "a_prix": "", "a_taxe": "GQ" if cote == "vente" else ""}
+    etat = ""
+    if action in ("Ajouter la ligne", "Mettre à jour la ligne"):  # SaisieDocument.ajouter (Entrée)
+        ajout = {k: ctx.req.champ(k).strip() for k in ajout}
+        article = ajout["a_article"].split(" ")[0]
+        try:
+            if article not in articles:
+                raise ValueError("Choisissez l'article dans la liste.")
+            q = Decimal(ajout["a_quantite"].replace(",", ".") or "0")
+            if q <= 0:
+                raise ValueError("Quantité invalide.")
+            prix_ = Decimal((ajout["a_prix"] or "0").replace(",", ".").replace("$", "").replace(" ", "") or "0")
+            ligne = (article, articles.get(article, ""), str(q), str(prix_), ajout["a_taxe"])
+            if edition is not None and edition < len(lignes_doc):
+                lignes_doc[edition] = ligne
+            else:
+                lignes_doc.append(ligne)
+            ajout = {"a_article": "", "a_quantite": "", "a_prix": "", "a_taxe": ajout["a_taxe"]}
+            edition = None
+        except (ValueError, InvalidOperation) as erreur:
+            etat = f"✘ {erreur}" if str(erreur) else "✘ Quantité ou prix invalide."
+    elif action == "Retirer la ligne":
+        rang = ctx.req.champ("rang")
+        if rang.isdigit() and int(rang) < len(lignes_doc):
+            del lignes_doc[int(rang)]
+        edition = None
+    elif action.startswith("Reprendre ") and action[10:].isdigit() and int(action[10:]) < len(lignes_doc):
+        edition = int(action[10:])
+        a_, _d, q_, p_, t_ = lignes_doc[edition]
+        ajout = {"a_article": a_, "a_quantite": str(q_).replace(".", ","), "a_prix": str(p_).replace(".", ","),
+                 "a_taxe": t_}
+        etat = f"Ligne {edition + 1} : modifiez les champs puis « Mettre à jour la ligne »."
+    elif action == "Enregistrer":
+        try:
+            lignes = []
+            for article, description, quantite, prix, taxe in lignes_doc:
+                article = article.strip().split(" ")[0]
+                if not article:
+                    raise ValueError("Chaque ligne doit avoir un n° d'article Sage.")
+                q = Decimal(str(quantite).replace(",", ".").strip() or "0")
+                p_ = Decimal((str(prix) or "0").replace(",", ".").replace("$", "").replace(" ", "") or "0")
+                lignes.append(dc.LigneDocument(article, str(description).strip() or articles.get(article, ""), str(q),
+                                               str(p_), taxe in ("GQ", "G", "Q"), taxe=taxe if taxe in TAXES else ""))
+            if not lignes:
+                raise ValueError("Ajoutez au moins une ligne.")
+            depot = valeurs["depot"] if valeurs["depot"] in depots.values() else ""
+            with ctx.app.ecriture:
+                r = dc.Registre(ctx.racine)
+                if doc:
+                    d = r.modifier(doc.numero, valeurs["tiers"], valeurs["jour"], lignes, valeurs["remarque"],
+                                   valeurs["sens"], depot)
+                else:
+                    d = r.ajouter(genre, valeurs["tiers"], valeurs["jour"], lignes, valeurs["remarque"],
+                                  valeurs["sens"] if cote == "stock" else "", ctx.u.nom, depot)
+            return redirection(f"/document?n={d.numero}")
+        except (ValueError, InvalidOperation) as erreur:
+            message = _message(erreur=str(erreur) or "Quantité ou prix invalide.")
     liste_tiers = "<datalist id='tiers'>" + "".join(f"<option value='{e(n)}'>" for n in tiers_noms) + "</datalist>"
     liste_articles = "<datalist id='articles'>" + "".join(f"<option value='{e(n)}'>{e(d)}</option>"
                                                           for n, d in articles.items()) + "</datalist>"
     depots_html = "".join(f"<option value='{e(v)}'{' selected' if v == valeurs['depot'] else ''}>{e(k)}</option>"
                           for k, v in depots.items())
-    entete = (f"<div><label>{'Client' if cote == 'vente' else 'Fournisseur'}</label><input name='tiers' list='tiers' "
-              f"value='{e(valeurs['tiers'])}' size='30' required>{liste_tiers}</div>" if cote != "stock" else
-              "<div><label>Sens</label><select name='sens'>" + "".join(
-                  f"<option{' selected' if s == valeurs['sens'] else ''}>{s}</option>" for s in (dc.ENTREE, dc.SORTIE))
+    entete = (f"<div><label>{'Client' if cote == 'vente' else 'Fournisseur'} *</label><input name='tiers' list='tiers' "
+              f"value='{e(valeurs['tiers'])}' size='30'>{liste_tiers}</div>" if cote != "stock" else
+              "<div><label>Mouvement</label><select name='sens'>" + "".join(
+                  f"<option{' selected' if x == valeurs['sens'] else ''}>{x}</option>" for x in (dc.ENTREE, dc.SORTIE))
               + "</select></div>")
-    rangees = []
-    for i in range(nombre):
-        a, d, q, p, t = (lignes_doc[i] if i < len(lignes_doc) else ("", "", "", "", "GQ" if cote == "vente" else ""))
-        options = "".join(f"<option value='{x}'{' selected' if x == t else ''}>{x or 'aucune'}</option>" for x in TAXES)
-        rangees.append(f"<tr><td><input name='article' list='articles' value='{e(a)}' size='14'></td>"
-                       f"<td><input name='description' value='{e(d)}' size='30'></td><td><input name='quantite' "
-                       f"value='{e(str(q).replace('.', ','))}' size='6' inputmode='decimal'></td><td><input name='prix' "
-                       f"value='{e(str(p).replace('.', ','))}' size='8' inputmode='decimal'></td><td><select "
-                       f"name='taxe'>{options}</select></td></tr>")
+    libelle_prix = "Coût unitaire" if cote == "stock" else ("Prix d'achat" if cote == "achat" else "Prix de vente")
+    taxes_options = "".join(f"<option value='{x}'{' selected' if x == ajout['a_taxe'] else ''}>{x or 'Aucune'}"
+                            "</option>" for x in TAXES)
+    caches = "".join(f"<input type='hidden' name='article' value='{e(a_)}'><input type='hidden' name='description' "
+                     f"value='{e(d_)}'><input type='hidden' name='quantite' value='{e(str(q_))}'><input type='hidden' "
+                     f"name='prix' value='{e(str(p_))}'><input type='hidden' name='taxe' value='{e(t_)}'>"
+                     for a_, d_, q_, p_, t_ in lignes_doc)
+    from .consultations import Section, tableau_section
+
+    rangees, total = [], Decimal(0)
+    for k, (a_, d_, q_, p_, t_) in enumerate(lignes_doc):
+        try:
+            q_d = Decimal(str(q_).replace(",", ".") or "0")
+            p_d = Decimal(str(p_).replace(",", ".").replace("$", "").replace(" ", "") or "0")
+        except InvalidOperation:
+            q_d = p_d = Decimal(0)
+        montant = (q_d * p_d).quantize(Decimal("0.01"))
+        total += montant
+        rangees.append([f"<input type='radio' name='rang' value='{k}'{' checked' if k == edition else ''}>",
+                        f"<button class='lien' name='action' value='Reprendre {k}'>{e(a_)}</button>",
+                        e(d_ or articles.get(a_, "")), f"{q_d.normalize():f}".replace(".", ","), argent(p_d),
+                        argent(montant)] + ([e(t_ or "—")] if cote != "stock" else []))
+    entetes = ["", "N° Sage", "Description", "Quantité", libelle_prix, "Montant"] + (["Taxes"] if cote != "stock" else [])
     corps = (message + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='genre' value='{genre}'>"
-             f"<input type='hidden' name='n' value='{e(numero or '')}'><div class='carte'><div class='ligne'>{entete}"
-             f"<div><label>Date</label><input type='date' name='jour' value='{e(valeurs['jour'])}' required></div>"
-             f"<div><label>Dépôt *</label><select name='depot'>{depots_html}</select></div><div><label>Remarque"
-             f"</label><input name='remarque' value='{e(valeurs['remarque'])}' size='30'></div></div></div>"
-             f"{liste_articles}<div class='defile'><table><tr><th>N° d'article Sage</th><th>Description</th>"
-             f"<th class='n'>Quantité</th><th class='n'>Prix{' (coût unitaire)' if cote == 'stock' else ''}</th>"
-             f"<th>Taxes</th></tr>{''.join(rangees)}</table></div><div class='boutons'><button name='action' "
-             "value='Enregistrer'>Enregistrer</button><button class='second' name='action' value='Plus'>Plus de lignes"
-             "</button></div></form><p class='note'>Lignes vides ignorées ; description vide = celle de Sage.</p>")
+             f"<input type='hidden' name='n' value='{e(numero or '')}'>{caches}"
+             + (f"<input type='hidden' name='edition' value='{edition}'>" if edition is not None else "")
+             + f"<div class='barre-onglet'>{entete}<div><label>Dépôt *</label><select name='depot'>{depots_html}"
+               f"</select></div><div><label>Date</label><input type='date' name='jour' value='{e(valeurs['jour'])}'>"
+               f"</div><div><label>Remarque</label><input name='remarque' value='{e(valeurs['remarque'])}' size='30'>"
+               f"</div></div>{liste_articles}<div class='barre-onglet'><div class='large'><label>Article</label><input "
+               f"name='a_article' list='articles' value='{e(ajout['a_article'])}' size='36'></div><div><label>Quantité"
+               f"</label><input name='a_quantite' value='{e(ajout['a_quantite'])}' size='7'></div><div><label>"
+               f"{libelle_prix}</label><input name='a_prix' value='{e(ajout['a_prix'])}' size='9'></div>"
+             + (f"<div><label>Taxes</label><select name='a_taxe'>{taxes_options}</select></div>" if cote != "stock"
+                else "")
+             + "<button name='action' value='" + ("Mettre à jour la ligne'>✔ Mettre à jour la ligne" if edition is not None
+                                                 else "Ajouter la ligne'>➕ Ajouter la ligne")
+             + "</button><button class='second' name='action' value='Retirer la ligne'>✖ Retirer la ligne</button>"
+               "</div>"
+             + tableau_section(Section("Lignes", entetes, rangees, html=set(range(len(entetes)))))
+             + f"<div class='barre-onglet'><strong>{len(lignes_doc)} ligne(s) — total {argent(total)}</strong><button "
+               "class='a-droite' name='action' value='Enregistrer'>✔ Enregistrer</button><a class='ouvrir' "
+               f"href='/documents?cote={cote}'>✖ Fermer</a></div></form>"
+             + f"<p class='{'erreur-texte' if etat.startswith('✘') else 'note'}'>"
+             + e(etat or "Cliquez sur le n° d'une ligne pour la reprendre dans les champs.") + "</p>")
     titre = f"Modifier {doc.numero}" if doc else f"Nouveau : {dc.libelle(genre).lower()}"
     return Reponse(corps=page(ctx, titre, corps))
 

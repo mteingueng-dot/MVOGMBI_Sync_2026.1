@@ -125,6 +125,9 @@ def fichier(racine: Path, html: str, rang: str, format_: str) -> Reponse:
     titre = t["titre"] or "Tableau"
     entetes = t["entetes"] or [f"Colonne {i + 1}" for i in range(max((len(l) for l in t["lignes"]), default=0))]
     lignes = [l + [""] * (len(entetes) - len(l)) for l in t["lignes"]]
+    gardees = [i for i, x in enumerate(entetes) if x.strip()]  # colonne sans titre : case à cocher, choix
+    entetes, lignes = [entetes[i] for i in gardees], [[l[i] for i in gardees] for l in lignes]
+    lignes = [l for l in lignes if not (l and l[0] == "Aucune ligne." and not any(l[1:]))]  # tableau vide
     sorte = "pdf" if format_ == "imprimer" else format_
     if sorte not in FORMATS:
         return Reponse(400, "Format inconnu.", "text/plain; charset=utf-8")

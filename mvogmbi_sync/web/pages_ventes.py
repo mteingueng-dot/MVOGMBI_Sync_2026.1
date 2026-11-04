@@ -10,7 +10,7 @@ import subprocess
 import time
 from datetime import date, timedelta
 
-from .consultations import Section, sections_html
+from .consultations import lire_ou_vide, Section, sections_html
 from .pages import Contexte, Fonction, argent, csrf, page
 from .pages_compta import _message, action_permise
 from .serveur import Reponse, echapper as e
@@ -76,6 +76,12 @@ def tableau_ventes(ctx: Contexte) -> Reponse:
             else:
                 return taches.lancer(ctx, f"Ventes du {du} au {au}", _auto(ctx, code, False, du, au), "/ventes-sage",
                                      sage=True)
+    if ctx.req.query.get("excel"):  # « 📗 Excel » : le fichier de correspondance
+        chemin = ctx.racine / "donnees" / "correspondance_articles.xlsx"
+        if chemin.exists() and ctx.reg.peut_exporter(ctx.u):
+            return Reponse(corps=chemin.read_bytes(),
+                           type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           entetes={"Content-Disposition": "attachment; filename=\"correspondance_articles.xlsx\""})
     try:
         from .. import planification
 
@@ -84,29 +90,43 @@ def tableau_ventes(ctx: Contexte) -> Reponse:
         installee = False
     derniere = etats_etapes(ctx.racine, ctx.config).get(6, (False, ""))[1] or "aucune"
     journal = ctx.racine / "donnees" / "journal_automatique.log"
-    execution = journal.read_text(encoding="utf-8", errors="replace").split("===== ")[-1] if journal.exists() else ""
+    texte = journal.read_text(encoding="utf-8", errors="replace") if journal.exists() else ""
+    execution = texte.split("===== ")[-1] if texte else ""
     problemes = execution.count("PROBLÈME") + execution.count("ERREUR")
     points = permis(ctx.config, ctx.reg.points_vente_permis(ctx.u))
     options = "<option value=''>Tous les points de vente</option>" + "".join(
         f"<option value='{e(p.code)}'>{e(p.libelle)}</option>" for p in points)
     hier = date.today() - timedelta(days=1)
-    corps = (message
-             + f"<div class='cartes'><div class='carte'><div class='t'>Dernière facture importée</div><div class='v'>"
-               f"{e(derniere)}</div></div><div class='carte'><div class='t'>Tâche planifiée</div><div class='v'>"
-               f"{'installée' if installee else 'NON installée'}</div></div><div class='carte'><div class='t'>Points "
-               f"à corriger (dernière nuit)</div><div class='v {'baisse' if problemes else ''}'>{problemes}</div></div>"
-               "</div>"
-             + f"<form method='post' class='carte'>{csrf(ctx)}<div class='ligne'><div><label>Point de vente</label>"
-               f"<select name='pv'>{options}</select></div></div><div class='boutons'><button name='action' "
-               "value='Lancer'>▶ Lancer maintenant</button><button class='second' name='action' value='Simulation'>"
-               "🧪 Simulation (sans import)</button></div><h2>Charger une date ou une période</h2><div class='ligne'>"
-               f"<div><label>Du</label><input type='date' name='du' value='{hier}'></div><div><label>Au</label>"
-               f"<input type='date' name='au' value='{hier}' max='{hier}'></div><button class='second' name='action' "
-               "value='Charger la période'>Charger la période</button></div><p class='note'>Les jours déjà facturés "
-               "sont sautés ; vendredi, samedi et dimanche forment une seule facture. Sage doit être fermé sur le "
-               "serveur.</p></form>"
-             + (f"<h2>Dernière exécution</h2><div class='carte'><pre class='resultat'>{e(execution[-6000:])}</pre></div>"
-                if execution else ""))
+    cartes = "".join(  # comme Application.actualiser_tableau : filet de couleur, icône, titre, valeur
+        f"<div class='carte-bord {couleur}'><span class='ic'>{icone}</span><div><div class='t'>{e(titre)}</div>"
+        f"<div class='v'>{e(valeur)}</div></div></div>"
+        for icone, titre, valeur, couleur in (
+            ("🧾", "Dernière facture importée", derniere, "vert"),
+            ("⏰", "Tâche planifiée", "installée" if installee else "NON installée", "vert" if installee else "jaune"),
+            ("⚠", "Points à corriger (dernier traitement)", str(problemes), "rouge" if problemes else "vert")))
+
+    def classe(ligne: str) -> str:  # couleurs de Application._ecrire
+        if any(m in ligne for m in ("ERREUR", "PROBLÈME", "✘", "échec", "Échec")):
+            return "erreur"
+        if any(m in ligne for m in ("⚠", "bloqu", "à vérifier", "Attention")):
+            return "attention"
+        return "ok" if any(m in ligne for m in ("✔", "importée", "OK", "terminé")) else ""
+
+    sortie = "".join(f"<span class='{classe(l)}'>{e(l)}</span>\n" for l in texte.splitlines()[-60:])
+    excel = ("<a class='ouvrir' href='/ventes-sage?excel=1'>📗 Excel</a>" if ctx.reg.peut_exporter(ctx.u) else "")
+    corps = (message + f"<div class='cartes-bord'>{cartes}</div>"
+             + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><div><label>Point de vente :</label>"
+               f"<select name='pv'>{options}</select></div></div><div class='barre-onglet'><button name='action' "
+               "value='Lancer'>▶ Lancer maintenant</button><button class='accent' name='action' value='Simulation'>"
+               f"🧪 Simulation (sans import)</button>{excel}<a class='ouvrir' href='/comptes-categories'>🧾 Corriger "
+               "les comptes dans Sage…</a><a class='ouvrir a-droite' href='/ventes-sage'>⟳</a></div>"
+               "<div class='barre-onglet'><div><label>Charger une date ou une période : du</label><input type='date' "
+               f"name='du' value='{hier}'></div><div><label>au</label><input type='date' name='au' value='{hier}' "
+               f"max='{hier}'></div><button class='second' name='action' value='Charger la période'>📥 Charger la "
+               "période</button></div></form>"
+             + f"<pre class='sortie'>{sortie or 'Aucun traitement pour l’instant.'}</pre>"
+             + "<p class='note'>Les jours déjà facturés sont sautés ; vendredi, samedi et dimanche forment une seule "
+               "facture. Sage doit être fermé sur le serveur.</p>")
     return Reponse(corps=page(ctx, "Ventes Clover → factures Sage", corps))
 
 
@@ -121,8 +141,9 @@ def _clients(ctx: Contexte, forcer: bool = False):
     if gardee and not forcer and time.time() - gardee[0] < 300:
         return gardee[1]
     exclus = {CLIENT} | {p.client_sage for p in points_de_vente(ctx.config)}
-    clients = lire_sage(ctx.config, lambda b: p3.clients_pro(b, date.today(), exclus), ouvrir=False)
-    ctx.app.memoire["clients_pro"] = (time.time(), clients)
+    clients = lire_ou_vide(ctx, lambda b: p3.clients_pro(b, date.today(), exclus))
+    if "Sage" not in ctx.absents:
+        ctx.app.memoire["clients_pro"] = (time.time(), clients)
     return clients
 
 

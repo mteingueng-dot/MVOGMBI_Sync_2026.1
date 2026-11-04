@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
-from .consultations import Section, sections_html
+from .consultations import Section, sections_html, tableau_section
 from .pages import Contexte, Fonction, argent, csrf, page
 from .serveur import Reponse, echapper as e
 
@@ -60,20 +61,26 @@ def _attendus(ctx: Contexte, debut: date, fin: date, pv):
 
 
 def caisse(ctx: Contexte) -> Reponse:
+    """Comme fenetre_caisse.FenetreCaisse, onglet « Comptage du soir » : point de vente au-dessus des onglets ;
+    « Journée » + « 🔄 Actualiser » ; à gauche le cadre « Espèces attendues (Clover) » (texte de `calculer`), à droite
+    « Comptage du tiroir » (coupures sur 2 colonnes, fond laissé pour demain, remarque, Compté / Écart / À déposer en
+    couleur, « ✔ Enregistrer le comptage ») ; ligne d'état en bas."""
     from .. import caisse as ca
+    from .pages_rapports_web import onglets
 
     pv, choix_pv, code_pv = _point_vente(ctx)
     jour = _jour(ctx.req.query.get("jour") or ctx.req.champ("jour"), date.today())
     registre = ca.Registre(ctx.racine, pv)
     message = ""
+    saisi = None  # coupures tapées (après un refus, elles restent dans les champs)
     if ctx.req.methode == "POST":
+        saisi = {k: ctx.req.champ("c" + k).strip() for k in ca.COUPURES}
         action = "Enregistrer un comptage de caisse"
         if not action_permise(ctx, action):
             message = refus(action)
         else:
             try:
-                coupures = {k: int(ctx.req.champ("c" + k).strip()) for k in ca.COUPURES
-                            if ctx.req.champ("c" + k).strip()}
+                coupures = {k: int(v) for k, v in saisi.items() if v}
                 if any(n < 0 for n in coupures.values()):
                     raise ValueError
                 compte = ca.total_coupures(coupures)
@@ -87,48 +94,62 @@ def caisse(ctx: Contexte) -> Reponse:
                                                                   ctx.u.nom, remarque=ctx.req.champ("remarque")))
                 message = _message(f"Comptage du {jour} enregistré.")
                 registre = ca.Registre(ctx.racine, pv)
+                saisi = None
             except (ValueError, InvalidOperation) as erreur:
                 message = _message(erreur=str(erreur) if str(erreur) else "Nombres entiers seulement pour les coupures.")
     c = registre.comptage(jour)
+    valeurs = saisi if saisi is not None else {k: str((c.coupures if c else {}).get(k, "")) for k in ca.COUPURES}
+    fond_texte = (ctx.req.champ("fond") if saisi is not None else
+                  str(c.fond if c else ca.fond_de_caisse(ctx.config))).replace(".", ",")
+    remarque = ctx.req.champ("remarque") if saisi is not None else (c.remarque if c else "")
     try:
         a = _attendus(ctx, jour, jour, pv).get(jour) or ca.Attendu(jour)
-        fond_matin = ca.fond_du_matin(registre, jour, ctx.config)
-        prevu = fond_matin + a.net
-        attendu = (f"<div class='cartes'><div class='carte'><div class='t'>Fond du matin</div><div class='v'>"
-                   f"{argent(fond_matin)}</div></div><div class='carte'><div class='t'>Ventes en espèces</div>"
-                   f"<div class='v'>{argent(a.ventes)}</div><div class='d'>{a.paiements} paiement(s)</div></div>"
-                   f"<div class='carte'><div class='t'>Remboursements</div><div class='v'>−{argent(a.remboursements)}"
-                   f"</div></div><div class='carte'><div class='t'>Argent remis sur carte</div><div class='v'>"
-                   f"−{argent(a.remis)}</div></div><div class='carte'><div class='t'>Attendu dans le tiroir</div>"
-                   f"<div class='v'>{argent(prevu)}</div></div></div>")
-        if a.par_employe:
-            attendu += "<p class='note'>Espèces par employé : " + " ; ".join(
-                f"{e(n)} {argent(m)}" for n, m in sorted(a.par_employe.items(), key=lambda x: -x[1])) + "</p>"
-        if c:
-            ecart = Decimal(c.compte) - prevu
-            classe = "ok" if abs(ecart) < Decimal("0.01") else ("erreur" if abs(ecart) > ca.SEUIL_ECART else "")
-            attendu += (f"<p class='{classe}'>Compté : {argent(Decimal(c.compte))} · Écart : "
-                        f"{'+' if ecart > 0 else ''}{argent(ecart)} · À déposer : {argent(c.a_deposer)} "
-                        f"(par {e(c.par)} le {e(c.le[:16].replace('T', ' '))})</p>")
-    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — Clover injoignable
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — Clover injoignable : attendu à zéro, signalé
         ctx.app.noter(f"Caisse : {erreur!r}")
-        attendu = "<p class='erreur'>Clover ne répond pas : l'attendu ne peut pas être calculé.</p>"
-    cases = "".join(f"<div><label>{k.replace('.', ',')} $</label><input name='c{k}' inputmode='numeric' size='4' "
-                    f"value='{e((c.coupures if c else {}).get(k, ''))}'></div>" for k in ca.COUPURES)
-    fond = str(c.fond).replace(".", ",") if c else str(ca.fond_de_caisse(ctx.config)).replace(".", ",")
-    from .pages_rapports_web import onglets
-
-    corps = (onglets("Comptage du soir", ctx) + message + f"<form class='ligne' method='get'>{choix_pv}<div><label>Journée</label><input type='date' "
-             f"name='jour' value='{jour}'></div><button class='second'>Afficher</button></form>" + attendu
-             + f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='jour' value='{jour}'>"
-               f"<input type='hidden' name='pv' value='{e(code_pv)}'><h2>Comptage du soir (nombre de billets et "
-               f"pièces)</h2><div class='ligne'>{cases}</div><div class='ligne'><div><label>Fond laissé pour demain"
-               f"</label><input name='fond' value='{e(fond)}' size='8'></div><div><label>Remarque</label><input "
-               f"name='remarque' value='{e(c.remarque if c else '')}' size='30'></div></div>"
-             + ("<p><label><input type='checkbox' name='remplacer' value='1'> Remplacer le comptage déjà enregistré"
-                "</label></p>" if c else "")
-             + "<div class='boutons'><button name='action' value='Enregistrer'>Enregistrer le comptage</button></div>"
-               "</form>")
+        ctx.absents.add("Clover")
+        a = ca.Attendu(jour)
+    fond_matin = ca.fond_du_matin(registre, jour, ctx.config)
+    prevu = fond_matin + a.net
+    lignes = [f"Fond du matin : {argent(fond_matin)}", f"Ventes en espèces : {argent(a.ventes)} ({a.paiements} "
+              "paiements)", f"Remboursements en espèces : −{argent(a.remboursements)}",
+              f"Argent remis sur carte : −{argent(a.remis)}", "", f"Attendu dans le tiroir : {argent(prevu)}", ""]
+    if a.par_employe:
+        lignes.append("Espèces encaissées par employé :")
+        lignes += [f"   • {n} : {argent(m)}" for n, m in sorted(a.par_employe.items(), key=lambda x: -x[1])]
+    try:  # Compté / Écart / À déposer, comme FenetreCaisse.calculer
+        compte = ca.total_coupures({k: v for k, v in valeurs.items() if v})
+        fond = Decimal(fond_texte.replace(",", ".").replace("$", "").strip() or 0)
+        ecart = compte - prevu
+        classe = ("resultat-vert" if abs(ecart) < Decimal("0.01") else
+                  "resultat-rouge" if abs(ecart) > ca.SEUIL_ECART else "resultat-jaune")
+        resultat = (f"<div class='{classe}'>Compté : {argent(compte)}   Écart : {'+' if ecart > 0 else ''}"
+                    f"{argent(ecart)}\nÀ déposer : {argent(compte - fond)}</div>")
+    except (Exception, ValueError) as erreur:  # noqa: BLE001
+        resultat = f"<div class='resultat-rouge'>✘ {e(str(erreur))}</div>"
+    cases = ""
+    for rang in range(5):  # 2 colonnes : 100 … 5 $ puis 2 $ … 0,05 $
+        for k in (ca.COUPURES[rang], ca.COUPURES[rang + 5]):
+            libelle = f"{Decimal(k):.2f} $".replace(".", ",") if Decimal(k) < 1 else f"{k} $"
+            cases += (f"<label for='c{k}'>{libelle}</label><input id='c{k}' name='c{k}' inputmode='numeric' size='6' "
+                      f"value='{e(valeurs.get(k, ''))}'>")
+    etat = (f"Comptage déjà enregistré par {c.par} le {c.le[:16].replace('T', ' ')}." if c else
+            "Comptez le tiroir à la fermeture, puis « Enregistrer le comptage ».")
+    corps = (f"<form class='barre-onglet' method='get'>{choix_pv}<input type='hidden' name='jour' value='{jour}'>"
+             "<button class='second'>Afficher</button></form>" if choix_pv else "")
+    corps += (message + onglets("Comptage du soir", ctx) + "<div class='onglet-corps'>"
+              f"<form class='barre-onglet' method='get'><input type='hidden' name='pv' value='{e(code_pv)}'><div>"
+              f"<label>Journée</label><input type='date' name='jour' value='{jour}'></div><button>🔄 Actualiser</button>"
+              "</form><div class='colonnes'><fieldset class='groupe'><legend>Espèces attendues (Clover)</legend>"
+              f"<div class='texte-fixe'>{e(chr(10).join(lignes))}</div></fieldset>"
+              f"<form method='post'>{csrf(ctx)}<input type='hidden' name='jour' value='{jour}'><input type='hidden' "
+              f"name='pv' value='{e(code_pv)}'><fieldset class='groupe'><legend>Comptage du tiroir</legend>"
+              f"<div class='grille-coupures'>{cases}</div><div class='grille-champs'><label>Fond laissé pour demain"
+              f"</label><input name='fond' value='{e(fond_texte)}' size='10'><label>Remarque</label><input "
+              f"name='remarque' value='{e(remarque)}' size='30'></div>{resultat}"
+              + ("<p><label><input type='checkbox' name='remplacer' value='1'> Remplacer le comptage déjà enregistré"
+                 "</label></p>" if c else "")
+              + "<button name='action' value='Enregistrer'>✔ Enregistrer le comptage</button></fieldset></form></div>"
+              f"<div class='ligne-etat'>{e(etat)}</div></div>")
     return Reponse(corps=page(ctx, "Contrôle de la caisse", corps))
 
 
@@ -142,9 +163,10 @@ def caisse_ecarts(ctx: Contexte) -> Reponse:
     fin = _jour(ctx.req.query.get("au"), date.today())
     debut = _jour(ctx.req.query.get("du"), fin - timedelta(days=13))
     corps = (onglets("Dépôts d'espèces" if vue == "depots" else "Écarts par jour", ctx)
-             + f"<form class='ligne' method='get'><input type='hidden' name='vue' value='{vue}'>{choix_pv}<div><label>Du</label><input type='date' name='du' "
-             f"value='{debut}'></div><div><label>Au</label><input type='date' name='au' value='{fin}'></div>"
-             "<button class='second'>Afficher</button></form>")
+             + "<div class='onglet-corps'>"
+             + f"<form class='barre-onglet' method='get'><input type='hidden' name='vue' value='{vue}'>{choix_pv}<div>"
+               f"<label>Du</label><input type='date' name='du' value='{debut}'></div><div><label>au</label><input "
+               f"type='date' name='au' value='{fin}'></div><button>🔍 Afficher</button></form>")
     try:
         attendu = _attendus(ctx, debut, fin, pv)
         lignes = ca.lignes_jours(attendu, ca.Registre(ctx.racine, pv), debut, fin, ctx.config)
@@ -174,7 +196,7 @@ def caisse_ecarts(ctx: Contexte) -> Reponse:
     except (Exception, SystemExit) as erreur:  # noqa: BLE001
         ctx.app.noter(f"Caisse écarts : {erreur!r}")
         corps += "<p class='erreur'>Clover ne répond pas sur le serveur pour l'instant.</p>"
-    return Reponse(corps=page(ctx, "Contrôle de la caisse : écarts", corps))
+    return Reponse(corps=page(ctx, "Contrôle de la caisse", corps + "</div>"))
 
 
 # --------------------------------------------------------------------------------------------- dépenses
@@ -195,7 +217,6 @@ def depenses(ctx: Contexte) -> Reponse:
                 recu = None
                 if "recu" in ctx.req.fichiers:
                     import tempfile
-                    from pathlib import Path
 
                     nom, contenu = ctx.req.fichiers["recu"]
                     dossier = Path(tempfile.mkdtemp())
@@ -236,34 +257,51 @@ def depenses(ctx: Contexte) -> Reponse:
         except Exception as erreur:  # noqa: BLE001 — plan comptable : compte absent, inactif…
             message = _message(erreur=str(erreur))
     r = dp.Registre(ctx.racine)
-    lignes = [[d.numero, d.jour, d.fournisseur, d.description, Decimal(d.montant), d.taxe, d.compte, d.moyen, d.etat,
-               d.ecriture or ""] for d in sorted(r.depenses, key=lambda d: d.jour, reverse=True)]
-    a_saisir = sum(1 for d in r.depenses if d.etat == dp.A_SAISIR)
+    liste = sorted(r.depenses, key=lambda d: (d.jour, d.numero), reverse=True)
+    choisi = ctx.req.query.get("numero", "")
+    if ctx.req.query.get("op") == "recu":  # « 👁 Voir le reçu » de la dépense cochée
+        d = next((x for x in liste if x.numero == choisi), None)
+        chemin = (ctx.racine / "donnees" / "recus" / Path(d.recu).name) if d is not None and d.recu else None
+        if chemin is not None and chemin.exists():
+            types = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+            return Reponse(corps=chemin.read_bytes(), type=types.get(chemin.suffix.lower(), "application/octet-stream"),
+                           entetes={"Content-Disposition": "inline"})
+        message += _message(erreur="Choisissez une dépense qui a un reçu.")
+    from ..taxes import CHOIX
+
+    lignes = [[f"<input type='radio' name='numero' value='{e(d.numero)}'{' checked' if d.numero == choisi else ''}>",
+               e(d.jour), e(d.numero), e(d.fournisseur), e(d.description), argent(Decimal(d.montant)), e(d.taxe or "—"),
+               e(d.compte), e(d.moyen), "📎" if d.recu else "", e(d.etat + (f" n° {d.ecriture}" if d.ecriture else ""))]
+              for d in liste]
+    manquants = r.comptes_manquants([d for d in r.depenses if d.etat == dp.A_SAISIR])
+    etat = f"Solde de la petite caisse : {argent(r.solde_petite_caisse())}" + (
+        " — ⚠ Comptes Sage à choisir : " + ", ".join(manquants) if manquants else "")
     moyens = "".join(f"<option>{e(m)}</option>" for m in dp.MOYENS + [dp.APPRO])
-    taxes = "".join(f"<option>{t}</option>" for t in ("GQ", "G", "Q", ""))
+    taxes = "".join(f"<option value='{k}'{' selected' if k == 'GQ' else ''}>{e(v)}</option>" for k, v in CHOIX.items())
     comptes = "".join(f"<div><label>{e(libelle)}</label><input name='compte_{cle}' value='{e(r.comptes.get(cle, ''))}' "
                       "size='6'></div>" for cle, libelle in dp.COMPTES.items())
     corps = (message
-             + f"<div class='cartes'><div class='carte'><div class='t'>Solde de la petite caisse</div><div class='v'>"
-               f"{argent(r.solde_petite_caisse())}</div></div><div class='carte'><div class='t'>À saisir dans Sage"
-               f"</div><div class='v'>{a_saisir}</div></div></div>"
-             + f"<form method='post' enctype='multipart/form-data' class='carte'>{csrf(ctx)}<h2>Nouvelle dépense</h2>"
-               f"<div class='ligne'><div><label>Date</label><input type='date' name='jour' value='{date.today()}' "
-               "required></div><div><label>Fournisseur</label><input name='fournisseur' required></div><div><label>"
-               "Description</label><input name='description'></div><div><label>Montant TTC</label><input "
-               "name='montant' size='8' required></div><div><label>Taxes</label><select name='taxe'>"
-               f"{taxes}</select></div><div><label>Compte de charge</label><input name='compte' size='6' "
-               f"placeholder='5450'></div><div><label>Payée par</label><select name='moyen'>{moyens}</select></div>"
-               "<div><label>Reçu (photo ou PDF)</label><input type='file' name='recu' accept='image/*,.pdf'></div>"
-               "</div><div class='boutons'><button name='action' value='Ajouter'>Ajouter la dépense</button></div>"
-               "</form>"
-             + f"<form method='post' class='boutons'>{csrf(ctx)}<button name='action' value='Saisir dans Sage'>Saisir "
-               f"les {a_saisir} dépense(s) dans Sage</button></form>"
-             + sections_html([Section("Dépenses", ["N°", "Date", "Fournisseur", "Description", "Montant", "Taxes",
-                                                    "Compte", "Payée par", "État", "Écriture"], lignes)])
-             + f"<form method='post' class='carte'>{csrf(ctx)}<h2>Comptes Sage des dépenses</h2>"
-               f"<div class='ligne'>{comptes}</div><div class='boutons'><button class='second' name='action' "
-               "value='Comptes'>Enregistrer les comptes</button></div></form>")
+             + f"<form method='post' enctype='multipart/form-data'>{csrf(ctx)}<div class='barre-onglet'>"
+               f"<div><label>Date</label><input type='date' name='jour' value='{date.today()}' required></div>"
+               "<div><label>Fournisseur</label><input name='fournisseur' size='18' required></div><div><label>"
+               "Description</label><input name='description' size='22'></div><div><label>Montant payé (taxes "
+               "comprises)</label><input name='montant' size='9' required></div><div><label>Compte de charge</label>"
+               f"<input name='compte' size='6'></div><div><label>Taxes</label><select name='taxe'>{taxes}</select></div>"
+               f"<div><label>Payée par</label><select name='moyen'>{moyens}</select></div><div><label>📎 Reçu…</label>"
+               "<input type='file' name='recu' accept='image/*,.pdf'></div><button name='action' value='Ajouter'>➕ "
+               "Ajouter</button></div></form>"
+             + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><button name='action' value='Saisir dans "
+               "Sage'>🧾 Saisir dans Sage</button><a class='ouvrir' href='/depenses?op=comptes'>🔢 Comptes Sage…</a>"
+               "<button class='second' formmethod='get' name='op' value='recu' form='liste-depenses'>👁 Voir le reçu"
+               f"</button></div></form><p class='{'erreur-texte' if manquants else 'note'}'>{e(etat)}</p>"
+             + "<form method='get' id='liste-depenses'>"
+             + tableau_section(Section("Dépenses", ["", "Date", "N°", "Fournisseur", "Description", "Montant", "Taxes",
+                                                   "Compte", "Payée par", "Reçu", "État"], lignes, html=set(range(11))))
+             + "</form>"
+             + (f"<form method='post' class='carte'>{csrf(ctx)}<h2>Comptes Sage des dépenses</h2>"
+                f"<div class='ligne'>{comptes}</div><div class='boutons'><button name='action' value='Comptes'>"
+                "✔ Enregistrer les comptes</button></div></form>" if ctx.req.query.get("op") == "comptes" or manquants
+                else ""))
     return Reponse(corps=page(ctx, "Petite caisse et dépenses", corps))
 
 

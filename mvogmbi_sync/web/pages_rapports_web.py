@@ -33,6 +33,12 @@ GROUPES = [
      ("Heures validées", "/traitement-paie?onglet=validees", "Traitement de la paie", "rapprochement"),
      ("Paies dans Sage", "/paies-sage", "Traitement de la paie", "rapprochement"),
      ("Fin d'année (T4 / RL-1)", "/fin-annee", "Traitement de la paie", "rapprochement")],
+    [("Déclarer une perte", "/pertes", "Pertes et démarque", "correspondance"),
+     ("Pertes déclarées", "/pertes?onglet=liste", "Pertes et démarque", "correspondance"),
+     ("Rapport des pertes", "/pertes?onglet=rapport", "Pertes et démarque", "correspondance")],
+    [("Jours fériés", "/conges", "Jours fériés et congés", "paiements"),
+     ("Congés", "/conges?onglet=conges", "Jours fériés et congés", "paiements"),
+     ("Soldes par employé", "/conges?onglet=soldes", "Jours fériés et congés", "paiements")],
 ]
 
 
@@ -187,7 +193,8 @@ def inactifs(ctx: Contexte) -> Reponse:
             articles = _articles_sage(ctx)
     except (Exception, SystemExit) as erreur:  # noqa: BLE001
         ctx.app.noter(f"Produits inactifs : {erreur!r}")
-        articles = None
+        articles = {}  # tableau vide avec ses colonnes
+        ctx.absents.add("Clover" if clover else "Sage")
     noms = [TOUTES] + sorted({a.categorie for a in (articles or {}).values()}, key=str.casefold)
     entete = onglets("Produits inactifs", ctx) + _formulaire(
         _choix("source", "Source", SOURCES, source)
@@ -246,7 +253,8 @@ def pareto(ctx: Contexte) -> Reponse:
         articles, ventes = _articles_clover(ctx, du, au) if clover else _articles_sage(ctx, du, au)
     except (Exception, SystemExit) as erreur:  # noqa: BLE001
         ctx.app.noter(f"20/80 : {erreur!r}")
-        articles = ventes = None
+        articles, ventes = {}, {}  # tableau vide avec ses colonnes
+        ctx.absents.add("Clover" if clover else "Sage")
     noms = [TOUTES] + sorted({a.categorie for a in (articles or {}).values()}, key=str.casefold)
     entete = onglets("Articles 20/80", ctx) + _formulaire(
         _choix("source", "Source", SOURCES, source) + _choix("periode", "Période", PERIODES, periode)
@@ -306,6 +314,8 @@ a.depot { color: inherit; } pre.saisie { font-family: "Cascadia Mono", Consolas,
 button.accent { background: #e0a800; color: #222; }
 tr.etat-propose td { background: #eaf2fb !important; }
 tr.etat-encaisser td { background: #efe8fb !important; }
+tr.negatif td { color: #c8102e; }
+button.lien { background: none; border: 0; color: var(--texte); padding: 0; text-decoration: underline; cursor: pointer; font: inherit; }
 .ok-texte { color: #1f7a3a; font-size: 13px; } span.calcule { display: inline-block; min-width: 70px; text-align: right;
   background: #e9eeea; padding: 6px; font-weight: 600; border-radius: 4px; }
 .carte.edition .large { flex: 1; } .carte.edition .large input { width: 100%; }
@@ -321,9 +331,161 @@ label.facture { display: block; padding: 2px 0; } label.facture code { white-spa
 @media (max-width: 820px) { .cartes-totaux { grid-template-columns: 1fr 1fr; } .barre-onglet .a-droite { margin-left: 0; } }
 """
 
+# --------------------------------------------------------------------------------------------- historique
+AIDES_RECHERCHE = {
+    "Client": "Choisissez le client : ses factures et encaissements, avec le solde.",
+    "Fournisseur": "Choisissez le fournisseur : factures, paiements et notes de crédit, avec le solde dû.",
+    "Article": "Choisissez l'article (n° ou nom) : ventes, achats, retours et ajustements, avec le cumul. « au » "
+               "(facultatif) : une plage d'articles, chacun à la suite de l'autre avec son total.",
+    "Vente": "Texte facultatif (n° de facture, client, montant) et période.",
+    "Encaissement": "Texte facultatif (client, facture, n° d'encaissement, montant) et période.",
+    "Paiement": "Texte facultatif (fournisseur, facture, pièce, montant) et période.",
+    "Statistiques client": "Choisissez le client : ses achats par article ou par catégorie (Sage), sur la période et "
+                           "la plage d'articles (facultatives).",
+    "Statistiques fournisseur": "Choisissez le fournisseur : achats moins retours par article ou par catégorie (Sage), "
+                                "sur la période et la plage d'articles (facultatives).",
+    "Statistiques employé": "Choisissez l'employé : ses ventes par article ou par catégorie (Clover), sur la période "
+                            "(30 derniers jours si elle est vide)."}
+
+
+def historique(ctx: Contexte) -> Reponse:
+    """Comme l'onglet « Recherche dans l'historique » de page_rapports : « Rechercher : » (9 types) + valeur, plage
+    d'articles « du … au », Catégorie, « Par : », « Période du … au », « 🔍 Rechercher », « ✖ Réinitialiser les
+    filtres » ; titre des résultats, nombre de résultats, lignes de total en gras."""
+    from .. import rapports
+    from ..page_rapports import REGROUPEMENTS, STATISTIQUES, TYPES_RECHERCHE
+    from .consultations import lire_ou_vide
+
+    q = ctx.req.query
+    type_ = q.get("type") if q.get("type") in TYPES_RECHERCHE else TYPES_RECHERCHE[0]
+    valeur, categorie = q.get("valeur", "").strip(), q.get("categorie", "").strip()
+    de, a = q.get("du_art", "").split(" — ")[0].strip(), q.get("au_art", "").split(" — ")[0].strip()
+    par = q.get("par") if q.get("par") in REGROUPEMENTS else REGROUPEMENTS[0]
+
+    def jour(cle):
+        try:
+            return date.fromisoformat(q.get(cle, ""))
+        except ValueError:
+            return None
+
+    du, au = jour("du"), jour("au")
+    # listes à choisir (comme les ChampRecherche de Windows)
+    from .pages_fournisseurs import _listes
+
+    noms_fournisseurs, articles = _listes(ctx.racine)
+    listes = {"Fournisseur": noms_fournisseurs, "Statistiques fournisseur": noms_fournisseurs}
+    if type_ in ("Client", "Statistiques client"):
+        try:
+            listes[type_] = lire_ou_vide(ctx, lambda b: [r["n"] for r in b.requete(
+                "SELECT TRIM(sName) n FROM tcustomr ORDER BY sName") if r["n"]])
+        except (Exception, SystemExit):  # noqa: BLE001
+            listes[type_] = []
+    if type_ == "Statistiques employé":
+        from .. import paie_temps as pt
+
+        listes[type_] = [x.nom for x in pt.Registre(ctx.racine).employes]
+    valeurs_articles = [f"{x.numero} — {x.description}" for x in articles]
+    plage = type_ in ("Article", "Statistiques client", "Statistiques fournisseur")
+    types = "".join(f"<option{' selected' if x == type_ else ''}>{e(x)}</option>" for x in TYPES_RECHERCHE)
+    pars = "".join(f"<option{' selected' if x == par else ''}>{e(x)}</option>" for x in REGROUPEMENTS)
+
+    def liste(id_, valeurs):
+        return f"<datalist id='{id_}'>" + "".join(f"<option value='{e(x)}'>" for x in valeurs) + "</datalist>"
+
+    formulaire = (
+        "<form method='get'><div class='barre-onglet'><div><label>Rechercher :</label><select name='type'>"
+        f"{types}</select></div>"
+        + ("" if type_ == "Article" else
+           f"<div class='large'><input name='valeur' list='valeurs' value='{e(valeur)}' size='46'>"
+           f"{liste('valeurs', listes.get(type_, []))}</div>")
+        + "<button class='second' name='changer' value='1'>Choisir</button></div><div class='barre-onglet'>"
+        + (f"<div><label>{'Article' if type_ == 'Article' else 'Articles du'}</label><input name='du_art' "
+           f"list='articles-sage' value='{e(q.get('du_art', ''))}' size='30'></div><div><label>au</label><input "
+           f"name='au_art' list='articles-sage' value='{e(q.get('au_art', ''))}' size='30'></div>"
+           f"{liste('articles-sage', valeurs_articles)}" if plage else "")
+        + (f"<div><label>Catégorie</label><input name='categorie' value='{e(categorie)}' size='22'></div>"
+           if type_ == "Article" or type_ in STATISTIQUES else "")
+        + (f"<div><label>Par :</label><select name='par'>{pars}</select></div>" if type_ in STATISTIQUES else "")
+        + f"<div><label>Période du</label><input type='date' name='du' value='{du or ''}'></div><div><label>au</label>"
+          f"<input type='date' name='au' value='{au or ''}'></div><button name='chercher' value='1'>🔍 Rechercher"
+          f"</button><a class='ouvrir' href='/historique?type={e(type_)}'>✖ Réinitialiser les filtres</a></div></form>")
+    aide = AIDES_RECHERCHE[type_]
+    resultat = ""
+    if q.get("chercher"):
+        tous = {"Client": "tous les clients", "Fournisseur": "tous les fournisseurs",
+                "Statistiques client": "tous les clients", "Statistiques fournisseur": "tous les fournisseurs",
+                "Statistiques employé": "tous les employés"}
+        affiche = valeur
+        if type_ == "Article":
+            affiche = (q.get("du_art", "").strip() or "tous") + (f"  →  {q.get('au_art', '').strip()}" if a else "")
+        titre = f"Résultats : {type_}" + (f" — {affiche}" if affiche else (f" — {tous[type_]}" if type_ in tous else "")) \
+            + (f" — par {par.lower()}" if type_ in STATISTIQUES else "") \
+            + (f" — articles {de} → {a or '…'}" if type_ in ("Statistiques client", "Statistiques fournisseur")
+               and (de or a) else "") + (f" — catégorie {categorie}" if categorie else "")
+        try:
+            entetes, lignes = _recherche_historique(ctx, type_, valeur, categorie, de, a, par, du, au)
+        except (Exception, SystemExit) as erreur:  # noqa: BLE001 — tableau vide, source signalée
+            ctx.app.noter(f"Recherche dans l'historique : {erreur!r}")
+            ctx.absents.add("Clover" if type_ == "Statistiques employé" else "Sage")
+            entetes, lignes = [], []
+        totaux = [i_ for i_, l in enumerate(lignes) if any(str(x).startswith(("Total", "… plus de")) for x in l[:4])]
+        from .consultations import Section, tableau_section
+
+        aide = f"{len(lignes) - len(totaux)} résultat(s)."
+        resultat = tableau_section(Section(titre, entetes, lignes, classes=["total" if i_ in totaux else ""
+                                                                            for i_ in range(len(lignes))]), limite=20000)
+    corps = onglets("Recherche dans l'historique", ctx) + formulaire + f"<p class='note'>{e(aide)}</p>" + resultat
+    return Reponse(corps=page(ctx, "Rapports", corps))
+
+
+def _recherche_historique(ctx: Contexte, type_, valeur, categorie, de, a, par, du, au):
+    """Comme PageRapports.rechercher (et _statistiques_employe pour l'employé)."""
+    from .. import rapports
+    from ..page_rapports import STATISTIQUES
+    from .consultations import lire_ou_vide
+
+    if type_ == "Statistiques employé":
+        from ..points_vente import client
+        from ..statistiques_clover import detail_par_jour, filtrer, lire, statistiques
+
+        au = au or date.today()
+        du = du or au - timedelta(days=29)
+        donnees = lire(client(ctx.racine), du, au, ctx.racine / "donnees" / "cache_clover")
+        filtres = {k: x for k, x in (("Employé", valeur), ("Catégorie", categorie)) if x}
+        nom_vue = "Par catégorie" if par.startswith("Catégorie") else "Par article"
+        donnees = filtrer(donnees, filtres)
+        return detail_par_jour(donnees, nom_vue) if par.endswith("par jour") else statistiques(donnees)[nom_vue]
+    categories = rapports.categories_par_compte(ctx.racine) if type_ in STATISTIQUES or categorie else {}
+    fonctions = {
+        "Article": lambda b: (rapports.mouvements_article(b, de, du, au) if de and (not a or a == de) and not categorie
+                              else rapports.mouvements_articles(b, de, a, du, au, categorie, categories)),
+        "Vente": lambda b: rapports.recherche_ventes(b, valeur, du, au),
+        "Encaissement": lambda b: rapports.recherche_encaissements(b, valeur, du, au),
+        "Paiement": lambda b: rapports.recherche_paiements(b, valeur, du, au),
+        "Statistiques client": lambda b: rapports.statistiques_tiers(b, "client", valeur, par, du, au, de, a,
+                                                                     categories, categorie),
+        "Statistiques fournisseur": lambda b: rapports.statistiques_tiers(b, "fournisseur", valeur, par, du, au, de,
+                                                                          a, categories, categorie)}
+    if type_ in fonctions:
+        return lire_ou_vide(ctx, fonctions[type_])
+    import time
+
+    gardee = ctx.app.memoire.get("historique_sage")  # historique des tiers lu une fois (10 min), comme Windows
+    if gardee and time.time() - gardee[0] < 600:
+        h = gardee[1]
+    else:
+        h = lire_ou_vide(ctx, rapports.historique)
+        if "Sage" not in ctx.absents:
+            ctx.app.memoire["historique_sage"] = (time.time(), h)
+    fonction = {"Client": rapports.h_mouvements_client, "Fournisseur": rapports.h_mouvements_fournisseur}[type_]
+    return fonction(h, valeur, du, au)
+
+
 FONCTIONS = [
+    Fonction("/historique", "Recherche dans l'historique", "rapports", historique, "🔎", "État", menu=False),
     Fonction("/suivi-ventes", "Suivi des ventes", "rapports", suivi_ventes, "📈", "État", menu=False),
     Fonction("/inactifs", "Produits inactifs", "rapports", inactifs, "💤", "État", menu=False),
     Fonction("/pareto", "Articles 20/80", "rapports", pareto, "🥇", "État", menu=False),
 ]
-WEB = {"Suivi des ventes": "/suivi-ventes", "Produits inactifs": "/inactifs", "Articles 20/80": "/pareto"}
+WEB = {"Suivi des ventes": "/suivi-ventes", "Produits inactifs": "/inactifs", "Articles 20/80": "/pareto",
+       "Recherche dans l'historique": "/historique"}

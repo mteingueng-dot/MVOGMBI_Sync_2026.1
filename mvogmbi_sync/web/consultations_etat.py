@@ -111,6 +111,7 @@ def _pareto(ctx, v):
 
 # --------------------------------------------------------------------------------------------- paie et gestion
 def _calendrier(ctx, v):
+    """Comme fenetre_paie.FenetreCalendrier : paies passées en gris, la prochaine en vert."""
     from ..calendrier_paie import Calendrier
 
     try:
@@ -118,12 +119,22 @@ def _calendrier(ctx, v):
     except ValueError:
         annee = date.today().year
     cal = Calendrier(ctx.racine)
-    lignes = [[p.numero, p.jour, p.debut, p.fin, "Passée" if p.jour < date.today() else "À venir"]
-              for p in cal.paies(annee)]
-    note = (f"Première paie de {annee} : {cal.premiere(annee)} ; délai {cal.delai} jours après la fin de la période. "
-            "Réglage : Administration > Sage 50, carte « Paie ».") if lignes else \
-        "Aucune première paie saisie : Administration > Sage 50, carte « Paie »."
-    return [Section(f"Calendrier de paie {annee}", ["N°", "Paie du", "Période du", "au", "État"], lignes, note)]
+    paies = cal.paies(annee)
+    aujourdhui = date.today()
+    prochaine = cal.prochaine(aujourdhui)
+    lignes = [[str(p.numero), p.jour.isoformat(), p.debut.isoformat(), p.fin.isoformat(),
+               "Payée" if p.jour < aujourdhui else "À venir"] for p in paies]
+    classes = ["etat-applique" if prochaine and p.jour == prochaine.jour else ("termine" if p.jour < aujourdhui else "")
+               for p in paies]
+    if not cal.premiere(annee):
+        note = ("Renseignez la date de la première paie de l'année dans « Administration > Sage 50 », carte « Paie » : "
+                "les paies suivantes (tous les 14 jours) et leurs périodes se calculent.")
+    else:
+        note = f"{len(paies)} paies en {annee}." + ("" if cal.saisie(annee) else
+                                                   " Suite de l'année précédente : modifiable dans « Administration > "
+                                                   "Sage 50 ».")
+    return [Section(f"Calendrier de paie {annee}", ["N°", "Date de paie", "Période du", "au", "État"], lignes, note,
+                    classes=classes)]
 
 
 def _main_oeuvre(ctx, v):
@@ -196,19 +207,15 @@ def _categories(ctx, v):
                                          "application complète.")]
 
 
-ANNEES = [str(date.today().year + i) for i in (-1, 0, 1)]
+ANNEES = [str(date.today().year + i) for i in range(-1, 5)]  # comme FenetreCalendrier
 CONSULTATIONS_ETAT = [
-    Consultation("/historique", "Recherche dans l'historique", "rapports", ("periode", "texte"), _historique, "", "🔎",
-                 "État", defauts={"du": date.today() - timedelta(days=30)},
-                 choix={"type": ("Type", ["Ventes", "Encaissements", "Paiements"])}),
     Consultation("/calendrier-paie", "Calendrier de paie", "rapprochement", (), _calendrier, "", "📆", "Paie",
                  sans_sage=True, choix={"annee": ("Année", ANNEES)}, defauts={"annee": str(date.today().year)}),
     Consultation("/main-oeuvre", "Coût de la main-d'œuvre", "rapprochement", ("periode",), _main_oeuvre, "", "👷",
-                 "Paie", sans_sage=True),
+                 "Paie", sans_sage=True, defauts={"du": date.today() - timedelta(days=28),
+                                                  "au": date.today() + timedelta(days=13)}),
     Consultation("/budget", "Budget et écarts", "rapprochement", ("mois",), _budget, "", "📐", "Comptabilité"),
     Consultation("/archives-fournisseurs", "Factures fournisseurs archivées", "rapports", ("texte",), _archives,
                  "Factures fournisseurs importées dans Sage, avec leurs lignes, rangées par année.", "🗄", "Fournisseur",
                  sans_sage=True),
-    Consultation("/comptes-categories", "Comptes Sage par catégorie", "correspondance", ("texte",), _categories, "",
-                 "🧾", "Comptabilité", sans_sage=True),
 ]

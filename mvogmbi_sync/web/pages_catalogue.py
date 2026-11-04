@@ -11,7 +11,9 @@ import time
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import quote
 
+from .consultations import Section, tableau_section
 from .pages import Contexte, Fonction, argent, csrf, page, tableau
 from .pages_compta import _message, action_permise
 from .serveur import Reponse, echapper as e, redirection
@@ -27,15 +29,26 @@ def _telecharger(chemin: Path, nom: str = "") -> Reponse:
 
 # --------------------------------------------------------------------------------------------- articles Clover
 def articles_clover(ctx: Contexte) -> Reponse:
-    from ..cache_lectures import inventaire_clover
+    """Comme fenetre_articles_clover.FenetreArticlesClover : « Rechercher : », Catégorie, Type de prix, Stock,
+    « ✖ Réinitialiser les filtres », « 🔄 Actualiser », « 🧹 Effacer les UGS qui ne sont pas des dates… » (liste à
+    cocher, puis UGS vidée dans Clover et notée dans donnees/journal_ugs_effacees.csv) ; mêmes 9 colonnes
+    (`ligne_article`), tri par colonne, quantité négative en rouge, « n article(s) affiché(s) sur m »."""
+    from .. import cache_lectures
     from ..correspondance import normaliser
+    from ..creation_articles import TYPES_PRIX
+    from ..fenetre_articles_clover import COLONNES, STOCKS, TOUS, _texte, ligne_article
     from ..peremption import lire_date
     from . import taches
 
+    if ctx.req.query.get("actualiser"):
+        cache_lectures.vider("clover:inventaire")
     try:
-        articles = inventaire_clover(ctx.racine)
-    except (Exception, SystemExit):  # noqa: BLE001
-        return Reponse(corps=page(ctx, "Articles Clover", _message(erreur="Clover ne répond pas pour l'instant.")))
+        articles = cache_lectures.inventaire_clover(ctx.racine)
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — tableau vide avec ses colonnes
+        ctx.app.noter(f"Articles Clover : {erreur!r}")
+        articles = []
+        ctx.absents.add("Clover")
+    ugs_mode = bool(ctx.req.query.get("ugs") or ctx.req.champ("ugs"))
     message = ""
     if ctx.req.methode == "POST":
         choisis = [a for a in articles if a["id"] in set(ctx.req.champs("id"))]
@@ -47,160 +60,295 @@ def articles_clover(ctx: Contexte) -> Reponse:
 
                 c = client(ctx.racine)
                 chemin = ctx.racine / "donnees" / "journal_ugs_effacees.csv"
+                chemin.parent.mkdir(parents=True, exist_ok=True)
                 nouveau = not chemin.exists()
                 erreurs = []
                 with chemin.open("a", newline="", encoding="utf-8-sig") as f:
                     ecrivain = csv.writer(f, delimiter=";")
                     if nouveau:
                         ecrivain.writerow(["Date", "ID Clover", "Article", "UGS effacée"])
-                    for a in choisis:
+                    for n, a in enumerate(choisis, 1):
                         try:
                             c.regler_ugs(a["id"], "")
                             ecrivain.writerow([datetime.now().isoformat(timespec="seconds"), a["id"], a.get("name"),
                                                a.get("sku")])
                         except Exception as exc:  # noqa: BLE001
                             erreurs.append(f"{a.get('name')} : {exc}")
-                return [f"{len(choisis) - len(erreurs)} UGS effacée(s) dans Clover."] + erreurs
+                        journal(f"{n} / {len(choisis)}")
+                cache_lectures.vider("clover:inventaire")
+                return [f"{len(choisis) - len(erreurs)} UGS effacée(s) dans Clover."] + erreurs[:15]
 
             return taches.lancer(ctx, f"UGS effacées ({len(choisis)})", effacer, "/articles-clover")
-    texte = normaliser(ctx.req.query.get("q", ""))
-    categorie = ctx.req.query.get("categorie", "")
-    stock = ctx.req.query.get("stock", "")
-    ugs = ctx.req.query.get("ugs", "")
-
-    def cat(a):
-        return ", ".join(c.get("name", "") for c in (a.get("categories") or {}).get("elements", []))
-
-    retenus = []
-    for a in sorted(articles, key=lambda a: (a.get("name") or "").casefold()):
-        quantite = (a.get("itemStock") or {}).get("quantity")
-        if texte and texte not in normaliser(f"{a.get('name', '')} {a.get('code') or ''} {a.get('sku') or ''}"):
+    if ugs_mode:  # FenetreACocher « UGS qui ne sont pas des dates »
+        noms = {a.get("id"): (a.get("name") or "").strip() for a in articles}
+        lignes = [[f"<input type='checkbox' name='id' value='{e(a['id'])}' checked>", e(a["id"]), e(noms[a["id"]]),
+                   e((a.get("sku") or "").strip())]
+                  for a in sorted(articles, key=lambda a: noms.get(a.get("id"), "").casefold())
+                  if (a.get("sku") or "").strip() and lire_date(a.get("sku")) is None]
+        corps = (message + f"<p class='note'>{len(lignes)} article(s) Clover ont une UGS qui n'est pas une date "
+                 "(JJ/MM/AAAA). Ces articles ont dans Clover une UGS qui n'est pas une date de péremption. Cochez celles "
+                 "à effacer, puis lancez : l'UGS est vidée dans Clover ; chaque UGS effacée est notée dans "
+                 "donnees/journal_ugs_effacees.csv.</p>"
+                 f"<form method='post'>{csrf(ctx)}<input type='hidden' name='ugs' value='1'>"
+                 + tableau_section(Section("UGS qui ne sont pas des dates", ["", "ID Clover", "Article", "UGS actuelle"],
+                                           lignes, html=set(range(4))), limite=5000)
+                 + "<div class='boutons'><button>Effacer dans Clover</button><a class='ouvrir' href='/articles-clover'>"
+                   "◀ Retour à la liste</a></div></form>")
+        return Reponse(corps=page(ctx, "Articles Clover", corps))
+    rangees = [ligne_article(a, TYPES_PRIX) for a in articles]
+    q, categorie = ctx.req.query.get("q", ""), ctx.req.query.get("categorie", "").strip()
+    type_prix, stock = ctx.req.query.get("type_prix") or TOUS, ctx.req.query.get("stock") or STOCKS[0]
+    try:
+        colonne = min(max(int(ctx.req.query.get("tri", "1")), 0), len(COLONNES) - 1)
+    except ValueError:
+        colonne = 1
+    inverse = ctx.req.query.get("ordre") == "desc"
+    mots = normaliser(q).split()
+    gardees = []
+    for l in rangees:  # comme FenetreArticlesClover._gardees
+        if mots and not all(m in normaliser(" ".join(_texte(v) for v in l)) for m in mots):
             continue
-        if categorie and categorie.casefold() not in cat(a).casefold():
+        if categorie and categorie.casefold() not in [c.strip().casefold() for c in l[8].split(",")]:
             continue
-        if stock == "en stock" and not (quantite or 0) > 0 or stock == "sans stock" and (quantite or 0) > 0:
+        if type_prix != TOUS and l[3] != type_prix:
             continue
-        if ugs and not (a.get("sku") and lire_date(a.get("sku")) is None):
+        x = l[7]
+        if (stock == STOCKS[1] and not (x is not None and x > 0)) or (stock == STOCKS[2] and x != 0) or (
+                stock == STOCKS[3] and not (x is not None and x < 0)) or (stock == STOCKS[4] and x is not None):
             continue
-        retenus.append(a)
-    lignes = []
-    for a in retenus[:LIMITE]:
-        peremption = lire_date(a.get("sku") or "")
-        case = (f"<input type='checkbox' name='id' value='{e(a['id'])}' checked>" if ugs else "")
-        lignes.append([case, e(a["id"]), e(a.get("name", "")), argent(Decimal(int(a.get("price") or 0)) / 100),
-                       e(a.get("priceType", "")), e(a.get("code") or ""), e(peremption.isoformat() if peremption else
-                                                                           (a.get("sku") or "")),
-                       e(str((a.get("itemStock") or {}).get("quantity", ""))), e(cat(a))])
-    filtres = (f"<form class='ligne' method='get'><div><label>Rechercher</label><input name='q' "
-               f"value='{e(ctx.req.query.get('q', ''))}'></div><div><label>Catégorie</label><input name='categorie' "
-               f"value='{e(categorie)}' size='14'></div><div><label>Stock</label><select name='stock'>"
-               + "".join(f"<option{' selected' if s == stock else ''}>{s}</option>" for s in ("", "en stock",
-                                                                                              "sans stock"))
-               + f"</select></div><div><label><input type='checkbox' name='ugs' value='1'{' checked' if ugs else ''}> "
-                 "UGS qui ne sont pas des dates</label></div><button class='second'>Afficher</button></form>")
-    corps = (message + filtres + f"<p class='note'>{len(retenus)} article(s)"
-             + (f", {LIMITE} affichés" if len(retenus) > LIMITE else "") + ".</p>"
-             + (f"<form method='post'>{csrf(ctx)}" if ugs else "")
-             + tableau(["", "ID Clover", "Nom", "Prix", "Type de prix", "Code", "Péremption (UGS)", "Quantité",
-                        "Catégories"], lignes, {3, 7})
-             + ("<div class='boutons'><button>Effacer l'UGS des articles cochés dans Clover</button></div></form>"
-                if ugs and lignes else ""))
+        gardees.append(l)
+    vides = {2: Decimal("-1e18"), 7: Decimal("-1e18"), 6: date.min}
+    gardees.sort(key=lambda l: (l[colonne] if l[colonne] is not None else vides[colonne]) if colonne in vides
+                 else str(l[colonne]).casefold(), reverse=inverse)
+    categories = sorted({c.strip() for l in rangees for c in l[8].split(",") if c.strip()}, key=str.casefold)
+    liste_cat = "<datalist id='categories'>" + "".join(f"<option value='{e(c)}'>" for c in categories) + "</datalist>"
+    types = "".join(f"<option{' selected' if v == type_prix else ''}>{e(v)}</option>"
+                    for v in [TOUS] + list(TYPES_PRIX.values()))
+    stocks = "".join(f"<option{' selected' if v == stock else ''}>{e(v)}</option>" for v in STOCKS)
+    tris = "".join(f"<option value='{n}'{' selected' if n == colonne else ''}>{e(titre)}</option>"
+                   for n, (_c, titre, _l) in enumerate(COLONNES))
+    barre = (f"<form method='get' class='barre-onglet'><div><label>Rechercher :</label><input name='q' value='{e(q)}' "
+             f"size='26'></div><div><label>Catégorie</label><input name='categorie' list='categories' "
+             f"value='{e(categorie)}' size='20'>{liste_cat}</div><div><label>Type de prix</label><select "
+             f"name='type_prix'>{types}</select></div><div><label>Stock</label><select name='stock'>{stocks}</select>"
+             f"</div><div><label>Trier par</label><select name='tri'>{tris}</select></div><div><label><input "
+             f"type='checkbox' name='ordre' value='desc'{' checked' if inverse else ''}> décroissant</label></div>"
+             "<button class='second'>Afficher</button><a class='ouvrir' href='/articles-clover'>✖ Réinitialiser les "
+             "filtres</a><a class='ouvrir' href='/articles-clover?actualiser=1'>🔄 Actualiser</a><a class='ouvrir' "
+             "href='/articles-clover?ugs=1'>🧹 Effacer les UGS qui ne sont pas des dates…</a></form>")
+    lignes = [[e(_texte(v)) for v in l] for l in gardees]
+    classes = ["negatif" if l[7] is not None and l[7] < 0 else "" for l in gardees]
+    corps = (message + barre
+             + tableau_section(Section("Articles Clover", [titre for _c, titre, _l in COLONNES], lignes,
+                                       classes=classes, html=set(range(9)),
+                                       note=f"{len(gardees)} article(s) affiché(s) sur {len(rangees)}"), limite=5000))
     return Reponse(corps=page(ctx, "Articles Clover", corps))
 
 
 # --------------------------------------------------------------------------------------------- correspondance
-def _chemin_correspondance(ctx: Contexte) -> Path:
-    return ctx.racine / "donnees" / "correspondance_articles.xlsx"
+def _chemin_correspondance(ctx: Contexte, pv=None) -> Path:
+    from ..points_vente import fichier_correspondance
+
+    return fichier_correspondance(ctx.racine, pv)
+
+
+SUPPRIMES = "Supprimés ou renommés dans Clover"
+FILTRES_CORRESPONDANCE = ["À traiter (À confirmer + Aucun)", SUPPRIMES, "Tous", "Confirmé", "Automatique",
+                          "À confirmer", "Aucun"]
+COULEURS_CORRESPONDANCE = {"Confirmé": "etat-applique", "À confirmer": "etat-a-saisir", "Aucun": "etat-ecart"}
 
 
 def correspondance(ctx: Contexte) -> Reponse:
+    """Comme page_correspondance.PageCorrespondance : point de vente, « Afficher : », « Rechercher : », « ⟳ Mettre à
+    jour depuis Clover et Sage », raccourcis (Créer un article, Inventaire, Coûts Clover, Comptes Sage par catégorie,
+    Transferts), compteurs, tableau coloré ; « Article sélectionné » (`?id=`) : informations, recherche d'article Sage,
+    « ✔ Confirmer l'article choisi », « Accepter la proposition », « Retirer la confirmation », « 🆕 Créer l'article
+    dans Sage ». Dans le navigateur, chaque décision est enregistrée tout de suite (copie de sécurité comme
+    « Enregistrer les modifications »)."""
     from .. import correspondance as co
+    from .pages_compta import _point_vente
     from . import taches
 
-    if ctx.req.methode == "POST" and ctx.req.champ("action") == "Mettre à jour":
-        def mettre_a_jour(journal):
-            import os
-            import subprocess
+    pv, choix_pv, code = _point_vente(ctx)
+    chemin = _chemin_correspondance(ctx, pv)
+    filtre = ctx.req.query.get("filtre") or ctx.req.champ("filtre") or FILTRES_CORRESPONDANCE[0]
+    q = ctx.req.query.get("q") if "q" in ctx.req.query else ctx.req.champ("q")
+    ident = ctx.req.query.get("id") or ctx.req.champ("id")
+    message = ""
+    if ctx.req.methode == "POST":
+        action = ctx.req.champ("action")
+        if action == "Mettre à jour depuis Clover et Sage":
+            def mettre_a_jour(journal):
+                import os
+                import subprocess
 
-            from ..__main__ import commande_moteur
+                from ..__main__ import commande_moteur
 
-            processus = subprocess.Popen(commande_moteur() + ["correspondance"], cwd=ctx.racine, stdout=subprocess.PIPE,
-                                         stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
-                                         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            for ligne in processus.stdout:
-                journal(ligne.rstrip())
-            return "Correspondance mise à jour." if processus.wait() == 0 else "Mise à jour avec des erreurs."
+                commande = commande_moteur() + ["correspondance"] + (["--point-de-vente", str(code)] if pv else [])
+                processus = subprocess.Popen(commande, cwd=ctx.racine, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                             text=True, encoding="utf-8", errors="replace",
+                                             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                for ligne in processus.stdout:
+                    journal(ligne.rstrip())
+                return "Correspondance mise à jour." if processus.wait() == 0 else "Mise à jour impossible."
 
-        return taches.lancer(ctx, "Mise à jour de la correspondance", mettre_a_jour, "/correspondance")
-    lignes_c = co.lire_correspondances(_chemin_correspondance(ctx))
-    texte = co.normaliser(ctx.req.query.get("q", ""))
-    statut = ctx.req.query.get("statut", "")
-    retenues = [(i, c) for i, c in enumerate(lignes_c)
-                if (not statut or c.statut == statut or (statut == co.RENOMME and c.methode == co.RENOMME))
-                and (not texte or texte in co.normaliser(f"{c.nom_clover} {c.numero_sage} {c.description_sage}"))]
-    compte = {s: sum(1 for c in lignes_c if c.statut == s) for s in co.STATUTS}
-    lignes = [[f"<a href='/correspondance-ligne?i={i}'>{e(c.nom_clover)}</a>", e(c.statut), e(c.categorie_clover),
-               argent(c.ventes_30j), e(c.numero_sage), e(c.description_sage), e(c.methode), str(c.confiance)]
-              for i, c in retenues[:LIMITE]]
-    options = "".join(f"<option{' selected' if s == statut else ''}>{e(s)}</option>"
-                      for s in [""] + co.STATUTS + [co.RENOMME])
-    corps = (" · ".join(f"{e(s)} : {n}" for s, n in compte.items())
-             + f"<form class='ligne' method='get'><div><label>Statut</label><select name='statut'>{options}</select></div>"
-               f"<div><label>Rechercher</label><input name='q' value='{e(ctx.req.query.get('q', ''))}'></div><button "
-               "class='second'>Afficher</button></form>"
-             + tableau(["Article Clover", "Statut", "Catégorie", "Ventes 30 j", "N° Sage", "Description Sage",
-                        "Méthode", "Confiance"], lignes, {3, 7})
-             + f"<form method='post' class='boutons'>{csrf(ctx)}<button name='action' value='Mettre à jour'>Mettre à "
-               "jour la correspondance (Clover et Sage)</button></form><p class='note'>Les lignes « Confirmé » sont "
-               "toujours gardées. Deux formats différents sont deux articles différents.</p>")
+            return taches.lancer(ctx, "Mise à jour de la correspondance", mettre_a_jour,
+                                 f"/correspondance?pv={code}&filtre={filtre}")
+        if action in ("Confirmer l'article choisi", "Confirmer quand même", "Accepter la proposition",
+                      "Retirer la confirmation"):
+            message = _decider_correspondance(ctx, chemin, ident, action)
+    lignes_c = co.lire_correspondances(chemin)
+    from .pages_fournisseurs import _listes
+
+    _noms, articles = _listes(ctx.racine)
+    texte = co.normaliser(q or "")
+    lien = f"pv={e(code)}&amp;filtre={e(filtre)}&amp;q={e(q or '')}"
+    lignes, classes = [], []
+    for c in lignes_c:
+        if filtre.startswith("À traiter") and c.statut not in (co.A_CONFIRMER, co.AUCUN):
+            continue
+        if filtre in (co.CONFIRME, co.AUTOMATIQUE, co.A_CONFIRMER, co.AUCUN) and c.statut != filtre:
+            continue
+        if filtre == SUPPRIMES and c.methode not in (co.RENOMME, co.PERSONNALISE):
+            continue
+        if texte and texte not in co.normaliser(f"{c.nom_clover} {c.numero_sage} {c.description_sage}"):
+            continue
+        nom = c.nom_clover + ("  (supprimé de Clover)" if c.methode == co.RENOMME else "")
+        lignes.append([e(c.statut), f"<a href='?{lien}&amp;id={e(c.id_clover)}'>{e(nom)}</a>"
+                       + (" ◀" if c.id_clover == ident else ""), e(c.categorie_clover),
+                       f"{c.ventes_30j:,.2f}".replace(",", " ").replace(".", ",") if c.ventes_30j else "",
+                       e(c.numero_sage), e(c.description_sage)])
+        classes.append(COULEURS_CORRESPONDANCE.get(c.statut, ""))
+    compte = {s_: sum(1 for c in lignes_c if c.statut == s_) for s_ in (co.CONFIRME, co.AUTOMATIQUE, co.A_CONFIRMER,
+                                                                         co.AUCUN)}
+    compteurs = (f"{len(lignes_c)} articles Clover — Confirmé : {compte[co.CONFIRME]}   Automatique : "
+                 f"{compte[co.AUTOMATIQUE]}   À confirmer : {compte[co.A_CONFIRMER]}   Aucun : {compte[co.AUCUN]}   •   "
+                 f"affichés : {len(lignes)}" + ("" if articles else "   •   liste Sage absente : cliquez sur « Mettre "
+                                                                    "à jour »"))
+    options = "".join(f"<option{' selected' if f == filtre else ''}>{e(f)}</option>" for f in FILTRES_CORRESPONDANCE)
+    barre = (f"<form method='get' class='barre-onglet'>{choix_pv}<div><label>Afficher :</label><select name='filtre'>"
+             f"{options}</select></div><div><label>Rechercher :</label><input name='q' value='{e(q or '')}' size='20'>"
+             "</div><button class='second'>Afficher</button></form>"
+             f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='pv' value='{e(code)}'>"
+             f"<input type='hidden' name='filtre' value='{e(filtre)}'><button name='action' value='Mettre à jour depuis "
+             "Clover et Sage'>⟳ Mettre à jour depuis Clover et Sage</button><a class='ouvrir' "
+             f"href='?{lien}'>Recharger</a><a class='ouvrir' href='/creer-article'>🆕 Créer un article</a><a "
+             "class='ouvrir' href='/inventaire'>📦 Inventaire</a><a class='ouvrir' href='/couts-clover'>💲 Coûts Clover "
+             "depuis Sage</a><a class='ouvrir' href='/comptes-categories'>🧾 Comptes Sage par catégorie</a><a "
+             "class='ouvrir' href='/transferts'>🔁 Transferts entre points de vente</a></form>")
+    corps = ("<p class='sous-titre'>🔗 Correspondance des articles — chaque article Clover relié à son article Sage</p>"
+             + message + barre + f"<p class='note'>{e(compteurs)}</p>"
+             + tableau_section(Section("Correspondance des articles", ["Statut", "Article Clover", "Catégorie",
+                                                                       "Ventes 30 j", "N° article Sage",
+                                                                       "Description Sage"],
+                                       lignes, classes=classes, html=set(range(6))), limite=3000)
+             + _article_selectionne(ctx, lignes_c, ident, articles, code, filtre, q))
     return Reponse(corps=page(ctx, "Correspondance", corps))
 
 
-def correspondance_ligne(ctx: Contexte) -> Reponse:
+def _article_selectionne(ctx: Contexte, lignes_c, ident, articles, code, filtre, q) -> str:
+    from .. import correspondance as co
+
+    c = next((x for x in lignes_c if x.id_clover == ident), None)
+    if c is None:
+        return "<div class='carte'><h2>Article sélectionné</h2><p>Sélectionnez un article dans le tableau.</p></div>"
+    recherche = ctx.req.query.get("recherche") if "recherche" in ctx.req.query else (
+        c.description_sage if c.methode == co.RENOMME and c.description_sage else c.nom_clover)
+    resultats = []
+    texte = co.normaliser(recherche or "")
+    if texte and articles:
+        from rapidfuzz import fuzz, process
+
+        normalises = [co.normaliser(f"{a.description} {a.numero}") for a in articles]
+        for _, _score, n in process.extract(texte, normalises, scorer=fuzz.token_set_ratio, limit=15):
+            a = articles[n]
+            alerte = "  (autre format)" if co.conflit_format(c.nom_clover, a.description) else ""
+            resultats.append(f"<label class='facture'><input type='radio' name='numero' value='{e(a.numero)}'"
+                             f"{' checked' if not resultats else ''}> <code>{e(a.numero):<16} {e(a.description)}  ["
+                             f"{e(a.compte_revenus or 'sans compte')}]{e(alerte)}</code></label>")
+    info = (f"Clover : {c.nom_clover}   (catégorie {c.categorie_clover or '—'}, ID {c.id_clover})\nSage : "
+            f"{c.numero_sage or '—'} {c.description_sage}   •   statut {c.statut}, méthode {c.methode or '—'}"
+            + (f"\nAutres suggestions : {c.suggestions}" if c.suggestions else ""))
+    cache = (f"{csrf(ctx)}<input type='hidden' name='pv' value='{e(code)}'><input type='hidden' name='filtre' "
+             f"value='{e(filtre)}'><input type='hidden' name='q' value='{e(q or '')}'><input type='hidden' name='id' "
+             f"value='{e(c.id_clover)}'>")
+    creer = ("" if c.id_clover.startswith("nom:") else
+             f"<a class='ouvrir' href='/creer-article?nom={quote(c.nom_clover)}&amp;id_clover={quote(c.id_clover)}"
+             f"&amp;categorie={quote(c.categorie_clover or '')}'>🆕 Créer l'article dans Sage</a>")
+    return (f"<div class='carte'><h2>Article sélectionné</h2><pre class='saisie'>{e(info)}</pre>"
+            f"<form method='get' class='ligne'><input type='hidden' name='pv' value='{e(code)}'><input type='hidden' "
+            f"name='filtre' value='{e(filtre)}'><input type='hidden' name='q' value='{e(q or '')}'><input type='hidden' "
+            f"name='id' value='{e(c.id_clover)}'><div class='large'><label>Chercher un article Sage :</label><input "
+            f"name='recherche' value='{e(recherche or '')}' size='40'></div><button class='second'>Chercher</button>"
+            f"</form><form method='post' class='fiche-bas'>{cache}<div class='factures'>"
+            + ("".join(resultats) or "<p class='note'>Aucun article Sage : tapez quelques lettres.</p>")
+            + "</div><div class='boutons-colonne'><button name='action' value=\"Confirmer l'article choisi\">✔ Confirmer "
+              "l'article choisi</button><button class='second' name='action' value='Accepter la proposition'>Accepter "
+              "la proposition</button><button class='danger' name='action' value='Retirer la confirmation'>Retirer la "
+              f"confirmation</button>{creer}</div></form></div>")
+
+
+def _decider_correspondance(ctx: Contexte, chemin: Path, ident: str, action: str) -> str:
+    """Comme PageCorrespondance.confirmer / accepter / retirer, puis enregistrer (copie de sécurité d'abord)."""
+    import shutil
+    from datetime import datetime
+
     from .. import correspondance as co
     from .pages_fournisseurs import _listes
 
-    chemin = _chemin_correspondance(ctx)
-    lignes = co.lire_correspondances(chemin)
-    try:
-        i = int(ctx.req.query.get("i") or ctx.req.champ("i"))
-        c = lignes[i]
-    except (ValueError, IndexError):
-        return Reponse(404, page(ctx, "Correspondance", "<p>Ligne introuvable.</p>"))
-    _noms, articles = _listes(ctx.racine)
-    descriptions = {a.numero: a.description for a in articles}
-    message = ""
-    if ctx.req.methode == "POST":
-        numero = ctx.req.champ("numero").strip().split(" ")[0]
-        statut = ctx.req.champ("statut")
-        description = descriptions.get(numero, c.description_sage if numero == c.numero_sage else "")
-        if statut == co.CONFIRME and numero and co.conflit_format(c.nom_clover, description) \
-                and not ctx.req.champ("quand_meme"):
-            message = _message(erreur=f"Formats différents (« {c.nom_clover} » / « {description} ») : deux formats "
-                                      "différents sont deux articles différents. Cochez « Confirmer quand même » si "
-                                      "c'est bien le même article.")
+    with ctx.app.ecriture:
+        lignes_c = co.lire_correspondances(chemin)
+        c = next((x for x in lignes_c if x.id_clover == ident), None)
+        if c is None:
+            return _message(erreur="Sélectionnez un article dans le tableau, puis un article Sage dans la liste.")
+        avertissement = ""
+        if action in ("Confirmer l'article choisi", "Confirmer quand même"):
+            _noms, articles = _listes(ctx.racine)
+            a = next((x for x in articles if x.numero == ctx.req.champ("numero")), None)
+            if a is None:
+                return _message(erreur="Sélectionnez un article dans le tableau, puis un article Sage dans la liste.")
+            if co.conflit_format(c.nom_clover, a.description) and action != "Confirmer quand même":
+                return (f"<form method='post' class='erreur'>{csrf(ctx)}"
+                        + "".join(f"<input type='hidden' name='{k}' value='{e(ctx.req.champ(k))}'>"
+                                  for k in ("pv", "filtre", "q", "id", "numero"))
+                        + f"« {e(c.nom_clover)} » et « {e(a.description)} » n'ont pas le même format. Deux formats "
+                          "différents sont deux articles différents. <button name='action' value='Confirmer quand "
+                          "même'>Confirmer quand même</button></form>")
+            if not a.compte_revenus:
+                avertissement = (f"L'article Sage {a.numero} n'a pas de compte de produits : l'import sera bloqué tant "
+                                 "qu'il n'est pas complété dans Sage.")
+            c.statut = co.CONFIRME
+            c.numero_sage, c.description_sage, c.compte_revenus = a.numero, a.description, a.compte_revenus
+        elif action == "Accepter la proposition":
+            if not c.numero_sage:
+                return _message(erreur="Aucune proposition pour cet article : choisissez un article Sage dans la liste.")
+            c.statut = co.CONFIRME
         else:
-            c.numero_sage, c.description_sage = numero, description
-            c.statut = statut if statut in co.STATUTS else c.statut
-            if c.statut == co.CONFIRME:
-                c.methode, c.confiance = c.methode or "Confirmé par le propriétaire", 100
-            with ctx.app.ecriture:
-                co.ecrire_correspondance(lignes, chemin)
-            return redirection(f"/correspondance?q={c.nom_clover}")
-    liste = "<datalist id='articles'>" + "".join(f"<option value='{e(a.numero)}'>{e(a.description)}</option>"
-                                                 for a in articles) + "</datalist>"
-    statuts = "".join(f"<option{' selected' if s == c.statut else ''}>{e(s)}</option>" for s in co.STATUTS)
-    corps = (message + f"<p><a href='/correspondance'>◀ Correspondance</a></p><div class='carte'><p><strong>"
-             f"{e(c.nom_clover)}</strong> · {e(c.categorie_clover)} · ID {e(c.id_clover)} · ventes 30 j "
-             f"{argent(c.ventes_30j)}</p><p>Suggestions : {e(c.suggestions or '—')}</p></div>"
-             + f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='i' value='{i}'>"
-               f"<div class='ligne'><div><label>N° d'article Sage</label><input name='numero' list='articles' "
-               f"value='{e(c.numero_sage)}' size='16'>{liste}</div><div><label>Statut</label><select name='statut'>"
-               f"{statuts}</select></div></div><p>Sage : {e(c.description_sage or '—')}</p><p><label><input "
-               "type='checkbox' name='quand_meme' value='1'> Confirmer quand même (formats différents)</label></p>"
-               "<div class='boutons'><button>Enregistrer</button></div></form>")
-    return Reponse(corps=page(ctx, "Correspondance : une ligne", corps))
+            c.statut = co.A_CONFIRMER
+        c.methode = "Manuel (application)"
+        try:
+            if chemin.exists():  # une copie de sécurité par heure (Windows : une par « Enregistrer »)
+                copie = chemin.parent / "sauvegardes" / f"{chemin.stem}_{datetime.now():%Y%m%d-%H}.xlsx"
+                if not copie.exists():
+                    copie.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(chemin, copie)
+            co.ecrire_correspondance(lignes_c, chemin)
+        except PermissionError:
+            return _message(erreur="Le fichier de correspondance est ouvert dans Excel : fermez-le puis réessayez.")
+    return _message(f"{c.nom_clover} : {c.statut} (enregistré).", avertissement)
+
+
+def correspondance_ligne(ctx: Contexte) -> Reponse:
+    """Ancienne adresse d'une ligne : la carte « Article sélectionné » est sous la liste."""
+    from .. import correspondance as co
+
+    lignes = co.lire_correspondances(_chemin_correspondance(ctx))
+    try:
+        ident = lignes[int(ctx.req.query.get("i", ""))].id_clover
+    except (ValueError, IndexError):
+        ident = ""
+    return redirection(f"/correspondance?filtre=Tous&id={quote(ident)}")
 
 
 # --------------------------------------------------------------------------------------------- créer un article
@@ -231,10 +379,11 @@ def creer_article(ctx: Contexte) -> Reponse:
     table = ca.TableCategories(ctx.racine)
     v = {k: ctx.req.champ(k).strip() for k in ("nature", "nom", "cout", "prix", "peremption", "categorie", "type_prix",
                                                 "unite", "taxes", "code", "stock", "numero", "description",
-                                                "charges", "produits")}
-    if ctx.req.methode == "GET":  # « 🆕 Créer l'article » d'une ligne de facture fournisseur : nom et coût proposés
-        v["nom"] = v["nom"] or ctx.req.query.get("nom", "")
-        v["cout"] = v["cout"] or ctx.req.query.get("cout", "")
+                                                "charges", "produits", "id_clover")}
+    if ctx.req.methode == "GET":  # « 🆕 Créer l'article » d'une facture fournisseur ou de la correspondance
+        for k in ("nom", "cout", "categorie", "id_clover"):
+            v[k] = v[k] or ctx.req.query.get(k, "")
+    existant = bool(v["id_clover"])  # article Clover existant : fiche Sage seulement, puis liaison « Confirmé »
     message = ""
     if ctx.req.methode == "POST" and ctx.req.champ("action") == "Créer":
         try:
@@ -247,7 +396,10 @@ def creer_article(ctx: Contexte) -> Reponse:
                                  choix_taxes.get(v["taxes"]), v["code"], Decimal((v["stock"] or "0").replace(",", ".")),
                                  v["numero"], v["description"] or v["nom"], table.pour(v["categorie"]),
                                  creer_sage=bool(ctx.req.champ("sage")), creer_clover=bool(ctx.req.champ("clover")) and
-                                 not service, service=service, compte_charges=v["charges"], compte_produits=v["produits"])
+                                 not service and not existant, service=service, compte_charges=v["charges"],
+                                 compte_produits=v["produits"])
+            if existant:
+                a.id_clover = v["id_clover"]
             problemes = a.problemes(numeros_sage or None)
             if not (a.creer_sage or a.creer_clover):
                 problemes.append("cochez « Créer dans Clover » ou « Créer dans Sage »")
@@ -295,27 +447,59 @@ def creer_article(ctx: Contexte) -> Reponse:
                 "</div>")
 
     comptes = table.pour(v["categorie"]) if v["categorie"] else None
-    corps = (message + f"<form method='post' class='carte'>{csrf(ctx)}<div class='ligne'><div><label>Type</label>"
-             f"<select name='nature'>{nature}</select></div>" + champ("nom", "Nom (Clover)", 30)
-             + champ("cout", "Prix d'achat", 8) + champ("prix", "Prix de vente (vide = achat + 40 %)", 8)
-             + f"<div><label>Catégorie Clover</label><select name='categorie'><option></option>{options_cat}</select>"
-               "</div>" + champ("peremption", "Péremption (UGS)", 10, "date")
-             + f"<div><label>Type de prix</label><select name='type_prix'>{options_prix}</select></div>"
-             + champ("unite", "Unité (prix par unité)", 6)
-             + f"<div><label>Taxes</label><select name='taxes'>{options_taxes}</select></div>"
-             + champ("code", "Code (facultatif)", 14) + champ("stock", "Stock Clover", 5) + "</div><h2>Sage</h2>"
-             + "<div class='ligne'>" + champ("numero", "N° Sage", 12) + champ("description", "Description Sage", 30)
-             + champ("charges", "Compte de charges (service)", 6) + champ("produits", "Compte de produits (service)", 6)
-             + "</div>"
-             + (f"<p class='note'>Comptes de la catégorie : actif {e(comptes.actif)}, produits {e(comptes.produits)}, "
-                f"CMV {e(comptes.cmv)}, écart {e(comptes.ecart)}.</p>" if comptes else
-                "<p class='note'>Choisissez la catégorie puis « Proposer le n° Sage » ; ses comptes viennent de "
-                "« Comptabilité > Comptes Sage par catégorie ».</p>")
-             + "<p><label><input type='checkbox' name='clover' value='1' checked> Créer dans Clover</label> "
-               "<label><input type='checkbox' name='sage' value='1' checked> Créer dans Sage</label></p>"
-               "<div class='boutons'><button class='second' name='action' value='Proposer'>Proposer le n° Sage</button>"
-               "<button name='action' value='Créer'>Créer l'article</button></div></form>"
-               "<p class='note'>Un service se crée dans Sage seulement (n° commençant par S).</p>")
+    service = v["nature"] == "Service"
+
+    def ligne(libelle, champ_html, obligatoire=False):
+        return f"<label>{e(libelle)}{' *' if obligatoire else ''}</label><div>{champ_html}</div>"
+
+    def entree(nom, taille=12, type_="text"):
+        return f"<input type='{type_}' name='{nom}' value='{e(v[nom])}' size='{taille}'>"
+
+    natures = "".join(f"<label class='case'><input type='radio' name='nature' value='{n}'"
+                      f"{' checked' if (n == 'Service') == service else ''}> {n}</label>" for n in ("Stock", "Service"))
+    if service:
+        comptes_html = (ligne("Compte de charges", entree("charges", 8), True)
+                        + ligne("Compte de produits (facultatif)", entree("produits", 8)))
+    else:
+        comptes_html = "".join(ligne(lib, f"<input value='{e(getattr(comptes, cle, '') if comptes else '')}' size='8' "
+                                          "disabled>") for cle, lib in (("actif", "Compte d'actif"),
+                                                                        ("produits", "Compte de produits"),
+                                                                        ("cmv", "Compte de CMV"),
+                                                                        ("ecart", "Compte d'écart")))
+    existant = bool(v["id_clover"])
+    clover_cadre = ("<fieldset class='groupe'><legend>Clover</legend><div class='grille-champs'>"
+                    + ligne("Nom", entree("nom", 38), True) + ligne("Prix d'achat (coût)", entree("cout"), True)
+                    + ligne("Prix de vente (achat + 40 %)", entree("prix"))
+                    + ligne("Type de prix", f"<select name='type_prix'>{options_prix}</select> Unité "
+                                            + entree("unite", 6), True)
+                    + ligne("Taxes et frais", f"<select name='taxes'>{options_taxes}</select>")
+                    + ligne("Catégorie", f"<select name='categorie'><option></option>{options_cat}</select>")
+                    + ligne("Code du produit (facultatif)", entree("code", 20))
+                    + ligne("UGS = date de péremption", entree("peremption", 12, "date"), True)
+                    + ligne("Stock", entree("stock", 10))
+                    + "</div><p class='note'>Couleur : aucune • groupes de modificateurs : aucun</p>"
+                    + "<label class='case'><input type='checkbox' name='clover' value='1'"
+                    + ("" if existant or service else " checked") + (" disabled" if existant or service else "")
+                    + "> Créer dans Clover</label></fieldset>")
+    sage_cadre = ("<fieldset class='groupe'><legend>Sage 50</legend><div class='grille-champs'>"
+                  + ligne("Type", natures, True) + ligne("N° d'article", entree("numero", 20), True)
+                  + ligne("Description", entree("description", 34), True) + comptes_html + "</div>"
+                  + ("<p class='note'>Service : n° commençant par S, créé dans Sage seulement.</p>" if service else
+                     "<p class='note'>Comptes de la catégorie choisie (« Comptabilité > Comptes Sage par catégorie »)."
+                     "</p>")
+                  + "<p><a class='ouvrir' href='/comptes-categories'>Comptes par catégorie…</a></p>"
+                  "<label class='case'><input type='checkbox' name='sage' value='1' checked> Créer dans Sage</label>"
+                  "</fieldset>")
+    corps = (message + f"<form method='post'>{csrf(ctx)}"
+             + (f"<input type='hidden' name='id_clover' value='{e(v['id_clover'])}'><p class='note'>Article Clover "
+                f"existant (ID {e(v['id_clover'])}) : seule sa fiche Sage est créée, puis il est relié (Confirmé).</p>"
+                if existant else "")
+             + f"<div class='colonnes'>{clover_cadre}{sage_cadre}</div>"
+             + "<div class='barre-onglet'><button class='second' name='action' value='Proposer'>Proposer le n° Sage"
+               "</button><a class='ouvrir a-droite' href='/correspondance'>✖ Fermer</a><button name='action' "
+               "value='Créer'>🆕 Créer l'article</button></div></form>"
+             + "<div class='ligne-etat'>Un service se crée dans Sage seulement (n° commençant par S) ; « Proposer le n° "
+               "Sage » prend le préfixe de la catégorie.</div>")
     return Reponse(corps=page(ctx, "Créer un article", corps))
 
 
@@ -351,15 +535,20 @@ def inventaire(ctx: Contexte) -> Reponse:
             return taches.lancer(ctx, "Saisie de l'inventaire compté", saisir, "/inventaire", sage=True)
     fichiers = sorted(dossier.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True) if dossier.exists() else []
     lignes = [[f"<a href='/inventaire-fichier?f={e(p.name)}'>{e(p.name)}</a>",
-               datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M")] for p in fichiers[:30]]
-    corps = (f"<form method='post' class='boutons'>{csrf(ctx)}<button name='action' value='Préparer'>Préparer le fichier "
-             "d'inventaire</button></form>"
-             + f"<form method='post' enctype='multipart/form-data' class='ligne'>{csrf(ctx)}<div><label>Fichier compté "
-               "(colonne jaune « Quantité comptée » remplie)</label><input type='file' name='fichier' accept='.xlsx' "
-               "required></div><button name='action' value='Saisir'>Saisir dans Clover et Sage</button></form>"
-             + "<h2>Fichiers</h2>" + tableau(["Fichier", "Date"], lignes)
-             + "<p class='note'>Clover = quantité comptée de chaque ligne ; Sage = somme des lignes de son n°. Sage "
-               "doit être fermé sur le serveur ou ouvert sur le fichier configuré.</p>")
+               datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+               f"{p.stat().st_size / 1024:.0f} Ko"] for p in fichiers[:30]]
+    corps = ("<div class='texte-fixe'>1. Exportez l'inventaire : un fichier Excel avec, pour chaque article, code et "
+             "description Clover et Sage, quantité Clover, quantité Sage et l'écart.\n2. Comptez, puis inscrivez les "
+             "quantités dans la colonne jaune « Quantité comptée » (laissez vide les articles non comptés).\n3. « Saisir "
+             "l'inventaire compté » : le stock Clover et le stock Sage deviennent la quantité comptée ; un rapport donne "
+             "le coût de l'ajustement.</div>"
+             + f"<form method='post' enctype='multipart/form-data' class='barre-onglet'>{csrf(ctx)}<button "
+               "name='action' value='Préparer'>⬇ Exporter l'inventaire</button><input type='file' name='fichier' "
+               "accept='.xlsx'><button class='accent' name='action' value='Saisir'>📦 Saisir l'inventaire compté…"
+               "</button></form>"
+             + tableau_section(Section("Dossier", ["Fichier", "Date", "Taille"], lignes, html={0}))
+             + "<div class='ligne-etat'>Clover = quantité comptée de chaque ligne ; Sage = somme des lignes de son n°. "
+               "Sage doit être fermé sur le serveur ou ouvert sur le fichier configuré.</div>")
     return Reponse(corps=page(ctx, "Inventaire Clover et Sage", corps))
 
 
@@ -386,75 +575,170 @@ def inventaire_tournant(ctx: Contexte) -> Reponse:
 
         return taches.lancer(ctx, "Feuille de l'inventaire tournant", feuille, "/inventaire")
     semaines = int(ctx.config.get("inventaire", {}).get("semaines_cycle", 8))
-    corps = (f"<p>Semaine {p3.semaine_du_cycle(date.today(), semaines) + 1} sur {semaines} du cycle : les catégories "
-             "Clover sont comptées tour à tour, une partie chaque semaine.</p>"
-             f"<form method='post' class='boutons'>{csrf(ctx)}<button>Préparer la feuille de la semaine</button></form>"
-             "<p class='note'>La feuille remplie se saisit dans « Stock > Inventaire Clover et Sage ».</p>")
+    from ..cache_lectures import inventaire_clover
+
+    try:
+        articles = inventaire_clover(ctx.racine)
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — tableau vide avec ses colonnes
+        ctx.app.noter(f"Inventaire tournant : {erreur!r}")
+        ctx.absents.add("Clover")
+        articles = []
+    categories = [((a.get("categories") or {}).get("elements") or [{}])[0].get("name", "") for a in articles]
+    plan = p3.plan_tournant(categories, semaines) if articles else [[] for _ in range(semaines)]
+    actuelle = p3.semaine_du_cycle(date.today(), semaines)
+    lignes = [[("▶ " if i_ == actuelle else "") + str(i_ + 1), ", ".join(c)] for i_, c in enumerate(plan)]
+    corps = (f"<form method='post' class='barre-onglet'>{csrf(ctx)}<button>📋 Feuille de comptage de la semaine"
+             "</button></form><p class='note'>Chaque semaine, on compte quelques catégories ; toutes le sont une fois "
+             f"par cycle ([inventaire] semaines_cycle, {semaines}). La feuille remplie se saisit dans Stock > Inventaire "
+             "Clover et Sage (« Saisir »).</p>"
+             + tableau_section(Section("Plan du cycle", ["Semaine du cycle", "Catégories à compter"], lignes,
+                                       classes=["etat-applique" if i_ == actuelle else "" for i_ in range(len(plan))])))
     return Reponse(corps=page(ctx, "Inventaire tournant", corps))
 
 
 # --------------------------------------------------------------------------------------------- transferts
 def transferts(ctx: Contexte) -> Reponse:
+    """Comme fenetre_transferts.FenetreTransferts : explication, « ➕ Nouveau transfert », « 🗑 Supprimer », liste des
+    transferts (gris : terminé, rose : à compléter) ; cadre « Transfert » : n°, date, de, vers, note ; article Sage +
+    quantité, « ➕ Ajouter la ligne », « 🗑 Retirer la ligne » ; lignes avec le stock Sage au départ et à l'arrivée
+    (jaune : stock insuffisant) ; « 💾 Enregistrer », « ▶ Transférer (Sage puis Clover) »."""
     from .. import transferts as tr
     from ..points_vente import points_de_vente
+    from .consultations import lire_ou_vide
+    from .pages_fournisseurs import _listes
     from . import taches
 
-    points = {str(p.code): p for p in points_de_vente(ctx.config, actifs=True)}
-    message = ""
+    points = {str(x.code): x for x in points_de_vente(ctx.config, actifs=True)}
+    registre = tr.Registre(ctx.racine)
+    _noms, articles = _listes(ctx.racine)
+    par_cle = {f"{a.numero} — {a.description}": a for a in articles}
+    numero = ctx.req.champ("numero") or ctx.req.query.get("numero", "")
+    courant = registre.trouver(numero) if numero else None
+    message, etat = "", ""
+    # lignes du formulaire : reprises du formulaire envoyé, sinon du transfert choisi
+    if ctx.req.methode == "POST":
+        lignes = []
+        for n, d, q in zip(ctx.req.champs("lid"), ctx.req.champs("ldesc"), ctx.req.champs("lq")):
+            try:
+                lignes.append(tr.LigneTransfert(n, d, Decimal(q)))
+            except InvalidOperation:
+                pass
+        v = {k: ctx.req.champ(k) for k in ("jour", "de", "vers", "note")}
+    else:
+        lignes = list(courant.lignes) if courant else []
+        codes = list(points)
+        v = {"jour": courant.jour if courant else date.today().isoformat(),
+             "de": courant.de if courant else (codes[0] if codes else ""),
+             "vers": courant.vers if courant else (codes[1] if len(codes) > 1 else ""),
+             "note": courant.note if courant else ""}
+    if not numero:
+        numero = registre.nouveau_numero()
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
         try:
-            if action == "Créer":
-                lignes = [tr.LigneTransfert(n.strip(), d.strip(), Decimal(q.replace(",", ".")))
-                          for n, d, q in zip(ctx.req.champs("article"), ctx.req.champs("description"),
-                                             ctx.req.champs("quantite")) if n.strip() and q.strip()]
+            if action == "Ajouter la ligne":
+                a = par_cle.get(ctx.req.champ("article").strip())
+                q = Decimal(ctx.req.champ("quantite").replace(",", ".").strip() or "0")
+                if a is None:
+                    raise ValueError("Choisissez l'article Sage dans la liste.")
+                if q <= 0:
+                    raise ValueError("Quantité invalide.")
+                lignes.append(tr.LigneTransfert(a.numero, a.description, q))
+            elif action == "Retirer la ligne":
+                rang = ctx.req.champ("rang")
+                if rang.isdigit() and int(rang) < len(lignes):
+                    del lignes[int(rang)]
+            elif action in ("Enregistrer", "Transférer"):
                 with ctx.app.ecriture:
-                    registre = tr.Registre(ctx.racine)
-                    t = tr.Transfert(registre.nouveau_numero(), ctx.req.champ("jour"), ctx.req.champ("de"),
-                                     ctx.req.champ("vers"), lignes, ctx.req.champ("note"))
-                    problemes = t.problemes(points)
-                    if problemes:
-                        raise ValueError("À corriger : " + " ; ".join(problemes))
-                    registre.garder(t)
-                message = _message(f"Transfert {t.numero} créé : « Transférer » pour le passer dans Sage et Clover.")
-            elif action == "Transférer":
-                numero = ctx.req.champ("numero")
+                    reg = tr.Registre(ctx.racine)
+                    t_ = reg.trouver(numero) or tr.Transfert(numero, v["jour"], v["de"], v["vers"])
+                    if t_.etat != tr.BROUILLON and action == "Enregistrer":
+                        raise ValueError(f"{t_.numero} est déjà passé ({t_.etat}) : il ne se modifie plus.")
+                    if t_.etat == tr.BROUILLON:
+                        t_.jour, t_.de, t_.vers, t_.note, t_.lignes = v["jour"], v["de"], v["vers"], v["note"], lignes
+                        problemes = t_.problemes(points)
+                        if problemes:
+                            raise ValueError("À corriger : " + " ; ".join(problemes))
+                        reg.garder(t_)
+                if action == "Transférer":
+                    def transferer(journal):
+                        fait = tr.transferer(ctx.racine, ctx.config, numero, journal)
+                        return [f"{fait.numero} : {fait.etat}"] + fait.messages
 
-                def transferer(journal):
-                    t = tr.transferer(ctx.racine, ctx.config, numero, journal)
-                    return [f"{t.numero} : {t.etat}"] + t.messages
-
-                return taches.lancer(ctx, f"Transfert {numero}", transferer, "/transferts", sage=True)
+                    return taches.lancer(ctx, f"Transfert {numero}", transferer, f"/transferts?numero={numero}",
+                                         sage=True)
+                message = _message(f"✔ {numero} enregistré.")
             elif action == "Supprimer":
                 if not action_permise(ctx, "Supprimer"):
                     raise ValueError("Votre profil n'a pas le droit « Supprimer ».")
                 with ctx.app.ecriture:
-                    tr.Registre(ctx.racine).supprimer(ctx.req.champ("numero"))
+                    tr.Registre(ctx.racine).supprimer(ctx.req.champ("choisi") or numero)
                 message = _message("Transfert supprimé.")
+                numero, lignes = tr.Registre(ctx.racine).nouveau_numero(), []
         except (ValueError, InvalidOperation) as erreur:
             message = _message(erreur=str(erreur) or "Quantité invalide.")
-    registre = tr.Registre(ctx.racine)
-    lignes = []
-    for t in sorted(registre.transferts, key=lambda t: t.jour, reverse=True):
-        boutons = (f"<form method='post' class='ligne'>{csrf(ctx)}<input type='hidden' name='numero' value='{e(t.numero)}'>"
-                   + ("<button name='action' value='Transférer'>Transférer</button>" if t.etat != "Terminé" else "")
-                   + ("<button class='second' name='action' value='Supprimer'>Supprimer</button>"
-                      if t.etat == tr.BROUILLON else "") + "</form>")
-        lignes.append([e(t.numero), e(t.jour), e(points[t.de].libelle if t.de in points else t.de),
-                       e(points[t.vers].libelle if t.vers in points else t.vers), e(f"{t.total_quantite:g}"), e(t.etat),
-                       boutons])
-    options = "".join(f"<option value='{e(c)}'>{e(p.libelle)}</option>" for c, p in points.items())
-    rangees = "".join("<tr><td><input name='article' size='12'></td><td><input name='description' size='30'></td>"
-                      "<td><input name='quantite' size='6'></td></tr>" for _ in range(8))
-    corps = (message + tableau(["N°", "Date", "De", "Vers", "Quantité", "État", ""], lignes, {4})
-             + (f"<form method='post' class='carte'>{csrf(ctx)}<h2>Nouveau transfert</h2><div class='ligne'><div><label>"
-                f"Date</label><input type='date' name='jour' value='{date.today()}'></div><div><label>De</label><select "
-                f"name='de'>{options}</select></div><div><label>Vers</label><select name='vers'>{options}</select></div>"
-                "<div><label>Note</label><input name='note' size='30'></div></div><div class='defile'><table><tr><th>"
-                f"N° Sage</th><th>Description</th><th>Quantité</th></tr>{rangees}</table></div><div class='boutons'>"
-                "<button name='action' value='Créer'>Créer le transfert</button></div></form>" if len(points) > 1 else
-                "<p class='note'>Un seul point de vente actif : les transferts demandent au moins deux points de vente "
-                "(Administration > Clover).</p>"))
+        registre = tr.Registre(ctx.racine)
+    # stocks Sage de chaque ligne, au départ et à l'arrivée
+    stocks = {}
+    if lignes:
+        stocks = lire_ou_vide(ctx, lambda b: tr.stocks_par_depot(b, [l.numero for l in lignes]))
+    depot_de = points[v["de"]].depot_sage if v["de"] in points else ""
+    depot_vers = points[v["vers"]].depot_sage if v["vers"] in points else ""
+
+    def stock(n, depot):
+        q = (stocks.get(n) or {}).get(depot or "Primary location for all")
+        return q
+
+    rangees, classes = [], []
+    for k, l in enumerate(lignes):
+        q_de, q_vers = stock(l.numero, depot_de), stock(l.numero, depot_vers)
+        rangees.append([f"<input type='radio' name='rang' value='{k}'>", e(l.numero), e(l.description),
+                        f"{l.quantite.normalize():f}".replace(".", ","),
+                        "" if q_de is None else f"{q_de.normalize():f}".replace(".", ","),
+                        "" if q_vers is None else f"{q_vers.normalize():f}".replace(".", ",")])
+        classes.append("etat-a-saisir" if q_de is not None and q_de < l.quantite else "")
+    liste, couleurs = [], []
+    for t_ in sorted(registre.transferts, key=lambda x: (x.jour, x.numero), reverse=True):
+        nom = {c: x.nom for c, x in points.items()}
+        liste.append([f"<input type='radio' name='choisi' value='{e(t_.numero)}'{' checked' if t_.numero == numero else ''}>",
+                      f"<a href='/transferts?numero={e(t_.numero)}'>{e(t_.numero)}</a>", e(t_.jour),
+                      e(f"{t_.de} — {nom.get(t_.de, '?')}"), e(f"{t_.vers} — {nom.get(t_.vers, '?')}"),
+                      str(len(t_.lignes)), f"{t_.total_quantite.normalize():f}".replace(".", ","), e(t_.etat),
+                      e(" ; ".join(t_.messages))])
+        couleurs.append("termine" if t_.etat == tr.TERMINE else ("etat-ecart" if t_.etat == tr.A_COMPLETER else ""))
+    options = {k: "".join(f"<option value='{e(c)}'{' selected' if c == v[k] else ''}>{e(x.libelle)}</option>"
+                          for c, x in points.items()) for k in ("de", "vers")}
+    caches = "".join(f"<input type='hidden' name='lid' value='{e(l.numero)}'><input type='hidden' name='ldesc' "
+                     f"value='{e(l.description)}'><input type='hidden' name='lq' value='{l.quantite}'>" for l in lignes)
+    liste_a = "<datalist id='articles-sage'>" + "".join(f"<option value='{e(k)}'>" for k in par_cle) + "</datalist>"
+    if len(points) < 2:
+        etat = ("Il faut au moins deux points de vente actifs (« Administration > Clover », carte « Points de vente »), "
+                "chacun avec son dépôt Sage.")
+    corps = (message + "<p class='note'>Des articles passent d'un point de vente à l'autre : dans Sage, transfert entre "
+             "les deux dépôts (même valeur, sans vente) ; dans Clover, stock diminué au départ et augmenté à l'arrivée. "
+             "Sage d'abord (vérifié), Clover ensuite ; un transfert n'est jamais fait deux fois.</p>"
+             + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><a class='ouvrir' href='/transferts'>➕ "
+               "Nouveau transfert</a><button class='second' name='action' value='Supprimer'>🗑 Supprimer</button></div>"
+             + tableau_section(Section("Transferts", ["", "N°", "Date", "De", "Vers", "Articles", "Quantité", "État",
+                                                     "Remarques"], liste, classes=couleurs, html=set(range(9))))
+             + "</form>"
+             + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='numero' value='{e(numero)}'>{caches}"
+               f"<fieldset class='groupe'><legend>Transfert</legend><div class='barre-onglet'><strong class='periode'>"
+               f"{e(numero)}</strong><div><label>Date</label><input type='date' name='jour' value='{e(v['jour'])}'>"
+               f"</div><div><label>De</label><select name='de'>{options['de']}</select></div><div><label>Vers</label>"
+               f"<select name='vers'>{options['vers']}</select></div><div><label>Note</label><input name='note' "
+               f"value='{e(v['note'])}' size='30'></div></div><div class='barre-onglet'><div class='large'><label>"
+               f"Article Sage</label><input name='article' list='articles-sage' size='44'>{liste_a}</div><div><label>"
+               "Quantité</label><input name='quantite' size='9'></div><button class='second' name='action' "
+               "value='Ajouter la ligne'>➕ Ajouter la ligne</button><button class='second' name='action' "
+               "value='Retirer la ligne'>🗑 Retirer la ligne</button></div>"
+             + tableau_section(Section("Lignes du transfert", ["", "N° Sage", "Description", "Quantité",
+                                                              "Stock Sage au départ", "Stock Sage à l'arrivée"],
+                                       rangees, classes=classes, html=set(range(6))))
+             + "<div class='barre-onglet'><button class='second' name='action' value='Enregistrer'>💾 Enregistrer"
+               "</button><button name='action' value='Transférer'>▶ Transférer (Sage puis Clover)</button></div>"
+               "</fieldset></form>"
+             + (f"<div class='ligne-etat erreur-texte'>{e(etat)}</div>" if etat else ""))
     return Reponse(corps=page(ctx, "Transferts entre magasins", corps))
 
 

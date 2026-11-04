@@ -6,6 +6,8 @@ Mêmes règles : jamais de paie dans le futur, jamais deux fois la même paie, u
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 import tempfile
 from datetime import date, timedelta
 from pathlib import Path
@@ -311,22 +313,25 @@ def fin_emploi(ctx: Contexte) -> Reponse:
                 except (Exception, SystemExit):  # noqa: BLE001 — Sage absent : heures seulement
                     pass
             lignes, sous = fe.preparation_re(registre, employe, paies, dernier, ctx.req.query.get("code", "A"))
-            resultat = sections_html([Section(f"Préparation du relevé d'emploi : {sous}", ["", ""], lignes)])
+            resultat = sections_html([Section(f"Préparation du relevé d'emploi : {sous}", ["Rubrique", "Valeur"],
+                                              lignes)])
         except ValueError:
             message = _message(erreur="Dernier jour au format AAAA-MM-JJ.")
     options = "".join(f"<option value='{e(x.id)}'{' selected' if employe and x.id == employe.id else ''}>{e(x.nom)}"
                       "</option>" for x in employes)
     codes = "".join(f"<option value='{e(c)}'>{e(c)} — {e(t)}</option>" for c, t in fe.MOTIFS_RE.items())
-    corps = (message + f"<form class='ligne' method='get'><div><label>Employé</label><select name='employe'>{options}"
-             f"</select></div><div><label>Dernier jour travaillé</label><input type='date' name='dernier' "
-             f"value='{date.today()}'></div><div><label>Motif</label><select name='code'>{codes}</select></div><button>"
-             "Préparer le relevé d'emploi</button></form>" + resultat
-             + (f"<form method='post' class='boutons'>{csrf(ctx)}<input type='hidden' name='employe' "
-                f"value='{e(employe.id)}'><button class='second' name='action' value='Désactiver'>Désactiver "
-                f"{e(employe.nom)}</button></form>" if employe and employe.actif else "")
-             + "<p class='note'>Le RE lui-même se produit dans Sage Paie ou sur le site de Service Canada (RE Web) ; "
-               "cette page en prépare les chiffres (heures assurables des 53 semaines, rémunération des 27 dernières "
-               "paies).</p>")
+    corps = (message + f"<form class='barre-onglet' method='get'><div><label>Employé *</label><select "
+             f"name='employe'>{options}</select></div><div><label>Dernier jour travaillé</label><input type='date' "
+             f"name='dernier' value='{e(ctx.req.query.get('dernier') or date.today().isoformat())}'></div><div><label>"
+             f"Motif</label><select name='code'>{codes}</select></div><button>🔍 Préparer le relevé d'emploi</button>"
+             "</form>"
+             + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='employe' "
+               f"value='{e(employe.id if employe else '')}'>"
+             + (f"<a class='ouvrir' href='?{e(urlencode(ctx.req.query))}"
+                "&amp;exporter=0&amp;format=imprimer' target='_blank'>🖨 Imprimer</a>" if resultat else "")
+             + "<button class='danger' name='action' value='Désactiver'>⏻ Désactiver l'employé (poste de pointage)"
+               "</button></form><p class='note'>Le RE se produit dans RE Web de Service Canada (ou par Sage) dans les "
+               "5 jours ; l'application en prépare les données.</p>" + resultat)
     return Reponse(corps=page(ctx, "Fin d'emploi et relevé d'emploi", corps))
 
 
