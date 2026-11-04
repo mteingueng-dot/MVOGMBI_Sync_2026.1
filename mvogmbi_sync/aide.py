@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.11"
+VERSION = "2.4.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -707,6 +707,17 @@ FAQ = {
         ("reponse", "Oui : la nuit, les factures lues et « Prête à importer » sont importées dans Sage, avec le stock "
                     "Clover. Les autres attendent votre vérification. Pour arrêter l'import de nuit : [factures_courriel] "
                     "import_nuit = false dans config.toml."),
+        ("question", "Peut-on utiliser MVOGMBI_Sync depuis un téléphone ou un autre ordinateur ?"),
+        ("reponse", "Oui, par l'application web (version 1.1.0) : le serveur (SERVDC01) la sert aux appareils reliés à "
+                    "Tailscale, dans un navigateur sur PC, Android ou iPhone, avec le même nom et le même mot de passe. "
+                    "Même affichage et mêmes fonctions que l'application Windows (version 2.0.0) : les 76 "
+                    "entrées du menu, selon le profil. Les saisies dans Sage se font sur le serveur (l'application "
+                    "y ouvre Sage elle-même) ; le travail se suit sur une page qui se met à jour seule. Le bouton "
+                    "« Application complète (Bureau à distance) » du client reste disponible. Sur le serveur : "
+                    "MVOGMBI_Sync_Serveur.exe, mis en service par installer_web.ps1 (lancé par le propriétaire). Sur "
+                    "chaque poste : copiez MVOGMBI_Sync_Client.exe (dossier « client » de l'application) et lancez-le ; "
+                    "la première fois, tapez marchemvogmbi.com, puis ouvre l'application dans sa fenêtre. Les autres fonctions arrivent par "
+                    "étapes et restent dans l'application Windows."),
     ],
     "en": [
         ("titre", "Help / Frequently asked questions"),
@@ -1263,6 +1274,16 @@ FAQ = {
         ("reponse", "Yes: at night, invoices read and “Ready to import” are imported into Sage, with the Clover stock. "
                     "The others wait for your review. To stop the night import: [factures_courriel] import_nuit = "
                     "false in config.toml."),
+        ("question", "Can MVOGMBI_Sync be used from a phone or another computer?"),
+        ("reponse", "Yes, through the web application (version 1.1.0): the server (SERVDC01) serves it to devices on "
+                    "Tailscale, in a browser on PC, Android or iPhone, with the same name and password. Each person "
+                    "gets the same display and functions as the Windows application (version 2.0.0): all 76 menu "
+                    "entries, according to their profile. Sage entries run on the server (the application opens "
+                    "Sage itself) and are followed on a page that updates by itself. The client's “Full "
+                    "application (Remote Desktop)” button is still available. On the server: "
+                    "MVOGMBI_Sync_Serveur.exe, set up by installer_web.ps1 (run by the owner). On each computer: copy "
+                    "MVOGMBI_Sync_Client.exe (the application's “client” folder) and run it; the first time, type "
+                    "marchemvogmbi.com; it then opens the application in its own window. "),
     ],
 }
 

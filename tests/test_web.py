@@ -1,0 +1,606 @@
+"""Application web : connexion, droits par profil, sécurité des formulaires, pointage, feuilles de temps."""
+
+import http.cookiejar
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+import pytest
+
+from mvogmbi_sync import paie_temps as pt
+from mvogmbi_sync import planning as pl
+from mvogmbi_sync.utilisateurs import Registre
+from mvogmbi_sync.web import serveur
+
+
+class SansRedirection(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+@pytest.fixture
+def site(tmp_path):
+    Registre._blocages.clear()  # un autre test bloque « Patron » (dernier administrateur) pour 15 min
+    (tmp_path / "config.toml").write_text("[web]\npostes_pointage = ['127.0.0.1']\n", encoding="utf-8")
+    reg = Registre(tmp_path)
+    reg.ajouter("Patron", "Administrateur", "secret123")
+    reg.ajouter("Awa", "Employé", "secret456")
+    reg.enregistrer()
+    registre = pt.Registre(tmp_path)
+    awa = registre.ajouter("Awa Mballa")
+    awa.compte = "Awa"
+    registre.definir_nip(awa.id, "1234")
+    registre.enregistrer()
+    planning = pl.Planning(tmp_path)
+    planning.definir(awa.id, [date.today()], pl.Quart("08:00", "16:00", 30))
+    planning.publier(f"{date.today():%Y-%m}")
+    planning.enregistrer()
+    srv = serveur.creer_serveur(tmp_path, "127.0.0.1", 0)
+    fil = threading.Thread(target=srv.serve_forever, daemon=True)
+    fil.start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", srv, awa
+    srv.shutdown()
+    srv.server_close()
+
+
+def navigateur():
+    jar = http.cookiejar.CookieJar()
+    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), SansRedirection), jar
+
+
+def ouvrir(nav, url, donnees=None, entetes=None):
+    corps = urllib.parse.urlencode(donnees, doseq=True).encode() if donnees is not None else None
+    req = urllib.request.Request(url, data=corps, headers=entetes or {})
+    try:
+        with nav.open(req) as r:
+            return r.status, r.read().decode("utf-8"), dict(r.headers)
+    except urllib.error.HTTPError as erreur:
+        return erreur.code, erreur.read().decode("utf-8"), dict(erreur.headers)
+
+
+def connecter(base, nom, mdp):
+    nav, jar = navigateur()
+    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": nom, "mot_de_passe": mdp})
+    assert statut == 303 and entetes["Location"] == "/"
+    return nav
+
+
+def jeton_csrf(page: str) -> str:
+    return page.split("name='csrf' value='")[1].split("'")[0]
+
+
+def test_connexion_et_securite(site):
+    base, srv, _ = site
+    nav, _ = navigateur()
+    statut, _, entetes = ouvrir(nav, base + "/")
+    assert statut == 303 and entetes["Location"] == "/connexion"
+    statut, page, entetes = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": "faux"})
+    assert "incorrect" in page
+    assert "script-src" not in entetes["Content-Security-Policy"] and "frame-ancestors 'none'" in \
+        entetes["Content-Security-Policy"]
+    nav = connecter(base, "Patron", "secret123")
+    statut, page, _ = ouvrir(nav, base + "/")
+    assert statut == 200 and "Feuilles de temps" in page and "Statistiques Clover" in page
+    # formulaire sans jeton anti-falsification, puis venu d'un autre site
+    assert ouvrir(nav, base + "/feuilles", {"debut": "2026-10-18"})[0] == 403
+    statut, page, _ = ouvrir(nav, base + "/feuilles")
+    donnees = {"csrf": jeton_csrf(page), "debut": "2026-10-18"}
+    assert ouvrir(nav, base + "/feuilles", donnees, {"Origin": "https://exemple.com"})[0] == 403
+    assert ouvrir(nav, base + "/feuilles", donnees)[0] == 200
+    # session fermée après l'inactivité
+    srv.app.sessions.inactivite = 0
+    time.sleep(0.01)
+    assert ouvrir(nav, base + "/")[0] == 303
+
+
+def test_profil_employe_limite(site):
+    base, _, awa = site
+    nav = connecter(base, "Awa", "secret456")
+    statut, page, _ = ouvrir(nav, base + "/")
+    assert "Mon horaire" in page and "Feuilles de temps" not in page
+    assert ouvrir(nav, base + "/feuilles")[0] == 403
+    statut, page, _ = ouvrir(nav, base + "/horaire")
+    assert statut == 200 and "08:00 – 16:00" in page and "30 min" in page
+    statut, page, _ = ouvrir(nav, base + "/horaire?employe=autre")
+    assert "08:00" in page  # un employé ne voit que lui-même
+    assert ouvrir(nav, base + "/mes-heures")[0] == 200
+
+
+def test_pointage_et_approbation(site, tmp_path):
+    base, srv, awa = site
+    nav = connecter(base, "Awa", "secret456")
+    _, page, _ = ouvrir(nav, base + "/pointage")
+    csrf = jeton_csrf(page)
+    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "employe": awa.id, "nip": "9999", "action": "Arrivée"})
+    assert "NIP incorrect" in page
+    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "employe": awa.id, "nip": "1234", "action": "Départ"})
+    assert "pas possible" in page
+    _, page, _ = ouvrir(nav, base + "/pointage", {"csrf": csrf, "employe": awa.id, "nip": "1234", "action": "Arrivée"})
+    assert "Arrivée à" in page
+    assert pt.Registre(tmp_path).etat_actuel(awa.id) == pt.ARRIVEE
+    # pointage refusé depuis un appareil hors du magasin
+    srv.app.config["web"]["postes_pointage"] = ["10.0.0."]
+    _, page, _ = ouvrir(nav, base + "/pointage")
+    assert "poste du magasin" in page
+
+    # feuille d'une période passée : approuvée par le patron
+    registre = pt.Registre(tmp_path)
+    debut = pt.debut_periode(date.today()) - timedelta(days=pt.JOURS_PERIODE)
+    jour = datetime.combine(debut + timedelta(days=1), datetime.min.time())
+    registre.corriger(awa.id, pt.ARRIVEE, jour.replace(hour=8), "Patron", "essai")
+    registre.corriger(awa.id, pt.DEPART, jour.replace(hour=16), "Patron", "essai")
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + f"/feuilles?debut={debut}")
+    assert "Awa Mballa" in page and "8,00" in page
+    _, page, _ = ouvrir(patron, base + "/feuilles", {"csrf": jeton_csrf(page), "debut": str(debut),
+                                                     "approuver": awa.id, "action": "Approuver"})
+    assert "1 feuille(s) approuvée(s)" in page
+    assert pt.feuille(pt.Registre(tmp_path), awa, debut).etat == pt.APPROUVEE
+
+
+def test_trop_d_essais_depuis_une_adresse(site):
+    base, _, _ = site
+    nav, _ = navigateur()
+    for _ in range(serveur.ECHECS_ADRESSE):
+        ouvrir(nav, base + "/connexion", {"nom": "Inconnu", "mot_de_passe": "x"})
+    _, page, _ = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": "secret123"})
+    assert "Trop d&#x27;essais" in page
+
+
+def test_client_des_postes(site, tmp_path, monkeypatch):
+    from mvogmbi_sync.web import client
+
+    base, _, _ = site
+    assert client.normaliser("100.69.84.52") == "http://100.69.84.52:8765"
+    assert client.normaliser(" http://serveur:9000/ ") == "http://serveur:9000"
+    assert client.normaliser("https://serveur") == "https://serveur"
+    for nom in ("marchemvogmbi.com", " www.MarcheMvogmbi.com/ ", "http://marchemvogmbi.com"):
+        assert client.adresse_serveur(nom) == "http://100.69.84.52:8765"
+    assert client.adresse_serveur("100.69.84.52") == "http://100.69.84.52:8765"
+    for mauvaise in ("", "ftp://x", "http://x/page"):
+        with pytest.raises(ValueError):
+            client.normaliser(mauvaise)
+    assert client.verifier(base) == ""                       # le serveur MVOGMBI_Sync répond
+    assert "ne répond pas" in client.verifier("http://127.0.0.1:1", delai=1)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    assert client.lire_reglages() == {}
+    client.ecrire_reglages({"adresse": base})
+    assert client.lire_reglages() == {"adresse": base}
+
+
+def test_pages_paie_du_gerant(site, tmp_path):
+    from mvogmbi_sync import conges as co
+
+    base, _, awa = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/")
+    assert "Planning mensuel" in page and "Employés et NIP" in page and "Jours fériés et congés" in page
+    mois = f"{date.today():%Y-%m}"
+    _, page, _ = ouvrir(patron, base + f"/planning?employe={awa.id}&mois={mois}")
+    csrf = jeton_csrf(page)
+    lundi = date.today().replace(day=1)
+    _, page, _ = ouvrir(patron, base + f"/planning?employe={awa.id}", {
+        "csrf": csrf, "mois": mois, "du": str(lundi), "au": str(lundi + timedelta(days=6)), "debut": "9",
+        "fin": "17:00", "pause": "60", "jours": ["0"], "employe": [awa.id], "action": "Définir"})
+    assert "jour(s) mis à jour pour 1 employé(s)" in page and "09:00-17:00 (60)" in page
+    _, page, _ = ouvrir(patron, base + f"/planning?employe={awa.id}", {"csrf": csrf, "mois": mois,
+                                                                       "action": "Publier le mois"})
+    assert "publié" in page
+    # employés : ajout, NIP, compte relié
+    _, page, _ = ouvrir(patron, base + "/employes")
+    statut, _, entetes = ouvrir(patron, base + "/employes", {"csrf": jeton_csrf(page), "nom": "Ben Ndi",
+                                                             "action": "Ajouter"})
+    assert statut == 303 and entetes["Location"].startswith("/employe?id=")
+    ident = entetes["Location"].split("=")[1]
+    _, page, _ = ouvrir(patron, base + entetes["Location"])
+    _, page, _ = ouvrir(patron, base + "/employe", {"csrf": jeton_csrf(page), "id": ident, "nip": "4321",
+                                                    "action": "Changer le NIP"})
+    assert "Enregistré" in page
+    _, page, _ = ouvrir(patron, base + "/employe", {"csrf": jeton_csrf(page), "id": ident, "nip": "1234",
+                                                    "action": "Changer le NIP"})
+    assert "autre employé" in page  # NIP déjà pris par Awa
+    assert pt.Registre(tmp_path).employe(ident).nip
+    # feuille : correction puis annulation
+    debut = pt.debut_periode(date.today())
+    _, page, _ = ouvrir(patron, base + f"/feuille?employe={awa.id}&debut={debut}")
+    csrf = jeton_csrf(page)
+    _, page, _ = ouvrir(patron, base + "/feuille", {"csrf": csrf, "employe": awa.id, "debut": str(debut),
+                                                    "type": "Arrivée", "jour": str(debut), "heure": "08:00",
+                                                    "motif": "oubli", "action": "Ajouter"})
+    assert "Pointage ajouté" in page and "Correction (Patron : oubli)" in page
+    ajoute = next(p for p in pt.Registre(tmp_path).valides(awa.id) if p.source == "Correction")
+    _, page, _ = ouvrir(patron, base + "/feuille", {"csrf": csrf, "employe": awa.id, "debut": str(debut),
+                                                    "pointage": ajoute.id, "motif": "erreur", "action": "Annuler"})
+    assert "Pointage annulé" in page
+    # congés
+    _, page, _ = ouvrir(patron, base + "/conges")
+    jour = str(date.today() + timedelta(days=3))
+    _, page, _ = ouvrir(patron, base + "/conges", {"csrf": jeton_csrf(page), "employe": awa.id, "type": "Vacances",
+                                                   "du": jour, "au": jour, "heures": "8", "action": "Ajouter"})
+    assert "1 jour(s) de congé" in page
+    assert [c.jour for c in co.Registre(tmp_path).conges] == [jour]
+
+
+def test_paies_web_et_droits(site, monkeypatch):
+    from decimal import Decimal
+
+    from mvogmbi_sync import paie as pa
+    from mvogmbi_sync.web import pages_paie
+
+    base, _, awa = site
+    paie = pa.PaieSage(7, date(date.today().year, 1, 15), "PAY15012026", "Awa Mballa",
+                       gains={"Salaires": Decimal("100")}, net=Decimal("80"))
+    monkeypatch.setattr(pages_paie, "_paies_annee", lambda ctx, annee: [paie])
+    nav = connecter(base, "Awa", "secret456")
+    assert ouvrir(nav, base + "/planning")[0] == 403 and ouvrir(nav, base + "/conges")[0] == 403
+    statut, page, _ = ouvrir(nav, base + "/paies")
+    assert statut == 200 and "80,00 $" in page and "bulletin?employe=" in page
+    statut, page, entetes = ouvrir(nav, base + f"/bulletin?employe={awa.id}&annee={paie.jour.year}&paie=7")
+    assert statut == 200 and "Fiche de paie" in page and "'unsafe-inline'" in entetes["Content-Security-Policy"]
+    assert ouvrir(nav, base + f"/bulletin?employe=autre&annee={paie.jour.year}&paie=7")[0] == 404
+
+
+def test_client_bureau_a_distance(tmp_path, monkeypatch):
+    from mvogmbi_sync.web import client
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    texte = client.fichier_rdp(client.adresse_serveur("marchemvogmbi.com")).read_text(encoding="utf-8")
+    assert "full address:s:100.69.84.52" in texte and "prompt for credentials:i:1" in texte
+
+
+def test_menu_comme_l_application_windows(site):
+    from urllib.parse import quote
+
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/planning")
+    for rubrique in ("Administration", "Articles", "Stock", "Vente", "Fournisseur", "Comptabilité", "RIA", "Paie",
+                     "État"):
+        assert f"&nbsp; {rubrique}</summary>" in page
+    assert "href='/plan-comptable'" in page and "class='actif ' href='/planning'" in page
+    assert "href='/inventaire-tournant'" in page and "Marché MVOG-MBI Sherbrooke" in page
+    _, page, _ = ouvrir(patron, base + "/")
+    assert "Mise en route" in page and "Bienvenue dans MVOGMBI_Sync" in page and "Se déconnecter" in page
+    _, page, _ = ouvrir(patron, base + "/complete?f=" + quote("Plan comptable"))  # renvoi : toujours possible
+    assert "Application complète (Bureau à distance)" in page
+    awa = connecter(base, "Awa", "secret456")
+    _, page, _ = ouvrir(awa, base + "/")
+    assert "Comptabilité</summary>" not in page and "Mon horaire" in page
+    assert ouvrir(awa, base + "/complete?f=" + quote("Plan comptable"))[0] == 403
+    assert ouvrir(awa, base + "/plan-comptable")[0] == 403 and ouvrir(awa, base + "/audit")[0] == 403
+    _, page, _ = ouvrir(awa, base + "/aide?page=faq")
+    assert "class='q'" in page
+
+
+def test_consultations(site):
+    import time as temps
+
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    statut, page, _ = ouvrir(patron, base + "/audit")
+    assert statut == 200 and "Chaîne d&#x27;empreintes intacte" in page and "Patron" in page
+    debut = temps.time()
+    statut, page, _ = ouvrir(patron, base + "/clients")
+    assert statut == 200 and "Sage ne répond pas" in page and temps.time() - debut < 30
+    with urllib.request.urlopen(base + "/logo.png") as r:  # sans connexion (page de connexion)
+        assert r.status == 200 and r.read(4)[1:] == b"PNG"
+
+
+def test_vague_etat(site, tmp_path):
+    from mvogmbi_sync.calendrier_paie import Calendrier
+
+    base, _, _ = site
+    cal = Calendrier(tmp_path)
+    cal.definir(date.today().year, date(date.today().year, 1, 12))
+    cal.enregistrer()
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/calendrier-paie")
+    assert "Calendrier de paie" in page and f"{date.today().year}-01-12" in page
+    statut, page, _ = ouvrir(patron, base + "/main-oeuvre")  # pas de jeton Clover ici : message, pas de coupure
+    assert statut == 200 and "Clover ne répond pas" in page
+    for chemin in ("/archives-fournisseurs", "/comptes-categories"):
+        statut, page, _ = ouvrir(patron, base + chemin)
+        assert statut == 200 and "erreur" not in page.split("<main>")[1][:4000].split("class='note'")[0], chemin
+    _, page, _ = ouvrir(patron, base + "/planning")
+    assert "href='/pareto'" in page and "href='/suivi-ventes'" in page
+
+
+def test_caisse_et_depenses(site, tmp_path, monkeypatch):
+    from mvogmbi_sync import caisse as ca
+    from mvogmbi_sync import depenses as dp
+    from mvogmbi_sync import plan_comptable
+
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    hier = date.today() - timedelta(days=1)
+    statut, page, _ = ouvrir(patron, base + f"/caisse?jour={hier}")
+    assert statut == 200 and "Clover ne répond pas" in page   # pas de jeton ici : comptage possible quand même
+    _, page, _ = ouvrir(patron, base + "/caisse", {"csrf": jeton_csrf(page), "jour": str(hier), "c20": "10",
+                                                   "c5": "2", "fond": "150,00", "action": "Enregistrer"})
+    assert "enregistré" in page
+    c = ca.Registre(tmp_path).comptage(hier)
+    assert c.compte == "210.00" and c.a_deposer == Decimal("60.00")
+    # dépense avec reçu (formulaire multipart)
+    monkeypatch.setattr(plan_comptable, "verifier", lambda *a, **k: None)
+    _, page, _ = ouvrir(patron, base + "/depenses")
+    jeton = jeton_csrf(page)
+    limite = "----MVOGMBI"
+    champs = {"csrf": jeton, "jour": str(hier), "fournisseur": "Quincaillerie", "description": "ampoules",
+              "montant": "11,50 $", "taxe": "GQ", "compte": "5450", "moyen": dp.PETITE_CAISSE, "action": "Ajouter"}
+    corps = b"".join(f"--{limite}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode()
+                     for k, v in champs.items())
+    corps += (f"--{limite}\r\nContent-Disposition: form-data; name=\"recu\"; filename=\"reçu.pdf\"\r\n"
+              f"Content-Type: application/pdf\r\n\r\n").encode() + b"%PDF-1.4 essai\r\n" + f"--{limite}--\r\n".encode()
+    req = urllib.request.Request(base + "/depenses", data=corps,
+                                 headers={"Content-Type": f"multipart/form-data; boundary={limite}"})
+    with patron.open(req) as r:
+        page = r.read().decode("utf-8")
+    assert "DP-0001 ajoutée" in page and "11,50 $" in page
+    d = dp.Registre(tmp_path).depenses[0]
+    assert d.montant == "11.50" and (tmp_path / "donnees" / "recus" / d.recu).read_bytes().startswith(b"%PDF")
+    # saisie dans Sage refusée tant que les comptes manquent (aucun travail lancé)
+    _, page, _ = ouvrir(patron, base + "/depenses", {"csrf": jeton, "action": "Saisir dans Sage"})
+    assert "Comptes Sage à choisir" in page
+
+
+def test_vague_comptabilite(site, tmp_path):
+    from mvogmbi_sync import ria
+
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    for chemin in ("/encaissements", "/paiements-fournisseurs", "/rapprochement", "/etats-ria"):
+        statut, page, _ = ouvrir(patron, base + chemin)
+        assert statut == 200, chemin
+    _, page, _ = ouvrir(patron, base + "/ria")
+    jeton = jeton_csrf(page)
+    _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "jour": "2026-11-02", "genre": ria.ENVOI,
+                                                "montant": "250,00", "description": "envoi", "action": "Ajouter"})
+    assert "RI-0001 ajoutée" in page and "250,00 $" in page
+    _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "action": "Saisir dans Sage"})
+    assert "Comptes à renseigner" in page          # aucun travail sur Sage sans les comptes
+    _, page, _ = ouvrir(patron, base + "/comptes-ria", {"csrf": jeton, "ria": "2410", "commissions": "4090",
+                                                        "especes": "1050", "action": "Enregistrer"})
+    assert "enregistrés" in page and ria.Registre(tmp_path).comptes["ria"] == "2410"
+    _, page, _ = ouvrir(patron, base + "/ria", {"csrf": jeton, "numero": "RI-0001", "action": "Supprimer"})
+    assert "supprimée" in page and not ria.Registre(tmp_path).operations
+    # relevé : seul un PDF est accepté
+    limite = "----X"
+    corps = (f"--{limite}\r\nContent-Disposition: form-data; name=\"csrf\"\r\n\r\n{jeton}\r\n"
+             f"--{limite}\r\nContent-Disposition: form-data; name=\"action\"\r\n\r\nCharger\r\n"
+             f"--{limite}\r\nContent-Disposition: form-data; name=\"releves\"; filename=\"releve.txt\"\r\n\r\n"
+             f"pas un pdf\r\n--{limite}--\r\n").encode()
+    req = urllib.request.Request(base + "/rapprochement", data=corps,
+                                 headers={"Content-Type": f"multipart/form-data; boundary={limite}"})
+    with patron.open(req) as r:
+        assert "relevé de compte Desjardins en PDF" in r.read().decode("utf-8")
+
+
+def test_documents_saisis(site, tmp_path):
+    from mvogmbi_sync import documents as dc
+
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/document/saisie?genre=commande")
+    jeton = jeton_csrf(page)
+    statut, _, entetes = ouvrir(patron, base + "/document/saisie", {
+        "csrf": jeton, "genre": "commande", "n": "", "tiers": "Restaurant Kribi", "jour": "2026-11-02", "depot": "",
+        "remarque": "", "sens": "", "article": ["C0001", ""], "description": ["Plantain", ""], "quantite": ["3", ""],
+        "prix": ["2,50", ""], "taxe": ["", ""], "action": "Enregistrer"})
+    assert statut == 303 and entetes["Location"] == "/document?n=CC-0001"
+    _, page, _ = ouvrir(patron, base + "/document?n=CC-0001")
+    assert "7,50 $" in page and "Facturer la commande" in page
+    statut, _, entetes = ouvrir(patron, base + "/document", {"csrf": jeton, "n": "CC-0001", "action": "Facturer"})
+    assert statut == 303 and entetes["Location"].startswith("/document?n=FV-")
+    registre = dc.Registre(tmp_path)
+    assert registre.document("CC-0001").etat == dc.FACTUREE
+    with patron.open(base + "/document/pdf?n=CC-0001") as r:
+        assert r.read(4) == b"%PDF"
+    facture = entetes["Location"].split("=")[1]
+    statut, _, entetes = ouvrir(patron, base + "/document", {"csrf": jeton, "n": facture, "action": "Supprimer"})
+    assert statut == 303 and dc.Registre(tmp_path).document("CC-0001").etat == dc.OUVERTE
+    awa = connecter(base, "Awa", "secret456")
+    assert ouvrir(awa, base + "/document?n=CC-0001")[0] == 403
+
+
+def test_factures_fournisseurs_web(site, tmp_path):
+    from mvogmbi_sync import fournisseurs as fo
+
+    base, srv, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs")
+    jeton = jeton_csrf(page)
+    limite = "----F"
+    corps = (f"--{limite}\r\nContent-Disposition: form-data; name=\"csrf\"\r\n\r\n{jeton}\r\n"
+             f"--{limite}\r\nContent-Disposition: form-data; name=\"action\"\r\n\r\nEnvoyer\r\n"
+             f"--{limite}\r\nContent-Disposition: form-data; name=\"facture\"; filename=\"facture.pdf\"\r\n\r\n"
+             f"%PDF-1.4 illisible\r\n--{limite}--\r\n").encode()
+    req = urllib.request.Request(base + "/factures-fournisseurs", data=corps,
+                                 headers={"Content-Type": f"multipart/form-data; boundary={limite}"})
+    try:
+        patron.open(req)
+    except urllib.error.HTTPError as reponse:  # redirection vers le travail (non suivie par le navigateur d'essai)
+        assert reponse.code == 303 and reponse.headers["Location"].startswith("/tache?id=")
+    for _ in range(100):
+        if fo.Registre(tmp_path).factures:
+            break
+        time.sleep(0.1)
+    f = fo.Registre(tmp_path).factures[0]
+    assert f.etat == fo.A_SAISIR
+    _, page, _ = ouvrir(patron, base + "/facture-fournisseur?i=0", {
+        "csrf": jeton, "i": "0", "fournisseur": "Grossiste Afro", "numero": "F-77", "date": "2026-11-01",
+        "sous_total": "20", "tps": "0", "tvq": "0", "total": "20", "description": ["Plantain caisse", ""],
+        "code": ["", ""], "quantite": ["2", ""], "prix": ["10", ""], "facteur": ["12", ""], "taxe": ["", ""],
+        "article": ["B0000190", ""], "confirme": ["0"], "action": "Enregistrer"})
+    f = fo.Registre(tmp_path).factures[0]
+    assert f.etat == fo.PRETE and f.lignes[0].montant == Decimal("20.00") and f.lignes[0].en_sage()[0] == 24
+    assert "Facture enregistrée" in page
+
+
+def test_achats_web(site, tmp_path):
+    from mvogmbi_sync import fournisseurs as fo
+    from mvogmbi_sync import retours as rt
+
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/saisir-facture-achat")
+    jeton = jeton_csrf(page)
+    statut, _, entetes = ouvrir(patron, base + "/saisir-facture-achat", {
+        "csrf": jeton, "fournisseur": "Grossiste Afro", "numero": "A-12", "date": "2026-11-02"})
+    assert statut == 303 and entetes["Location"] == "/facture-fournisseur?i=0"
+    assert fo.Registre(tmp_path).factures[0].modele == "Saisie manuelle"
+    assert ouvrir(patron, base + "/bons-commande")[0] == 200
+    _, page, _ = ouvrir(patron, base + "/retours", {
+        "csrf": jeton, "fournisseur": "Grossiste Afro", "facture": "A-12", "jour": "2026-11-03", "motif": "abîmé",
+        "article": ["B0000190", ""], "description": ["Plantain", ""], "quantite": ["2", ""], "prix": ["1,25", ""],
+        "taxe": ["", ""], "action": "Créer le retour"})
+    assert "Retour R-A-12 créé" in page and "-2,50 $" in page
+    assert rt.Registre(tmp_path).retours[0].lignes[0].quantite == "2"
+
+
+def test_articles_web(site, tmp_path, monkeypatch):
+    from mvogmbi_sync import cache_lectures, paquet3 as p3
+    from mvogmbi_sync import pertes as pe
+
+    catalogue = [{"id": "ABC123", "name": "Plantain jaune", "price": 199, "code": "", "itemStock": {"quantity": 40}},
+                 {"id": "DEF456", "name": "Attiéké 1kg", "price": 599}]
+    monkeypatch.setattr(cache_lectures, "inventaire_clover", lambda racine, pv=None: catalogue)
+    monkeypatch.setattr(pe, "appliquer", lambda racine, config, numero, client=None: pe.Registre(racine).perte(numero))
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/pertes?q=plantain")
+    assert "Plantain jaune" in page and "Attiéké" not in page
+    statut, _, entetes = ouvrir(patron, base + "/pertes", {
+        "csrf": jeton_csrf(page), "pv": "1", "id": "ABC123", "quantite": "3", "jour": "2026-11-03",
+        "motif": pe.MOTIFS[0], "remarque": ""})
+    assert statut == 303 and entetes["Location"].startswith("/tache?id=")
+    p = pe.Registre(tmp_path).pertes[0]
+    assert p.numero == "PE-0001" and p.lignes[0].quantite == "3"
+    _, page, _ = ouvrir(patron, base + "/promotions?q=attieke")
+    _, page, _ = ouvrir(patron, base + "/promotions", {
+        "csrf": jeton_csrf(page), "pv": "1", "id": "DEF456", "prix": "4,99", "du": "2026-11-10", "au": "2026-11-16",
+        "action": "Ajouter"})
+    assert "PR-0001 prévue" in page and p3.Promotions(tmp_path).liste[0].prix_promo == "4.99"
+    _, page, _ = ouvrir(patron, base + "/etiquettes?q=plantain")
+    _, page, _ = ouvrir(patron, base + "/etiquettes", {"csrf": jeton_csrf(page), "id": "ABC123"})
+    assert "Plantain jaune" in page and "1,99 $" in page
+
+
+def test_catalogue_web(site, tmp_path, monkeypatch):
+    from mvogmbi_sync import cache_lectures
+    from mvogmbi_sync import correspondance as co
+
+    catalogue = [{"id": "ABC123", "name": "Plantain jaune", "price": 199, "sku": "LOT-7"},
+                 {"id": "DEF456", "name": "Attiéké 1kg", "price": 599, "sku": "31/12/2026"}]
+    monkeypatch.setattr(cache_lectures, "inventaire_clover", lambda racine, pv=None: catalogue)
+    co.ecrire_correspondance([co.Correspondance(co.A_CONFIRMER, "Attiéké 1kg", "Féculents", Decimal("0"), "C0001",
+                                                "Attiéké 500g", "4016", "Ressemblance", 80, "", "", "DEF456")],
+                             tmp_path / "donnees" / "correspondance_articles.xlsx")
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/articles-clover?ugs=1")
+    assert "Plantain jaune" in page and "Attiéké" not in page        # UGS « LOT-7 » n'est pas une date
+    _, page, _ = ouvrir(patron, base + "/correspondance")
+    assert "Attiéké 1kg" in page
+    _, page, _ = ouvrir(patron, base + "/correspondance-ligne?i=0", {
+        "csrf": jeton_csrf(page), "i": "0", "numero": "C0001", "statut": co.CONFIRME})
+    assert "Formats différents" in page                              # 1kg / 500g : refusé sans « quand même »
+    statut, _, _ = ouvrir(patron, base + "/correspondance-ligne?i=0", {
+        "csrf": jeton_csrf(page), "i": "0", "numero": "C0001", "statut": co.CONFIRME, "quand_meme": "1"})
+    assert statut == 303 and co.lire_correspondances(tmp_path / "donnees" / "correspondance_articles.xlsx")[0].statut \
+        == co.CONFIRME
+    for chemin in ("/inventaire", "/inventaire-tournant", "/transferts", "/creer-article"):
+        assert ouvrir(patron, base + chemin)[0] == 200, chemin
+
+
+def test_administration_web(site, tmp_path, monkeypatch):
+    from mvogmbi_sync import coffre
+    from mvogmbi_sync.utilisateurs import Registre as RegistreU
+
+    gardes = {}
+    monkeypatch.setattr(coffre, "ecrire", lambda cle, valeur: gardes.__setitem__(cle, valeur))
+    monkeypatch.setattr(coffre, "present", lambda cle: cle in gardes)
+    base, srv, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/admin/clover")
+    jeton = jeton_csrf(page)
+    _, page, _ = ouvrir(patron, base + "/admin/clover", {"csrf": jeton, "merchant_id": "ABCDEFGHJK123",
+                                                         "jeton": "jeton-essai", "action": "Enregistrer"})
+    assert "enregistrée" in page and "jeton-essai" not in page and gardes[coffre.CLOVER_JETON] == "jeton-essai"
+    import tomllib
+    config = tomllib.loads((tmp_path / "config.toml").read_text(encoding="utf-8"))
+    assert config["clover"]["merchant_id"] == "ABCDEFGHJK123" and config["web"]["postes_pointage"] == ["127.0.0.1"]
+    # utilisateurs : nouveau compte, puis accès du profil Employé limité à « Mon horaire »
+    _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "nom": "Comptable 1", "profil": "Comptable",
+                                                         "mot_de_passe": "secret789", "action": "Ajouter"})
+    assert RegistreU(tmp_path).trouver("Comptable 1").profil == "Comptable"
+    _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "profil": "Employé", "fonction": ["Mon horaire"],
+                                                         "action": "Accès"})
+    reg = RegistreU(tmp_path)
+    assert reg.fonctions_permises["Employé"] == ["Mon horaire"] and "accueil" in reg.profils["Employé"]
+    awa = connecter(base, "Awa", "secret456")
+    assert ouvrir(awa, base + "/horaire")[0] == 200 and ouvrir(awa, base + "/pointage")[0] == 403
+    assert ouvrir(awa, base + "/utilisateurs")[0] == 403 and ouvrir(awa, base + "/admin/clover")[0] == 403
+
+
+def test_traitement_paie_web(site, tmp_path, monkeypatch):
+    from mvogmbi_sync import paie as pa
+    from mvogmbi_sync.web import pages_paie
+
+    base, _, awa = site
+    paie = pa.PaieSage(9, date(date.today().year, 1, 15), "PAY15012026", "Awa Mballa",
+                       gains={"Salaires": Decimal("100")}, net=Decimal("80"))
+    monkeypatch.setattr(pages_paie, "_paies_annee", lambda ctx, annee: [paie])
+    from mvogmbi_sync.web import pages_traitement_paie
+    monkeypatch.setattr(pages_traitement_paie, "_paies_annee", lambda ctx, annee: [paie])
+    patron = connecter(base, "Patron", "secret123")
+    for chemin in ("/traitement-paie", "/traitement-paie?onglet=validees", "/fin-emploi"):
+        assert ouvrir(patron, base + chemin)[0] == 200, chemin
+    _, page, _ = ouvrir(patron, base + f"/paies-sage?du={date.today().year}-01-01&au={date.today()}")
+    assert "Awa Mballa" in page and "80,00 $" in page
+    _, page, _ = ouvrir(patron, base + f"/fin-annee?annee={date.today().year}")
+    assert "Concordance" in page and "Awa Mballa" in page
+    # paie dans le futur refusée (période en cours)
+    from mvogmbi_sync import paie_temps as pt
+    _, page, _ = ouvrir(patron, base + "/traitement-paie?onglet=validees")
+    debut = pt.debut_periode(date.today())
+    _, page, _ = ouvrir(patron, base + "/traitement-paie", {"csrf": jeton_csrf(page), "periode": str(debut),
+                                                            "jour": str(date.today()), "onglet": "validees"})
+    assert "pas terminée" in page
+    awa_nav = connecter(base, "Awa", "secret456")
+    assert ouvrir(awa_nav, base + "/paies-sage")[0] == 403
+
+
+def test_graphiques_svg_comme_windows():
+    from mvogmbi_sync.web.graphiques_svg import BLEU, BLEU_PALE, Graphique
+
+    barres = Graphique(600, 200, "Ventes par heure").barres(["09h", "10h", "11h"], [
+        ("Ventes nettes", [Decimal("100"), Decimal("513"), Decimal("250")], BLEU)], "Aucune vente").svg()
+    assert "<svg" in barres and "600 $" in barres and "moy. 288 $" in barres and "513 $" in barres  # axe 513 -> 600
+    courbes = Graphique(800, 170, "Évolution").courbes(["01/11", "02/11", "03/11"], [
+        ("Période", [Decimal(1), Decimal(4545), Decimal(2)], BLEU, False), ("Avant", [1, 2, 3], BLEU_PALE, True)]).svg()
+    assert "4,8 k$" in courbes and "max 4,5 k$ (02/11)" in courbes and "stroke-dasharray='5,3'" in courbes
+    anneau = Graphique(360, 175, "Montant perçu").anneau([(f"M{i}", Decimal(i + 1)) for i in range(8)]).svg()
+    assert anneau.count("<path") == 6 and "Autres" in anneau          # 5 parts + « Autres », comme Windows
+    vide = Graphique(360, 175, "Rien").classement([], vide="Aucune vente").svg()
+    assert "Aucune vente" in vide
+    chaleur = Graphique(800, 240, "Jour × heure").chaleur(["Lun", "Mar"], ["9h", "10h"], [[1, 2], [3, 0]]).svg()
+    assert "<title>Mar 9h" in chaleur
+
+
+def test_exporter_les_tableaux_comme_windows(site):
+    base, _, awa = site
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/employes")
+    assert "⬇ Exporter ▾" in page and "exporter=0&amp;format=xlsx" in page
+    with patron.open(base + "/employes?exporter=0&format=xlsx") as r:
+        contenu = r.read()
+        assert contenu[:2] == b"PK" and "attachment" in r.headers["Content-Disposition"]
+    with patron.open(base + "/employes?exporter=0&format=csv") as r:
+        texte = r.read().decode("utf-8-sig")
+        assert texte.splitlines()[0].startswith("Employé;") and awa.nom in texte
+    with patron.open(base + "/employes?exporter=0&format=pdf") as r:
+        assert r.read()[:4] == b"%PDF"

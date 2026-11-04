@@ -84,7 +84,9 @@ Principes :
 |---|---|
 | `MVOGMBI_Sync.exe` (`installation/lanceur_interface.py`) | Interface : connexion, puis le menu en rubriques (Administration, Articles, Stock, Vente, Fournisseur, Comptabilité, RIA, Paie, État). |
 | `MVOGMBI_Sync_console.exe` (`installation/lanceur_console.py`) | Ligne de commande et tâche planifiée (`lancer_traitement.cmd`). |
-| `python -m mvogmbi_sync <commande>` (`__main__.py`) | `facture`, `importer`, `auto`, `encaissements`, `correspondance`, `verifier-comptes`, `verifier-sage`, `rapport`, `planifier`, `langue`, `interface`. `inventaire`, `pointage`, `essai-pdf`. Commandes internes (l'application ouvre Sage elle-même) : `encaisser-bureau`, `payer-bureau`, `journal-bureau`, `depenses-bureau`, `inventaire-bureau`, `transfert-bureau`, `creer-articles-bureau`, `fiches-articles-bureau`, `tiers-bureau`, `comptes-bureau`, `paie-bureau`, `garder-sage`. |
+| `MVOGMBI_Sync_Serveur.exe` (`installation/lanceur_serveur.py`, = commande `web`) | Serveur de l'application web (`mvogmbi_sync/web/`) sur SERVDC01, atteint par Tailscale ; tâche planifiée « MVOGMBI_Sync Web » posée par `installer_web.ps1`. |
+| `MVOGMBI_Sync_Client.exe` (`installation/lanceur_client.py`, `web/client.py`) | Client des postes (1.2.0), un seul fichier, bibliothèque standard seulement : garde l'adresse du serveur (`%APPDATA%\MVOGMBI_Sync_Client\client.json`), vérifie l'en-tête `Server: MVOGMBI_Sync`, ouvre l'application dans une fenêtre Edge en mode application (profil à part). Téléphones : navigateur. |
+| `python -m mvogmbi_sync <commande>` (`__main__.py`) | `facture`, `importer`, `auto`, `encaissements`, `correspondance`, `verifier-comptes`, `verifier-sage`, `rapport`, `planifier`, `langue`, `interface`. `inventaire`, `pointage`, `essai-pdf`, `web`. Commandes internes (l'application ouvre Sage elle-même) : `encaisser-bureau`, `payer-bureau`, `journal-bureau`, `depenses-bureau`, `inventaire-bureau`, `transfert-bureau`, `creer-articles-bureau`, `fiches-articles-bureau`, `tiers-bureau`, `comptes-bureau`, `paie-bureau`, `garder-sage`. |
 
 ### 2.2 Modules
 
@@ -382,6 +384,56 @@ stateDiagram-v2
         Administrateur, Comptable, Employé
         Les traitements en cours continuent
     end note
+```
+
+### 4.7 bis Application web (version 1.1.0)
+
+Serveur HTTP de Python (`http.server`, aucune bibliothèque de plus) dans `mvogmbi_sync/web/` : `serveur.py`
+(sessions, sécurité, aiguillage) et `pages.py` (pages HTML, sans script). Mêmes comptes, profils et droits par
+fonction que l'application Windows (`utilisateurs.Registre`) ; chaque page porte le titre de l'entrée du menu qui
+lui correspond. Mêmes fichiers de `donnees/` : le serveur web et l'application de bureau doivent donc tourner sur le
+même ordinateur (SERVDC01, avec Sage et le traitement de nuit).
+
+```mermaid
+flowchart LR
+    T[Téléphone / PC<br/>navigateur] -->|Tailscale, chiffré| W[Serveur web<br/>SERVDC01:8765]
+    W --> U[utilisateurs.json<br/>profils et droits]
+    W --> P[pointages, feuilles,<br/>planning]
+    W --> C[Clover<br/>lecture seule]
+    W --> TG[tableau du gérant<br/>écrit la nuit]
+```
+
+| Page | Entrée du menu (droit) | Contenu |
+|---|---|---|
+| `/` | — | fonctions permises au profil |
+| `/pointage` | Pointage des employés | NIP ; seulement depuis les adresses de `[web] postes_pointage` |
+| `/horaire` | Mon horaire | 5 semaines publiées ; le gérant choisit l'employé |
+| `/mes-heures` | Mes heures et mes paies | période en cours et précédente |
+| `/feuilles` | Feuilles de temps | approbation des feuilles sans anomalie |
+| `/statistiques` | Statistiques Clover | cartes avec variation, ventes par heure ou par jour ; employé limité : ses ventes |
+| `/tableau` | Tableau du gérant (téléphone) | page écrite chaque nuit |
+| `/mot-de-passe` | — | ferme toutes les sessions du compte |
+
+Sécurité : témoin de session HttpOnly + SameSite=Strict (Secure en HTTPS), 15 min d'inactivité, 12 h au plus ;
+jeton anti-falsification sur chaque formulaire et refus des envois d'une autre origine ; politique de contenu sans
+script ni cadre ; 3 mots de passe faux = compte verrouillé (règle de l'application), 10 échecs en 10 min = adresse
+refusée 10 min ; pare-feu ouvert sur la carte Tailscale seulement ; audit de chaque page et action (fenêtre « Web »),
+journal `donnees/journal_web.log`.
+
+Depuis la version 2.0.0, toutes les entrées du menu (76) ont leur page web, avec le même affichage que
+l'application Windows (bandeau, menu de gauche en rubriques, Mise en route). Les pages sont réparties en modules
+(`pages.MODULES` : paie, consultations, comptabilité, trésorerie, rapprochement, RIA, ventes, documents,
+fournisseurs, achats, articles, catalogue, administration, traitement de la paie) qui appellent les mêmes fonctions de
+calcul que les fenêtres. Les traitements longs (saisies dans Sage, imports, lectures de boîtes de courriel) passent
+par `web/taches.py` : un fil par travail, une seule saisie dans Sage à la fois, page de suivi rafraîchie sans script.
+
+```mermaid
+flowchart LR
+    N[Navigateur] -->|formulaire| P[Page web]
+    P -->|lecture| C[Clover / Sage / donnees]
+    P -->|travail long| T[taches.py<br/>un fil]
+    T -->|commande interne| S[Sage ouvert<br/>par l'application]
+    T --> J[/tache : suivi<br/>rafraîchi seul/]
 ```
 
 ### 4.8 Plusieurs points de vente

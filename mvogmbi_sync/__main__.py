@@ -1418,6 +1418,12 @@ def main(argv: list[str] | None = None) -> None:
     p = sous.add_parser("pointage", help="Poste de pointage des employés (NIP), sans connexion à l'application")
     p.set_defaults(fonction=lambda _a: __import__("mvogmbi_sync.fenetre_pointage", fromlist=["x"]).poste_seul(RACINE))
 
+    p = sous.add_parser("web", help="Application web (navigateur : PC, Android, iPhone) ; [web] de config.toml")
+    p.add_argument("--adresse", default=None, help="adresse d'écoute (défaut [web] adresse, sinon 127.0.0.1)")
+    p.add_argument("--port", type=int, default=None, help="port (défaut [web] port, sinon 8765)")
+    p.set_defaults(fonction=lambda a: __import__("mvogmbi_sync.web.serveur", fromlist=["x"]).lancer(
+        RACINE, a.adresse, a.port))
+
     p = sous.add_parser("auto", help="Traitement automatique : de la dernière facture dans Sage jusqu'à hier")
     p.add_argument("--point-de-vente", dest="point_de_vente", default=None,
                    help="Code du point de vente Clover, ou « tous » ; par défaut tous")

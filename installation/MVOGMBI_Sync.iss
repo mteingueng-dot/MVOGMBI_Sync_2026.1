@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.0.11"
+#define Version "2.4.0"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -53,6 +53,10 @@ fr.Documents=Documents du projet
 en.Documents=Project documents (French)
 fr.Pointage=Pointage des employés
 en.Pointage=Employee time clock
+fr.ServeurWeb=Serveur de l'application web
+en.ServeurWeb=Web application server
+fr.ClientWeb=Client MVOGMBI_Sync (application web)
+en.ClientWeb=MVOGMBI_Sync client (web application)
 fr.Desinstaller=Désinstaller MVOGMBI_Sync
 en.Desinstaller=Uninstall MVOGMBI_Sync
 fr.ReglageLangue=Réglage de la langue de l'application…
@@ -81,6 +85,10 @@ Source: "..\documentation\Presentation_MVOGMBI_Sync.pptx"; DestDir: "{app}\docum
 Source: "..\documentation\Manuel_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\User_Manual_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\captures\*"; DestDir: "{app}\manuel\captures"; Flags: recursesubdirs createallsubdirs ignoreversion skipifsourcedoesntexist
+; application web : mise en service sur le serveur, lancée par le propriétaire (version 1.1.0)
+Source: "installer_web.ps1"; DestDir: "{app}"; Flags: ignoreversion
+; client des postes (version 1.2.0) : à copier sur chaque poste, rien à installer
+Source: "..\dist\MVOGMBI_Sync_Client.exe"; DestDir: "{app}\client"; Flags: ignoreversion
 ; La configuration et les données existantes ne sont jamais écrasées lors d'une mise à jour.
 
 [Dirs]
@@ -89,6 +97,8 @@ Name: "{app}\donnees"
 [Icons]
 Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"; AppUserModelID: "ConceptInformatique.MVOGMBI_Sync"
 Name: "{group}\{cm:Pointage}"; Filename: "{app}\MVOGMBI_Sync.exe"; Parameters: "pointage"; WorkingDir: "{app}"
+Name: "{group}\{cm:ServeurWeb}"; Filename: "{app}\MVOGMBI_Sync_Serveur.exe"; WorkingDir: "{app}"
+Name: "{group}\{cm:ClientWeb}"; Filename: "{app}\client\MVOGMBI_Sync_Client.exe"; WorkingDir: "{app}\client"
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\Manuel_MVOGMBI_Sync.pdf"; Languages: fr
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\User_Manual_MVOGMBI_Sync.pdf"; Languages: en
 Name: "{group}\{cm:Architecture}"; Filename: "{app}\Architecture_MVOGMBI_Sync.pdf"

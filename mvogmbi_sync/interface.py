@@ -135,8 +135,10 @@ def lire_config(chemin: Path) -> dict:
 def _valeur_toml(v) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
-    if isinstance(v, int):
+    if isinstance(v, (int, float)):
         return str(v)
+    if isinstance(v, (list, tuple)):  # ex. [web] postes_pointage : gardée en liste (avant : écrite comme du texte)
+        return "[" + ", ".join(_valeur_toml(x) for x in v) + "]"
     texte = str(v)
     if "'" not in texte and "\n" not in texte:
         return f"'{texte}'"  # chaîne littérale : les « \\ » des chemins Windows restent tels quels
