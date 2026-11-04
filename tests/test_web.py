@@ -415,7 +415,7 @@ def test_factures_fournisseurs_web(site, tmp_path):
     jeton = jeton_csrf(page)
     limite = "----F"
     corps = (f"--{limite}\r\nContent-Disposition: form-data; name=\"csrf\"\r\n\r\n{jeton}\r\n"
-             f"--{limite}\r\nContent-Disposition: form-data; name=\"action\"\r\n\r\nEnvoyer\r\n"
+             f"--{limite}\r\nContent-Disposition: form-data; name=\"action\"\r\n\r\nAjouter des factures\r\n"
              f"--{limite}\r\nContent-Disposition: form-data; name=\"facture\"; filename=\"facture.pdf\"\r\n\r\n"
              f"%PDF-1.4 illisible\r\n--{limite}--\r\n").encode()
     req = urllib.request.Request(base + "/factures-fournisseurs", data=corps,
@@ -430,14 +430,30 @@ def test_factures_fournisseurs_web(site, tmp_path):
         time.sleep(0.1)
     f = fo.Registre(tmp_path).factures[0]
     assert f.etat == fo.A_SAISIR
-    _, page, _ = ouvrir(patron, base + "/facture-fournisseur?i=0", {
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs?i=0")
+    assert "Lignes de la facture" in page and "📤 Importer cette facture" in page
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {
         "csrf": jeton, "i": "0", "fournisseur": "Grossiste Afro", "numero": "F-77", "date": "2026-11-01",
-        "sous_total": "20", "tps": "0", "tvq": "0", "total": "20", "description": ["Plantain caisse", ""],
-        "code": ["", ""], "quantite": ["2", ""], "prix": ["10", ""], "facteur": ["12", ""], "taxe": ["", ""],
-        "article": ["B0000190", ""], "confirme": ["0"], "action": "Enregistrer"})
+        "sous_total": "20", "tps": "0", "tvq": "0", "total": "20", "action": "➕"})
+    assert "l=0" in page and "Article Sage :" in page
+    commun = {"csrf": jeton, "i": "0", "l": "0", "fournisseur": "Grossiste Afro", "numero": "F-77",
+              "date": "2026-11-01", "sous_total": "20", "tps": "0", "tvq": "0", "total": "20",
+              "l_code": "", "l_description": "Plantain caisse", "l_quantite": "2", "l_prix": "10", "l_facteur": "12",
+              "l_taxe": ""}
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "action": "Appliquer"})
     f = fo.Registre(tmp_path).factures[0]
-    assert f.etat == fo.PRETE and f.lignes[0].montant == Decimal("20.00") and f.lignes[0].en_sage()[0] == 24
-    assert "Facture enregistrée" in page
+    assert f.lignes[0].montant == Decimal("20.00") and f.lignes[0].en_sage()[0] == 24 and not f.lignes[0].confirme
+    f.lignes[0].numero_sage = "B0000190"
+    reg = fo.Registre(tmp_path)
+    reg.factures[0] = f
+    reg.enregistrer()
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "action": "Confirmer la proposition"})
+    f = fo.Registre(tmp_path).factures[0]
+    assert f.lignes[0].confirme and f.etat == fo.PRETE, f.controles()
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "action": "Enregistrer la facture"})
+    assert "Facture enregistrée" in page and "prête à importer" in page
+    statut, _, entetes = ouvrir(patron, base + "/facture-fournisseur?i=0")
+    assert statut == 303 and entetes["Location"] == "/factures-fournisseurs?i=0"
 
 
 def test_achats_web(site, tmp_path):

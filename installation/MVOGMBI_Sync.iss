@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "2.4.0"
+#define Version "2.5.0"
 #define Editeur "Concept Informatique inc."
 
 [Setup]

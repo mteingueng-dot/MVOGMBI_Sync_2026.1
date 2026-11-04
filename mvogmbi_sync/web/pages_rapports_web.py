@@ -306,6 +306,9 @@ a.depot { color: inherit; } pre.saisie { font-family: "Cascadia Mono", Consolas,
 button.accent { background: #e0a800; color: #222; }
 tr.etat-propose td { background: #eaf2fb !important; }
 tr.etat-encaisser td { background: #efe8fb !important; }
+.ok-texte { color: #1f7a3a; font-size: 13px; } span.calcule { display: inline-block; min-width: 70px; text-align: right;
+  background: #e9eeea; padding: 6px; font-weight: 600; border-radius: 4px; }
+.carte.edition .large { flex: 1; } .carte.edition .large input { width: 100%; }
 .cartes-cinq { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 8px 0; }
 .carte-total .v.baisse { color: #c8102e; } button.danger { background: #c8102e; }
 a.ouvrir.accent { background: #e0a800; color: #222; }

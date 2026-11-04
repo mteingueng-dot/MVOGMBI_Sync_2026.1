@@ -232,6 +232,9 @@ def creer_article(ctx: Contexte) -> Reponse:
     v = {k: ctx.req.champ(k).strip() for k in ("nature", "nom", "cout", "prix", "peremption", "categorie", "type_prix",
                                                 "unite", "taxes", "code", "stock", "numero", "description",
                                                 "charges", "produits")}
+    if ctx.req.methode == "GET":  # « 🆕 Créer l'article » d'une ligne de facture fournisseur : nom et coût proposés
+        v["nom"] = v["nom"] or ctx.req.query.get("nom", "")
+        v["cout"] = v["cout"] or ctx.req.query.get("cout", "")
     message = ""
     if ctx.req.methode == "POST" and ctx.req.champ("action") == "Créer":
         try:
