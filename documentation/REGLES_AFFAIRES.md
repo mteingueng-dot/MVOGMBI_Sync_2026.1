@@ -291,6 +291,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | Code | Règle |
 |---|---|
 | RG-SEC-01 | **Toujours au moins un administrateur actif** ; l'administrateur voit tout et gère les utilisateurs. |
+| RG-SEC-01b | **Activer / désactiver un compte** (« Administration > Utilisateurs ») : un compte désactivé ne se connecte plus, ni à l'application Windows ni à l'application web ; ses sessions web se ferment et une fenêtre Windows ouverte avec ce compte se verrouille dans les 10 secondes ; jamais son propre compte, toujours un administrateur actif ; chaque changement est noté (journal des connexions, audit). |
 | RG-SEC-02 | Mot de passe gardé sous forme d'empreinte salée, jamais en clair. |
 | RG-SEC-03 | **3 mots de passe faux de suite = compte verrouillé** ; l'administrateur le rouvre avec un nouveau mot de passe ; le dernier administrateur n'est que bloqué 15 minutes. |
 | RG-SEC-04 | **Verrouillage après 5 minutes sans activité** ; les traitements en cours continuent. |

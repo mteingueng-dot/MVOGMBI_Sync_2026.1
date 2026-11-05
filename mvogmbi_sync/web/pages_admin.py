@@ -860,9 +860,10 @@ def utilisateurs(ctx: Contexte) -> Reponse:
                     reg.changer_mot_de_passe(nom, ctx.req.champ("mot_de_passe"))
                     ctx.app.sessions.fermer_compte(nom)
                 elif action in ("Désactiver", "Réactiver"):
-                    reg.activer(nom, action == "Réactiver")
+                    reg.activer(nom, action == "Réactiver", ctx.u.nom)
                     if action == "Désactiver":
                         ctx.app.sessions.fermer_compte(nom)
+                    fait = f"Compte « {nom} » {'activé' if action == 'Réactiver' else 'désactivé'}."
                 elif action == "Supprimer":
                     if not action_permise(ctx, "Supprimer"):
                         raise ErreurUtilisateur("Votre profil n'a pas le droit « Supprimer ».")
@@ -900,7 +901,7 @@ def utilisateurs(ctx: Contexte) -> Reponse:
                     reg.definir_tous_employes(profil, bool(ctx.req.champ("tous_employes")))
                     reg.definir_points_vente(profil, None if ctx.req.champ("pdv_tous") else ctx.req.champs("pdv"))
                 reg.enregistrer()
-            message = _message("Enregistré.")
+            message = _message(locals().get("fait") or "Enregistré.")
         except ErreurUtilisateur as erreur:
             message = _message(erreur=str(erreur))
     reg = Registre(ctx.racine)

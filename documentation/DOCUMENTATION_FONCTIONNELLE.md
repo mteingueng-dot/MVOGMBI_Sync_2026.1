@@ -69,7 +69,7 @@ Règles d'accès :
 | Journal des opérations | Ce qui a été fait, filtres par date, source et texte |
 | Audit des actions | Chaque bouton, entrée du menu et connexion ; lignes chaînées, une modification est repérée |
 | Tableau du gérant | Page pour téléphone mise à jour chaque nuit |
-| Utilisateurs | Comptes, profils, fonctions permises, droits, déverrouillage |
+| Utilisateurs | Comptes (ajouter, changer le profil, nouveau mot de passe, activer / désactiver, supprimer), profils, fonctions permises, droits, déverrouillage |
 
 ### 3.3 Articles
 

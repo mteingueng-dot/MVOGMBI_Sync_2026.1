@@ -898,11 +898,22 @@ class Application(tk.Tk):
 
     def _surveiller_inactivite(self) -> None:
         try:
-            if self._verrou is None and time.time() - self._derniere_activite >= self.minutes_verrou * 60:
-                self.verrouiller()
+            if self._verrou is None and (time.time() - self._derniere_activite >= self.minutes_verrou * 60
+                                         or not self._compte_toujours_actif()):
+                self.verrouiller()  # compte désactivé entre-temps : le mot de passe est refusé au déverrouillage
             self.after(10_000, self._surveiller_inactivite)
         except tk.TclError:  # fenêtre fermée
             pass
+
+    def _compte_toujours_actif(self) -> bool:
+        """Compte de la session encore actif (un administrateur a pu le désactiver depuis un autre poste)."""
+        try:
+            from .utilisateurs import Registre
+
+            u = Registre(self.racine).trouver(self.session.nom)
+            return u is None or u.actif
+        except Exception:  # registre illisible : on ne verrouille pas pour autant
+            return True
 
     def verrouiller(self) -> None:
         from .connexion import Verrou

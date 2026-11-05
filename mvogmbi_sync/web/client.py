@@ -40,7 +40,7 @@ def _nom(saisie: str) -> str:
 
 
 def fichiers_serveur() -> list[Path]:
-    """serveur.json : à côté du programme (déploiement), puis dans %APPDATA%\MVOGMBI_Sync_Client."""
+    """serveur.json : à côté du programme (déploiement), puis dans %APPDATA%/MVOGMBI_Sync_Client."""
     import sys
 
     ici = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent

@@ -286,11 +286,17 @@ class Registre:
             raise ErreurUtilisateur("Il doit rester au moins un administrateur actif.")
         u.profil = profil
 
-    def activer(self, nom: str, actif: bool) -> None:
+    def activer(self, nom: str, actif: bool, par: str = "") -> None:
+        """Compte activé ou désactivé (un compte désactivé ne peut plus se connecter ; ses sessions se ferment) ;
+        jamais son propre compte, toujours un administrateur actif ; noté au journal et à l'audit."""
         u = self._exige(nom)
+        if not actif and par and u.nom == par:
+            raise ErreurUtilisateur("Vous ne pouvez pas désactiver votre propre compte.")
         if not actif and u.est_admin and self.admins_actifs() == [u]:
             raise ErreurUtilisateur("Il doit rester au moins un administrateur actif.")
-        u.actif = actif
+        if u.actif != actif:
+            u.actif = actif
+            self._noter(f"compte {'activé' if actif else 'désactivé'} : {u.nom}" + (f" (par {par})" if par else ""))
 
     def supprimer(self, nom: str) -> None:
         u = self._exige(nom)

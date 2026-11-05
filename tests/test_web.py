@@ -789,3 +789,29 @@ def test_pause_automatique_hors_du_wifi(tmp_path):
     pt.Registre(tmp_path).pointer(awa.id, pt.DEPART, t0 + timedelta(hours=4))
     pw.noter_pointage(tmp_path, config, awa.id, pt.DEPART, "100.1.1.1")
     assert pw.lire_suivi(tmp_path) == {}
+
+
+def test_activer_desactiver_un_compte(site, tmp_path):
+    """Administration > Utilisateurs : un compte désactivé ne se connecte plus et ses sessions se ferment ; jamais
+    son propre compte ; réactivé, il se reconnecte."""
+    from mvogmbi_sync.utilisateurs import Registre as RegistreU
+
+    base, _, _ = site
+    patron = connecter(base, "Patron", "secret123")
+    awa = connecter(base, "Awa", "secret456")
+    assert ouvrir(awa, base + "/horaire")[0] == 200
+    _, page, _ = ouvrir(patron, base + "/utilisateurs")
+    jeton = jeton_csrf(page)
+    _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "compte": "Awa",
+                                                         "action": "Activer / désactiver"})
+    assert "Compte « Awa » désactivé." in page and not RegistreU(tmp_path).trouver("Awa").actif
+    assert ouvrir(awa, base + "/horaire")[0] == 303  # session fermée
+    statut, _, _ = ouvrir(navigateur()[0], base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456"})
+    assert statut == 200  # connexion refusée (la page de connexion revient)
+    _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "compte": "Patron",
+                                                         "action": "Activer / désactiver"})
+    assert "propre compte" in page and RegistreU(tmp_path).trouver("Patron").actif
+    _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "compte": "Awa",
+                                                         "action": "Activer / désactiver"})
+    assert "Compte « Awa » activé." in page
+    assert ouvrir(connecter(base, "Awa", "secret456"), base + "/horaire")[0] == 200

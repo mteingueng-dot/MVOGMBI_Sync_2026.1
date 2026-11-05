@@ -2473,4 +2473,7 @@ EN: dict[str, str] = {
     'Pause hors du Wi-Fi après (minutes)': 'Break when off the Wi-Fi after (minutes)',
     'Employé qui a pointé depuis son téléphone : en pause après ce nombre de minutes de suite hors du Wi-Fi du magasin, reprise à son retour. 0 = jamais.': 'Employee who clocked in from a phone: on break after this many consecutive minutes off the store Wi-Fi, resumed when back. 0 = never.',
     'Pause hors du Wi-Fi : nombre de minutes (0 = jamais).': 'Break off the Wi-Fi: number of minutes (0 = never).',
+    "Désactiver le compte « {nom} » ? Il ne pourra plus se connecter (application Windows et application web) jusqu'à sa réactivation.": 'Deactivate the account “{nom}”? It will no longer be able to sign in (Windows application and web application) until reactivated.',
+    'Compte « {nom} » activé.': 'Account “{nom}” activated.',
+    'Compte « {nom} » désactivé.': 'Account “{nom}” deactivated.',
 }

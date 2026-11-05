@@ -256,5 +256,7 @@ flowchart TD
     F --> G["Points de vente permis"]
     G --> H["Enregistrer les accès"]
     H --> I([Appliqué à la prochaine connexion])
+    M([Employé parti ou absent]) --> N["Administration > Utilisateurs<br/>choisir le compte, Activer / désactiver"]
+    N --> O([Connexion refusée, sessions fermées]) --> P["Activer / désactiver<br/>à son retour"]
     J([Compte verrouillé après 3 essais faux]) --> K["Administration > Utilisateurs<br/>nouveau mot de passe"] --> L([Compte rouvert])
 ```

@@ -348,7 +348,14 @@ class PageUtilisateurs(ttk.Frame):
                 messagebox.showwarning(self.titre, t("Vous ne pouvez pas désactiver votre propre compte."),
                                        parent=self)
                 return
-            self._faire(lambda: self.registre.activer(u.nom, not u.actif))
+            if u.actif and not messagebox.askyesno(
+                    self.titre, t("Désactiver le compte « {nom} » ? Il ne pourra plus se connecter (application "
+                                  "Windows et application web) jusqu'à sa réactivation.", nom=u.nom), parent=self):
+                return
+            actif = not u.actif
+            self._faire(lambda: self.registre.activer(u.nom, actif, self.moi),
+                        t("Compte « {nom} » activé.", nom=u.nom) if actif else
+                        t("Compte « {nom} » désactivé.", nom=u.nom))
 
     def supprimer(self) -> None:
         u = self._selection()
