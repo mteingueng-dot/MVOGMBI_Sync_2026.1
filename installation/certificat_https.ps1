@@ -1,4 +1,4 @@
-# Certificat HTTPS Let's Encrypt pour https://app.marchemvogmbi.com (sans port), validé par le DNS.
+﻿# Certificat HTTPS Let's Encrypt pour https://app.marchemvogmbi.com (sans port), validé par le DNS.
 # À lancer PAR LE PROPRIÉTAIRE sur le serveur (SERVDCSAGE), en Bureau à distance, dans un PowerShell
 # « Exécuter en tant qu'administrateur » :
 #     powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\MVOGMBI_Sync\certificat_https.ps1" -Courriel vous@exemple.com
@@ -18,12 +18,29 @@
 param(
     [Parameter(Mandatory = $true)][string]$Courriel,
     [string]$Nom = "app.marchemvogmbi.com",
-    [string]$WinAcme = "C:\win-acme\wacs.exe",
-    [string]$Dossier = $PSScriptRoot,
-    [string]$Sortie = "C:\Certificats\MVOGMBI_Sync"
+    [string]$WinAcme = "",
+    [string]$Dossier = "",
+    [string]$Sortie = ""
 )
 $ErrorActionPreference = "Stop"
-if (-not (Test-Path $WinAcme)) { throw "wacs.exe introuvable ($WinAcme) : téléchargez win-acme depuis https://www.win-acme.com." }
+# dossier de MVOGMBI_Sync : celui du script, sinon l'emplacement d'installation habituel
+if (-not $Dossier) { $Dossier = $PSScriptRoot }
+if (-not $Dossier -and $MyInvocation.MyCommand.Path) { $Dossier = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $Dossier) { $Dossier = Join-Path $env:LOCALAPPDATA "Programs\MVOGMBI_Sync" }
+if (-not $Sortie) { $Sortie = "C:\Certificats\MVOGMBI_Sync" }
+if (-not $WinAcme) {
+    $WinAcme = @("C:\win-acme\wacs.exe", (Join-Path $env:ProgramFiles "win-acme\wacs.exe"),
+                 (Join-Path $Dossier "win-acme\wacs.exe")) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
+               Select-Object -First 1
+}
+if (-not $WinAcme -or -not (Test-Path -LiteralPath $WinAcme)) {
+    throw "wacs.exe introuvable : téléchargez win-acme (https://www.win-acme.com, « x64 trimmed ») et décompressez-le dans C:\win-acme, ou donnez -WinAcme ""chemin\wacs.exe""."
+}
+if ($Courriel -notmatch "^[^@\s]+@[^@\s]+\.[^@\s]+$" -or $Courriel -like "votre@*") {
+    throw "Donnez votre vraie adresse de courriel : -Courriel vous@exemple.com (Let's Encrypt y envoie les avis d'expiration)."
+}
+Write-Host "Dossier de MVOGMBI_Sync : $Dossier"
+Write-Host "win-acme : $WinAcme"
 $config = Join-Path $Dossier "config.toml"
 if (-not (Test-Path $config)) { throw "config.toml introuvable dans $Dossier : installez et réglez d'abord MVOGMBI_Sync." }
 New-Item -ItemType Directory -Force $Sortie | Out-Null
