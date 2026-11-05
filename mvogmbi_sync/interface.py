@@ -1468,6 +1468,23 @@ class Application(tk.Tk):
         self._champ(serveur, 8, t("Port du serveur web"), "serveur.port", str(r["port"]))
         Bouton(serveur, "⬇  " + t("Fichier du client (serveur.json)…"), self.fichier_client, "secondaire").grid(
             row=10, column=1, sticky="w", pady=(6, 8))
+        from . import pointage_wifi
+
+        pw = pointage_wifi.reglages(self.config_toml)
+        wifi = self._carte(f, 4, t("Wi-Fi du magasin (pointage)"), "4",
+                           t("Les employés pointent seulement depuis le Wi-Fi du magasin : l'application lit dans "
+                             "Tailscale le réseau d'où vient le téléphone ou le poste."))
+        self._champ(wifi, 0, t("Nom du Wi-Fi du magasin"), "pointage.wifi", pw["wifi"],
+                    aide=t("Affiché aux employés qui essaient de pointer ailleurs."))
+        self._champ(wifi, 2, t("Adresses du Wi-Fi du magasin"), "pointage.adresses", ", ".join(pw["adresses_magasin"]),
+                    aide=t("Adresse publique de la connexion Internet du magasin (ou début d'adresse terminé par un "
+                           "point), séparées par des virgules. Vide : pas de contrôle du Wi-Fi. Elle s'affiche dans "
+                           "la même carte de l'application web ouverte au magasin."))
+        self._champ(wifi, 4, t("Postes du magasin"), "pointage.postes", ", ".join(pw["postes"]),
+                    aide=t("Adresses Tailscale des postes fixes du magasin, toujours permis (ex. 100.101.7.12)."))
+        self._champ(wifi, 6, t("Pause hors du Wi-Fi après (minutes)"), "pointage.minutes", str(pw["pause_minutes"]),
+                    aide=t("Employé qui a pointé depuis son téléphone : en pause après ce nombre de minutes de suite "
+                           "hors du Wi-Fi du magasin, reprise à son retour. 0 = jamais."))
         outils = self._carte(f, 2, t("Outils"), "2", couleur=JAUNE)
         ligne = tk.Frame(outils, background=CARTE)
         ligne.grid(row=0, column=0, columnspan=3, sticky="w")
@@ -1633,6 +1650,15 @@ class Application(tk.Tk):
         c.setdefault("sage_import", {}).update(fichier_entreprise=fichier)
         for cle, defaut in (("version", "12001"), ("pays", "1"), ("position_numero", 3)):
             c["sage_import"].setdefault(cle, defaut)
+        if "pointage.wifi" in v:  # carte « Wi-Fi du magasin (pointage) »
+            from . import pointage_wifi
+
+            try:
+                pointage_wifi.ecrire(c, str(v["pointage.wifi"]), str(v["pointage.adresses"]),
+                                     str(v["pointage.postes"]), str(v["pointage.minutes"]))
+            except ValueError:
+                messagebox.showerror(TITRE, t("Pause hors du Wi-Fi : nombre de minutes (0 = jamais)."))
+                return False
         if "serveur.machine" in v:  # carte « Serveur de l'application »
             from . import serveur_appli
 

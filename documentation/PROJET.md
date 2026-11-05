@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke. 108 versions livrées en 11 jours, chacune avec son installateur.
+Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke. 130 versions livrées en 12 jours, chacune avec son installateur.
 
 ---
 
@@ -44,11 +44,17 @@ gantt
     Plan comptable, audit, filtres multiples    :done, h3, 2026-11-01, 3d
     Modèles PDF, articles modifiés et supprimés :done, h4, 2026-11-03, 1d
     RIA dans Sage, rubrique RIA, règles d'affaires :done, h5, 2026-11-03, 1d
+    section Application web
+    Serveur web, client des postes, Tailscale   :done, w1, 2026-11-03, 1d
+    Toutes les fonctions en pages web (2.0)     :done, w2, 2026-11-03, 1d
+    Pages identiques à Windows (2.1 à 2.14)     :done, w3, 2026-11-03, 2d
+    Serveur SERVDCSAGE, Wi-Fi du pointage       :done, w4, 2026-11-04, 1d
+    Pause automatique hors du Wi-Fi             :done, w5, 2026-11-04, 1d
     section Suite
-    Comptes RIA dans Sage, premières écritures  :g0, 2026-11-04, 2d
-    Plusieurs points de vente réels             :g1, 2026-11-06, 5d
+    Mise en service sur SERVDCSAGE              :g4, 2026-11-05, 2d
+    Comptes RIA dans Sage, premières écritures  :g0, 2026-11-06, 2d
+    Plusieurs points de vente réels             :g1, 2026-11-08, 5d
     Remises de retenues réelles                 :g2, 2026-11-15, 1d
-    Version client-serveur (à planifier)        :g3, 2026-11-17, 10d
 ```
 
 ---
@@ -63,6 +69,10 @@ mindmap
       Fin de semaine
       Points de vente
       Encaissements
+    Application web
+      Pages identiques à Windows
+      Client des postes
+      Pointage sur le Wi-Fi
     Articles
       Correspondance
       Création Clover + Sage
@@ -119,6 +129,10 @@ mindmap
 | 30 oct. 2026 | Rapports de gestion, services dans Sage seulement, lecture des paies de Sage | 1.0.1 à 1.0.3 |
 | 1er nov. 2026 | PDF de secours, T4 / RL-1 officiels, états RIA, menu Stock, chaîne des documents, plan comptable, audit | 1.0.4 à 1.0.7 |
 | 3 nov. 2026 | Modèles PDF, articles modifiés et supprimés, RIA dans Sage, rubrique RIA, règles d'affaires, documentation à jour | 1.0.8 à 1.0.11 |
+| 3 nov. 2026 | Application web (serveur, client, toutes les fonctions) | 1.1.0 à 2.0.0 |
+| 3-4 nov. 2026 | Pages web identiques à Windows : audit des boutons, comparaison côte à côte | 2.1.0 à 2.14.1 |
+| 4 nov. 2026 | Nouveau serveur SERVDCSAGE, serveur réglable, app.marchemvogmbi.com, pointage sur le Wi-Fi du magasin | 2.14.2 |
+| 4 nov. 2026 | Pause automatique d'un téléphone hors du Wi-Fi du magasin, documentation à jour | 2.15.0 |
 
 ---
 
@@ -143,3 +157,5 @@ Méthode : une demande → une version livrée avec son installateur, ses tests 
 | Double import, double encaissement | Contrôle de présence avant et après chaque écriture |
 | Service de connexion de Sage arrêté | Message clair ; lecture de secours |
 | Données réelles dans le dépôt public | `.gitignore`, contrôle avant chaque envoi |
+| Installation bloquée sur un serveur (Sage sur SERVDC01) | Nouveau serveur SERVDCSAGE ; adresses réglées dans la configuration |
+| Deux serveurs qui traitent les mêmes ventes | Retirer la tâche et le serveur web de l'ancien serveur à la mise en service |

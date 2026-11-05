@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 255 tests
+## 3. Tests automatiques — 281 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -55,9 +55,11 @@ Règles :
 | Versions 1.0.1 à 1.0.7 : états RIA, chaîne des documents, plan comptable, audit, PDF, T4 / RL-1, paie | test_version_1_0_4, test_version_1_0_7, test_chaine_documents, test_paie_nouveautes | 25 |
 | Versions 1.0.9 et 1.0.10 : états RIA traités, articles modifiés ou supprimés, promotions annulées, courriel réessayé, menu RIA | test_version_1_0_9 | 8 |
 | Tests ajoutés aux fichiers existants depuis la 1.0.0 | divers | 4 |
-| **Total** | 55 fichiers | **255** |
+| Application web (connexion, droits, sécurité, pointage, Wi-Fi et pause automatique, paie, documents, exports, serveur de l'application, client) | test_web | 25 |
+| Autres tests ajoutés depuis la 1.0.11 | divers | 1 |
+| **Total** | 56 fichiers | **281** |
 
-Résultat du 3 novembre 2026 : **255 réussis**.
+Résultat du 4 novembre 2026 : **280 réussis, 1 sauté** (export d'image sans écran disponible).
 
 Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find a usable tk.tcl / init.tcl » ; Windows refuse un instant la lecture des fichiers de Tcl (antivirus). Le test passe à l'exécution suivante : ce n'est pas un défaut de l'application.
 
@@ -140,6 +142,17 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 
 ---
 
+### 4.7 Application web (versions 1.1 à 2.14)
+
+| Essai | Résultat |
+|---|---|
+| Tour des 76 entrées du menu et de 18 écrans de détail sur une copie (vrai Clover, Sage absent) | toutes en 200, aucune erreur |
+| Audit des libellés : boutons et cases des 52 fenêtres Windows cherchés dans les pages web | écarts corrigés (2.13.0) |
+| Comparaison côte à côte : photo de chaque fenêtre Windows et de la page web à la même taille | dispositions alignées (2.14.0, 2.14.1) |
+| Sage absent du serveur | pages affichées, tableaux vides avec leurs colonnes, bandeau |
+| Jeton anti-falsification dans une adresse | jamais (formulaires séparés + filet du serveur) |
+| DNS `app.marchemvogmbi.com` | 100.99.52.28 (SERVDCSAGE) |
+
 ## 5. Défauts trouvés et corrigés lors des campagnes
 
 | Défaut | Cause | Correction |
@@ -168,10 +181,13 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 5. Profils Administrateur, Comptable, Employé : menus attendus.
 6. Clover : article d'essai caché créé, modifié, supprimé.
 7. Fabrication de l'installateur (`installation/fabriquer.cmd`) : manuels et documents refaits.
-8. Contrôle du dépôt public : aucune donnée réelle (noms, courriels, identifiants, montants de clients).
+8. Application web : tour de toutes les pages sur une copie, tout en 200.
+9. Contrôle du dépôt public : aucune donnée réelle (noms, courriels, identifiants, montants de clients).
 
 ## 7. Reste à tester
 
+- Mise en service sur SERVDCSAGE : lecture de Sage, import, traitement de nuit, serveur web, client des postes.
+- Pointage depuis le Wi-Fi du magasin (adresse publique du magasin à relever sur place) et pause automatique d'un téléphone qui sort du Wi-Fi.
 - Plusieurs points de vente réels (dès qu'un deuxième sera configuré).
 - Remises de retenues réelles (pas encore payées au 30 octobre 2026).
 - Promotions et envoi des bulletins de paie sur des données réelles.

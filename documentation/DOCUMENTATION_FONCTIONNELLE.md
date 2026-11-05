@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation.
 
@@ -22,6 +22,7 @@ Le marché encaisse ses ventes avec **Clover** (caisse et terminal de paiement) 
 | Gérer comme dans Sage | Listes, fiches, chaîne des documents de vente et d'achat, documents de stock, plan comptable ; créations, modifications et suppressions dans Sage et dans Clover |
 | Tenir la paie | Pointage par NIP, planning, feuilles de temps, chèques de paie dans Sage, bulletins, T4 et RL-1 officiels |
 | Contrôler l'accès | Comptes, profils, droits fonction par fonction, audit des actions |
+| Travailler à distance | Application web identique à l'application Windows (76 entrées du menu), sur PC, tablette et téléphone, par Tailscale ; client des postes ; Bureau à distance pour l'application complète |
 
 Hors périmètre : la comptabilité générale elle-même (Sage reste la référence), la banque en ligne (relevés chargés à la main), le calcul des retenues de paie (fait par Sage Paie).
 
@@ -43,6 +44,7 @@ Règles d'accès :
 - Chaque profil reçoit ses **fonctions une à une** (arbre du menu) : cocher « Liste des articles » donne cette liste seulement, pas toute la rubrique Articles.
 - Des **actions dans les fenêtres** se retirent à part (traiter la paie, restaurer une sauvegarde, saisir les dépenses, modifier les articles dans Sage et Clover, modifier le plan comptable…), ainsi que **« Supprimer des éléments »** et **« Exporter les données »**.
 - Un profil peut être limité à certains **points de vente** ; le profil Employé ne voit que **ses** heures, paies et feuillets.
+- Les mêmes comptes, profils et droits servent dans l'application Windows et dans l'application web.
 - Mot de passe d'au moins 6 caractères, jamais gardé en clair ; **3 essais faux = compte verrouillé** ; écran verrouillé après 5 minutes sans activité.
 - Chaque action est notée à l'**audit** (qui, quand, sur quel poste, dans quelle fenêtre).
 
@@ -62,7 +64,7 @@ Règles d'accès :
 | Clover | Identifiant marchand, jeton d'accès (gardé dans le coffre-fort Windows), points de vente |
 | Sage 50 | Fichier de l'entreprise, utilisateur de lecture, client des ventes, dépôts ; carte « Paie » (première paie de l'année, délai de paiement) |
 | Courriel | Envoi du compte rendu et copie cachée (Cci) ; boîte des avis de paiement et des factures ; boîte des états RIA |
-| Automatisation | Heure du traitement de nuit, date de départ, encaissements automatiques, « Lancer maintenant » |
+| Automatisation | Heure du traitement de nuit, date de départ, encaissements automatiques, « Lancer maintenant » ; carte « Serveur de l'application » (ordinateur, adresse Tailscale, adresse locale, nom tapé dans le client, port, fichier `serveur.json` du client) ; carte « Wi-Fi du magasin (pointage) » (nom du Wi-Fi, adresses du magasin, postes du magasin) |
 | Sauvegarde des données | Archive chaque nuit, conservation 14 jours / 8 semaines / 12 mois, restauration |
 | Journal des opérations | Ce qui a été fait, filtres par date, source et texte |
 | Audit des actions | Chaque bouton, entrée du menu et connexion ; lignes chaînées, une modification est repérée |
@@ -231,6 +233,9 @@ Chaque nuit, sans intervention :
 
 ## 7. Contraintes et prérequis
 
+- Un serveur Windows qui a Sage 50 ET MVOGMBI_Sync (traitement de nuit, serveur web) : SERVDCSAGE depuis le 4 novembre 2026 ; réglé dans « Administration > Automatisation », rien n'est écrit dans le programme.
+- Tailscale sur le serveur et sur chaque appareil qui utilise l'application web (postes, téléphones) ; nom `app.marchemvogmbi.com` (DNS) vers l'adresse Tailscale du serveur.
+- Pointage : appareils sur le Wi-Fi du magasin (adresse publique du magasin réglée), ou postes du magasin listés ; un téléphone qui a servi à pointer et quitte le Wi-Fi 5 minutes de suite met l'employé en pause, reprise à son retour.
 - Windows 10 ou 11, Sage 50 CA 2026 installé ; Microsoft Edge pour les pages HTML (fiches de paie, PDF de la page des statistiques) ; les autres PDF sont créés par l'application.
 - Service « Sage 50 Gestionnaire de connexion de base de données » démarré (multi-utilisateur).
 - Utilisateur Sage `mvogmbi_sync` avec « Accès par des tiers » et le même mot de passe dans chaque fichier d'entreprise.
@@ -254,5 +259,7 @@ Chaque nuit, sans intervention :
 | Lot Clover | Paiements par carte fermés chaque soir et déposés ensemble |
 | Mono / multi-utilisateur | Ouverture exclusive de l'entreprise Sage (import), ou partagée (saisies) |
 | Non-recette | Article Clover qui n'est pas compté comme une vente (non facturé) |
+| serveur.json | Fichier du client des postes : nom tapé (app.marchemvogmbi.com) -> adresse du serveur |
+| Tailscale | Réseau privé chiffré entre le serveur, les postes et les téléphones |
 | RIA | Service de transfert d'argent dont le marché est agent ; « MT Send » = envoi, « MT Payout » = versement |
 | UGS | Code d'article Clover (SKU) ; sert à noter la date de péremption |

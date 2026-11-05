@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 
@@ -17,7 +17,8 @@ flowchart TD
     E --> F["Administration > Courriel<br/>compte rendu, boîte des avis"]
     F --> F2["Comptabilité > Comptes RIA<br/>comptes RIA, commissions, espèces"]
     F2 --> G["Administration > Automatisation<br/>heure de nuit, date de départ"]
-    G --> H["Administration > Utilisateurs<br/>comptes et fonctions permises"]
+    G --> G2["Administration > Automatisation<br/>serveur de l'application, Wi-Fi du magasin"]
+    G2 --> H["Administration > Utilisateurs<br/>comptes et fonctions permises"]
     H --> I([Mise en route : 10 étapes cochées])
 ```
 
@@ -210,6 +211,38 @@ flowchart TD
 ```
 
 ---
+
+## 8 bis. Installer sur un serveur et déployer les postes
+
+```mermaid
+flowchart TD
+    A([Serveur avec Sage 50<br/>ex. SERVDCSAGE]) --> B["Installer MVOGMBI_Sync<br/>(Bureau à distance)"]
+    B --> C["Reprendre config.toml et donnees/<br/>Administration > Automatisation"]
+    C --> D["Retaper les mots de passe<br/>Clover, Sage, courriel"]
+    D --> E["Administration > Automatisation<br/>Serveur de l'application"]
+    E --> F["Wi-Fi du magasin (pointage)"]
+    F --> G["installer_web.ps1 + tâche planifiée"]
+    G --> H["Fichier du client (serveur.json)"]
+    H --> I["Postes : MVOGMBI_Sync_Client.exe<br/>+ serveur.json ; Tailscale"]
+    I --> J([app.marchemvogmbi.com])
+    G --> K["Ancien serveur : retirer tâche<br/>et serveur web"]
+```
+
+## 8 ter. Pointer au magasin
+
+```mermaid
+flowchart TD
+    A([Employé au magasin]) --> B{Sur le Wi-Fi du magasin<br/>ou poste du magasin ?}
+    B -->|non| C["Refusé : « connectez-vous<br/>au Wi-Fi du magasin »"] --> B
+    B -->|oui| D["Paie > Pointage des employés<br/>toucher son nom"]
+    D --> E["Taper son NIP"]
+    E --> F["Arrivée / Pause / Fin de pause / Départ"]
+    F --> G([Retour à la liste après 12 s])
+    F --> H{Téléphone hors du Wi-Fi<br/>5 min de suite ?}
+    H -->|oui| I[Pause automatique<br/>à l'heure du départ]
+    I --> J{De retour sur le Wi-Fi ?}
+    J -->|oui| K[Fin de pause automatique]
+```
 
 ## 9. Droits d'un profil
 

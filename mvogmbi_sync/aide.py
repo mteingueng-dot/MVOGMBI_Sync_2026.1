@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "2.14.2"
+VERSION = "2.15.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -655,6 +655,26 @@ FAQ = {
                     'de vente utilise son Clover, sa correspondance des articles et son dépôt Sage ; le tiroir-caisse '
                     "est compté par point de vente. Le coût de la main-d'œuvre additionne les ventes de tous les points "
                     "de vente. Les dépôts d'espèces des relevés Desjardins vont au point de vente n° 1."),
+        ("sous_titre", "Application web et serveur (versions 1.1.0 à 2.15.0)"),
+        ("question", "Comment utiliser l'application depuis un autre poste ou un téléphone ?"),
+        ("reponse", "Installez Tailscale sur l'appareil (même compte que le serveur), puis ouvrez MVOGMBI_Sync_Client et "
+                    "tapez « app.marchemvogmbi.com » (téléphone : http://app.marchemvogmbi.com:8765 dans le "
+                    "navigateur). L'application web est identique à l'application Windows : mêmes menus, mêmes "
+                    "boutons, mêmes droits. « Application complète (Bureau à distance) » ouvre l'application Windows "
+                    "du serveur."),
+        ("question", "Comment installer l'application sur un autre serveur ?"),
+        ("reponse", "Le serveur doit avoir Sage 50. Installez MVOGMBI_Sync, reprenez config.toml et le dossier donnees "
+                    "(« Administration > Automatisation > Reprendre une configuration existante… »), retapez les mots "
+                    "de passe (ils restent dans le coffre-fort de chaque ordinateur), réglez la carte « Serveur de "
+                    "l'application », lancez installer_web.ps1 et installez la tâche planifiée. « Fichier du client "
+                    "(serveur.json) » se copie à côté de MVOGMBI_Sync_Client.exe sur les postes. Sur l'ancien serveur, "
+                    "retirez la tâche et le serveur web."),
+        ("question", "Pourquoi le pointage est-il refusé sur mon téléphone ?"),
+        ("reponse", "On pointe seulement au magasin : depuis un poste du magasin, ou un téléphone connecté au Wi-Fi du "
+                    "magasin (et à Tailscale). Le réseau du téléphone est lu dans Tailscale et comparé aux adresses du "
+                    "Wi-Fi du magasin (« Administration > Automatisation > Wi-Fi du magasin »). Si vous avez pointé "
+                    "depuis votre téléphone et qu'il quitte le Wi-Fi 5 minutes de suite, vous êtes mis en pause (à "
+                    "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi."),
         ("sous_titre", "Nouveautés des versions 1.0.4 à 1.0.10"),
         ("question", "Comment passer les états de compte RIA dans Sage ?"),
         ("reponse", "« Comptabilité > États de compte RIA » : importez les PDF (ou « Lire le courriel » ; la nuit, les "
@@ -1227,6 +1247,24 @@ FAQ = {
                     'sale uses its own Clover, item mapping and Sage location; the cash drawer is counted per point of '
                     'sale. Labour cost adds up the sales of all points of sale. Cash deposits from Desjardins statements '
                     'go to point of sale no. 1.'),
+        ("sous_titre", "Web application and server (versions 1.1.0 to 2.15.0)"),
+        ("question", "How do I use the application from another computer or a phone?"),
+        ("reponse", "Install Tailscale on the device (same account as the server), then open MVOGMBI_Sync_Client and "
+                    "type “app.marchemvogmbi.com” (phone: http://app.marchemvogmbi.com:8765 in the browser). The web "
+                    "application is identical to the Windows application: same menus, same buttons, same rights. "
+                    "“Full application (Remote Desktop)” opens the server's Windows application."),
+        ("question", "How do I install the application on another server?"),
+        ("reponse", "The server must have Sage 50. Install MVOGMBI_Sync, take over config.toml and the donnees folder "
+                    "(“Administration > Automation > Take over an existing configuration…”), retype the passwords "
+                    "(they stay in each computer's vault), set the “Application server” card, run installer_web.ps1 "
+                    "and install the scheduled task. “Client file (serveur.json)” is copied next to "
+                    "MVOGMBI_Sync_Client.exe on the computers. On the old server, remove the task and the web server."),
+        ("question", "Why is clocking in refused on my phone?"),
+        ("reponse", "You clock in only at the store: from a store computer, or a phone connected to the store Wi-Fi "
+                    "(and to Tailscale). The phone's network is read in Tailscale and compared with the store Wi-Fi "
+                    "addresses (“Administration > Automation > Store Wi-Fi”). If you clocked in from your phone and it "
+                    "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
+                    "ends when it is back on the Wi-Fi."),
         ("sous_titre", "What's new in versions 1.0.4 to 1.0.10"),
         ("question", "How do I post RIA account statements to Sage?"),
         ("reponse", "“Accounting > RIA account statements”: import the PDFs (or “Read the email”; at night, statements "

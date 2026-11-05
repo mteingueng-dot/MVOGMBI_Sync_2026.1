@@ -1,4 +1,4 @@
-// Présentation PowerPoint de MVOGMBI_Sync 1.0.11 (aucune donnée réelle : document publié).
+// Présentation PowerPoint de MVOGMBI_Sync 2.15.0 (aucune donnée réelle : document publié).
 //   node documentation/creer_presentation.js            (pptxgenjs requis : npm install pptxgenjs)
 // Sortie : documentation/Presentation_MVOGMBI_Sync.pptx
 
@@ -93,8 +93,8 @@ texte(s, [
 s.addShape(pres.shapes.RIGHT_ARROW, { x: W / 2 - 0.35, y: 3.7, w: 0.7, h: 0.6, fill: { color: P.jaune }, line: { color: P.jaune } });
 
 // ------------------------------------------------------------------ 3. chiffres clés
-s = contenu("Introduction", "La version 1.0.11 en chiffres",
-  "Onze jours de réalisation, 108 versions livrées avec leur installateur, 255 tests automatiques.");
+s = contenu("Introduction", "La version 2.15.0 en chiffres",
+  "Douze jours de réalisation, 130 versions livrées avec leur installateur, 281 tests automatiques ; application web identique à Windows.");
 const stats = [["108", "versions livrées\nen 11 jours"], ["255", "tests automatiques\nréussis"], ["10", "rubriques au menu"],
                ["< 1 s", "pour ouvrir une liste\nmême Sage fermé"]];
 stats.forEach(([n, l], i) => {
@@ -242,8 +242,8 @@ texte(s, "Mots de passe jamais gardés en clair · secrets dans le coffre-fort d
 
 // ------------------------------------------------------------------ 12. qualité
 s = contenu("Confiance", "Testé avant chaque livraison",
-  "255 tests automatiques, puis essais réels sur une copie du fichier d'entreprise et sur des articles Clover d'essai supprimés ensuite.");
-const qual = [["255", "tests automatiques"], ["0", "écriture d'essai dans\nle vrai fichier Sage"], ["16", "scénarios d'écriture\nvalidés dans Sage"]];
+  "281 tests automatiques, puis essais réels sur une copie du fichier d'entreprise et sur des articles Clover d'essai supprimés ensuite.");
+const qual = [["281", "tests automatiques"], ["0", "écriture d'essai dans\nle vrai fichier Sage"], ["16", "scénarios d'écriture\nvalidés dans Sage"]];
 qual.forEach(([n, l], i) => {
   const x = M + i * 4.1;
   texte(s, n, { x, y: 1.6, w: 3.8, h: 1.3, fontSize: 64, bold: true, color: i === 1 ? P.rouge : P.vert });

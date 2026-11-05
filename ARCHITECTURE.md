@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -15,7 +15,7 @@ MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabili
 - paie (pointage, planning, feuilles de temps, chèques de paie dans Sage, bulletins) ;
 - utilisateurs, profils, droits par fonction et audit des actions.
 
-L'application est écrite en Python 3.13, a une interface tkinter et tourne sur le poste Windows du marché. Elle n'utilise aucun service d'IA ni d'API externe autre que Clover : c'est le choix du propriétaire.
+L'application est écrite en Python 3.13, a une interface tkinter et une application web identique, et tourne sur le serveur SERVDCSAGE, à côté de Sage 50 (version 2.14.2). Elle n'utilise aucun service d'IA ni d'API externe autre que Clover : c'est le choix du propriétaire.
 
 Ce document décrit les composants, les données, les intégrations et les principaux flux. Les règles d'affaires sont réunies dans `documentation/REGLES_AFFAIRES.md` (codes RG-…) ; le fichier `CLAUDE.md` garde le détail technique de chaque règle. Le manuel d'utilisation (`documentation/creer_manuel.py`) décrit l'usage au quotidien.
 
@@ -86,6 +86,7 @@ Principes :
 | `MVOGMBI_Sync_console.exe` (`installation/lanceur_console.py`) | Ligne de commande et tâche planifiée (`lancer_traitement.cmd`). |
 | `MVOGMBI_Sync_Serveur.exe` (`installation/lanceur_serveur.py`, = commande `web`) | Serveur de l'application web (`mvogmbi_sync/web/`) sur SERVDCSAGE (le serveur de Sage), atteint par Tailscale ; tâche planifiée « MVOGMBI_Sync Web » posée par `installer_web.ps1`. |
 | `MVOGMBI_Sync_Client.exe` (`installation/lanceur_client.py`, `web/client.py`) | Client des postes (1.2.0), un seul fichier, bibliothèque standard seulement : garde l'adresse du serveur (`%APPDATA%\MVOGMBI_Sync_Client\client.json`), vérifie l'en-tête `Server: MVOGMBI_Sync`, ouvre l'application dans une fenêtre Edge en mode application (profil à part). Téléphones : navigateur. |
+| `serveur.json` (à côté de `MVOGMBI_Sync_Client.exe`) | Serveur où envoie le client : écrit par « Administration > Automatisation > Serveur de l'application » (`serveur_appli.fichier_client`), recopié d'office dans `{app}\client` ; noms reconnus `app.marchemvogmbi.com` (DNS -> adresse Tailscale du serveur). |
 | `python -m mvogmbi_sync <commande>` (`__main__.py`) | `facture`, `importer`, `auto`, `encaissements`, `correspondance`, `verifier-comptes`, `verifier-sage`, `rapport`, `planifier`, `langue`, `interface`. `inventaire`, `pointage`, `essai-pdf`, `web`. Commandes internes (l'application ouvre Sage elle-même) : `encaisser-bureau`, `payer-bureau`, `journal-bureau`, `depenses-bureau`, `inventaire-bureau`, `transfert-bureau`, `creer-articles-bureau`, `fiches-articles-bureau`, `tiers-bureau`, `comptes-bureau`, `paie-bureau`, `garder-sage`. |
 
 ### 2.2 Modules
@@ -184,6 +185,12 @@ flowchart TB
 | | `sage_bureau.py`, `robot_*.py` | Ouverture de Sage sur un bureau Windows séparé et saisie dans ses fenêtres par messages Windows. |
 | | `paiements_courriel.py`, `ocr_windows.py` | IMAP en lecture seule ; OCR intégré à Windows. |
 | | `coffre.py`, `utilisateurs.py` | Coffre-fort Windows ; comptes et profils, avec mots de passe hachés. |
+| | `pointage_wifi.py` | Pointage seulement depuis le Wi-Fi du magasin : réseau de l'appareil lu dans Tailscale (`tailscale status`, sinon `tailscale ping`) comparé aux adresses publiques du magasin ; postes du magasin toujours permis. |
+| | `serveur_appli.py` | Serveur de l'application ([serveur] et [web] de `config.toml`) : ordinateur, adresse Tailscale, adresse locale, nom tapé dans le client, port ; fichier `serveur.json` du client. |
+| Web | `web/serveur.py`, `web/pages.py`, `web/menu.py`, `web/accueil.py` | Serveur HTTP sans bibliothèque, sessions, sécurité, menu et accueil identiques à Windows ; `page()` donne aux pages de l'application leur en-tête (`entete_page`) et aux fenêtres de travail leur bandeau « ✖ Fermer ». |
+| | `web/style_windows.py`, `web/export_web.py`, `web/a_cocher.py` | Allure des fenêtres Windows ; « ⬇ Exporter ▾ » de chaque tableau ; liste à cocher commune (`FenetreACocher`). |
+| | `web/pages_*.py`, `web/consultations*.py` | Une page par entrée du menu (76), mêmes calculs que les fenêtres ; `pages_dossiers.py` (contenu des dossiers du serveur, choix d'un fichier ou d'un dossier) ; `pages_fiches.py` (nouveau client / fournisseur, modifier ou supprimer un article dans Sage et Clover). |
+| | `web/graphiques_svg.py`, `web/taches.py`, `web/client.py` | Graphiques de `graphiques.py` en SVG ; travaux longs dans un fil (un seul dans Sage à la fois) ; client des postes. |
 
 ---
 
@@ -436,6 +443,60 @@ flowchart LR
     T --> J[/tache : suivi<br/>rafraîchi seul/]
 ```
 
+#### Interface identique à Windows (versions 2.1 à 2.14)
+
+Les 76 entrées du menu ont été comparées côte à côte (photo de chaque fenêtre Windows et de la page web à la même
+taille) et alignées : mêmes boutons, même ordre, même position, mêmes couleurs d'état.
+
+| Fenêtre Windows | Équivalent web |
+|---|---|
+| Page de l'application (`entete_page` : icône, titre souligné, sous-titre) | même en-tête, sans bandeau « Fermer » |
+| Fenêtre de travail (`Application.nouvel_outil`) | titre de la fenêtre + « ✖ Fermer » |
+| Ligne de tableau choisie d'un clic | bouton radio caché, chaque cellule l'étiquette (`ligne_cliquable`) |
+| `bouton_exporter` placé à droite (`placer_a_droite`) | « ⬇ Exporter ▾ » dans la barre de boutons du tableau |
+| Fenêtre de saisie à part (`DialogueEmploye`, `DialogueTiers`, `DialogueHoraire`…) | carte ouverte sous la liste |
+| Carte du bas vide avant le choix d'une ligne | mêmes champs et boutons, inactifs |
+| Calcul seulement au bouton (« Calculer », « Vérifier ») | `Consultation.attente` : zones vides titrées avant le clic |
+| Dossier ouvert dans l'Explorateur | contenu du dossier du serveur, fichiers téléchargés (`pages_dossiers.py`) |
+| Copier dans le presse-papiers | texte seul affiché (pas de script dans la page) |
+
+Restent différents, à cause du navigateur sans script : un bouton « Afficher » ou « Choisir » là où Windows réagit au
+choix d'une liste, les dates au format du navigateur et les petites fenêtres de saisie ouvertes dans la page.
+
+#### Déploiement et configuration du serveur (version 2.14.2)
+
+Sage 50, MVOGMBI_Sync, son serveur web et le traitement de nuit sont sur le même ordinateur : depuis le
+4 novembre 2026, **SERVDCSAGE** (réseau local 192.168.2.62, Tailscale 100.99.52.28). Le nom
+`app.marchemvogmbi.com` (DNS chez WHC) mène à son adresse Tailscale. Aucune adresse n'est écrite dans le programme :
+tout se règle dans « Administration > Automatisation > Serveur de l'application ».
+
+```mermaid
+flowchart LR
+    CFG[config.toml<br/>serveur et web] --> W[Serveur web<br/>adresse Tailscale:8765]
+    CFG -->|Fichier du client| J[serveur.json]
+    J --> CL[MVOGMBI_Sync_Client.exe<br/>sur chaque poste]
+    CL -->|app.marchemvogmbi.com| DNS[DNS WHC]
+    DNS -->|100.99.52.28| W
+    CL -->|Bureau à distance| RDP[Application Windows<br/>sur le serveur]
+```
+
+#### Pointage sur le Wi-Fi du magasin (version 2.14.2)
+
+Les appareils joignent le serveur par Tailscale : le serveur voit leur adresse 100.x, pas leur Wi-Fi. Tailscale sait
+par quelle adresse il joint l'appareil : c'est l'adresse publique de la connexion Internet du réseau où il se trouve.
+
+```mermaid
+flowchart LR
+    TEL[Téléphone de l'employé<br/>Wi-Fi du magasin] -->|Tailscale 100.x| W[Serveur web /pointage]
+    W --> PW[pointage_wifi.autorise]
+    PW -->|poste listé| OK([Pointage permis])
+    PW -->|tailscale status / ping| R[adresse du réseau<br/>de l'appareil]
+    R -->|= adresse du magasin| OK
+    R -->|autre réseau ou inconnue| NON([Refusé : « connectez-vous<br/>au Wi-Fi du magasin »])
+```
+
+Pause automatique (version 2.15.0) : le téléphone qui a servi à pointer est suivi (`donnees/pointage_telephones.json`) tant que l'employé est au travail. Le serveur web contrôle chaque minute (`pointage_wifi.controler`) : 5 minutes de suite hors du Wi-Fi du magasin (réglage `[pointage] pause_hors_wifi_minutes`) = « Début de pause » à l'heure du départ (`Registre.pointer_auto`, auteur « Automatique ») ; retour sur le Wi-Fi = « Fin de pause ». Un départ arrête le suivi.
+
 ### 4.8 Plusieurs points de vente
 
 Chaque point de vente Clover (identifiant marchand et jeton) est un dépôt Sage, avec son client et ses factures. Le n° 1 garde ses réglages d'origine.
@@ -549,12 +610,14 @@ flowchart TD
     DOC["documentation/<br/>captures → manuels fr/en<br/>architecture PDF"] --> INNO
     PY --> INNO["Inno Setup<br/>MVOGMBI_Sync.iss"]
     INNO --> SETUP["dist/Installer_MVOGMBI_Sync_x.y.z.exe"]
-    SETUP --> POSTE["Poste du marché :<br/>%LOCALAPPDATA%/Programs/MVOGMBI_Sync<br/>raccourcis, manuels, tâche planifiée"]
+    SETUP --> POSTE["Serveur SERVDCSAGE (avec Sage) :<br/>%LOCALAPPDATA%/Programs/MVOGMBI_Sync<br/>raccourcis, manuels, tâche planifiée,<br/>serveur web (installer_web.ps1)"]
+    POSTE -->|serveur.json| CLIENT["Postes : MVOGMBI_Sync_Client.exe"]
 ```
 
 - `installation/fabriquer.cmd` enchaîne tout. Chaque livraison a son propre numéro de version : `aide.VERSION`, `version_info.txt` et `MVOGMBI_Sync.iss`.
 - RACINE est le dossier de l'exe ; la variable `MVOGMBI_RACINE` en force un autre.
-- Tests : `tests/`, 255 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
+- Mise en service sur un serveur : installer, reprendre `config.toml` et `donnees/` (« Reprendre une configuration existante… »), retaper les mots de passe (coffre-fort propre à chaque machine), régler « Serveur de l'application », lancer `installer_web.ps1` (il remet `[web] adresse` à l'adresse Tailscale de la machine) et la tâche planifiée ; sur l'ancien serveur, retirer la tâche et le serveur web.
+- Tests : `tests/`, 281 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
 - Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, de la documentation fonctionnelle, des règles d'affaires, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
 
 ---

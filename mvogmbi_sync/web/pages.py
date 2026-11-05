@@ -427,13 +427,12 @@ def mes_heures(ctx: Contexte) -> Reponse:
     return Reponse(corps=page(ctx, titre, corps))
 
 
-def _poste_permis(ctx: Contexte) -> bool:
-    """Le pointage se fait au magasin (règle du propriétaire) : seulement depuis les adresses de [web]
-    postes_pointage (adresses ou débuts d'adresse, ex. « 100.101.7.12 » ou « 192.168.1. »)."""
-    postes = ctx.config.get("web", {}).get("postes_pointage", [])
-    if isinstance(postes, str):
-        postes = [p for p in postes.replace(";", ",").split(",")]
-    return any(p.strip() and ctx.req.adresse.startswith(p.strip()) for p in postes)
+def _poste_permis(ctx: Contexte) -> tuple[bool, str]:
+    """Le pointage se fait au magasin (règle du propriétaire) : poste du magasin ([web] postes_pointage) ou appareil
+    sur le Wi-Fi du magasin ([pointage] adresses_magasin, lu dans Tailscale : `pointage_wifi.autorise`)."""
+    from ..pointage_wifi import autorise
+
+    return autorise(ctx.config, ctx.req.adresse)
 
 
 RETOUR_POSTE = 12  # secondes avant le retour à la liste des noms (fenetre_pointage.RETOUR_ACCUEIL_MS)
@@ -449,11 +448,16 @@ def pointage(ctx: Contexte) -> Reponse:
 
     from .. import paie_temps as pt
 
-    if not _poste_permis(ctx):
-        return Reponse(corps=page(ctx, "Pointage", "<p class='erreur'>Le pointage se fait seulement depuis un poste du "
-                                                   "magasin.</p><p class='note'>Adresse de cet appareil : "
-                                                   f"{e(ctx.req.adresse)}. Le gérant ajoute les postes du magasin "
-                                                   "dans config.toml, [web] postes_pointage.</p>"))
+    permis_, raison = _poste_permis(ctx)
+    if not permis_:
+        from ..pointage_wifi import reglages
+
+        wifi = reglages(ctx.config)["wifi"]
+        return Reponse(corps=page_poste(ctx, "<p class='erreur'>Le pointage se fait seulement au magasin, sur le "
+                                             f"Wi-Fi{' « ' + e(wifi) + ' »' if wifi else ' du magasin'}.</p><p "
+                                             f"class='note'>{e(raison)}. Adresse de cet appareil : "
+                                             f"{e(ctx.req.adresse)}. Réglages : « Administration > Automatisation > "
+                                             "Wi-Fi du magasin ».</p>"))
     registre = pt.Registre(ctx.racine)
     employes = registre.actifs()
     par_id = {x.id: x for x in employes}
@@ -508,6 +512,9 @@ def pointage(ctx: Contexte) -> Reponse:
             with ctx.app.ecriture:
                 registre = pt.Registre(ctx.racine)
                 pointe = registre.pointer(etat["employe"], action[8:])
+                from ..pointage_wifi import noter_pointage
+
+                noter_pointage(ctx.racine, ctx.config, etat["employe"], pointe.type, ctx.req.adresse)
             message = f"{par_id[etat['employe']].nom} : {pointe.type} à {pointe.quand:%H:%M} — merci !"
             etat = {}
         except pt.ErreurPointage as erreur:

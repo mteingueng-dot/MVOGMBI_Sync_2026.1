@@ -626,11 +626,16 @@ def automatisation(ctx: Contexte) -> Reponse:
                 valeurs = {k: ctx.req.champ(f"s_{k}") for k in ("machine", "adresse", "adresse_locale", "nom_public",
                                                                 "port")}
 
+                from .. import pointage_wifi
+
                 def modifier(c):
                     c.setdefault("automatique", {})["heure"] = heure
                     c["automatique"].setdefault("delai_import", 3600)
                     if any(valeurs.values()):
                         serveur_appli.ecrire(c, valeurs)
+                    if ctx.req.champ("p_present"):
+                        pointage_wifi.ecrire(c, ctx.req.champ("p_wifi"), ctx.req.champ("p_adresses"),
+                                             ctx.req.champ("p_postes"), ctx.req.champ("p_minutes") or 0)
                 try:
                     _ecrire(ctx, modifier)
                     serveur_appli.copier_pour_client(ctx.racine, ctx.config)
@@ -648,7 +653,7 @@ def automatisation(ctx: Contexte) -> Reponse:
                    "tâche</button><button class='second' name='action' value='État'>État de la tâche</button><label "
                    "class='case'><input type='checkbox' name='confirme' value='1'> Je confirme le retrait</label></div>"
                  + _zone_sortie(ctx, "auto"))
-             + _carte_serveur(ctx)
+             + _carte_serveur(ctx) + _carte_wifi(ctx)
              + _carte("2", "Outils", "<div class='barre-onglet'><button class='second' name='action' value='Raccourci'>"
                                      "Créer un raccourci sur le Bureau</button><a class='ouvrir' href='/parcourir-config'>"
                                      "Reprendre une configuration existante…</a></div><p class='desc'>Copie config.toml, "
@@ -661,6 +666,32 @@ def automatisation(ctx: Contexte) -> Reponse:
                       couleur="jaune")
              + ENREGISTRER_CONFIG + "</form>")
     return Reponse(corps=page(ctx, "Automatisation", corps))
+
+
+def _carte_wifi(ctx: Contexte) -> str:
+    """Carte « Wi-Fi du magasin (pointage) » : nom du Wi-Fi, adresses publiques du magasin, postes du magasin ;
+    l'adresse du réseau de l'appareil qui affiche la page aide à remplir les adresses depuis le magasin."""
+    from .. import pointage_wifi
+
+    r = pointage_wifi.reglages(ctx.config)
+    reseau = pointage_wifi.adresse_du_reseau(ctx.req.adresse) if ctx.req.adresse.startswith("100.") else ""
+    ici = (f"Réseau de cet appareil : <strong>{e(reseau)}</strong> (ouvrez cette page depuis le magasin, sur son "
+           "Wi-Fi, et copiez cette adresse ci-dessus)." if reseau else
+           "Ouvrez cette page depuis le magasin, sur son Wi-Fi, pour voir l'adresse à inscrire.")
+    return _carte("4", "Wi-Fi du magasin (pointage)", "<input type='hidden' name='p_present' value='1'>" + _ligne(
+        "Nom du Wi-Fi du magasin", _entree("p_wifi", r["wifi"]),
+        "Affiché aux employés qui essaient de pointer ailleurs.")
+        + _ligne("Adresses du Wi-Fi du magasin", _entree("p_adresses", ", ".join(r["adresses_magasin"])),
+                 "Adresse publique de la connexion Internet du magasin (ou début d'adresse terminé par un point), "
+                 "séparées par des virgules. Vide : pas de contrôle du Wi-Fi.")
+        + _ligne("Postes du magasin", _entree("p_postes", ", ".join(r["postes"])),
+                 "Adresses Tailscale des postes fixes du magasin, toujours permis (ex. 100.101.7.12).")
+        + _ligne("Pause hors du Wi-Fi après (minutes)", _entree("p_minutes", r["pause_minutes"], taille=6),
+                 "Employé qui a pointé depuis son téléphone : en pause après ce nombre de minutes de suite hors du "
+                 "Wi-Fi du magasin, reprise à son retour. 0 = jamais.")
+        + f"<span></span><div class='aide'>{ici}</div>",
+        "Les employés pointent seulement depuis le Wi-Fi du magasin : l'application lit dans Tailscale le réseau d'où "
+        "vient le téléphone ou le poste.")
 
 
 def _carte_serveur(ctx: Contexte) -> str:

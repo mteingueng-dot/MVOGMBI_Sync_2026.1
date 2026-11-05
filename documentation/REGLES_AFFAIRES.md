@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -237,6 +237,8 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 
 | Code | Règle |
 |---|---|
+| RG-PAI-00 | **Pointage seulement au magasin** : depuis un poste du magasin listé, ou un appareil connecté au **Wi-Fi du magasin** (réseau lu dans Tailscale, comparé aux adresses publiques du magasin) ; ailleurs, le pointage est refusé avec le nom du Wi-Fi à utiliser. |
+| RG-PAI-00b | **Pause automatique hors du Wi-Fi** : un employé qui a pointé depuis son téléphone et dont le téléphone quitte le Wi-Fi du magasin **5 minutes de suite** (réglable, 0 = jamais) est mis en pause à l'heure où il est parti ; la pause se termine quand le téléphone revient sur le Wi-Fi. Ces pointages portent l'auteur « Automatique » et leur motif ; une pause pointée par l'employé n'est jamais terminée par l'application. |
 | RG-PAI-01 | **Pointage par NIP** (4 à 6 chiffres, unique) ; 5 essais faux = 1 minute de blocage ; le NIP n'est gardé que sous forme d'empreinte. |
 | RG-PAI-02 | Un pointage n'est **jamais effacé** : une correction est un nouveau pointage ou une annulation, avec auteur et motif obligatoires. |
 | RG-PAI-03 | **Présence** = arrivée … départ − pauses pointées (non payées), comptée au jour de l'arrivée ; un départ pendant une pause termine la pause. |
@@ -351,3 +353,15 @@ Ordre des étapes :
 | RG-EXP-02 | En Excel, les montants sont des nombres ; codes et dates restent du texte. |
 | RG-EXP-03 | En-tête des documents : logo et coordonnées de l'entreprise lus dans Clover. |
 | RG-EXP-04 | Un PDF déjà ouvert dans le lecteur n'est pas écrasé : un nouveau nom est pris. |
+
+## 21. Application web et déploiement
+
+| Code | Règle |
+|---|---|
+| RG-WEB-01 | **L'application web est identique à l'application Windows** : mêmes entrées du menu, mêmes boutons au même endroit, mêmes calculs, mêmes droits ; seules diffèrent les contraintes du navigateur sans script (bouton « Afficher », dates, petites fenêtres ouvertes dans la page). |
+| RG-WEB-02 | **Tout sur un même serveur** : Sage 50, MVOGMBI_Sync, son serveur web et le traitement de nuit (les saisies dans Sage exigent Sage sur la même machine). Depuis le 4 novembre 2026 : SERVDCSAGE. |
+| RG-WEB-03 | **Aucune adresse écrite dans le programme** : le serveur (ordinateur, adresse Tailscale, adresse locale, nom tapé, port) se règle dans « Administration > Automatisation » ; le client des postes lit `serveur.json`. |
+| RG-WEB-04 | Le serveur web n'écoute que sur la carte Tailscale (pare-feu) ; jamais ouvert sur Internet ni sur le réseau local. |
+| RG-WEB-05 | Sage ne répond pas : les pages s'affichent quand même, tableaux vides avec leurs colonnes, et un bandeau le signale. |
+| RG-WEB-06 | Un seul travail dans Sage à la fois ; le jeton anti-falsification ne paraît jamais dans une adresse. |
+| RG-WEB-07 | Changer de serveur : reprendre `config.toml` et `donnees/`, retaper les mots de passe (coffre-fort propre à chaque machine), régler le serveur, relancer `installer_web.ps1` et la tâche planifiée ; retirer tâche et serveur web de l'ancien serveur (jamais deux traitements de nuit). |

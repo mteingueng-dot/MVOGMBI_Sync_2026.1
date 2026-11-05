@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Processus métier (BPM)
 
-Version 1.0.11 (3 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Notation : chaque couloir est un acteur ou un système ; ( ) = début ou fin, [ ] = activité, { } = décision, flèches = enchaînement. Les processus sont ceux en service.
 
@@ -87,7 +87,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph EMP["Employé"]
-        A1([Pointer arrivée, pause, départ<br/>par NIP])
+        A1([Pointer arrivée, pause, départ<br/>par NIP, sur le Wi-Fi du magasin])
         A2[Consulter son horaire]
         A3([Recevoir son bulletin])
     end

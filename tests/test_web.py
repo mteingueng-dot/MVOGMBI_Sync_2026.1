@@ -728,3 +728,64 @@ def test_serveur_de_l_application(tmp_path, monkeypatch):
     (tmp_path / "MVOGMBI_Sync_Client" / "serveur.json").write_bytes(serveur_appli.fichier_client(c))
     assert client.adresse_serveur("exemple.com") == "http://exemple.com:9000"
     assert client.adresse_serveur("app.marchemvogmbi.com") == "http://app.marchemvogmbi.com:8765"  # départ gardé
+
+
+def test_pointage_wifi_du_magasin(monkeypatch):
+    """Pointage : poste du magasin, ou appareil dont Tailscale montre qu'il vient du Wi-Fi du magasin."""
+    from mvogmbi_sync import pointage_wifi as pw
+
+    c = {}
+    pw.ecrire(c, "MVOG-Magasin", "203.0.113.7, 198.51.100.", "100.101.7.12")
+    assert c["pointage"]["adresses_magasin"] == ["203.0.113.7", "198.51.100."]
+    assert pw.autorise(c, "100.101.7.12")[0]
+    monkeypatch.setattr(pw, "adresse_du_reseau", lambda ip: {"100.1.1.1": "203.0.113.7",
+                                                             "100.1.1.2": "198.51.100.40"}.get(ip, ""))
+    assert pw.autorise(c, "100.1.1.1")[0] and pw.autorise(c, "100.1.1.2")[0]
+    permis, raison = pw.autorise(c, "100.1.1.3")
+    assert not permis and "MVOG-Magasin" in raison
+    monkeypatch.setattr(pw, "_executer", lambda arguments, delai: (
+        '{"Peer": {"a": {"TailscaleIPs": ["100.9.9.9"], "CurAddr": "203.0.113.7:41641"}}}'
+        if arguments[0] == "status" else ""))
+    pw._MEMOIRE.clear()
+    monkeypatch.undo()
+    monkeypatch.setattr(pw, "_executer", lambda arguments, delai: (
+        '{"Peer": {"a": {"TailscaleIPs": ["100.9.9.9"], "CurAddr": "203.0.113.7:41641"}}}'
+        if arguments[0] == "status" else "pong from x (100.8.8.8) via 198.51.100.9:41641 in 20ms"))
+    assert pw.adresse_du_reseau("100.9.9.9") == "203.0.113.7"
+    assert pw.adresse_du_reseau("100.8.8.8") == "198.51.100.9"
+
+
+def test_pause_automatique_hors_du_wifi(tmp_path):
+    """Téléphone hors du Wi-Fi 5 min de suite : pause à l'heure du départ ; retour sur le Wi-Fi : fin de pause."""
+    from datetime import datetime, timedelta
+
+    from mvogmbi_sync import paie_temps as pt
+    from mvogmbi_sync import pointage_wifi as pw
+
+    reg = pt.Registre(tmp_path)
+    awa = reg.ajouter("Awa")
+    reg.enregistrer()
+    config = {"pointage": {"adresses_magasin": ["203.0.113.7"], "pause_hors_wifi_minutes": 5}}
+    t0 = datetime(2026, 11, 4, 9, 0)
+    pt.Registre(tmp_path).pointer(awa.id, pt.ARRIVEE, t0)
+    pw.noter_pointage(tmp_path, config, awa.id, pt.ARRIVEE, "100.1.1.1")
+    hors, dedans = (lambda ip: False), (lambda ip: True)
+    assert pw.controler(tmp_path, config, t0 + timedelta(minutes=10), hors) == []  # 1er constat
+    assert pw.controler(tmp_path, config, t0 + timedelta(minutes=13), hors) == []  # 3 min : pas encore
+    fait = pw.controler(tmp_path, config, t0 + timedelta(minutes=15), hors)
+    assert fait and "en pause depuis 09:10" in fait[0]
+    assert pt.Registre(tmp_path).etat_actuel(awa.id) == pt.PAUSE
+    fait = pw.controler(tmp_path, config, t0 + timedelta(minutes=40), dedans)
+    assert fait and "fin de pause" in fait[0]
+    valides = pt.Registre(tmp_path).valides(awa.id)
+    assert [p.type for p in valides] == [pt.ARRIVEE, pt.PAUSE, pt.FIN_PAUSE]
+    assert valides[1].moment.endswith("09:10:00") and valides[1].auteur == "Automatique"
+    # pause pointée par l'employé : jamais terminée par l'application
+    pt.Registre(tmp_path).pointer(awa.id, pt.PAUSE, t0 + timedelta(hours=2))
+    pw.noter_pointage(tmp_path, config, awa.id, pt.PAUSE, "100.1.1.1")
+    assert pw.controler(tmp_path, config, t0 + timedelta(hours=3), dedans) == []
+    assert pt.Registre(tmp_path).etat_actuel(awa.id) == pt.PAUSE
+    # départ : plus de suivi
+    pt.Registre(tmp_path).pointer(awa.id, pt.DEPART, t0 + timedelta(hours=4))
+    pw.noter_pointage(tmp_path, config, awa.id, pt.DEPART, "100.1.1.1")
+    assert pw.lire_suivi(tmp_path) == {}

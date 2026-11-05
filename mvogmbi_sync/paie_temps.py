@@ -216,6 +216,19 @@ class Registre:
         self.enregistrer(tout=False)
         return nouveaux[-1]
 
+    def pointer_auto(self, ident: str, type_: str, moment: datetime, source: str, motif: str) -> Pointage:
+        """Pointage posé par l'application (pause quand le téléphone quitte le Wi-Fi du magasin, fin de pause quand il
+        y revient) : auteur « Automatique », motif gardé ; la feuille revient « À approuver » comme pour une
+        correction."""
+        self.recharger()
+        if type_ not in self.actions_permises(ident):
+            raise ErreurPointage(f"« {type_} » n'est pas possible maintenant.")
+        nouveau = Pointage(uuid.uuid4().hex, ident, type_, moment.replace(microsecond=0).isoformat(), source,
+                           "Automatique", motif, cree=_maintenant())
+        self.pointages.append(nouveau)
+        self.enregistrer(tout=False)
+        return nouveau
+
     def corriger(self, ident: str, type_: str, moment: datetime, auteur: str, motif: str,
                  remplace: str = "") -> Pointage:
         """Correction du gérant : nouveau pointage (et annulation de celui qu'il remplace) ; motif obligatoire."""

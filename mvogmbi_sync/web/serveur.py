@@ -359,6 +359,23 @@ def creer_serveur(racine: Path, adresse: str | None = None, port: int | None = N
     return serveur
 
 
+def _suivre_telephones(app) -> None:
+    """Chaque minute : pause automatique des employés dont le téléphone a quitté le Wi-Fi du magasin, fin de pause
+    à leur retour (pointage_wifi.controler)."""
+    import time
+
+    from ..pointage_wifi import controler
+
+    while True:
+        time.sleep(60)
+        try:
+            with app.ecriture:
+                for ligne in controler(app.racine, app.config):
+                    app.noter(f"pointage : {ligne}")
+        except Exception:  # noqa: BLE001 — le serveur web continue
+            app.noter(f"suivi des téléphones : {traceback.format_exc(limit=2)}")
+
+
 def lancer(racine: Path, adresse: str | None = None, port: int | None = None) -> None:
     try:
         serveur = creer_serveur(racine, adresse, port)
@@ -369,6 +386,7 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     schema = "https" if serveur.app.https else "http"  # type: ignore[attr-defined]
     print(f"Application web : {schema}://{hote}:{port_reel}/  (Ctrl+C pour arrêter)")
     serveur.app.noter(f"démarrage {schema}://{hote}:{port_reel}/")  # type: ignore[attr-defined]
+    threading.Thread(target=_suivre_telephones, args=(serveur.app,), daemon=True).start()
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:
