@@ -446,6 +446,10 @@ LISTES = {"/clients": ("clients", "/client-nouveau"), "/fournisseurs-liste": ("f
           "/documents-vente": ("documents_vente", "/document/choisir?cote=vente"),
           "/documents-achat": ("documents_achat", "/document/choisir?cote=achat"),
           "/documents-stock": ("documents_stock", "/document/choisir?cote=stock")}
+# tableaux vides de la fenêtre Windows avant « Calculer » / « Vérifier » (fenetre_comptabilite)
+ZONES_ATTENTE = {"/retenues": ["Retenues à la source", "Salaires et cotisations de l'employeur du mois"],
+                 "/tresorerie": ["Prévision de trésorerie"], "/taxes": ["Déclaration TPS/TVQ"],
+                 "/suivi-remises": ["Suivi des remises de retenues"], "/cloture": ["Clôture du mois"]}
 MESSAGE_MODIFIER = ("Les fiches et les documents enregistrés dans Sage se modifient dans Sage. La fiche s'ouvre pour "
                     "consultation ; les documents saisis dans l'application se modifient dans leur liste (Vente, "
                     "Articles).")
@@ -461,7 +465,8 @@ def consulter(c: Consultation):
         v = dict(c.defauts) | {k: q[k] for k in q if q[k] != ""}
         v["du"] = _date(q.get("du"), c.defauts.get("du", aujourdhui - timedelta(days=30)))  # comme Windows
         v["au"] = _date(q.get("au"), c.defauts.get("au", aujourdhui))
-        v.setdefault("mois", f"{aujourdhui:%Y-%m}")
+        precedent = aujourdhui.replace(day=1) - timedelta(days=1)  # fenetre_comptabilite : mois terminé
+        v.setdefault("mois", f"{precedent:%Y-%m}" if c.chemin in ("/retenues", "/cloture") else f"{aujourdhui:%Y-%m}")
         from .pages_rapports_web import est_onglet, onglets
 
         if q.get("actualiser"):  # « 🔄 Actualiser » : relu dans Sage
@@ -483,8 +488,10 @@ def consulter(c: Consultation):
                           if cote else ""))
             corps = corps.replace("</form>", boutons + "</form>", 1)
         if c.attente and not q.get("actualiser"):  # fenêtre Windows : rien n'est lu avant « Calculer »
-            corps += (f"<div class='ligne-etat-haut'>{e(c.attente)}</div>"
-                      "<div class='defile'><table><tr><td class='vide'></td></tr></table></div>")
+            corps += f"<div class='ligne-etat-haut'>{e(c.attente)}</div>" + "".join(
+                (f"<h2 class='titre-zone'>{e(t_)}</h2>" if t_ else "")
+                + "<div class='defile'><table><tr><td class='vide'></td></tr></table></div>"
+                for t_ in ZONES_ATTENTE.get(c.chemin, [c.titre]))
             return Reponse(corps=page(ctx, c.titre, corps))
         try:
             sections = c.calcul(ctx, v)

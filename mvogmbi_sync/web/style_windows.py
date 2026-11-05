@@ -117,6 +117,7 @@ label.noeud.enfant { padding-left: 22px; } label.noeud.rubrique { font-weight: 6
 .titre-section { font-weight: 600; margin: 10px 0 2px; }
 .bouton-mini { padding: 3px 9px !important; }
 .colonne-comptes h2, .liste-windows h2 { display: none; }
+.liste-windows .defile { height: calc(100vh - 300px); }
 .ligne-etat-haut { color: var(--gris); font-size: 12.5px; margin: 2px 0 6px; }
 .ligne-profil { display: flex; gap: 6px; align-items: center; margin: 8px 0 6px; }
 .ligne-profil form { display: contents; }

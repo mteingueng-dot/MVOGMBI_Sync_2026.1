@@ -74,8 +74,9 @@ def cartes(valeurs: list[tuple[str, str]]) -> str:
     return f"<div class='cartes-totaux'>{html}</div>"
 
 
-def _formulaire(contenu: str) -> str:
-    return f"<form class='barre-onglet' method='get'>{contenu}<button class='second'>Afficher</button></form>"
+def _formulaire(contenu: str, bouton: bool = True) -> str:
+    fin = "<button class='second'>Afficher</button>" if bouton else ""
+    return f"<form class='barre-onglet' method='get'>{contenu}{fin}</form>"
 
 
 def _choix(nom: str, libelle: str, valeurs, actuelle: str) -> str:
@@ -205,11 +206,12 @@ def inactifs(ctx: Contexte) -> Reponse:
     noms = [TOUTES] + sorted({a.categorie for a in (articles or {}).values()}, key=str.casefold)
     entete = onglets("Produits inactifs", ctx) + _formulaire(
         _choix("source", "Source", SOURCES, source)
-        + f"<div><label>Sans vente depuis au moins (jours)</label><input name='jours' value='{jours}' list='seuils' "
+        + f"<div><label>Sans vente depuis au moins</label><input name='jours' value='{jours}' list='seuils' "
           "size='5'><datalist id='seuils'>" + "".join(f"<option value='{j}'>" for j in aa.SEUILS_INACTIVITE)
-        + "</datalist></div>" + _choix("categorie", "Catégorie", noms, categorie)
+        + "</datalist> jours</div>"
         + f"<div><label><input type='checkbox' name='stock' value='1'{' checked' if avec_stock else ''}> Seulement les "
-          "articles en stock</label></div>" + _recherche(q.get("recherche", "")))
+          "articles en stock</label></div><button name='actualiser' value='1'>🔄 Actualiser</button>"
+        + _choix("categorie", "Catégorie", noms, categorie), bouton=False)  # même ordre que onglets_articles
     explication = ("Articles (Clover, ou articles de stock actifs de Sage) qui n'ont pas été vendus depuis le nombre de "
                    "jours choisi (30, 60, 90… ou un autre nombre), ou jamais vendus ; la plus grande valeur de stock "
                    "en haut.")
@@ -267,7 +269,7 @@ def pareto(ctx: Contexte) -> Reponse:
         _choix("source", "Source", SOURCES, source) + _choix("periode", "Période", PERIODES, periode)
         + f"<div><label>du</label><input type='date' name='du' value='{du}'></div><div><label>au</label><input "
           f"type='date' name='au' value='{au}'></div>" + _choix("affichage", "Afficher", AFFICHAGES_PARETO, affichage)
-        + _choix("categorie", "Catégorie", noms, categorie) + _recherche(q.get("recherche", "")))
+        + "<button>🔍 Calculer</button>" + _choix("categorie", "Catégorie", noms, categorie), bouton=False)
     if articles is None:
         return Reponse(corps=page(ctx, "Rapports", entete + f"<p class='erreur'>{'Clover' if clover else 'Sage'} ne "
                                                             "répond pas pour l'instant.</p>"))

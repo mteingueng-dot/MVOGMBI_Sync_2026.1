@@ -47,9 +47,12 @@ def _garder(ctx: Contexte, cle, duree, fonction):
 
 
 def _points(ctx: Contexte) -> list:
+    """Points de vente permis ; filtre « Point de vente » (Tout = tous, comme la liste à choix multiples de Windows)."""
     from ..points_vente import permis
 
-    return permis(ctx.config, ctx.reg.points_vente_permis(ctx.u))
+    points = permis(ctx.config, ctx.reg.points_vente_permis(ctx.u))
+    choisi = ctx.req.query.get("Point de vente", "")
+    return [p for p in points if p.libelle == choisi] or points if choisi else points
 
 
 def _brut(ctx: Contexte, du: date, au: date, nom_periode: str) -> dict:
@@ -75,7 +78,8 @@ def _brut(ctx: Contexte, du: date, au: date, nom_periode: str) -> dict:
         return {"donnees": donnees, "autres": autres, "couts": couts, "du": du, "au": au, "du2": du2, "au2": au2,
                 "libelle": libelle, "completes": sc.statistiques(donnees, couts)}
 
-    return _garder(ctx, ("stats_brut", du, au, nom_periode), DUREE_JOUR if au >= date.today() else DUREE, lire)
+    cle = ("stats_brut", du, au, nom_periode, ctx.req.query.get("Point de vente", ""))
+    return _garder(ctx, cle, DUREE_JOUR if au >= date.today() else DUREE, lire)
 
 
 def _calculer(b: dict, f: dict) -> dict:
@@ -126,7 +130,7 @@ def _accueil(r: dict) -> str:
     valeurs_avant = (valeurs_avant + [0] * len(valeurs))[:len(valeurs)]
     nom = ("Aujourd'hui" if r["du"] == r["au"] == date.today() else
            (str(r["du"]) if r["du"] == r["au"] else "Période choisie"))
-    g = Graphique(1100, 170, "Ventes nettes par heure" if r["du"] == r["au"] else "Évolution des ventes nettes")
+    g = Graphique(560, 170, "Ventes nettes par heure" if r["du"] == r["au"] else "Évolution des ventes nettes")
     if r["du"] == r["au"]:
         g.barres(etiquettes, [(nom, valeurs, BLEU), (r["libelle"].capitalize(), valeurs_avant, BLEU_PALE)],
                  "Aucune vente")
@@ -136,11 +140,11 @@ def _accueil(r: dict) -> str:
             nom, legende_avant = str(r["du"].year), str(r["du2"].year)
         g.courbes(etiquettes, [(nom, valeurs, BLEU, False), (legende_avant, valeurs_avant, BLEU_PALE, True)],
                   "Aucune vente")
-    moyens = Graphique(360, 175, "Montant perçu").anneau([(k, v) for k, v in r["moyens"]], "Aucun paiement",
+    moyens = Graphique(260, 200, "Montant perçu").anneau([(k, v) for k, v in r["moyens"]], "Aucun paiement",
                                                          format_valeur=montant)
-    categories = Graphique(360, 175, "Ventes par catégorie").anneau(
+    categories = Graphique(190, 190, "Ventes par catégorie").anneau(
         [(l[0], l[2]) for l in r["vues"]["Par catégorie"][1]], "Aucune vente", format_valeur=montant)
-    articles = Graphique(360, 175, "Meilleurs articles").classement(
+    articles = Graphique(190, 190, "Meilleurs articles").classement(
         [(l[0], l[6]) for l in r["vues"]["Par article"][1][:8]], vide="Aucune vente", format_valeur=montant)
     return (_cartes(r) + _graph(g) + "<div class='grille3'>" + _graph(moyens) + _graph(categories) + _graph(articles)
             + "</div>")
@@ -482,6 +486,13 @@ def statistiques(ctx: Contexte) -> Reponse:
         b = _brut(ctx, du, au, nom_periode)
         r = _calculer(b, filtres)
         completes = b["completes"]
+        from ..points_vente import permis as permis_pv
+
+        libelles = [p.libelle for p in permis_pv(ctx.config, ctx.reg.points_vente_permis(ctx.u))]
+        pv = q.get("Point de vente", "")
+        barre += ("<div><label>Point de vente</label><select name='Point de vente'><option value=''>Tout</option>"
+                  + "".join(f"<option{' selected' if x == pv else ''}>{e(x)}</option>" for x in libelles)
+                  + "</select></div>")
         for nom, vue_filtre in (("Article", "Par article"), ("Client", "Par client"), ("Employé", "Par employé"),
                                 ("Catégorie", "Par catégorie"), ("Mode de paiement", "Par mode de paiement")):
             valeurs = sorted({str(l[0]) for l in completes[vue_filtre][1]} - {"Sans client"}, key=str.casefold)
@@ -493,7 +504,7 @@ def statistiques(ctx: Contexte) -> Reponse:
         ctx.app.noter(f"Statistiques : {erreur!r}")
         b, r = None, None
         message = "<p class='erreur'>Clover ne répond pas pour l'instant.</p>"
-    effacer = urlencode({k: v for k, v in q.items() if k not in FILTRES})
+    effacer = urlencode({k: v for k, v in q.items() if k not in FILTRES and k != "Point de vente"})
     barre += ("<button>✔ Appliquer</button>" + ("" if limite else f"<a class='ouvrir' href='?{e(effacer)}'>✖ Effacer</a>")
               + "</div></form>")
     etat = ""

@@ -944,7 +944,9 @@ def budget(ctx: Contexte) -> Reponse:
     valeurs = {x: str(v).replace(".", ",") if v else "" for x, v in registre.mois(annee, mois).items()}
     croissance = ctx.req.champ("croissance") or "5"
     action = ctx.req.champ("action") if ctx.req.methode == "POST" else ""
-    etat, resultat = "Réel lu dans Sage (produits 4xxx, CMV 50xx, autres charges 51xx-59xx).", ""
+    etat = "Réel lu dans Sage (produits 4xxx, CMV 50xx, autres charges 51xx-59xx)."
+    resultat = ("<h2 class='titre-zone'>Budget et écarts</h2><div class='defile'><table><tr><td class='vide'>"
+                "</td></tr></table></div>")  # zone vide avant « Comparer au réel », comme Windows
     if action == "Enregistrer le budget":
         if not action_permise(ctx, "Enregistrer le budget"):
             etat = "✘ Votre profil n'a pas le droit « Enregistrer le budget »."
