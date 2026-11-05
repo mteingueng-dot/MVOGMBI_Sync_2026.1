@@ -19,38 +19,95 @@ from .serveur import Reponse, echapper as e, redirection
 
 # --------------------------------------------------------------------------------------------- facture saisie
 def saisir_facture(ctx: Contexte) -> Reponse:
+    """fenetre_gestion.saisir_facture_achat (SaisieDocument) : Fournisseur *, Date, N° de facture du fournisseur * ;
+    Article, Quantité, Prix d'achat, Taxes, « ➕ Ajouter la ligne », « ✖ Retirer la ligne » ; tableau des lignes ;
+    « n ligne(s) — total », « ✔ Ajouter aux factures fournisseurs », « ✖ Fermer »."""
     from .. import fournisseurs as fo
+    from .. import taxes as tx
+    from .consultations import Section, tableau_section
     from .pages_fournisseurs import _listes
 
-    noms, _articles = _listes(ctx.racine)
+    noms, articles = _listes(ctx.racine)
+    descriptions = {a.numero: a.description for a in articles}
     message = ""
+    v = {k: ctx.req.champ(k).strip() for k in ("fournisseur", "numero", "date")}
+    v["date"] = v["date"] or date.today().isoformat()
+    lignes = [(a_, d_, q_, p_, t_) for a_, d_, q_, p_, t_ in zip(
+        ctx.req.champs("l_article"), ctx.req.champs("l_description"), ctx.req.champs("l_quantite"),
+        ctx.req.champs("l_prix"), ctx.req.champs("l_taxe"))]
     if ctx.req.methode == "POST":
-        tiers, numero, jour = (ctx.req.champ(k).strip() for k in ("fournisseur", "numero", "date"))
+        action = ctx.req.champ("action")
         try:
-            if not tiers:
-                raise ValueError("Choisissez le fournisseur.")
-            if not numero:
-                raise ValueError("Le n° de facture du fournisseur est obligatoire.")
-            date.fromisoformat(jour)
-            nom = f"Saisie manuelle {tiers} {numero}"
-            facture = fo.Facture(nom, hashlib.sha1(f"{nom}{datetime.now()}".encode()).hexdigest(), tiers, tiers, numero,
-                                 jour, modele="Saisie manuelle")
-            facture.etat = fo.A_VERIFIER
-            with ctx.app.ecriture:
-                registre = fo.Registre(ctx.racine)
-                registre.factures.append(facture)
-                registre.enregistrer()
-                rang = len(registre.factures) - 1
-            return redirection(f"/facture-fournisseur?i={rang}")
-        except ValueError as erreur:
-            message = _message(erreur=str(erreur))
-    liste = "<datalist id='fournisseurs'>" + "".join(f"<option value='{e(n)}'>" for n in noms) + "</datalist>"
-    corps = (message + f"<form method='post' class='carte'>{csrf(ctx)}<div class='ligne'><div><label>Fournisseur Sage"
-             f"</label><input name='fournisseur' list='fournisseurs' size='30' required>{liste}</div><div><label>N° de "
-             "facture du fournisseur</label><input name='numero' required></div><div><label>Date</label><input "
-             f"type='date' name='date' value='{date.today()}' required></div></div><div class='boutons'><button>"
-             "Continuer : saisir les lignes</button></div></form><p class='note'>La facture rejoint la liste des "
-             "factures fournisseurs ; elle s'importe dans Sage (et Clover) une fois prête.</p>")
+            if action == "Ajouter la ligne":
+                article = ctx.req.champ("article").strip().split("  ")[0].strip()
+                quantite = Decimal((ctx.req.champ("quantite") or "1").replace(",", "."))
+                prix = Decimal((ctx.req.champ("prix") or "0").replace(",", ".").replace("$", "").strip() or "0")
+                if not article:
+                    raise ValueError("Choisissez l'article.")
+                if quantite <= 0:
+                    raise ValueError("Quantité positive.")
+                lignes.append((article, descriptions.get(article, article), str(quantite), str(prix),
+                               ctx.req.champ("taxe")))
+            elif action == "Retirer la ligne":
+                k = ctx.req.champ("k")
+                if not k.isdigit() or int(k) >= len(lignes):
+                    raise ValueError("Choisissez une ligne.")
+                del lignes[int(k)]
+            elif action == "Ajouter aux factures fournisseurs":
+                if not v["fournisseur"]:
+                    raise ValueError("Choisissez le fournisseur.")
+                if not v["numero"]:
+                    raise ValueError("Le n° de facture du fournisseur est obligatoire.")
+                if not lignes:
+                    raise ValueError("Ajoutez au moins une ligne.")
+                date.fromisoformat(v["date"])
+                lignes_f = [fo.Ligne(d_, Decimal(q_), Decimal(p_), (Decimal(q_) * Decimal(p_)).quantize(Decimal("0.01")),
+                                     numero_sage=a_, description_sage=d_, taxable=bool(t_), confirme=True, taxe=t_)
+                            for a_, d_, q_, p_, t_ in lignes]
+                sous_total = sum((l.montant for l in lignes_f), Decimal(0))
+                montants = [tx.montants(l.montant, tx.code(l)) for l in lignes_f]
+                tps = sum((m[0] for m in montants), Decimal(0))
+                tvq = sum((m[1] for m in montants), Decimal(0))
+                nom = f"Saisie manuelle {v['fournisseur']} {v['numero']}"
+                facture = fo.Facture(nom, hashlib.sha1(f"{nom}{datetime.now()}".encode()).hexdigest(), v["fournisseur"],
+                                     v["fournisseur"], v["numero"], v["date"], lignes_f, sous_total, tps, tvq,
+                                     sous_total + tps + tvq, "Saisie manuelle")
+                facture.etat = fo.etat_apres_controle(facture, facture.controles())
+                with ctx.app.ecriture:
+                    registre = fo.Registre(ctx.racine)
+                    registre.factures.append(facture)
+                    registre.enregistrer()
+                    rang = len(registre.factures) - 1
+                return redirection(f"/factures-fournisseurs?i={rang}")
+        except (ValueError, InvalidOperation) as erreur:
+            message = _message(erreur=str(erreur) or "Nombre invalide.")
+    liste_f = "<datalist id='fournisseurs'>" + "".join(f"<option value='{e(n)}'>" for n in noms) + "</datalist>"
+    liste_a = "<datalist id='articles-sage'>" + "".join(
+        f"<option value='{e(a.numero)}  {e(a.description)}'>" for a in articles[:4000]) + "</datalist>"
+    caches, rangees, total = "", [], Decimal(0)
+    for k, (a_, d_, q_, p_, t_) in enumerate(lignes):
+        caches += "".join(f"<input type='hidden' name='l_{n}' value='{e(x)}'>" for n, x in (
+            ("article", a_), ("description", d_), ("quantite", q_), ("prix", p_), ("taxe", t_)))
+        montant = (Decimal(q_) * Decimal(p_)).quantize(Decimal("0.01"))
+        total += montant
+        rangees.append([f"<input type='radio' name='k' value='{k}'>", e(a_), e(d_), e(q_), argent(Decimal(p_)),
+                        argent(montant), e(tx.CHOIX.get(t_, t_))])
+    taxes = "".join(f"<option value='{e(x)}'>{e(n)}</option>" for x, n in tx.CHOIX.items())
+    corps = (message + f"<form method='post'>{csrf(ctx)}{caches}<div class='barre-onglet'><div><label>Fournisseur *"
+             f"</label><input name='fournisseur' list='fournisseurs' value='{e(v['fournisseur'])}' size='26'>{liste_f}"
+             f"</div><div><label>Date</label><input type='date' name='date' value='{e(v['date'])}'></div><div><label>"
+             f"N° de facture du fournisseur *</label><input name='numero' value='{e(v['numero'])}' size='22'></div>"
+             "</div><div class='barre-onglet'><div><label>Article</label><input name='article' list='articles-sage' "
+             f"size='34'>{liste_a}</div><div><label>Quantité</label><input name='quantite' value='1' size='6'></div>"
+             "<div><label>Prix d'achat</label><input name='prix' size='9'></div><div><label>Taxes</label><select "
+             f"name='taxe'>{taxes}</select></div></div><div class='barre-onglet'><button name='action' value='Ajouter "
+             "la ligne'>➕ Ajouter la ligne</button><button class='second' name='action' value='Retirer la ligne'>✖ "
+             "Retirer la ligne</button></div>"
+             + tableau_section(Section("Lignes", ["", "N° Sage", "Description", "Quantité", "Prix d'achat", "Montant",
+                                                  "Taxes"], rangees, html=set(range(7))))
+             + f"<div class='barre-onglet'><strong>{len(lignes)} ligne(s) — total {argent(total)}</strong><button "
+               "name='action' value='Ajouter aux factures fournisseurs'>✔ Ajouter aux factures fournisseurs</button>"
+               "<a class='ouvrir' href='/factures-fournisseurs'>✖ Fermer</a></div></form>")
     return Reponse(corps=page(ctx, "Saisir une facture d'achat", corps))
 
 
@@ -370,7 +427,10 @@ def retours(ctx: Contexte) -> Reponse:
     from . import taches
     from .pages_fournisseurs import _listes
 
+    from .pages_compta import _point_vente
+
     noms, _articles = _listes(ctx.racine)
+    _pv, choix_pv, code_pv = _point_vente(ctx)
     message = ""
     valeurs = {k: ctx.req.champ(k).strip() for k in ("fournisseur", "facture", "jour", "motif")}
     lignes_proposees = []
@@ -423,7 +483,8 @@ def retours(ctx: Contexte) -> Reponse:
                 with ctx.app.ecriture:
                     r = rt.Registre(ctx.racine).ajouter(valeurs["fournisseur"], valeurs["facture"],
                                                         valeurs["jour"] or date.today().isoformat(), lignes,
-                                                        valeurs["motif"], ctx.u.nom)
+                                                        valeurs["motif"], ctx.u.nom,
+                                                        str(code_pv))  # comme FenetreRetours (choix_pv.courant.code)
                 message = _message(f"Retour {r.numero} créé : « Importer dans Sage » pour l'appliquer.")
                 valeurs = {k: "" for k in valeurs}
                 lignes_proposees = []
@@ -449,7 +510,7 @@ def retours(ctx: Contexte) -> Reponse:
         rangees.append([f"<input type='radio' name='k' value='{k}'>", e(l.numero_sage), e(l.description),
                         e(str(l.quantite)), e(str(l.prix)), e(CHOIX.get(l.taxe, l.taxe))])
     taxes = "".join(f"<option value='{e(x)}'>{e(v)}</option>" for x, v in CHOIX.items())
-    corps = (message + f"<form method='post'>{csrf(ctx)}{caches}<div class='barre-onglet'><div><label>Fournisseur Sage *"
+    corps = (message + f"<form method='post'>{csrf(ctx)}{caches}<div class='barre-onglet'>{choix_pv}<div><label>Fournisseur Sage *"
              f"</label><input name='fournisseur' list='fournisseurs' value='{e(valeurs['fournisseur'])}' size='24'>"
              f"{liste}</div><div><label>N° de la facture d'origine *</label><input name='facture' "
              f"value='{e(valeurs['facture'])}' size='14'></div><div><label>Motif</label><input name='motif' "

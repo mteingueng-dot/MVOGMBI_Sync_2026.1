@@ -9,6 +9,8 @@ une page web n'ouvre jamais Sage elle-même ; lecture gardée 5 min.
 
 from __future__ import annotations
 
+import re
+
 from urllib.parse import quote
 
 import time
@@ -49,6 +51,7 @@ class Consultation:
     defauts: dict = field(default_factory=dict)
     choix: dict = field(default_factory=dict)  # filtre -> (libellé, valeurs) : liste de choix
     bouton: str = "🔄 Actualiser"  # bouton de la barre, comme la fenêtre Windows (« 🔍 Calculer », « 🔍 Vérifier »)
+    attente: str = ""  # calcul lancé seulement par le bouton (comme Windows) : texte de la ligne d'état avant
 
 
 # --------------------------------------------------------------------------------------------- outils
@@ -136,6 +139,23 @@ def _numerique(lignes: list[list], i: int) -> bool:
     return any(isinstance(l[i], (Decimal, int)) and not isinstance(l[i], bool) for l in lignes if i < len(l))
 
 
+_RADIO = re.compile(r"^<input type='radio'([^>]*)>")
+_RANG_RADIO = [0]
+
+
+def ligne_cliquable(cellules: list[str]) -> list[str]:
+    """Ligne dont la 1re cellule est un bouton radio : chaque autre cellule devient une étiquette de ce bouton (un
+    clic n'importe où sur la ligne la choisit, comme dans un tableau de Windows ; le bouton lui-même est caché)."""
+    m = _RADIO.match(cellules[0]) if cellules else None
+    if not m or " id=" in m.group(1):
+        return cellules
+    _RANG_RADIO[0] += 1
+    ident = f"l{_RANG_RADIO[0]}"
+    premiere = f"<input type='radio' id='{ident}' class='choix-ligne'{m.group(1)}>" + cellules[0][m.end():]
+    return [premiere] + [f"<label class='cellule' for='{ident}'>{c}</label>" if "<a " not in c and "<input" not in c
+                         and "<select" not in c and "<button" not in c else c for c in cellules[1:]]
+
+
 def tableau_section(s: Section, limite: int = 2000) -> str:
     if not s.lignes:  # tableau vide : ses colonnes restent affichées, comme dans Windows
         th = "".join(f"<th>{e(c)}</th>" for c in s.entetes)
@@ -149,10 +169,10 @@ def tableau_section(s: Section, limite: int = 2000) -> str:
     for rang, ligne in enumerate(s.lignes[:limite]):
         total = str(ligne[0]).startswith("Total")
         classe = s.classes[rang] if s.classes and rang < len(s.classes) else ""
-        cellules = "".join(f"<td class='{'n' if i in nombres else ''}'>"
-                           f"{v if i in s.html else e(formater(s.entetes[i], v))}</td>"
-                           for i, v in enumerate(ligne[:len(s.entetes)]))
-        corps.append(f"<tr class='{'total' if total else classe}'>{cellules}</tr>")
+        textes = [v if i in s.html else e(formater(s.entetes[i], v)) for i, v in enumerate(ligne[:len(s.entetes)])]
+        corps.append(f"<tr class='{'total' if total else classe}'>"
+                     + "".join(f"<td class='{'n' if i in nombres else ''}'>{t}</td>"
+                               for i, t in enumerate(ligne_cliquable(textes))) + "</tr>")
     reste = (f"<p class='note'>{len(s.lignes) - limite} ligne(s) de plus : précisez les filtres.</p>"
              if len(s.lignes) > limite else "")
     return (f"<h2>{e(s.titre)} <span class='etat'>{len(s.lignes)}</span></h2>"
@@ -256,7 +276,7 @@ def _interrogation(genre):
 def _age(ctx, v):
     from .. import comptabilite as cp
 
-    cote = "fournisseurs" if v.get("cote") == "Fournisseurs" else "clients"
+    cote = "clients" if v.get("cote") == "Clients" else "fournisseurs"
     factures = sage(ctx, lambda b: cp.factures_ouvertes(b, cote, date.today()), ("age", cote))
     retard = sum((f.solde for f in factures if f.retard > 0), Decimal(0))
     note = f"{len(factures)} facture(s) ouverte(s), dont {argent(retard)} en retard. Échéance = date + délai du tiers."
@@ -387,11 +407,12 @@ def _formulaire(ctx: Contexte, c: Consultation, v: dict) -> str:
             etiquette = "N° de l'article" if genre == "article" else genre.capitalize()
             champs.append(f"<div><label>{etiquette}</label><input name='{genre}' list='noms' value='{e(v.get(genre, ''))}'"
                           f" size='28'>{liste}</div>")
-    for nom, choix in (("cote", ("Clients", "Fournisseurs")), ("vue", ("Par tiers", "Par facture"))):
+    # fenetre_comptabilite : « Comptes » Fournisseurs (par défaut) / Clients, « Afficher » Par tiers / Par facture
+    for nom, choix in (("cote", ("Fournisseurs", "Clients")), ("vue", ("Par tiers", "Par facture"))):
         if nom in f:
-            options = "".join(f"<option{' selected' if v.get(nom) == x else ''}>{x}</option>" for x in choix)
-            champs.append(f"<div><label>{'Côté' if nom == 'cote' else 'Vue'}</label><select name='{nom}'>{options}"
-                          f"</select></div>")
+            options = "".join(f"<option{' selected' if v.get(nom, choix[0]) == x else ''}>{x}</option>" for x in choix)
+            champs.append(f"<div><label>{'Comptes' if nom == 'cote' else 'Afficher'}</label><select name='{nom}'>"
+                          f"{options}</select></div>")
     for nom, (libelle, valeurs) in c.choix.items():
         options = "".join(f"<option{' selected' if str(v.get(nom)) == str(x) else ''}>{e(x)}</option>" for x in valeurs)
         champs.append(f"<div><label>{e(libelle)}</label><select name='{nom}'>{options}</select></div>")
@@ -438,7 +459,7 @@ def consulter(c: Consultation):
         q = ctx.req.query
         aujourdhui = date.today()
         v = dict(c.defauts) | {k: q[k] for k in q if q[k] != ""}
-        v["du"] = _date(q.get("du"), c.defauts.get("du", aujourdhui.replace(day=1)))
+        v["du"] = _date(q.get("du"), c.defauts.get("du", aujourdhui - timedelta(days=30)))  # comme Windows
         v["au"] = _date(q.get("au"), c.defauts.get("au", aujourdhui))
         v.setdefault("mois", f"{aujourdhui:%Y-%m}")
         from .pages_rapports_web import est_onglet, onglets
@@ -448,10 +469,23 @@ def consulter(c: Consultation):
                 ctx.app.memoire.pop(cle, None)
         liste = LISTES.get(c.chemin)
         corps = (onglets(c.titre, ctx) if est_onglet(c.titre) else "") + _formulaire(ctx, c, v)
-        if liste:
-            corps = corps.replace("</form>", (
-                f"<a class='ouvrir' href='{liste[1]}'>➕ Ajouter</a>" if liste[1] else
-                f"<a class='ouvrir' href='{c.chemin}?ajouter=1'>➕ Ajouter</a>") + "</form>", 1)
+        if liste:  # barre de FenetreListe : Actualiser, Ouvrir, Ajouter, Modifier, Supprimer (+ chaîne des documents)
+            cote = {"documents_vente": "vente", "documents_achat": "achat", "documents_stock": "stock"}.get(liste[0])
+            ajouter = (f"<a class='ouvrir' href='{liste[1]}'>➕ Ajouter</a>" if liste[1] else
+                       f"<a class='ouvrir' href='{c.chemin}?ajouter=1'>➕ Ajouter</a>")
+            boutons = ("<button class='second' form='liste' name='op' value='ouvrir'>📂 Ouvrir</button>" + ajouter
+                       + "<button class='second' form='liste' name='op' value='modifier'>✎ Modifier</button>"
+                       "<button class='danger' form='liste' name='op' value='supprimer'>🗑 Supprimer</button>"
+                       + ("<button class='accent' form='liste' name='op' value='piece'>⬆ Passer dans Sage et Clover"
+                          "</button>" if cote == "stock" else
+                          "<button class='accent' form='liste' name='op' value='piece'>🔀 Transformer</button>"
+                          "<button class='second' form='liste' name='op' value='piece'>⬆ Importer dans Sage</button>"
+                          if cote else ""))
+            corps = corps.replace("</form>", boutons + "</form>", 1)
+        if c.attente and not q.get("actualiser"):  # fenêtre Windows : rien n'est lu avant « Calculer »
+            corps += (f"<div class='ligne-etat-haut'>{e(c.attente)}</div>"
+                      "<div class='defile'><table><tr><td class='vide'></td></tr></table></div>")
+            return Reponse(corps=page(ctx, c.titre, corps))
         try:
             sections = c.calcul(ctx, v)
         except (Exception, SystemExit) as erreur:  # noqa: BLE001 — jeton Clover absent (SystemExit), autre panne
@@ -522,18 +556,14 @@ def _liste_comme_windows(ctx: Contexte, c: Consultation, sections: list, v: dict
                    for l, ref in rangees[:2000]]
     caches = "".join(f"<input type='hidden' name='{k}' value='{e(v[k])}'>" for k in ("du", "au", "texte", "mois")
                      if k in v and str(v[k]))
-    html = (f"<form method='get'>{caches}<input type='hidden' name='voir' value='1'><div class='barre-onglet'>"
-            "<button class='second' name='op' value='ouvrir'>📂 Ouvrir</button><button class='second' name='op' "
-            "value='modifier'>✎ Modifier</button><button class='danger' name='op' value='supprimer'>🗑 Supprimer"
-            "</button>"
-            + ("<button class='accent' name='op' value='piece'>⬆ Passer dans Sage et Clover</button>" if cote == "stock"
-               else "<button class='accent' name='op' value='piece'>🔀 Transformer</button><button class='second' "
-                    "name='op' value='piece'>⬆ Importer dans Sage</button>" if cote else "")
-            + "</div>"
+    # boutons de la liste : placés dans la barre du haut par `consulter` (attribut form=), comme FenetreListe
+    html = (f"<form method='get' id='liste'>{caches}<input type='hidden' name='voir' value='1'>"
+            + (f"<div class='ligne-etat-haut'>{len(rangees)} document(s) ; en bleu : documents de l'application.</div>"
+               if cote else f"<div class='ligne-etat-haut'>{len(rangees)} ligne(s) affichée(s) sur {len(rangees)}.</div>")
+            + "<div class='liste-windows'>"
             + tableau_section(Section(s0.titre, [""] + list(entetes), lignes, s0.note, classes_app,
-                                      html=set(range(len(entetes) + 1))))
-            + (f"<p class='note'>{len(rangees)} document(s) ; en bleu : documents de l'application.</p>" if cote else "")
-            + "</form>" + "".join(tableau_section(x) for x in sections[1:]))
+                                      html=set(range(len(entetes) + 1))), limite=10000)
+            + "</div></form>" + "".join(tableau_section(x) for x in sections[1:]))
     op = v.get("op")
     if not op:
         return html
@@ -604,13 +634,18 @@ CONSULTATIONS = [
     Consultation("/livre-inventaire", "Livre d'inventaire", "correspondance", ("au", "texte"), _livre, "", "📒",
                  "Stock"),
     Consultation("/age-comptes", "Âge des comptes", "rapprochement", ("cote", "vue"), _age, "", "⏳", "Comptabilité"),
-    Consultation("/taxes", "Déclaration TPS/TVQ", "rapprochement", ("periode",), _taxes, "", "🧮", "Comptabilité", bouton="🔍 Calculer"),
+    Consultation("/taxes", "Déclaration TPS/TVQ", "rapprochement", ("periode",), _taxes, "", "🧮", "Comptabilité", bouton="🔍 Calculer",
+                 attente="Choisissez la période de déclaration puis « Calculer »."),
     Consultation("/tresorerie", "Prévision de trésorerie", "rapprochement", (), _tresorerie,
                  "Solde du compte de dépôt, ventes prévues, factures fournisseurs et paies sur 4 semaines.", "💧",
-                 "Comptabilité", bouton="🔍 Calculer"),
-    Consultation("/cloture", "Clôture du mois", "rapprochement", ("mois",), _cloture, "", "📅", "Comptabilité", bouton="🔍 Vérifier"),
-    Consultation("/retenues", "Retenues à la source", "rapprochement", ("mois",), _retenues, "", "🏛", "Paie", bouton="🔍 Calculer"),
-    Consultation("/suivi-remises", "Suivi des remises", "rapprochement", (), _suivi_remises, "", "📬", "Paie", bouton="🔍 Calculer"),
+                 "Comptabilité", bouton="🔍 Calculer",
+                 attente="« Calculer » : 4 semaines à partir d'aujourd'hui."),
+    Consultation("/cloture", "Clôture du mois", "rapprochement", ("mois",), _cloture, "", "📅", "Comptabilité", bouton="🔍 Vérifier",
+                 attente="Choisissez le mois puis « Vérifier »."),
+    Consultation("/retenues", "Retenues à la source", "rapprochement", ("mois",), _retenues, "", "🏛", "Paie", bouton="🔍 Calculer",
+                 attente="Choisissez le mois puis « Calculer »."),
+    Consultation("/suivi-remises", "Suivi des remises", "rapprochement", (), _suivi_remises, "", "📬", "Paie", bouton="🔍 Calculer",
+                 attente="12 derniers mois : à remettre par organisme, versements jusqu'à 60 jours après l'échéance du 15. « Calculer » lit Sage."),
     Consultation("/audit", "Audit des actions", "utilisateurs", ("periode", "texte"), _audit,
                  "Chaque page, bouton et connexion, avec la personne et le poste.", "🛡", "Administration",
                  sans_sage=True, defauts={"du": date.today() - timedelta(days=7)}),

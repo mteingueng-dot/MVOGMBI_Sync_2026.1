@@ -26,6 +26,7 @@ fieldset.groupe legend { padding: 0 4px; color: var(--vert); font-weight: 600; f
 .grille-tiers { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 10px; align-items: center; }
 .grille-tiers label { margin: 0; }
 @media (max-width: 820px) { .grille-tiers { grid-template-columns: auto 1fr; } }
+main a.ouvrir.plein { background: #1a9b3c; color: #fff; border-color: #1a9b3c; }
 .ouvrir.inactif { opacity: .45; cursor: default; }
 .deux-colonnes { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
 .deux-colonnes > fieldset { flex: 1 1 320px; }
@@ -51,6 +52,7 @@ pre.sortie { background: #f6f8f7; color: #24332a; border: 1px solid #dfe6e1; fon
 td.centre { text-align: center; }
 pre.sortie .ok { color: #13772d; font-weight: normal; } pre.sortie .erreur { color: var(--rouge); }
 pre.sortie .attention { color: #9a6a00; }
+body.poste-seul main { max-width: none; padding: 16px 22px; }
 .poste-haut { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .poste-haut .horloge { font-size: 24px; font-weight: 600; }
 .poste-message { font-size: 15px; font-weight: 600; }
@@ -89,12 +91,62 @@ label.choix-radio input { width: 20px; height: 20px; accent-color: #13772d; }
 .carte-admin .champs > label { padding-top: 5px; color: var(--texte); }
 .carte-admin .champs .aide { color: var(--gris); font-size: 12px; margin-top: 2px; max-width: 640px; }
 .carte-admin .champs > .defile, .carte-admin .champs > h2 { grid-column: 1 / -1; }
+input.choix-ligne { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+td:has(> input.choix-ligne:only-child) { padding: 0 !important; width: 0; }
+table:has(input.choix-ligne) tr > th:first-child { padding: 0; width: 0; }
+label.cellule { display: block; cursor: pointer; margin: 0 !important; font: inherit; color: inherit; }
+tr:has(input.choix-ligne:checked) td { background: #d3eadb !important; }
+tr:has(input.choix-ligne):hover td { background: #edf6f0; }
+.entete-page { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; }
+.entete-page .ic { font-size: 20px; } .entete-page .t { font-size: 19px; font-weight: 600; color: #13772d; }
+.entete-page .souligne { display: flex; gap: 4px; margin-top: 3px; } .entete-page .souligne span { height: 3px; }
+.entete-page .souligne .j { width: 34px; background: var(--jaune); }
+.entete-page .souligne .r { width: 10px; background: var(--rouge); }
+.entete-page .st { color: var(--gris); font-size: 12px; padding-top: 6px; }
+.page-utilisateurs { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
+@media (max-width: 820px) { .page-utilisateurs { grid-template-columns: 1fr; } }
+.titre-carte { font-size: 15px; font-weight: 600; }
+.page-utilisateurs .defile { min-height: 360px; }
+.fiche-compte { background: var(--carte); border: 1px solid var(--bord); padding: 10px 14px; margin-top: 10px; }
+.grille-compte { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 10px; }
+.grille-compte label { color: var(--gris) !important; font-size: 12px !important; }
+.grille-compte input, .grille-compte select { width: 100%; }
+.arbre-acces { border: 1px solid #d5dcd7; background: #fff; max-height: 190px; overflow-y: auto; padding: 4px 6px; }
+label.noeud { display: flex; gap: 6px; align-items: center; padding: 2px 0; margin: 0 !important; }
+label.noeud.enfant { padding-left: 22px; } label.noeud.rubrique { font-weight: 600; }
+.titre-section { font-weight: 600; margin: 10px 0 2px; }
+.bouton-mini { padding: 3px 9px !important; }
+.colonne-comptes h2, .liste-windows h2 { display: none; }
+.ligne-etat-haut { color: var(--gris); font-size: 12.5px; margin: 2px 0 6px; }
+.ligne-profil { display: flex; gap: 6px; align-items: center; margin: 8px 0 6px; }
+.ligne-profil form { display: contents; }
+details.nouveau-profil summary.plein { background: #1a9b3c; color: #fff; border-color: #1a9b3c; }
+details.nouveau-profil { position: relative; } details.nouveau-profil summary { list-style: none; cursor: pointer;
+  border: 1px solid #b9d8c2; border-radius: 5px; color: var(--vert); background: var(--carte); }
+details.nouveau-profil > div { position: absolute; z-index: 5; background: var(--carte); border: 1px solid var(--bord);
+  padding: 6px; display: flex; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
 label.case { display: flex; gap: 6px; align-items: center; color: var(--texte); }
 @media (min-width: 821px) {
   main .barre-onglet > div, main .ligne > div:not(.large) { display: flex; align-items: center; gap: 6px; }
   main .barre-onglet > div > label, main .ligne > div > label { margin: 0; white-space: nowrap; }
   main { font-size: 13px; }
-  main .zone-outil { background: var(--carte); border: 1px solid var(--bord); border-radius: 4px; padding: 12px 14px; }
+  main .zone-outil, main .zone-page { background: transparent; border: 0; padding: 0; }
+  nav.menu a { font-size: 13.5px; padding: 5px 12px 5px 26px; }
+  nav.menu summary { font-size: 14px; padding: 6px 10px; }
+  nav.menu .seul a { font-weight: 400; font-size: 14px; }
+  main td, main th { white-space: nowrap; }
+  main .defile { min-height: 150px; max-height: calc(100vh - 300px); overflow: auto; border-radius: 0;
+    border-color: #d5dcd7; }
+  main .defile th { position: sticky; top: 0; z-index: 1; }
+  main .carte-admin .champs input:not([type=checkbox]):not([type=radio]):not([type=date]),
+  main .carte-admin .champs select { width: 100%; max-width: 760px; }
+  main .carte-admin .champs div:has(> a.ouvrir) { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  main .carte-admin .champs div:has(> a.ouvrir) > input { flex: 1; }
+  main .carte-admin .champs div:has(> a.ouvrir) > .aide { flex-basis: 100%; }
+  main .carte-admin .champs > div:has(> pre.sortie) { grid-column: 1 / -1; }
+  main fieldset.groupe .grille-champs input:not([type=checkbox]):not([type=radio]):not([type=date]),
+  main fieldset.groupe .grille-champs select { width: 100%; }
+  main .barre-config { position: sticky; bottom: 8px; justify-content: flex-end; }
   main h1.titre-page { font-size: 19px; }
   main h2 { font-size: 14px; margin: 14px 0 6px; }
   main label { font-size: 13px; color: var(--texte); margin-bottom: 2px; }
@@ -116,7 +168,8 @@ label.case { display: flex; gap: 6px; align-items: center; color: var(--texte); 
   main .note { font-size: 12.5px; }
   main nav.onglets { background: #ececec; border: 1px solid #dadada; border-radius: 4px 4px 0 0; padding: 4px 4px 0;
     gap: 0; margin-bottom: 0; }
-  main nav.onglets a.onglet { border-radius: 4px 4px 0 0; padding: 7px 18px; }
+  main nav.onglets a.onglet { border-radius: 4px 4px 0 0; padding: 7px 16px; white-space: nowrap; }
+  main nav.onglets { flex-wrap: nowrap; overflow-x: auto; }
   main nav.onglets a.onglet.actif { background: var(--carte); border-color: #dadada; }
   main nav.onglets + * { margin-top: 0; }
   main .onglet-corps { border: 1px solid #dadada; border-top: 0; padding: 10px; background: var(--carte); }

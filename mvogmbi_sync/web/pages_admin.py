@@ -86,7 +86,7 @@ def _mot_de_passe(nom: str, cle_coffre: str) -> str:
     except Exception:  # noqa: BLE001
         present = False
     return (f"<input type='password' name='{nom}' autocomplete='new-password' size='52' placeholder='"
-            f"{'•••••••• (enregistré dans le coffre-fort : laissez vide pour le garder)' if present else ''}'>")
+            f"{'••••••••' if present else ''}'>")
 
 
 def _sortie_test(ctx: Contexte, cle: str) -> str:
@@ -95,7 +95,7 @@ def _sortie_test(ctx: Contexte, cle: str) -> str:
     return f"<pre class='sortie'>{e(texte)}</pre>" if texte else ""
 
 
-ENREGISTRER_CONFIG = ("<div class='barre-onglet'><button class='a-droite' name='action' value='Enregistrer'>💾 "
+ENREGISTRER_CONFIG = ("<div class='barre-onglet barre-config'><button class='a-droite' name='action' value='Enregistrer'>💾 "
                       "Enregistrer la configuration</button></div>")
 
 
@@ -150,7 +150,7 @@ def clover(ctx: Contexte) -> Reponse:
                           "Clover > Compte et configuration > Jetons API (droits en lecture). Laissez vide pour "
                           "conserver le jeton enregistré.")
                  + "<span></span><div><button name='action' value='Tester'>🔌 Tester la connexion à Clover</button>"
-                   "</div>" + "<span></span>" + _zone_sortie(ctx, "clover"))
+                   "</div>" + _zone_sortie(ctx, "clover"))
              + "</form>"
              + _carte("2", "Points de vente", _liste_points_vente(ctx),
                       "Chaque point de vente Clover est un dépôt (emplacement d'inventaire) dans Sage, avec son client "
@@ -425,12 +425,12 @@ def sage(ctx: Contexte) -> Reponse:
                  + " <a class='ouvrir' href='/parcourir-sai'>Parcourir…</a>",
                  "Le fichier dans lequel les factures sont importées (chemin sur le serveur). Pour les essais : une "
                  "COPIE.")
-                 + _ligne("Premier jour à importer", _entree("date_depart", a.get("date_depart", ""), "date", 12),
+                 + _ligne("Premier jour à importer", _entree("date_depart", a.get("date_depart") or date.today().isoformat(), "date", 12),
                           "AAAA-MM-JJ. Utilisé seulement si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ ».")
                  + _ligne("Compte de dépôt des encaissements", _entree("compte", en.get("compte_depot", "1055"),
                                                                         taille=10),
                           "Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins).")
-                 + _ligne("Encaisser à partir des ventes du", _entree("enc_depart", en.get("date_depart", ""), "date",
+                 + _ligne("Encaisser à partir des ventes du", _entree("enc_depart", en.get("date_depart") or date.today().isoformat(), "date",
                                                                        12),
                           "AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés."))
              + _carte("2", "Utilisateurs Sage", _ligne(
@@ -442,7 +442,7 @@ def sage(ctx: Contexte) -> Reponse:
                           "Mot de passe demandé par la fenêtre « Sage 50 - Password » de l'import (utilisateur "
                           "sysadmin).")
                  + "<span></span><div><button name='action' value='Tester'>📒 Tester l'accès à Sage</button></div>"
-                 + "<span></span>" + _zone_sortie(ctx, "sage"))
+                 + _zone_sortie(ctx, "sage"))
              + _carte("3", "Paie", _ligne(
                  "Première paie de l'année", _entree("premiere", premiere.isoformat() if premiere else "", "date", 12),
                  "Date de la première paie de l'année : les paies suivantes (tous les 14 jours) et leurs périodes se "
@@ -460,17 +460,16 @@ def courriel(ctx: Contexte) -> Reponse:
 
     message = ""
     if ctx.req.methode == "POST":
-        if ctx.req.champ("action") == "Tester":
-            def tester(journal):
-                from ..courriel import envoyer_a
+        if ctx.req.champ("action") == "Tester":  # Application.tester_courriel
+            def tester():
+                from ..courriel import envoyer
 
-                dest = adresses(ctx.config.get("courriel", {}).get("destinataires", ""))
-                if not dest:
-                    raise RuntimeError("Aucun destinataire du compte rendu.")
-                envoyer_a(ctx.config, dest[0], "Essai MVOGMBI_Sync", "Courriel d'essai envoyé depuis l'application web.")
-                return f"Courriel d'essai envoyé à {dest[0]}."
+                envoyer(ctx.config, "MVOGMBI_Sync : courriel de test",
+                        "Ce courriel confirme que les alertes de MVOGMBI_Sync sont bien configurées.")
+                return "courriel envoyé"
 
-            return taches.lancer(ctx, "Essai du courriel", tester, "/admin/courriel")
+            _tester(ctx, "courriel", "Courriel de test", tester)
+            return Reponse(corps=page(ctx, "Courriel", _page_courriel(ctx, "")))
         message = _refus_config(ctx)
         if not message:
             v = {k: ctx.req.champ(k).strip() for k in ("serveur", "port", "securite", "utilisateur", "expediteur",
@@ -513,6 +512,12 @@ def courriel(ctx: Contexte) -> Reponse:
                     _garder_secrets(ctx, [("mdp", coffre.COURRIEL), ("b_mdp", coffre.BOITE_PAIEMENTS),
                                           ("ria_mdp", coffre.BOITE_RIA)])
                     message = _message("Configuration du courriel enregistrée.")
+    return Reponse(corps=page(ctx, "Courriel", _page_courriel(ctx, message)))
+
+
+def _page_courriel(ctx: Contexte, message: str) -> str:
+    from .. import coffre
+
     c, b = ctx.config.get("courriel", {}), ctx.config.get("boite_paiements", {})
     fc, r = ctx.config.get("factures_courriel", {}), ctx.config.get("ria", {})
     securite = "".join(f"<option{' selected' if x.casefold() == str(c.get('securite', 'starttls')).casefold() else ''}>"
@@ -533,16 +538,17 @@ def courriel(ctx: Contexte) -> Reponse:
              + _carte("2", "Envoi du compte rendu", _ligne("Expéditeur", _entree("expediteur", c.get("expediteur")))
                       + _ligne("Destinataire(s)", _entree("destinataires", c.get("destinataires")),
                                "Une ou plusieurs adresses séparées par des virgules.")
-                      + _ligne("Copie cachée (Cci)", _entree("cci", c.get("cci")),
-                               "Reçoit en copie cachée chaque courriel envoyé par l'application (bulletins, T4 / RL-1, "
-                               "relances), sauf les comptes rendus du traitement automatique. Vide : le premier "
-                               "destinataire ci-dessus.")
                       + _ligne("Autres destinataires", _entree("copie", c.get("copie")),
-                               "Facultatif : autres personnes à informer, adresses séparées par des virgules.")
+                               "Facultatif : autres personnes à informer, adresses séparées par des virgules (ex. "
+                               "comptable@exemple.com, gerant@exemple.com).")
                       + case("si_succes", c.get("envoyer_si_succes", True), "Envoyer le compte rendu après chaque "
                              "traitement, y compris en cas de succès (dates traitées et leur état)")
                       + "<span></span><div><button name='action' value='Tester'>✉ Envoyer un courriel de test</button>"
-                        "</div>")
+                        "</div>" + _zone_sortie(ctx, "courriel")
+                      + _ligne("Copie cachée (Cci)", _entree("cci", c.get("cci")),
+                               "Reçoit en copie cachée chaque courriel envoyé par l'application (bulletins, T4 / RL-1, "
+                               "relances), sauf les comptes rendus du traitement automatique. Vide : le premier "
+                               "destinataire ci-dessus."))
              + _carte("3", "Avis de paiement (lecture de la boîte)", _ligne(
                  "Serveur (IMAP)", _entree("b_serveur", b.get("serveur", "")))
                  + _ligne("Adresse", _entree("b_utilisateur", b.get("utilisateur", "")))
@@ -575,7 +581,7 @@ def courriel(ctx: Contexte) -> Reponse:
                  "Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit sans les "
                  "marquer comme lus et les ajoute à « Comptabilité > États de compte RIA ».")
              + ENREGISTRER_CONFIG + "</form>")
-    return Reponse(corps=page(ctx, "Courriel", corps))
+    return corps
 
 
 # --------------------------------------------------------------------------------------------- Automatisation
@@ -584,17 +590,25 @@ def automatisation(ctx: Contexte) -> Reponse:
     from . import taches
 
     message = ""
-    if ctx.req.methode == "POST":
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "État":
+        _tester(ctx, "auto", "État de la tâche", planification.etat)
+    elif ctx.req.methode == "POST" and ctx.req.champ("action") == "Raccourci":
+        return _raccourci(ctx)
+    elif ctx.req.methode == "POST":
         action = ctx.req.champ("action")
         message = _refus_config(ctx)
         if not message and action in ("Installer la tâche", "Retirer la tâche"):
-            def tache(journal):
-                if action == "Retirer la tâche":
-                    return planification.retirer()
-                return planification.installer(ctx.racine, ctx.config.get("automatique", {}).get("heure", "01:00"))
-
-            return taches.lancer(ctx, action, tache, "/admin/automatisation")
-        if not message:
+            if action == "Retirer la tâche" and not ctx.req.champ("confirme"):
+                message = _message(erreur="Retirer la tâche planifiée ? Les ventes ne seront plus importées "
+                                          "automatiquement : cochez « Je confirme » puis « Retirer la tâche ».")
+            else:
+                heure = ctx.config.get("automatique", {}).get("heure", "01:00")
+                _tester(ctx, "auto", "Retrait de la tâche" if action == "Retirer la tâche" else
+                        "Installation de la tâche", planification.retirer if action == "Retirer la tâche" else
+                        (lambda: planification.installer(ctx.racine, heure)))
+        elif not message and action == "Reprendre":
+            message = _reprendre(ctx, ctx.req.champ("dossier").strip())
+        elif not message:
             heure = ctx.req.champ("heure").strip()
             try:
                 h, m = heure.split(":")
@@ -607,10 +621,6 @@ def automatisation(ctx: Contexte) -> Reponse:
                     c["automatique"].setdefault("delai_import", 3600)
                 _ecrire(ctx, modifier)
                 message = _message("Configuration enregistrée (réinstallez la tâche si l'heure a changé).")
-    try:
-        etat = planification.etat()
-    except Exception as erreur:  # noqa: BLE001
-        etat = str(erreur)
     a = ctx.config.get("automatique", {})
     corps = (message + _titre("Traitement automatique quotidien") + f"<form method='post'>{csrf(ctx)}"
              + _carte("1", "Tâche planifiée", _ligne(
@@ -618,13 +628,66 @@ def automatisation(ctx: Contexte) -> Reponse:
                  "HH:MM. Le serveur doit être allumé et la session Windows ouverte ; Sage peut être fermé.")
                  + "<span></span><div class='barre-onglet'><button name='action' value='Installer la tâche'>⏰ Installer "
                    "la tâche planifiée</button><button class='danger' name='action' value='Retirer la tâche'>Retirer la "
-                   "tâche</button><a class='ouvrir' href='/admin/automatisation'>État de la tâche</a></div>")
-             + f"<pre class='sortie'>{e(etat)}</pre>"
-             + _carte("2", "Outils", "<p class='desc'>« Créer un raccourci sur le Bureau » et « Reprendre une "
-                                     "configuration existante… » se font sur le poste, dans l'application Windows.</p>",
+                   "tâche</button><button class='second' name='action' value='État'>État de la tâche</button><label "
+                   "class='case'><input type='checkbox' name='confirme' value='1'> Je confirme le retrait</label></div>"
+                 + _zone_sortie(ctx, "auto"))
+             + _carte("2", "Outils", "<div class='barre-onglet'><button class='second' name='action' value='Raccourci'>"
+                                     "Créer un raccourci sur le Bureau</button><a class='ouvrir' href='/parcourir-config'>"
+                                     "Reprendre une configuration existante…</a></div><p class='desc'>Copie config.toml, "
+                                     "la correspondance des articles et les articles à relier depuis un autre dossier "
+                                     "(ex. le dossier du projet). Les mots de passe restent dans le coffre-fort.</p>"
+                      + (f"<input type='hidden' name='dossier' value='{e(ctx.req.query['dossier'])}'><p>Dossier choisi "
+                         f"sur le serveur : <strong>{e(ctx.req.query['dossier'])}</strong> <button name='action' "
+                         "value='Reprendre'>✔ Reprendre cette configuration</button></p>"
+                         if ctx.req.query.get("dossier") else ""),
                       couleur="jaune")
              + ENREGISTRER_CONFIG + "</form>")
     return Reponse(corps=page(ctx, "Automatisation", corps))
+
+
+def _raccourci(ctx: Contexte) -> Reponse:
+    """« Créer un raccourci sur le Bureau » : raccourci Internet (.url) vers l'application web, à enregistrer sur le
+    Bureau du poste (le navigateur ne peut pas écrire sur le Bureau lui-même)."""
+    web = ctx.config.get("web", {})
+    protocole = "https" if web.get("certificat") else "http"
+    adresse = f"{protocole}://{web.get('adresse', '127.0.0.1')}:{web.get('port', 8765)}/"
+    contenu = f"[InternetShortcut]\r\nURL={adresse}\r\nIconIndex=0\r\n"
+    return Reponse(corps=contenu.encode("utf-8"), type="application/octet-stream",
+                   entetes={"Content-Disposition": "attachment; filename=\"MVOGMBI_Sync.url\""})
+
+
+def _reprendre(ctx: Contexte, dossier: str) -> str:
+    """Application.reprendre : config.toml (secrets encore en clair passés au coffre-fort) et fichiers de données."""
+    import shutil
+
+    from .. import coffre
+    from ..interface import ecrire_config, lire_config
+
+    source = Path(dossier)
+    if not dossier or not source.is_dir():
+        return _message(erreur="Choisissez le dossier qui contient config.toml (et le sous-dossier donnees).")
+    copies = []
+    if (source / "config.toml").exists():
+        ancienne = lire_config(source / "config.toml")
+        jeton = ancienne.get("clover", {}).pop("api_token", "")
+        mdp = ancienne.get("sage_base", {}).pop("mot_de_passe", "")
+        if jeton and not coffre.present(coffre.CLOVER_JETON):
+            coffre.ecrire(coffre.CLOVER_JETON, jeton)
+        if mdp and not coffre.present(coffre.SAGE_LECTURE):
+            coffre.ecrire(coffre.SAGE_LECTURE, mdp)
+        with ctx.app.ecriture:
+            ecrire_config(ctx.racine / "config.toml", ancienne)
+            ctx.app.config.clear()
+            ctx.app.config.update(ancienne)
+        copies.append("config.toml")
+    for nom in ("correspondance_articles.xlsx", "articles_a_relier.csv", "journal_imports.csv", "articles_sage.csv"):
+        if (source / "donnees" / nom).exists():
+            (ctx.racine / "donnees").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source / "donnees" / nom, ctx.racine / "donnees" / nom)
+            copies.append(nom)
+    if not copies:
+        return _message(erreur="Aucun fichier de configuration dans ce dossier.")
+    return _message("Repris : " + ", ".join(copies) + ".")
 
 
 # --------------------------------------------------------------------------------------------- sauvegarde
@@ -737,9 +800,15 @@ def utilisateurs(ctx: Contexte) -> Reponse:
                     ctx.app.sessions.fermer_compte(nom)
                 elif action == "Nouveau profil":
                     reg.definir_profil(ctx.req.champ("profil_nouveau"), ["accueil"])
+                elif action == "Supprimer le profil":
+                    if not action_permise(ctx, "Supprimer"):
+                        raise ErreurUtilisateur("Votre profil n'a pas le droit « Supprimer ».")
+                    reg.supprimer_profil(ctx.req.champ("profil"))
                 elif action == "Accès":
                     profil = ctx.req.champ("profil")
-                    fonctions = ctx.req.champs("fonction")
+                    fonctions = _avec_rubriques(ctx, ctx.req.champs("fonction"), "rubrique", "fonction")
+                    action_permises = _avec_rubriques(ctx, ctx.req.champs("action_permise"), "rubrique",
+                                                      "action_permise")
                     pages_cochees = set()
                     for _n, _i, elements in groupes():
                         for el in elements:
@@ -750,7 +819,7 @@ def utilisateurs(ctx: Contexte) -> Reponse:
                                 pages_cochees.add(cle_page(page_el))
                     reg.definir_acces(profil, fonctions, sorted(pages_cochees))
                     toutes = [a for g, liste in ACTIONS_FENETRES.items() if g != "Général" for a in liste]
-                    refusees_ = [a for a in toutes if a not in set(ctx.req.champs("action_permise"))]
+                    refusees_ = [a for a in toutes if a not in set(action_permises)]
                     # section « Droits » de page_utilisateurs : Supprimer et Lancer maintenant hors de l'arbre
                     if not ctx.req.champ("supprimer_permis"):
                         refusees_.append("Supprimer")
@@ -765,88 +834,144 @@ def utilisateurs(ctx: Contexte) -> Reponse:
         except ErreurUtilisateur as erreur:
             message = _message(erreur=str(erreur))
     reg = Registre(ctx.racine)
-    profils = "".join(f"<option>{e(p)}</option>" for p in reg.profils)
+    return Reponse(corps=page(ctx, "Utilisateurs", message + _page_utilisateurs(ctx, reg)))
+
+
+def _avec_rubriques(ctx: Contexte, cochees: list[str], champ_rubrique: str, champ: str) -> list[str]:
+    """Rubrique de l'arbre cochée ou décochée depuis l'affichage : toutes ses fonctions suivent (comme un clic sur la
+    rubrique dans Windows) ; sinon les cases une à une."""
+    resultat = list(cochees)
+    maintenant = set(ctx.req.champs(champ_rubrique))
+    for valeur in ctx.req.champs("rubrique_avant"):
+        nom, _, avant = valeur.rpartition("=")
+        enfants = [x for x in ctx.req.champs(f"enfants:{nom}") if x]
+        if not enfants or (champ == "action_permise") != (nom == "actions"):
+            continue
+        if nom in maintenant and avant == "0":
+            resultat += [x for x in enfants if x not in resultat]
+        elif nom not in maintenant and avant == "1":
+            resultat = [x for x in resultat if x not in enfants]
+    return resultat
+
+
+def entete_page(icone: str, titre: str, sous_titre: str = "") -> str:
+    """design.entete_page : icône, titre vert souligné jaune / rouge et « — sous-titre » gris sur la même ligne."""
+    return (f"<div class='entete-page'><span class='ic'>{icone}</span><div><div class='t'>{e(titre)}</div><div "
+            "class='souligne'><span class='j'></span><span class='r'></span></div></div>"
+            + (f"<span class='st'>— {e(sous_titre)}</span>" if sous_titre else "") + "</div>")
+
+
+def _page_utilisateurs(ctx: Contexte, reg) -> str:
+    """page_utilisateurs.PageUtilisateurs : « Comptes » à gauche (tableau, puis Nom / Profil / Mot de passe et leurs
+    boutons), « Profils et fonctions permises » à droite (profil, ➕, 🗑, arbre du menu, points de vente, droits,
+    « Enregistrer les accès »)."""
+    from ..interface import ACCUEIL, LIBELLES_MENU, MENU_GROUPES
+    from ..points_vente import points_de_vente
+    from ..utilisateurs import ACTIONS_FENETRES, ADMIN, LONGUEUR_MIN, PAGES
+    from .consultations import Section, tableau_section
+
     coche = ctx.req.champ("compte") or ctx.req.query.get("compte", "")
     lignes = [[f"<input type='radio' name='compte' value='{e(u.nom)}'{' checked' if u.nom == coche else ''}>",
                e(u.nom), e(u.profil), "Verrouillé" if u.verrouille else ("Actif" if u.actif else "Inactif"),
                e(u.derniere_connexion.replace("T", " ")[:16])] for u in reg.utilisateurs]
     classes = ["" if u.actif else "termine" for u in reg.utilisateurs]
-    choisi = ctx.req.query.get("profil") or ctx.req.champ("profil") or next((p for p in reg.profils if p != ADMIN), "")
-    acces = ""
-    if choisi and choisi != ADMIN and choisi in reg.profils:
-        permises = reg.fonctions_permises.get(choisi)
-        pages_profil = set(reg.profils.get(choisi, []))
-        refusees = set(reg.fonctions_refusees.get(choisi, []))
-        arbre = ""
-        for nom_groupe, icone, elements in groupes():
-            cases = ""
-            for el in elements:
-                titre = PAGES_MENU[el][1] if isinstance(el, int) else el[1]
-                if el == 14:
-                    continue
-                cle = cle_page(el) if isinstance(el, int) else titre
-                if permises is not None:
-                    coche = cle in permises
-                else:
-                    page_el = el if isinstance(el, int) else el[2]
-                    coche = cle_page(page_el) in pages_profil and titre not in refusees
-                cases += (f"<label><input type='checkbox' name='fonction' value='{e(cle)}'{' checked' if coche else ''}>"
-                          f" {e(titre)}</label><br>")
-            arbre += f"<div class='carte'><strong>{icone} {e(nom_groupe or 'Accueil et aide')}</strong><br>{cases}</div>"
-        actions = "".join(
-            f"<div class='carte'><strong>{e(g)}</strong><br>" + "".join(
-                f"<label><input type='checkbox' name='action_permise' value='{e(a)}'{'' if a in refusees else ' checked'}>"
-                f" {e(a)}</label><br>" for a in liste) + "</div>" for g, liste in ACTIONS_FENETRES.items()
-            if g != "Général")
-        from ..points_vente import points_de_vente
-
-        codes = reg.points_vente.get(choisi)
-        pdv = (f"<label><input type='checkbox' name='pdv_tous' value='1'{' checked' if codes is None else ''}> Tous les "
-               "points de vente</label><br>" + "".join(
-                   f"<label class='retrait'><input type='checkbox' name='pdv' value='{e(x.code)}'"
-                   f"{' checked' if codes is None or x.code in codes else ''}> {e(x.libelle)}</label><br>"
-                   for x in points_de_vente(ctx.config)))
-        droits = "".join(
-            f"<label><input type='checkbox' name='{n}' value='1'{' checked' if ok else ''}> {e(lib)}</label><br>"
-            for n, lib, ok in (("export", "Exporter les données (Excel, CSV, PDF, images)", choisi not in reg.sans_export),
-                               ("supprimer_permis", "Supprimer des éléments", "Supprimer" not in refusees),
-                               ("lancer_permis", "Lancer maintenant (importer dans Sage)",
-                                "Lancer le traitement maintenant" not in refusees),
-                               ("tous_employes", "Voir tous les employés", choisi not in reg.limites)))
-        acces = (f"<form method='post'>{csrf(ctx)}<input type='hidden' name='profil' value='{e(choisi)}'>"
-                 f"<h2>Fonctions permises au profil « {e(choisi)} »</h2><div class='tuiles'>{arbre}</div>"
-                 f"<h2>Actions dans les fenêtres</h2><div class='tuiles'>{actions}</div><div class='tuiles'><div "
-                 f"class='carte'><strong>Points de vente permis</strong><br>{pdv}</div><div class='carte'><strong>"
-                 f"Droits</strong><br>{droits}</div></div><div "
-                 "class='boutons'><button class='accent' name='action' value='Accès'>💾 Enregistrer les accès</button></div>"
-                 "</form>")
-    choix_profil = "".join(f"<option{' selected' if p == choisi else ''}>{e(p)}</option>" for p in reg.profils
-                           if p != ADMIN)
-    from .consultations import Section, tableau_section
-
-    comptes = (f"<form method='post'>{csrf(ctx)}"
+    profils = "".join(f"<option>{e(p)}</option>" for p in reg.profils)
+    comptes = (f"<form method='post' class='colonne-comptes'>{csrf(ctx)}<div class='barre-onglet'><strong "
+               "class='titre-carte'>Comptes</strong></div>"
                + tableau_section(Section("Comptes", ["", "Nom", "Profil", "État", "Dernière connexion"], lignes,
                                          classes=classes, html=set(range(5))))
-               + "<div class='carte'><div class='ligne'><div><label>Nom</label><input name='nom' size='22'></div><div>"
-                 f"<label>Profil</label><select name='profil'>{profils}</select></div><div><label>Mot de passe (6 "
-                 "caractères min.)</label><input type='password' name='mot_de_passe' autocomplete='new-password' "
-                 "size='20'></div></div><div class='barre-onglet'><button name='action' value='Ajouter'>➕ Ajouter"
-                 "</button><button class='second' name='action' value='Changer le profil'>Changer le profil</button>"
-                 "<button class='second' name='action' value='Nouveau mot de passe'>Nouveau mot de passe</button>"
-                 "<button class='second' name='action' value='Activer / désactiver'>Activer / désactiver</button>"
-                 "<button class='danger' name='action' value='Supprimer le compte'>🗑 Supprimer</button></div>"
-                 "<p class='note'>Cochez un compte, puis choisissez son profil ou tapez son mot de passe. Un compte "
-                 "verrouillé (3 mots de passe faux) se rouvre en lui donnant un nouveau mot de passe. Il reste toujours "
-                 "au moins un administrateur actif.</p></div></form>")
-    profils_carte = (f"<div class='carte'><h2>Profils et fonctions permises</h2><form class='barre-onglet' "
-                     f"method='get'><div><label>Profil</label><select name='profil'>{choix_profil}</select></div>"
-                     "<button class='second'>Afficher</button></form>"
-                     f"<form method='post' class='barre-onglet'>{csrf(ctx)}<div><label>Nouveau profil</label><input "
-                     "name='profil_nouveau' size='16'></div><button class='second' name='action' value='Nouveau "
-                     "profil'>➕</button></form><p class='note'>Cliquez pour cocher ou décocher les fonctions de chaque "
-                     f"rubrique.</p>{acces}</div>")
-    corps = message + f"<div class='colonnes'><div>{comptes}</div><div>{profils_carte}</div></div>"
-    return Reponse(corps=page(ctx, "Utilisateurs", corps))
+               + "<div class='fiche-compte'><div class='grille-compte'><label>Nom</label><label>Profil</label><label>"
+                 f"Mot de passe ({LONGUEUR_MIN} caractères min.)</label><input name='nom' size='22'><select "
+                 f"name='profil'>{profils}</select><input type='password' name='mot_de_passe' "
+                 "autocomplete='new-password' size='20'></div><div class='barre-onglet'><button name='action' "
+                 "value='Ajouter'>➕ Ajouter</button><button class='second' name='action' value='Changer le profil'>"
+                 "Changer le profil</button><button class='second' name='action' value='Nouveau mot de passe'>Nouveau "
+                 "mot de passe</button><button class='second' name='action' value='Activer / désactiver'>Activer / "
+                 "désactiver</button><button class='danger' name='action' value='Supprimer le compte'>🗑 Supprimer"
+                 "</button></div></div></form>")
+    choisi = ctx.req.query.get("profil") or ctx.req.champ("profil")
+    if choisi not in reg.profils:
+        choisi = ADMIN if ADMIN in reg.profils else next(iter(reg.profils), "")
+    admin = choisi == ADMIN
+    permises = reg.fonctions_permises.get(choisi)
+    pages_profil = set(reg.profils.get(choisi, []))
+    refusees = set(reg.fonctions_refusees.get(choisi, []))
+    inactif = " disabled" if admin else ""
+
+    def case(nom: str, valeur: str, coche_: bool, libelle: str, classe: str = "") -> str:
+        return (f"<label class='noeud {classe}'><input type='checkbox' name='{nom}' value='{e(valeur)}'"
+                f"{' checked' if coche_ or admin else ''}{inactif}> {e(libelle)}</label>")
+
+    arbre = ""
+    vus = set()
+    for nom_groupe, icone, elements in MENU_GROUPES:
+        noeuds, enfants = "", []
+        for el in elements:
+            if isinstance(el, int):
+                if el >= len(PAGES):
+                    continue  # page Utilisateurs : administrateurs seulement
+                from .menu import PAGES_MENU
+
+                cle = PAGES[el]
+                libelle = LIBELLES_MENU.get(el) or (PAGES_MENU[el][1] if el in PAGES_MENU else cle)
+                page_el = el
+            else:
+                if el[1] in vus:
+                    continue
+                cle, libelle, page_el = el[1], f"{el[0]}  {el[1]}", el[2]
+            vus.add(cle)
+            if permises is not None:
+                ok = cle in permises
+            else:
+                ok = (PAGES[page_el] if page_el < len(PAGES) else "") in pages_profil and cle not in refusees
+            ok = ok or (isinstance(el, int) and el == ACCUEIL)
+            enfants.append((cle, ok))
+            noeuds += case("fonction", cle, ok, libelle, "enfant" if nom_groupe else "")
+        if nom_groupe:
+            tous = all(ok for _c, ok in enfants)
+            arbre += (case("rubrique", nom_groupe, tous, f"{icone}  {nom_groupe}", "rubrique")
+                      + f"<input type='hidden' name='rubrique_avant' value='{e(nom_groupe)}={int(tous)}'>"
+                      + "".join(f"<input type='hidden' name='enfants:{e(nom_groupe)}' value='{e(c)}'>"
+                                for c, _ok in enfants))
+        arbre += noeuds
+    actions = [(a, g) for g, liste in ACTIONS_FENETRES.items() if g != "Général" for a in liste]
+    tous = all(a not in refusees for a, _g in actions)
+    arbre += (case("rubrique", "actions", tous, "🔒  Actions dans les fenêtres", "rubrique")
+              + f"<input type='hidden' name='rubrique_avant' value='actions={int(tous)}'>"
+              + "".join(f"<input type='hidden' name='enfants:actions' value='{e(a)}'>" for a, _g in actions)
+              + "".join(case("action_permise", a, a not in refusees, f"{a}  ({g})", "enfant") for a, g in actions))
+    codes = reg.points_vente.get(choisi)
+    pdv = (case("pdv_tous", "1", codes is None, "Tous les points de vente")
+           + "".join(case("pdv", x.code, codes is None or x.code in codes, x.libelle, "enfant")
+                     for x in points_de_vente(ctx.config)))
+    droits = "".join(case(n, "1", ok, lib) for n, lib, ok in (
+        ("export", "Exporter les données (Excel, CSV, PDF, images)", choisi not in reg.sans_export),
+        ("supprimer_permis", "Supprimer des éléments", "Supprimer" not in refusees),
+        ("lancer_permis", "Lancer maintenant (importer dans Sage)", "Lancer le traitement maintenant" not in refusees),
+        ("tous_employes", "Voir tous les employés", choisi not in reg.limites)))
+    note = ("L'administrateur voit toutes les pages et gère les utilisateurs." if admin else
+            f"{sum(1 for u in reg.utilisateurs if u.profil == choisi)} compte(s) avec ce profil ; les changements "
+            "s'appliquent à leur prochaine connexion.")
+    choix_profil = "".join(f"<option{' selected' if p == choisi else ''}>{e(p)}</option>" for p in reg.profils)
+    profils_carte = (
+        "<div class='carte carte-profils'><strong class='titre-carte'>Profils et fonctions permises</strong>"
+        "<div class='ligne-profil'>"
+        f"<form method='get'><select name='profil'>{choix_profil}</select><button class='second bouton-mini' "
+        "title='Afficher ce profil'>↻</button></form>"
+        f"<form method='post'>{csrf(ctx)}<input type='hidden' name='profil' value='{e(choisi)}'>"
+        "<details class='nouveau-profil'><summary class='bouton-mini plein'>➕</summary><div><input name='profil_nouveau' "
+        "size='16' placeholder='Nom du profil'><button name='action' value='Nouveau profil'>OK</button></div></details>"
+        "<button class='danger bouton-mini' name='action' value='Supprimer le profil'>🗑</button></form></div>"
+        "<p class='note'>Cliquez pour cocher ou décocher ; une rubrique coche toutes ses fonctions.</p>"
+        f"<form method='post'>{csrf(ctx)}<input type='hidden' name='profil' value='{e(choisi)}'>"
+        f"<div class='arbre-acces'>{arbre}</div>"
+        f"<div class='titre-section'>Points de vente permis</div>{pdv}"
+        f"<div class='titre-section'>Droits</div>{droits}"
+        f"<p class='note'>{e(note)}</p>"
+        + ("" if admin else "<button class='accent' name='action' value='Accès'>💾 Enregistrer les accès</button>")
+        + "</form></div>")
+    return (entete_page("👥", "Utilisateurs et accès", "comptes, profils et fonctions permises à chaque profil")
+            + f"<div class='page-utilisateurs'><div>{comptes}</div>{profils_carte}</div>")
 
 
 FONCTIONS = [

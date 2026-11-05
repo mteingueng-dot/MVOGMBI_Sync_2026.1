@@ -8,6 +8,7 @@ supprimer, PDF.
 from __future__ import annotations
 
 from datetime import date
+from urllib.parse import quote
 from decimal import Decimal, InvalidOperation
 
 from .pages import Contexte, Fonction, argent, csrf, page, permis, tableau
@@ -65,6 +66,87 @@ def documents(ctx: Contexte) -> Reponse:
              + "<p class='note'>Documents saisis dans l'application ; ceux de Sage : listes des documents de la "
                "rubrique.</p>")
     return Reponse(corps=page(ctx, titre, corps))
+
+
+def documents_genre(ctx: Contexte) -> Reponse:
+    """fenetre_gestion.FenetreDocuments : « Commandes clients », « Factures de vente saisies », « Documents de stock » :
+    📂 Ouvrir, ➕ Ajouter, ✎ Modifier, 🗑 Supprimer, 📄 PDF, puis « 🧾 Facturer la commande », « ⬆ Importer dans
+    Sage » ou « ⬆ Passer dans Sage » ; explication ; tableau (échecs en rose, documents faits grisés)."""
+    from .. import documents as dc
+    from ..fenetre_gestion import TITRES
+    from ..points_vente import DEPOT_DEFAUT
+    from .consultations import Section, tableau_section
+    from .serveur import redirection
+
+    genre = ctx.req.query.get("genre") or ctx.req.champ("genre")
+    if genre not in TITRES:
+        genre = dc.FACTURE
+    cote = dc.cote(genre)
+    if not _permis(ctx, cote):
+        return _refus(ctx)
+    adresse = f"/documents-genre?genre={genre}"
+    message = ""
+    if ctx.req.methode == "POST":
+        op, numero = ctx.req.champ("op"), ctx.req.champ("n")
+        registre = dc.Registre(ctx.racine)
+        doc = next((d for d in registre.du_genre(genre) if d.numero == numero), None)
+        if doc is None:
+            message = _message(erreur="Choisissez un document dans la liste.")
+        elif op == "ouvrir":
+            return redirection(f"/document?n={quote(doc.numero)}")
+        elif op == "pdf":
+            return redirection(f"/document/pdf?n={quote(doc.numero)}")
+        elif op == "modifier":
+            if registre.modifiable(doc):
+                return redirection(f"/document/saisie?n={quote(doc.numero)}")
+            message = _message(erreur=f"{doc.numero} ({doc.etat}) ne peut plus être modifié.")
+        elif op == "supprimer":
+            if not action_permise(ctx, "Supprimer"):
+                message = _message(erreur="Votre profil n'a pas le droit « Supprimer ».")
+            elif not registre.modifiable(doc):
+                message = _message(erreur=f"{doc.numero} ({doc.etat}) ne peut plus être supprimé.")
+            elif not ctx.req.champ("confirme"):
+                message = (f"<form method='post' class='carte'>{csrf(ctx)}<input type='hidden' name='n' "
+                           f"value='{e(doc.numero)}'><input type='hidden' name='genre' value='{genre}'><input "
+                           "type='hidden' name='confirme' value='1'><p>Supprimer le document "
+                           f"<strong>{e(doc.numero)}</strong> ?</p><button class='danger' name='op' value='supprimer'>"
+                           f"🗑 Oui, supprimer</button> <a class='ouvrir' href='{adresse}'>Non</a></form>")
+            else:
+                with ctx.app.ecriture:
+                    dc.Registre(ctx.racine).supprimer(doc.numero)
+                message = _message(f"{doc.numero} supprimé.")
+        else:  # Facturer la commande, Importer dans Sage, Passer dans Sage : depuis la page du document
+            return redirection(f"/document?n={quote(doc.numero)}")
+    docs = dc.Registre(ctx.racine).du_genre(genre)
+    choisi = ctx.req.champ("n")
+    lignes, classes = [], []
+    for d in docs:
+        lignes.append([f"<input type='radio' name='n' value='{e(d.numero)}'{' checked' if d.numero == choisi else ''}>",
+                       e(d.numero), e(d.date), e(d.tiers if genre != dc.STOCK else d.sens), str(len(d.lignes)),
+                       argent(d.sous_total), argent(d.total), e(d.etat),
+                       e(d.lien if genre != dc.STOCK else (d.depot or DEPOT_DEFAUT)), e(" ; ".join(d.messages))])
+        classes.append("etat-ecart" if d.etat == dc.ECHEC else
+                       "termine" if d.etat in (dc.IMPORTEE, dc.PASSE, dc.FACTUREE) else "")
+    entetes = ["", "N°", "Date", "Client" if genre != dc.STOCK else "Mouvement", "Lignes", "Sous-total", "Total",
+               "État", "Lien" if genre != dc.STOCK else "Dépôt", "Messages"]
+    suite = {dc.COMMANDE: "🧾 Facturer la commande", dc.FACTURE: "⬆ Importer dans Sage",
+             dc.STOCK: "⬆ Passer dans Sage"}[genre]
+    explications = {
+        dc.COMMANDE: "Commandes des clients gardées dans l'application (la fonction « Commandes clients » n'est pas "
+                     "activée dans Sage) ; « Facturer la commande » en fait une facture de vente à importer.",
+        dc.FACTURE: "Factures de vente saisies à la main : « Importer dans Sage » (Sage fermé) ; vérifiées dans Sage "
+                    "après l'import.",
+        dc.STOCK: "Entrées et sorties de stock (perte, casse, don, réception sans facture) : « Passer dans Sage » "
+                  "(fenêtre Ajustements des Stocks de Sage ; ouvrez Sage sur le fichier de l'entreprise)."}
+    corps = (message + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='genre' value='{genre}'>"
+             "<div class='barre-onglet'><button name='op' value='ouvrir'>📂 Ouvrir</button><a class='ouvrir plein' "
+             f"href='/document/saisie?genre={genre}'>➕ Ajouter</a><button class='second' name='op' value='modifier'>✎ "
+             "Modifier</button><button class='danger' name='op' value='supprimer'>🗑 Supprimer</button><button "
+             f"class='second' name='op' value='pdf'>📄 PDF</button><button name='op' value='suite'>{e(suite)}</button>"
+             f"</div><div class='ligne-etat-haut'>{e(explications[genre])}</div><div class='liste-windows'>"
+             + tableau_section(Section(TITRES[genre], entetes, lignes, classes=classes, html=set(range(len(entetes)))))
+             + "</div></form>")
+    return Reponse(corps=page(ctx, TITRES[genre], corps))
 
 
 def document(ctx: Contexte) -> Reponse:
@@ -401,11 +483,12 @@ def choisir_type(ctx: Contexte) -> Reponse:
 
 FONCTIONS = [
     Fonction("/documents", "Documents saisis", None, documents, "🗂", "", toujours=True, menu=False),
+    Fonction("/documents-genre", "Documents saisis", None, documents_genre, "🗂", "", toujours=True, menu=False),
     Fonction("/document", "Document", None, document, "🗂", "", toujours=True, menu=False),
     Fonction("/document/pdf", "Document (PDF)", None, document_pdf, "📄", "", toujours=True, menu=False),
     Fonction("/document/saisie", "Saisie d'un document", None, saisie, "✍", "", toujours=True, menu=False),
     Fonction("/document/choisir", "Ajouter un document", None, choisir_type, "✍", "", toujours=True, menu=False),
 ]
-WEB = {"Saisir une facture de vente": "/document/saisie?genre=facture",
-       "Commandes clients": "/documents?cote=vente&genre=commande",
-       "Saisir un document de stock": "/document/saisie?genre=stock"}
+WEB = {"Saisir une facture de vente": "/documents-genre?genre=facture",  # FenetreDocuments, comme Windows
+       "Commandes clients": "/documents-genre?genre=commande",
+       "Saisir un document de stock": "/documents-genre?genre=stock"}

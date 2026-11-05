@@ -310,8 +310,13 @@ def _fiche_paiement(ctx: Contexte, registre, rang, ouvertes, noms, depuis, au, f
         x = registre.paiements[rang] if rang is not None else None
     except IndexError:
         x = None
-    if x is None:
-        return "<div class='carte'><p>Sélectionnez un virement dans la liste.</p></div>"
+    if x is None:  # carte vide, comme la fenêtre Windows avant le choix d'un virement
+        return ("<div class='carte'><p>Sélectionnez un virement dans la liste.</p><div class='ligne'><div><label>"
+                "Fournisseur Sage</label><input size='40' disabled></div></div><div class='fiche-bas'><div "
+                "class='factures'><p class='note'>Factures impayées de ce fournisseur dans Sage (cochez-en plusieurs : "
+                "plusieurs factures pour un même virement) :</p></div><div class='boutons-colonne'><button disabled>✔ "
+                "Confirmer le paiement</button><button class='second' disabled>Ignorer (pas un fournisseur)</button>"
+                "<button class='second' disabled>Remettre à relier</button></div></div></div>")
     a = x.avis
     nom = ctx.req.query.get("fournisseur") or ctx.req.champ("fournisseur") or x.fournisseur_sage
     retenues = {n: mt for n, mt, _s in x.lignes()}

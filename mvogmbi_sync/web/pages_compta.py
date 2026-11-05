@@ -44,10 +44,10 @@ def _point_vente(ctx: Contexte):
     choisi = next((p for p in points if str(p.code) == code), points[0] if points else None)
     principal = choisi is None or str(choisi.code) == "1"
     choix = ""
-    if len(points) > 1:
+    if points:  # toujours affiché, comme ChoixPointVente de Windows (même avec un seul point de vente)
         options = "".join(f"<option value='{e(p.code)}'{' selected' if p is choisi else ''}>{e(p.libelle)}</option>"
                           for p in points)
-        choix = f"<div><label>Point de vente</label><select name='pv'>{options}</select></div>"
+        choix = f"<div><label>Point de vente :</label><select name='pv'>{options}</select></div>"
     return (None if principal else choisi), choix, (choisi.code if choisi else "1")
 
 
@@ -300,7 +300,7 @@ def depenses(ctx: Contexte) -> Reponse:
              + "</form>"
              + (f"<form method='post' class='carte'>{csrf(ctx)}<h2>Comptes Sage des dépenses</h2>"
                 f"<div class='ligne'>{comptes}</div><div class='boutons'><button name='action' value='Comptes'>"
-                "✔ Enregistrer les comptes</button></div></form>" if ctx.req.query.get("op") == "comptes" or manquants
+                "✔ Enregistrer les comptes</button></div></form>" if ctx.req.query.get("op") == "comptes"
                 else ""))
     return Reponse(corps=page(ctx, "Petite caisse et dépenses", corps))
 

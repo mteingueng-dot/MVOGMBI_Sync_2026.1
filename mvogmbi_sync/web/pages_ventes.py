@@ -116,7 +116,9 @@ def tableau_ventes(ctx: Contexte) -> Reponse:
     excel = ("<a class='ouvrir' href='/ventes-sage?excel=1'>📗 Excel</a>" if ctx.reg.peut_exporter(ctx.u) else "")
     if permis_page(ctx.reg, ctx.u, Fonction("", "utilisateurs", "utilisateurs", None, "", "", page_entiere=True)):
         excel += "<a class='ouvrir' href='/dossier-donnees'>📁 Dossier des données</a>"  # tout donnees/
-    corps = (message + f"<div class='cartes-bord'>{cartes}</div>"
+    from .pages_admin import _titre
+
+    corps = (_titre("Tableau de bord") + message + f"<div class='cartes-bord'>{cartes}</div>"
              + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><div><label>Point de vente :</label>"
                f"<select name='pv'>{options}</select></div></div><div class='barre-onglet'><button name='action' "
                "value='Lancer'>▶ Lancer maintenant</button><button class='accent' name='action' value='Simulation'>"

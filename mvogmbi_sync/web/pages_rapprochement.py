@@ -296,7 +296,11 @@ def _fiche(ctx: Contexte, etat: dict, cle_m: str, du: str, au: str, filtre: str)
                     "passé, ou écriture à vérifier dans Sage.</p></div>")
     m = next((x for x in etat["banque"] if x.cle == cle_m), None)
     if m is None:
-        return "<div class='carte'><p>Sélectionnez un mouvement de banque.</p></div>"
+        return ("<div class='carte'><p>Sélectionnez un mouvement de banque.</p><div class='barre-onglet'><div><label>"
+                "Compte Sage</label><input size='36' disabled></div><button disabled>✔ Confirmer le compte</button>"
+                "<button class='second' disabled>Ignorer</button><button class='second' disabled>Remettre à traiter"
+                "</button></div><div class='barre-onglet'><button class='accent' disabled>💰 Encaissement manuel"
+                "</button><button class='accent' disabled>💸 Paiement fournisseur manuel</button></div></div>")
     conseil = {rp.A_ENCAISSER: "Argent des ventes (Interac ou espèces) : il s'encaisse sur les factures de vente à la "
                                "« Comptabilité > Encaissements », pas en écriture de journal.",
                rp.A_PAIE: "Dépôt de salaire : aucune paie du même montant dans Sage (source PAY…). Saisissez ou "

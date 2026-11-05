@@ -34,10 +34,17 @@ def ajouter_menus(html: str, query: dict[str, str]) -> str:
             q = urlencode({**base, "exporter": rang, "format": format_})
             return f"<a href='?{e(q)}'{cible}>{libelle}</a>"
 
-        sortie.append("<details class='exporter'><summary>⬇ Exporter ▾</summary><div>"
-                      + lien("xlsx", "📗 Excel") + lien("csv", "📄 CSV") + lien("pdf", "📕 PDF")
-                      + lien("imprimer", "🖨 Imprimer…", " target='_blank'") + "</div></details>"
-                      + DEBUT_TABLEAU + morceau)
+        menu = ("<details class='exporter'><summary>⬇ Exporter ▾</summary><div>"
+                + lien("xlsx", "📗 Excel") + lien("csv", "📄 CSV") + lien("pdf", "📕 PDF")
+                + lien("imprimer", "🖨 Imprimer…", " target='_blank'") + "</div></details>")
+        precedent = sortie[-1]
+        barre = precedent.rfind("class='barre-onglet'")
+        if barre != -1 and len(precedent) - barre < 6000 and "<details class='exporter'>" not in precedent[barre:]:
+            fin = precedent.index(">", barre) + 1  # dans la barre (ordre CSS : le plus à droite)
+            sortie[-1] = precedent[:fin] + menu + precedent[fin:]
+            sortie.append(DEBUT_TABLEAU + morceau)
+        else:
+            sortie.append(menu + DEBUT_TABLEAU + morceau)
     return "".join(sortie)
 
 
@@ -151,6 +158,7 @@ def fichier(racine: Path, html: str, rang: str, format_: str) -> Reponse:
 
 STYLE_EXPORT = """
 details.exporter { float: right; position: relative; margin: -2px 0 4px 8px; z-index: 5; }
+.barre-onglet > details.exporter { float: none; order: 99; margin: 0 0 0 auto; }
 details.exporter summary { list-style: none; cursor: pointer; padding: 5px 12px; border: 1px solid var(--bord);
   border-radius: 6px; background: var(--carte); font-size: 13px; }
 details.exporter summary::-webkit-details-marker { display: none; }

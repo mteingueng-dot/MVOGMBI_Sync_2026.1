@@ -489,8 +489,10 @@ def test_achats_web(site, tmp_path):
     _, page, _ = ouvrir(patron, base + "/saisir-facture-achat")
     jeton = jeton_csrf(page)
     statut, _, entetes = ouvrir(patron, base + "/saisir-facture-achat", {
-        "csrf": jeton, "fournisseur": "Grossiste Afro", "numero": "A-12", "date": "2026-11-02"})
-    assert statut == 303 and entetes["Location"] == "/facture-fournisseur?i=0"
+        "csrf": jeton, "fournisseur": "Grossiste Afro", "numero": "A-12", "date": "2026-11-02",
+        "l_article": "B0000190", "l_description": "Plantain", "l_quantite": "2", "l_prix": "1.25", "l_taxe": "",
+        "action": "Ajouter aux factures fournisseurs"})
+    assert statut == 303 and entetes["Location"] == "/factures-fournisseurs?i=0"
     assert fo.Registre(tmp_path).factures[0].modele == "Saisie manuelle"
     _, page, _ = ouvrir(patron, base + "/bons-commande")
     assert "Proposer les commandes" in page and "Comparer avec la facture" in page

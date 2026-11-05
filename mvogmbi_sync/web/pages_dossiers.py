@@ -23,9 +23,11 @@ DOSSIERS = {
     "factures": ("Dossier des factures", lambda ctx: ctx.racine / "donnees" / "factures_fournisseurs"),
     "archives": ("Dossier des archives", lambda ctx: ctx.racine / "donnees" / "archives" / "factures_fournisseurs"),
     "sauvegardes": ("Dossier des sauvegardes", lambda ctx: _dossier_sauvegardes(ctx)),
+    "inventaire": ("Dossier des inventaires", lambda ctx: ctx.racine / "sortie" / "inventaire"),
 }
 # cible du choix -> (page de réglage, champ, fichiers acceptés)
-CHOIX = {"sauvegarde": ("/sauvegarde", "dossier", None), "sai": ("/admin/sage", "fichier", ".sai")}
+CHOIX = {"sauvegarde": ("/sauvegarde", "dossier", None), "sai": ("/admin/sage", "fichier", ".sai"),
+         "config": ("/admin/automatisation", "dossier", None)}
 
 
 def _dossier_sauvegardes(ctx: Contexte) -> Path:
@@ -209,10 +211,15 @@ FONCTIONS = [
              "Fournisseur", menu=False, page_entiere=True),
     Fonction("/dossier-archives", "Factures fournisseurs archivées", "rapports", lambda ctx: dossier(ctx, "archives"),
              "📁", "Fournisseur", menu=False),
+    Fonction("/dossier-inventaire", "Inventaire Clover et Sage", "correspondance",
+             lambda ctx: dossier(ctx, "inventaire"), "📂", "Stock", menu=False),
     Fonction("/dossier-sauvegardes", "Sauvegarde des données", "automatisation", lambda ctx: dossier(ctx, "sauvegardes"),
              "📂", "Administration", menu=False),
     Fonction("/parcourir-sauvegarde", "Sauvegarde des données", "automatisation",
              lambda ctx: parcourir(ctx, "sauvegarde"), "📁", "Administration", menu=False),
     Fonction("/parcourir-sai", "sage", "sage", lambda ctx: parcourir(ctx, "sai"), "📁", "Administration", menu=False,
              page_entiere=True),
+    Fonction("/parcourir-config", "automatisation", "automatisation", lambda ctx: parcourir(ctx, "config"), "📁",
+             "Administration", menu=False, page_entiere=True),
 ]
+WEB = {"Factures fournisseurs archivées": "/archives-fournisseurs"}

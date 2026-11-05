@@ -229,7 +229,35 @@ def factures(ctx: Contexte) -> Reponse:
              + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p>")
     if rang is not None and rang < len(registre.factures):
         corps += _detail(ctx, registre.factures[rang], rang, ligne, filtre, noms, articles, clover)
+    else:
+        corps += _detail_vide()
     return Reponse(corps=page(ctx, "Factures fournisseurs", corps))
+
+
+def _detail_vide() -> str:
+    """Bas de la page Windows avant le choix d'une facture : mêmes cadres, champs et boutons, vides et inactifs."""
+    from .consultations import Section, tableau_section
+
+    def champ(libelle, taille=14):
+        return f"<div><label>{e(libelle)}</label><input size='{taille}' disabled></div>"
+
+    return ("<div class='carte'><div class='barre-onglet'>" + champ("Fournisseur Sage", 30) + champ("N° de facture")
+            + champ("Date", 11) + "<button class='accent' disabled>Enregistrer la facture</button><button "
+            "class='danger' disabled>🗑 Écarter</button></div><div class='barre-onglet'>" + champ("Sous-total", 10)
+            + champ("TPS", 10) + champ("TVQ", 10) + champ("Total", 10) + "<button disabled>📤 Importer cette facture"
+            "</button></div>"
+            + tableau_section(Section("Lignes", ["Code", "Désignation du fournisseur", "Qté", "Prix fournisseur",
+                                                 "Montant", "N° Sage", "Désignation Sage", "Qté Sage", "Prix Sage",
+                                                 "Facteur"], []))
+            + "<div class='barre-onglet'>" + champ("Code", 10) + champ("Désignation", 34)
+            + "<div><label>Taxes</label><select disabled><option>Aucune</option></select></div></div>"
+            "<div class='barre-onglet'>" + champ("Qté", 6) + champ("Prix fournisseur", 8) + champ("Montant", 8)
+            + champ("Qté Sage", 8) + champ("Facteur", 6) + "<button class='second' disabled>Appliquer</button><button "
+            "class='second' disabled>➕</button><button class='danger' disabled>🗑</button></div>"
+            "<div class='fiche-bas'><div class='factures'><label>Article Sage :</label><input size='50' disabled></div>"
+            "<div class='boutons-colonne'><button disabled>✔ Relier et confirmer</button><button class='second' "
+            "disabled>Confirmer la proposition</button><button class='second' disabled>🆕 Créer l'article</button>"
+            "</div></div></div>")
 
 
 def _decimal(texte: str, defaut: str = "0") -> Decimal:

@@ -254,7 +254,13 @@ def _article_selectionne(ctx: Contexte, lignes_c, ident, articles, code, filtre,
 
     c = next((x for x in lignes_c if x.id_clover == ident), None)
     if c is None:
-        return "<div class='carte'><h2>Article sélectionné</h2><p>Sélectionnez un article dans le tableau.</p></div>"
+        return ("<div class='carte'><h2>Article sélectionné</h2><p>Sélectionnez un article dans le tableau.</p><div "
+                "class='ligne'><div class='large'><label>Chercher un article Sage :</label><input size='40' disabled>"
+                "</div></div><div class='fiche-bas'><div class='factures'></div><div class='boutons-colonne'><button "
+                "disabled>✔ Confirmer l'article choisi</button><button class='second' disabled>Accepter la proposition"
+                "</button><button class='danger' disabled>Retirer la confirmation</button><button class='second' "
+                "disabled>🆕 Créer l'article dans Sage</button><button class='accent' disabled>💾 Enregistrer les "
+                "modifications</button></div></div></div>")  # comme la fenêtre Windows avant le choix d'une ligne
     recherche = ctx.req.query.get("recherche") if "recherche" in ctx.req.query else (
         c.description_sage if c.methode == co.RENOMME and c.description_sage else c.nom_clover)
     resultats = []
@@ -382,7 +388,7 @@ def creer_article(ctx: Contexte) -> Reponse:
     table = ca.TableCategories(ctx.racine)
     v = {k: ctx.req.champ(k).strip() for k in ("nature", "nom", "cout", "prix", "peremption", "categorie", "type_prix",
                                                 "unite", "taxes", "code", "stock", "numero", "description",
-                                                "charges", "produits", "id_clover")}
+                                                "charges", "produits", "id_clover", "actif", "cmv", "ecart")}
     cle_saisie = ("creer_article", ctx.session.jeton)
     if ctx.req.methode == "POST" and ctx.req.champ("action") == "Comptes par catégorie":
         # « Comptes par catégorie… » : la table s'ouvre en mode choix ; « Valider la sélection » revient ici
@@ -408,7 +414,9 @@ def creer_article(ctx: Contexte) -> Reponse:
             a = ca.NouvelArticle(v["nom"], cout, prix, ca.lire_date(v["peremption"]) if v["peremption"] else None,
                                  v["categorie"], cat.get("id", ""), v["type_prix"] or "FIXED", v["unite"],
                                  choix_taxes.get(v["taxes"]), v["code"], Decimal((v["stock"] or "0").replace(",", ".")),
-                                 v["numero"], v["description"] or v["nom"], table.pour(v["categorie"]),
+                                 v["numero"], v["description"] or v["nom"],
+                                 ca.ComptesCategorie(v["categorie"], "", v["actif"], v["produits"], v["cmv"], v["ecart"])
+                                 if any(v[k] for k in ("actif", "produits", "cmv")) else table.pour(v["categorie"]),
                                  creer_sage=bool(ctx.req.champ("sage")), creer_clover=bool(ctx.req.champ("clover")) and
                                  not service and not existant, service=service, compte_charges=v["charges"],
                                  compte_produits=v["produits"])
@@ -462,6 +470,10 @@ def creer_article(ctx: Contexte) -> Reponse:
 
     comptes = table.pour(v["categorie"]) if v["categorie"] else None
     service = v["nature"] == "Service"
+    if comptes and not service:  # comptes et préfixe de la catégorie choisie (modifiables, comme dans Windows)
+        for cle in ("actif", "produits", "cmv", "ecart"):
+            v[cle] = v[cle] or getattr(comptes, cle, "") or ""
+    v["stock"] = v["stock"] or "0"
 
     def ligne(libelle, champ_html, obligatoire=False):
         return f"<label>{e(libelle)}{' *' if obligatoire else ''}</label><div>{champ_html}</div>"
@@ -475,19 +487,17 @@ def creer_article(ctx: Contexte) -> Reponse:
         comptes_html = (ligne("Compte de charges", entree("charges", 8), True)
                         + ligne("Compte de produits (facultatif)", entree("produits", 8)))
     else:
-        comptes_html = "".join(ligne(lib, f"<input value='{e(getattr(comptes, cle, '') if comptes else '')}' size='8' "
-                                          "disabled>") for cle, lib in (("actif", "Compte d'actif"),
-                                                                        ("produits", "Compte de produits"),
-                                                                        ("cmv", "Compte de CMV"),
-                                                                        ("ecart", "Compte d'écart")))
+        comptes_html = "".join(ligne(lib, entree(cle, 20), oblig) for cle, lib, oblig in (
+            ("actif", "Compte d'actif (15xx)", True), ("produits", "Compte de produits (40xx)", True),
+            ("cmv", "Compte CMV (50xx)", True), ("ecart", "Compte d'écart", False)))
     existant = bool(v["id_clover"])
     clover_cadre = ("<fieldset class='groupe'><legend>Clover</legend><div class='grille-champs'>"
                     + ligne("Nom", entree("nom", 38), True) + ligne("Prix d'achat (coût)", entree("cout"), True)
-                    + ligne("Prix de vente (achat + 40 %)", entree("prix"))
+                    + ligne("Prix de vente (achat + 40 %)", entree("prix"), True)
                     + ligne("Type de prix", f"<select name='type_prix'>{options_prix}</select> Unité "
                                             + entree("unite", 6), True)
                     + ligne("Taxes et frais", f"<select name='taxes'>{options_taxes}</select>")
-                    + ligne("Catégorie", f"<select name='categorie'><option></option>{options_cat}</select>")
+                    + ligne("Catégorie", f"<select name='categorie'><option></option>{options_cat}</select>", True)
                     + ligne("Code du produit (facultatif)", entree("code", 20))
                     + ligne("UGS = date de péremption", entree("peremption", 12, "date"), True)
                     + ligne("Stock", entree("stock", 10))
@@ -499,8 +509,7 @@ def creer_article(ctx: Contexte) -> Reponse:
                   + ligne("Type", natures, True) + ligne("N° d'article", entree("numero", 20), True)
                   + ligne("Description", entree("description", 34), True) + comptes_html + "</div>"
                   + ("<p class='note'>Service : n° commençant par S, créé dans Sage seulement.</p>" if service else
-                     "<p class='note'>Comptes de la catégorie choisie (« Comptabilité > Comptes Sage par catégorie »)."
-                     "</p>")
+                     "<p class='note'>Comptes et préfixe du n° viennent de la catégorie Clover.</p>")
                   + "<p><button class='second' name='action' value='Comptes par catégorie'>Comptes par catégorie…"
                     "</button></p>"
                   "<label class='case'><input type='checkbox' name='sage' value='1' checked> Créer dans Sage</label>"
@@ -510,9 +519,9 @@ def creer_article(ctx: Contexte) -> Reponse:
                 f"existant (ID {e(v['id_clover'])}) : seule sa fiche Sage est créée, puis il est relié (Confirmé).</p>"
                 if existant else "")
              + f"<div class='colonnes'>{clover_cadre}{sage_cadre}</div>"
-             + "<div class='barre-onglet'><button class='second' name='action' value='Proposer'>Proposer le n° Sage"
-               "</button><a class='ouvrir a-droite' href='/correspondance'>✖ Fermer</a><button name='action' "
-               "value='Créer'>🆕 Créer l'article</button></div></form>"
+             + "<div class='barre-onglet'><button class='second' name='action' value='Proposer'>Reprendre les comptes "
+               "de la catégorie</button><span class='a-droite'><button name='action' value='Créer'>🆕 Créer "
+               "l'article</button> <a class='ouvrir' href='/correspondance'>✖ Fermer</a></span></div></form>"
              + "<div class='ligne-etat'>Un service se crée dans Sage seulement (n° commençant par S) ; « Proposer le n° "
                "Sage » prend le préfixe de la catégorie.</div>")
     return Reponse(corps=page(ctx, "Créer un article", corps))
@@ -548,10 +557,6 @@ def inventaire(ctx: Contexte) -> Reponse:
                 return [f"Saisie faite : rapport {rapport.name} (liste ci-dessous)."]
 
             return taches.lancer(ctx, "Saisie de l'inventaire compté", saisir, "/inventaire", sage=True)
-    fichiers = sorted(dossier.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True) if dossier.exists() else []
-    lignes = [[f"<a href='/inventaire-fichier?f={e(p.name)}'>{e(p.name)}</a>",
-               datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
-               f"{p.stat().st_size / 1024:.0f} Ko"] for p in fichiers[:30]]
     corps = ("<div class='texte-fixe'>1. Exportez l'inventaire : un fichier Excel avec, pour chaque article, code et "
              "description Clover et Sage, quantité Clover, quantité Sage et l'écart.\n2. Comptez, puis inscrivez les "
              "quantités dans la colonne jaune « Quantité comptée » (laissez vide les articles non comptés).\n3. « Saisir "
@@ -560,10 +565,7 @@ def inventaire(ctx: Contexte) -> Reponse:
              + f"<form method='post' enctype='multipart/form-data' class='barre-onglet'>{csrf(ctx)}<button "
                "name='action' value='Préparer'>⬇ Exporter l'inventaire</button><input type='file' name='fichier' "
                "accept='.xlsx'><button class='accent' name='action' value='Saisir'>📦 Saisir l'inventaire compté…"
-               "</button></form>"
-             + tableau_section(Section("Dossier", ["Fichier", "Date", "Taille"], lignes, html={0}))
-             + "<div class='ligne-etat'>Clover = quantité comptée de chaque ligne ; Sage = somme des lignes de son n°. "
-               "Sage doit être fermé sur le serveur ou ouvert sur le fichier configuré.</div>")
+               "</button><a class='ouvrir' href='/dossier-inventaire'>📂 Dossier</a></form>")
     return Reponse(corps=page(ctx, "Inventaire Clover et Sage", corps))
 
 

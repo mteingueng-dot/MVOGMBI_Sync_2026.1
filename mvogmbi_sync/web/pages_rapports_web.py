@@ -14,8 +14,8 @@ from .pages import Contexte, Fonction, argent, page
 from .serveur import Reponse, echapper as e
 
 ONGLETS = [("Suivi des ventes", "/suivi-ventes"), ("Recherche dans l'historique", "/historique"),
-           ("Statistiques Clover", "/statistiques"), ("Produits inactifs", "/inactifs"),
-           ("Articles 20/80", "/pareto"), ("Factures fournisseurs archivées", "/archives-fournisseurs")]
+           ("Factures fournisseurs archivées", "/archives-fournisseurs"), ("Statistiques Clover", "/statistiques"),
+           ("Produits inactifs", "/inactifs"), ("Articles 20/80", "/pareto")]  # ordre des onglets de PageRapports
 # fenêtres Windows à onglets : (libellé de l'onglet, adresse web, entrée du menu qui donne le droit, page)
 GROUPES = [
     [(t, a, t, "rapports") for t, a in ONGLETS],
@@ -58,7 +58,13 @@ def onglets(actif: str, ctx: Contexte | None = None) -> str:
         if ctx is not None and not permis(ctx.reg, ctx.u, Fonction("", titre, page_cle, None, "", "")):
             continue
         liens += f"<a class='onglet{' actif' if libelle == actif else ''}' href='{adresse}'>{e(libelle)}</a>"
-    return f"<nav class='onglets'>{liens}</nav>"
+    entete = ""
+    if groupe is GROUPES[0]:  # page « Rapports » de Windows : son titre au-dessus des onglets
+        from .pages_admin import entete_page
+
+        entete = entete_page("📊", "Rapports", "suivi complet des ventes, historique de Sage et factures fournisseurs "
+                                               "archivées")
+    return f"{entete}<nav class='onglets'>{liens}</nav>"
 
 
 def cartes(valeurs: list[tuple[str, str]]) -> str:
@@ -93,7 +99,8 @@ def suivi_ventes(ctx: Contexte) -> Reponse:
     filtre = q.get("filtre", FILTRES_SUIVI[0])
     texte = (q.get("recherche") or "").strip().casefold()
     entete = onglets("Suivi des ventes", ctx) + _formulaire(
-        _choix("filtre", "Afficher", FILTRES_SUIVI, filtre) + _recherche(q.get("recherche", "")))
+        "<button name='actualiser' value='1'>🔄 Actualiser</button>"
+        + _choix("filtre", "Afficher :", FILTRES_SUIVI, filtre) + _recherche(q.get("recherche", "")))
     try:
         compte = numero_compte_sage(str(ctx.config.get("encaissements", {}).get("compte_depot", "1055")))
         suivi = sage(ctx, lambda b: calculer(ctx.racine, b, CLIENT, compte), ("suivi_ventes",))
@@ -410,7 +417,7 @@ def historique(ctx: Contexte) -> Reponse:
           f"<input type='date' name='au' value='{au or ''}'></div><button name='chercher' value='1'>🔍 Rechercher"
           f"</button><a class='ouvrir' href='?type={e(type_)}'>✖ Réinitialiser les filtres</a></div></form>")
     aide = AIDES_RECHERCHE[type_]
-    resultat = ""
+    resultat = "<div class='defile'><table><tr><td class='vide'></td></tr></table></div>"  # zone vide comme Windows
     if q.get("chercher"):
         tous = {"Client": "tous les clients", "Fournisseur": "tous les fournisseurs",
                 "Statistiques client": "tous les clients", "Statistiques fournisseur": "tous les fournisseurs",

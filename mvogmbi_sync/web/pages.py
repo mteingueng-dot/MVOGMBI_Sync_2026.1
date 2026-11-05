@@ -157,9 +157,73 @@ def page(ctx: Contexte, titre: str, corps: str) -> str:
     absents = sorted(getattr(ctx, "absents", ()) or ())
     alerte = ("<p class='alerte-source'>⚠ " + e(" et ".join(absents)) + " ne répond pas sur le serveur pour l'instant : "
               "les tableaux sont affichés vides, ils se rempliront dès que la connexion sera faite.</p>") if absents else ""
-    fermer = "" if titre == "Accueil" else "<a class='fermer' href='/'>✖ Fermer</a>"  # bandeau des fenêtres de travail
+    if titre == "Accueil" or _page_windows(ctx):  # page de l'application : son propre titre, sans bandeau
+        import re
+
+        from .pages_admin import entete_page
+
+        # « 🔗 Correspondance des articles — sous-titre » : en-tête de page de Windows (design.entete_page)
+        corps = re.sub(r"<p class='sous-titre'>(\S+) (.+?) — (.+?)</p>",
+                       lambda m: entete_page(m.group(1), _texte(m.group(2)), _texte(m.group(3))), corps, count=1)
+        return _document(titre, f"{alerte}<div class='zone-page'>{corps}</div>", ctx, barre(ctx))
+    titre = _titre_fenetre(ctx, titre)
+    fermer = "<a class='fermer' href='/'>✖ Fermer</a>"  # bandeau des fenêtres de travail (Application.nouvel_outil)
     return _document(titre, f"<div class='entete-outil'><h1 class='titre-page'>{e(titre)}</h1>{fermer}</div>{alerte}"
                             f"<div class='zone-outil'>{corps}</div>", ctx, barre(ctx))
+
+
+def _titre_fenetre(ctx, titre: str) -> str:
+    """Titre de la fenêtre Windows qui porte la page : les onglets de « Comptabilité » ont le titre de la fenêtre."""
+    req = getattr(ctx, "req", None)
+    if req is not None:
+        from .pages_rapports_web import GROUPES
+
+        if any(req.chemin == o[1].split("?")[0] for o in GROUPES[1]):
+            return "Comptabilité"
+        return TITRES_FENETRES.get(req.chemin, titre)
+    return titre
+
+
+# titre de la fenêtre Windows quand il diffère de l'entrée du menu
+TITRES_FENETRES = {"/ria": "RIA (transferts d'argent)", "/transferts": "Transferts entre points de vente"}
+
+
+def _texte(html_: str) -> str:
+    import html
+
+    return html.unescape(html_)
+
+
+_PAGES_WINDOWS: set[str] = set()
+
+
+def _page_windows(ctx) -> bool:
+    """Adresse d'une PAGE de l'application Windows (entrée du menu donnée par son n° de page : Clover, Sage 50,
+    Courriel, Automatisation, Utilisateurs, Correspondance, Tableau de bord, Encaissements, Factures fournisseurs,
+    Paiements fournisseurs, Rapprochement)."""
+    if not _PAGES_WINDOWS:
+        from ..interface import MENU_GROUPES
+        from .menu import PAGES_MENU, adresse_entree
+
+        for _n, _i, elements in MENU_GROUPES:
+            for el in elements:
+                if isinstance(el, int) and el in PAGES_MENU:
+                    _PAGES_WINDOWS.add(adresse_entree(PAGES_MENU[el][1]).split("?")[0])
+        from .pages_rapports_web import ONGLETS  # onglets de la page « Rapports » et interrogations de compte
+
+        _PAGES_WINDOWS.update(adresse for _t, adresse in ONGLETS)
+        _PAGES_WINDOWS.update({"/interrogation-article", "/interrogation-client", "/interrogation-fournisseur"})
+    req = getattr(ctx, "req", None)
+    return bool(req) and req.chemin in _PAGES_WINDOWS
+
+
+def page_poste(ctx: Contexte, corps: str) -> str:
+    """Poste de pointage (fenetre_pointage.PostePointage) : fenêtre à part, sans bandeau ni menu, avec « ✖ Fermer »."""
+    return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'><meta name='viewport' "
+            f"content='width=device-width, initial-scale=1'><meta name='robots' content='noindex'><title>Pointage des "
+            f"employés · {NOM_APPLICATION}</title><link rel='stylesheet' href='/style.css'></head><body "
+            f"class='poste-seul'><main><div class='entete-outil'><span></span><a class='fermer' href='/'>✖ Fermer</a>"
+            f"</div>{corps}</main></body></html>")
 
 
 def page_simple(titre: str, message: str) -> str:
@@ -173,8 +237,11 @@ def csrf(ctx: Contexte) -> str:
 
 def tableau(entete: list[str], lignes: list[list], numeriques: set[int] = frozenset()) -> str:
     th = "".join(f"<th class='{'n' if i in numeriques else ''}'>{e(c)}</th>" for i, c in enumerate(entete))
+    from .consultations import ligne_cliquable
+
     corps = "".join("<tr>" + "".join(f"<td class='{'n' if i in numeriques else ''}'>{c}</td>"
-                                     for i, c in enumerate(ligne)) + "</tr>" for ligne in lignes)
+                                     for i, c in enumerate(ligne_cliquable([str(x) for x in ligne]))) + "</tr>"
+                    for ligne in lignes)
     return f"<div class='defile'><table><tr>{th}</tr>{corps}</table></div>"
 
 
@@ -299,7 +366,7 @@ def mon_horaire(ctx: Contexte) -> Reponse:
              f"<div class='cartes-trois'>{cartes}</div>"
              + tableau_section(Section("Mon horaire", ENTETES_HORAIRE, [l[:-1] for l in lignes],
                                        classes=[classes.get(l[-1], "") for l in lignes])))
-    return Reponse(corps=page(ctx, f"Horaire de {employe.nom}" if ctx.voit_tous() else "Mon horaire", corps))
+    return Reponse(corps=page(ctx, "Mon horaire", corps))  # titre de FenetreMonHoraire
 
 
 def _reference(racine) -> date:
@@ -464,7 +531,7 @@ def pointage(ctx: Contexte) -> Reponse:
         corps = (entete + "<h2>Touchez votre nom</h2>"
                  + (f"<div class='poste-grille'>{cases}</div>" if cases else
                     "<p class='note'>Aucun employé à afficher.</p>"))
-        return Reponse(corps=page(ctx, "Pointage", corps))
+        return Reponse(corps=page_poste(ctx, corps))
     retour = f"<meta http-equiv='refresh' content='{RETOUR_POSTE};url=/pointage?retour=1'>"
     if not etat.get("verifie"):  # étape 2 : le NIP
         touches = "".join(f"<button class='poste-touche' name='action' value='touche:{x}'>{x}</button>"
@@ -477,7 +544,7 @@ def pointage(ctx: Contexte) -> Reponse:
                  "inputmode='numeric' autocomplete='off' size='8' placeholder='ou au clavier' autofocus><button "
                  "class='second' name='action' value='NIP'>Entrée</button><button class='second' name='action' "
                  "value='Retour' formnovalidate>◀ Retour</button></form></div>")
-        return Reponse(corps=page(ctx, "Pointage", corps))
+        return Reponse(corps=page_poste(ctx, corps))
     # étape 3 : les actions permises
     registre = pt.Registre(ctx.racine)
     if ctx.req.query.get("horaire"):
@@ -490,7 +557,7 @@ def pointage(ctx: Contexte) -> Reponse:
         corps = (retour + entete + f"<div class='poste-centre'><div class='poste-employe'>Horaire de {e(employe.nom)}"
                  f"</div><pre class='texte-fixe'>{e(texte)}</pre><form method='post'>{csrf(ctx)}<button "
                  "class='second' name='action' value='Retour'>◀ Retour</button></form></div>")
-        return Reponse(corps=page(ctx, "Pointage", corps))
+        return Reponse(corps=page_poste(ctx, corps))
     boutons = "".join(f"<button class='{'danger' if a == pt.DEPART else ''} poste-action' name='action' "
                       f"value='pointer:{e(a)}'>{e(a)}</button>" for a in registre.actions_permises(employe.id))
     aujourdhui = date.today()
@@ -504,7 +571,7 @@ def pointage(ctx: Contexte) -> Reponse:
              f"<p class='texte-fixe note'>{e(resume)}</p><form method='post' class='barre-onglet poste-bas'>{csrf(ctx)}"
              "<a class='ouvrir' href='/pointage?horaire=1'>📅 Mon horaire</a><button class='second' name='action' "
              "value='Retour'>◀ Retour</button></form></div>")
-    return Reponse(corps=page(ctx, "Pointage", corps))
+    return Reponse(corps=page_poste(ctx, corps))
 
 
 # --------------------------------------------------------------------------------------------- gérant

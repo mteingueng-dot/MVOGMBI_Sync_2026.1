@@ -55,11 +55,14 @@ def retirer() -> str:
 
 
 def etat() -> str:
-    resultat = subprocess.run(["schtasks", "/Query", "/TN", NOM_TACHE, "/V", "/FO", "LIST"],
-                              capture_output=True, text=True, encoding="cp850")
+    resultat = subprocess.run(["schtasks", "/Query", "/TN", NOM_TACHE, "/V", "/FO", "LIST"], capture_output=True)
     if resultat.returncode != 0:
         return "Tâche non installée."
-    utiles = [l for l in resultat.stdout.splitlines()
+    try:  # la console écrit en UTF-8 ou en cp850 selon le poste
+        sortie = resultat.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        sortie = resultat.stdout.decode("cp850", "replace")
+    utiles = [l for l in sortie.splitlines()
               if l.split(":")[0].strip().lower() in ("prochaine exécution", "heure de la dernière exécution",
                                                      "dernier résultat", "statut", "next run time",
                                                      "last run time", "last result", "status")]
