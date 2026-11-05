@@ -356,7 +356,34 @@ def creer_serveur(racine: Path, adresse: str | None = None, port: int | None = N
         contexte.minimum_version = ssl.TLSVersion.TLSv1_2
         contexte.load_cert_chain(str(web["certificat"]), str(web.get("cle") or "") or None)
         serveur.socket = contexte.wrap_socket(serveur.socket, server_side=True)
+        serveur.contexte_tls = contexte  # type: ignore[attr-defined]
     return serveur
+
+
+def _relire_certificat(serveur) -> None:
+    """Certificat Let's Encrypt renouvelé (tous les 60 jours) : relu sans redémarrer le serveur (contrôle horaire)."""
+    import os
+
+    web = serveur.app.config.get("web", {})
+    fichiers = [str(web["certificat"])] + ([str(web["cle"])] if web.get("cle") else [])
+
+    def date():
+        try:
+            return max(os.path.getmtime(f) for f in fichiers)
+        except OSError:
+            return 0
+
+    connue = date()
+    while True:
+        time.sleep(3600)
+        nouvelle = date()
+        if nouvelle and nouvelle != connue:
+            try:
+                serveur.contexte_tls.load_cert_chain(fichiers[0], fichiers[1] if len(fichiers) > 1 else None)
+                connue = nouvelle
+                serveur.app.noter("certificat HTTPS renouvelé : relu")
+            except (OSError, ssl.SSLError) as erreur:
+                serveur.app.noter(f"certificat HTTPS illisible : {erreur}")
 
 
 def _suivre_telephones(app) -> None:
@@ -387,6 +414,8 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     print(f"Application web : {schema}://{hote}:{port_reel}/  (Ctrl+C pour arrêter)")
     serveur.app.noter(f"démarrage {schema}://{hote}:{port_reel}/")  # type: ignore[attr-defined]
     threading.Thread(target=_suivre_telephones, args=(serveur.app,), daemon=True).start()
+    if serveur.app.https:  # type: ignore[attr-defined]
+        threading.Thread(target=_relire_certificat, args=(serveur,), daemon=True).start()
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:

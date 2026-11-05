@@ -585,6 +585,59 @@ def prix_marges(ctx: Contexte) -> Reponse:
     return Reponse(corps=page(ctx, "Prix et marges", corps))
 
 
+# --------------------------------------------------------------------------------------------- prix de vente Sage
+def prix_sage(ctx: Contexte) -> Reponse:
+    """Comme fenetre_couts.FenetrePrixSage : prix de vente régulier de Sage remplacé par le prix de l'article Clover
+    relié, lignes cochées ; écrit dans Sage en travail Sage (l'application ouvre Sage elle-même)."""
+    from .. import prix_sage as ps
+    from .a_cocher import choisies, page_a_cocher
+    from . import taches
+
+    cle = "prix_sage"
+    gardee = ctx.app.memoire.get(cle)
+    try:
+        if gardee and time.time() - gardee[0] < 600 and not ctx.req.query.get("actualiser"):
+            lignes, resume = gardee[1]
+        else:
+            lignes, resume = ps.lire(ctx.racine, ctx.config, ouvrir=False)
+            ctx.app.memoire[cle] = (time.time(), (lignes, resume))
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — tableau vide avec ses colonnes
+        ctx.app.noter(f"Prix de vente Sage : {erreur!r}")
+        lignes, resume = [], "Sage ou Clover ne répond pas pour l'instant."
+        ctx.absents.update({"Clover", "Sage"})
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "lancer":
+        if not action_permise(ctx, "Changer les prix de vente dans Sage"):
+            return Reponse(corps=page(ctx, "Prix de vente Sage depuis Clover", _message(
+                erreur="Votre profil n'a pas le droit « Changer les prix de vente dans Sage ».")))
+        retenues = choisies(ctx, lignes)
+        if not retenues:
+            return Reponse(corps=page(ctx, "Prix de vente Sage depuis Clover", _message(
+                erreur="Cochez au moins une ligne.")))
+
+        def appliquer(journal):
+            resultats = ps.appliquer(ctx.racine, ctx.config, retenues, journal)
+            ctx.app.memoire.pop(cle, None)
+            erreurs = [f"{l.numero_sage} : {err}" for l, err in resultats if err]
+            return [f"{len(resultats) - len(erreurs)} prix de vente mis à jour dans Sage (journal : "
+                    "donnees/journal_prix_sage.csv)."] + erreurs[:15]
+
+        return taches.lancer(ctx, f"Prix de vente dans Sage ({len(retenues)})", appliquer, "/prix-sage", sage=True)
+
+    def valeurs(l):
+        ecart = "" if l.ecart is None else f"{l.ecart:+.2f}".replace(".", ",")
+        return (l.numero_sage, l.description_sage, " | ".join(l.articles_clover), _montant(l.prix_sage),
+                _montant(l.prix_clover), ecart, l.etat, l.note or "")
+
+    corps = page_a_cocher(
+        ctx, "/prix-sage",
+        "Le prix de vente régulier de chaque article de Sage prend le prix de vente de l'article Clover relié "
+        "(correspondance Confirmé ou Automatique). Cochez les lignes, puis lancez la mise à jour : l'application ouvre "
+        "Sage elle-même (Sage fermé) et vérifie chaque prix.",
+        ["N° Sage", "Article Sage", "Article(s) Clover", "Prix Sage", "Prix Clover", "Écart", "État", "Remarque"],
+        lignes, valeurs, resume, "Mettre à jour les prix dans Sage", etat_initial=ps.DIFFERENT)
+    return Reponse(corps=page(ctx, "Prix de vente Sage depuis Clover", corps))
+
+
 # --------------------------------------------------------------------------------------------- coûts Clover
 def couts_clover(ctx: Contexte) -> Reponse:
     """Comme fenetre_couts.FenetreCoutsClover : le CUMP de Sage remplace le coût Clover des lignes cochées ; jamais de
@@ -997,6 +1050,8 @@ FONCTIONS = [
     Fonction("/etiquettes", "Étiquettes de prix", "correspondance", etiquettes, "🏷", "Articles", menu=False),
     Fonction("/prix-marges", "Prix et marges", "correspondance", prix_marges, "💹", "Articles", menu=False),
     Fonction("/couts-clover", "Coûts Clover depuis Sage", "correspondance", couts_clover, "💲", "Articles", menu=False),
+    Fonction("/prix-sage", "Prix de vente Sage depuis Clover", "correspondance", prix_sage, "🏷", "Articles",
+             menu=False),
     Fonction("/comptes-categories", "Comptes Sage par catégorie", "correspondance", comptes_categories, "🧾",
              "Comptabilité", menu=False),
     Fonction("/plan-comptable", "Plan comptable", "rapprochement", plan_comptable, "📒", "Comptabilité", menu=False),
@@ -1004,5 +1059,6 @@ FONCTIONS = [
 ]
 WEB = {"Pertes et démarque": "/pertes", "Promotions": "/promotions", "Étiquettes de prix": "/etiquettes",
        "Prix et marges": "/prix-marges", "Coûts Clover depuis Sage": "/couts-clover",
+       "Prix de vente Sage depuis Clover": "/prix-sage",
        "Comptes Sage par catégorie": "/comptes-categories", "Plan comptable": "/plan-comptable",
        "Budget et écarts": "/budget"}

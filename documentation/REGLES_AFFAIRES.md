@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -183,6 +183,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-ART-13 | **Annuler une promotion** : prévue → annulée ; en cours → prix normal remis tout de suite (même condition que RG-ART-12) ; terminée ou annulée → refus. |
 | RG-ART-14 | **Péremption** : rouge à un mois ou moins (ou périmé), jaune de 1 à 3 mois. |
 | RG-ART-15 | Effacer une UGS qui n'est pas une date : liste à cocher, chaque effacement journalisé. |
+| RG-ART-16 | **Prix de vente Sage depuis Clover** (« Articles > Prix de vente Sage depuis Clover ») : le prix de vente régulier de Sage prend le prix de l'article Clover relié (Confirmé ou Automatique) ; prix différent coché, plusieurs prix Clover sur un même n° Sage décochés (le plus élevé proposé), prix variable ou absent non cochable ; écrit dans la fiche de Sage (l'application ouvre Sage elle-même), vérifié, journalisé (`journal_prix_sage.csv`) ; droit « Changer les prix de vente dans Sage ». |
 
 ---
 
@@ -363,6 +364,7 @@ Ordre des étapes :
 | RG-WEB-02 | **Tout sur un même serveur** : Sage 50, MVOGMBI_Sync, son serveur web et le traitement de nuit (les saisies dans Sage exigent Sage sur la même machine). Depuis le 4 novembre 2026 : SERVDCSAGE. |
 | RG-WEB-03 | **Aucune adresse écrite dans le programme** : le serveur (ordinateur, adresse Tailscale, adresse locale, nom tapé, port) se règle dans « Administration > Automatisation » ; le client des postes lit `serveur.json`. |
 | RG-WEB-04 | Le serveur web n'écoute que sur la carte Tailscale (pare-feu) ; jamais ouvert sur Internet ni sur le réseau local. |
+| RG-WEB-04b | **HTTPS sans port** : https://app.marchemvogmbi.com, port 443, certificat Let's Encrypt validé par le DNS chez WHC (`certificat_https.ps1`, win-acme) ; renouvelé tous les 60 jours, relu par le serveur sans redémarrage. |
 | RG-WEB-05 | Sage ne répond pas : les pages s'affichent quand même, tableaux vides avec leurs colonnes, et un bandeau le signale. |
 | RG-WEB-06 | Un seul travail dans Sage à la fois ; le jeton anti-falsification ne paraît jamais dans une adresse. |
 | RG-WEB-07 | Changer de serveur : reprendre `config.toml` et `donnees/`, retaper les mots de passe (coffre-fort propre à chaque machine), régler le serveur, relancer `installer_web.ps1` et la tâche planifiée ; retirer tâche et serveur web de l'ancien serveur (jamais deux traitements de nuit). |

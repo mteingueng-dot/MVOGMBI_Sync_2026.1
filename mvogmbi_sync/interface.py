@@ -54,7 +54,8 @@ MENU_GROUPES = [
                        ("🔎", "Interrogation de compte article", RAPPORTS, "ouvrir_interrogation", "Article"),
                        CORRESPONDANCE,
                        ("💲", "Coûts Clover depuis Sage", CORRESPONDANCE, "ouvrir_couts_clover"),
-                       ("💹", "Prix et marges", CORRESPONDANCE, "ouvrir_prix_marges")]),
+                       ("💹", "Prix et marges", CORRESPONDANCE, "ouvrir_prix_marges"),
+                       ("🏷", "Prix de vente Sage depuis Clover", CORRESPONDANCE, "ouvrir_prix_sage")]),
     # rubrique Stock : tout ce qui touche les quantités en stock (demande du propriétaire du 2026-11-01)
     ("Stock", "📦", [("🗂", "Liste des documents de stock", CORRESPONDANCE, "ouvrir_liste", "documents_stock"),
                     ("✏", "Saisir un document de stock", CORRESPONDANCE, "ouvrir_documents", "stock"),
@@ -840,6 +841,10 @@ class Application(tk.Tk):
         from .fenetre_article import FenetreCategories
         FenetreCategories(self, self.racine)
 
+    def ouvrir_prix_sage(self) -> None:
+        from .fenetre_couts import FenetrePrixSage
+        FenetrePrixSage(self, self.racine)
+
     def ouvrir_couts_clover(self) -> None:
         from .fenetre_couts import FenetreCoutsClover
         FenetreCoutsClover(self, self.racine)
@@ -1476,7 +1481,13 @@ class Application(tk.Tk):
                     aide=t("Adresse sur le réseau du bureau (ex. 192.168.2.62) : Bureau à distance."))
         self._champ(serveur, 6, t("Nom tapé dans le client"), "serveur.nom_public", r["nom_public"],
                     aide=t("Ce que les employés tapent dans MVOGMBI_Sync_Client (ex. marchemvogmbi.com)."))
-        self._champ(serveur, 8, t("Port du serveur web"), "serveur.port", str(r["port"]))
+        self._champ(serveur, 8, t("Port du serveur web"), "serveur.port", str(r["port"]),
+                    aide=t("8765 sans HTTPS ; 443 avec HTTPS (adresse sans port : https://app.marchemvogmbi.com)."))
+        self._champ(serveur, 12, t("Certificat HTTPS (.pem)"), "serveur.certificat", r["certificat"],
+                    aide=t("Fichier du certificat Let's Encrypt (certificat_https.ps1 : …-chain.pem). Vide : pas de "
+                           "HTTPS. Redémarrez le serveur web après un changement ; un certificat renouvelé est relu "
+                           "tout seul."))
+        self._champ(serveur, 14, t("Clé du certificat (.pem)"), "serveur.cle", r["cle"], aide=t("Fichier …-key.pem."))
         Bouton(serveur, "⬇  " + t("Fichier du client (serveur.json)…"), self.fichier_client, "secondaire").grid(
             row=10, column=1, sticky="w", pady=(6, 8))
         from . import pointage_wifi
@@ -1675,7 +1686,7 @@ class Application(tk.Tk):
 
             try:
                 serveur_appli.ecrire(c, {k: str(v[f"serveur.{k}"]).strip() for k in (
-                    "machine", "adresse", "adresse_locale", "nom_public", "port")})
+                    "machine", "adresse", "adresse_locale", "nom_public", "port", "certificat", "cle")})
             except ValueError as exc:
                 messagebox.showerror(TITRE, t("Serveur de l'application : {e}", e=str(exc)))
                 return False

@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "2.15.1"
+#define Version "2.16.0"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -87,6 +87,7 @@ Source: "..\documentation\User_Manual_MVOGMBI_Sync.html"; DestDir: "{app}\manuel
 Source: "..\documentation\captures\*"; DestDir: "{app}\manuel\captures"; Flags: recursesubdirs createallsubdirs ignoreversion skipifsourcedoesntexist
 ; application web : mise en service sur le serveur, lancée par le propriétaire (version 1.1.0)
 Source: "installer_web.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "certificat_https.ps1"; DestDir: "{app}"; Flags: ignoreversion
 ; client des postes (version 1.2.0) : à copier sur chaque poste, rien à installer
 Source: "..\dist\MVOGMBI_Sync_Client.exe"; DestDir: "{app}\client"; Flags: ignoreversion
 ; La configuration et les données existantes ne sont jamais écrasées lors d'une mise à jour.

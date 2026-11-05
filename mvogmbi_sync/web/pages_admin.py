@@ -624,7 +624,7 @@ def automatisation(ctx: Contexte) -> Reponse:
                 from .. import serveur_appli
 
                 valeurs = {k: ctx.req.champ(f"s_{k}") for k in ("machine", "adresse", "adresse_locale", "nom_public",
-                                                                "port")}
+                                                                "port", "certificat", "cle")}
 
                 from .. import pointage_wifi
 
@@ -708,7 +708,12 @@ def _carte_serveur(ctx: Contexte) -> str:
                  "Adresse sur le réseau du bureau (ex. 192.168.2.62) : Bureau à distance.")
         + _ligne("Nom tapé dans le client", _entree("s_nom_public", r["nom_public"]),
                  "Ce que les employés tapent dans MVOGMBI_Sync_Client (ex. marchemvogmbi.com).")
-        + _ligne("Port du serveur web", _entree("s_port", r["port"], taille=8))
+        + _ligne("Port du serveur web", _entree("s_port", r["port"], taille=8),
+                 "8765 sans HTTPS ; 443 avec HTTPS (adresse sans port : https://app.marchemvogmbi.com).")
+        + _ligne("Certificat HTTPS (.pem)", _entree("s_certificat", r["certificat"]),
+                 "Fichier du certificat Let's Encrypt (certificat_https.ps1 : …-chain.pem). Vide : pas de HTTPS. "
+                 "Redémarrez le serveur web après un changement ; un certificat renouvelé est relu tout seul.")
+        + _ligne("Clé du certificat (.pem)", _entree("s_cle", r["cle"]), "Fichier …-key.pem.")
         + "<span></span><div><a class='ouvrir' href='/admin/automatisation?fichier=client'>⬇ Fichier du client "
           "(serveur.json)</a><div class='aide'>À copier à côté de MVOGMBI_Sync_Client.exe sur chaque poste : le client "
           "envoie alors vers ce serveur. Les postes installés avec MVOGMBI_Sync le reçoivent d'office.</div></div>",

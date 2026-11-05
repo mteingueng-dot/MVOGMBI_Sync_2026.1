@@ -53,7 +53,7 @@ ACTIONS_FENETRES = {
     "Comptabilité": ["Modifier le plan comptable", "Enregistrer un comptage de caisse", "Saisir les dépenses dans Sage",
                      "Envoyer une relance par courriel", "Enregistrer le budget"],
     "Articles": ["Sortir des pertes du stock", "Changer les prix Clover (promotions)", "Imprimer des étiquettes",
-                 "Modifier les articles dans Sage et Clover"],
+                 "Modifier les articles dans Sage et Clover", "Changer les prix de vente dans Sage"],
     "Fournisseur": ["Importer un retour dans Sage"],
 }
 # entrées du menu renommées : le droit donné sous l'ancien nom passe aux nouvelles (rubrique RIA, 2026-11-03)

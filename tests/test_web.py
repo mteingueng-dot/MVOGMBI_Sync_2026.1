@@ -815,3 +815,25 @@ def test_activer_desactiver_un_compte(site, tmp_path):
                                                          "action": "Activer / désactiver"})
     assert "Compte « Awa » activé." in page
     assert ouvrir(connecter(base, "Awa", "secret456"), base + "/horaire")[0] == 200
+
+
+def test_prix_de_vente_sage_depuis_clover():
+    """Prix Sage comparé au prix Clover des articles reliés : différent coché, formats de prix différents décochés,
+    prix variable non cochable."""
+    from decimal import Decimal
+
+    from mvogmbi_sync import prix_sage as ps
+
+    articles = [{"id": "A", "name": "Plantain", "price": 249}, {"id": "B", "name": "Riz 1kg", "price": 599},
+                {"id": "C", "name": "Riz 1kg (lot)", "price": 649}, {"id": "D", "name": "Poisson", "price": 0,
+                                                                       "priceType": "VARIABLE"},
+                {"id": "E", "name": "Huile", "price": 1099}]
+    liens = {"A": "S1", "B": "S2", "C": "S2", "D": "S3", "E": "S4"}
+    sage = {"S1": ("Plantain", Decimal("1.99")), "S2": ("Riz", Decimal("5.99")), "S3": ("Poisson", Decimal("0")),
+            "S4": ("Huile", Decimal("10.99"))}
+    lignes = {l.numero_sage: l for l in ps.analyser(articles, liens, sage)}
+    assert lignes["S1"].etat == ps.DIFFERENT and lignes["S1"].cochee_par_defaut
+    assert lignes["S1"].prix_clover == Decimal("2.49") and lignes["S1"].ecart == Decimal("0.50")
+    assert lignes["S2"].etat == ps.PLUSIEURS and not lignes["S2"].cochee_par_defaut
+    assert lignes["S3"].etat == ps.VARIABLE and not lignes["S3"].permis
+    assert lignes["S4"].etat == ps.IDENTIQUE

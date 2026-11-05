@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -186,6 +186,7 @@ flowchart TB
 | | `paiements_courriel.py`, `ocr_windows.py` | IMAP en lecture seule ; OCR intégré à Windows. |
 | | `coffre.py`, `utilisateurs.py` | Coffre-fort Windows ; comptes et profils, avec mots de passe hachés. |
 | | `pointage_wifi.py` | Pointage seulement depuis le Wi-Fi du magasin : réseau de l'appareil lu dans Tailscale (`tailscale status`, sinon `tailscale ping`) comparé aux adresses publiques du magasin ; postes du magasin toujours permis. |
+| | `prix_sage.py`, `robot_prix_sage.py` | Prix de vente régulier de Sage depuis Clover : comparaison, liste à cocher, écriture dans la fiche article (onglet des prix, case Régulier), vérifiée dans tinvprc. |
 | | `serveur_appli.py` | Serveur de l'application ([serveur] et [web] de `config.toml`) : ordinateur, adresse Tailscale, adresse locale, nom tapé dans le client, port ; fichier `serveur.json` du client. |
 | Web | `web/serveur.py`, `web/pages.py`, `web/menu.py`, `web/accueil.py` | Serveur HTTP sans bibliothèque, sessions, sécurité, menu et accueil identiques à Windows ; `page()` donne aux pages de l'application leur en-tête (`entete_page`) et aux fenêtres de travail leur bandeau « ✖ Fermer ». |
 | | `web/style_windows.py`, `web/export_web.py`, `web/a_cocher.py` | Allure des fenêtres Windows ; « ⬇ Exporter ▾ » de chaque tableau ; liste à cocher commune (`FenetreACocher`). |
@@ -467,7 +468,7 @@ choix d'une liste, les dates au format du navigateur et les petites fenêtres de
 
 Sage 50, MVOGMBI_Sync, son serveur web et le traitement de nuit sont sur le même ordinateur : depuis le
 4 novembre 2026, **SERVDCSAGE** (réseau local 192.168.2.62, Tailscale 100.99.52.28). Le nom
-`app.marchemvogmbi.com` (DNS chez WHC) mène à son adresse Tailscale. Aucune adresse n'est écrite dans le programme :
+`app.marchemvogmbi.com` (DNS chez WHC) mène à son adresse Tailscale ; HTTPS sur le port 443 avec un certificat Let's Encrypt validé par le DNS (`installation/certificat_https.ps1`, win-acme ; [web] certificat / cle), relu par le serveur à chaque renouvellement. Aucune adresse n'est écrite dans le programme :
 tout se règle dans « Administration > Automatisation > Serveur de l'application ».
 
 ```mermaid
@@ -475,7 +476,7 @@ flowchart LR
     CFG[config.toml<br/>serveur et web] --> W[Serveur web<br/>adresse Tailscale:8765]
     CFG -->|Fichier du client| J[serveur.json]
     J --> CL[MVOGMBI_Sync_Client.exe<br/>sur chaque poste]
-    CL -->|app.marchemvogmbi.com| DNS[DNS WHC]
+    CL -->|https://app.marchemvogmbi.com| DNS[DNS WHC]
     DNS -->|100.99.52.28| W
     CL -->|Bureau à distance| RDP[Application Windows<br/>sur le serveur]
 ```

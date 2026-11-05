@@ -1,4 +1,6 @@
 ﻿# Mise en service de l'application web de MVOGMBI_Sync sur le serveur (SERVDCSAGE, le serveur de Sage).
+# Lancer depuis son dossier :
+#     powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\MVOGMBI_Sync\installer_web.ps1"
 # À lancer PAR LE PROPRIÉTAIRE, en Bureau à distance, dans un PowerShell « Exécuter en tant qu'administrateur »,
 # après l'installation de MVOGMBI_Sync sur le serveur :
 #     powershell -ExecutionPolicy Bypass -File "<dossier de MVOGMBI_Sync>\installer_web.ps1"
@@ -50,6 +52,12 @@ if ($texte -notmatch "(?m)^\[web\]") {
     Write-Host "config.toml : [web] adresse = $ip (adresse Tailscale de ce serveur)."
 }
 
+# port réglé dans config.toml ([web] port : 443 avec HTTPS, voir certificat_https.ps1)
+$texte = Get-Content $config -Raw -Encoding UTF8
+$m = [regex]::Match($texte, '(?ms)^\[web\][^\[]*?^port\s*=\s*(\d+)')
+if ($m.Success -and -not $PSBoundParameters.ContainsKey("Port")) { $Port = [int]$m.Groups[1].Value }
+$https = [regex]::IsMatch($texte, '(?ms)^\[web\][^\[]*?^certificat\s*=\s*"[^"]+"')
+
 # 2. pare-feu : Tailscale seulement
 $carte = (Get-NetIPAddress -IPAddress $ip).InterfaceAlias
 Remove-NetFirewallRule -DisplayName $Regle -ErrorAction SilentlyContinue
@@ -71,5 +79,6 @@ Register-ScheduledTask -TaskName $Tache -Action $action -Trigger (New-ScheduledT
 Write-Host "Tâche « $Tache » : à l'ouverture de votre session (verrouillez la session, ne la fermez pas)."
 Start-ScheduledTask -TaskName $Tache
 Write-Host ""
-Write-Host "Application web : http://${ip}:$Port/  (depuis un appareil connecté à Tailscale)"
+if ($https -and $Port -eq 443) { Write-Host "Application web : https://app.marchemvogmbi.com/  (depuis un appareil connecté à Tailscale)" }
+else { Write-Host "Application web : http://${ip}:$Port/  (depuis un appareil connecté à Tailscale)" }
 Write-Host "Postes : copier client\MVOGMBI_Sync_Client.exe et le lancer (adresse demandée la 1re fois : ${ip})."

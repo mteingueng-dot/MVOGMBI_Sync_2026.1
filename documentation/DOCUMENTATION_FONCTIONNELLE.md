@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 2.15.0 (4 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation.
 
@@ -82,6 +82,7 @@ Règles d'accès :
 | Promotions | Prix promotionnel appliqué le 1er jour, prix normal remis après — jamais par-dessus un prix changé entre-temps ; une promotion en cours peut être **annulée** (prix normal remis tout de suite) |
 | Correspondance | Lien article Clover → numéro Sage ; « Confirmé » par le propriétaire ; **deux formats différents = deux articles différents** |
 | Coûts Clover depuis Sage / Prix et marges | Coût Clover = CUMP Sage ; prix proposé selon la marge minimale ; valeurs aberrantes jamais appliquées |
+| Prix de vente Sage depuis Clover | Prix de vente régulier de Sage remplacé par le prix Clover des articles reliés, lignes cochées, vérifié dans Sage |
 
 ### 3.4 Stock
 

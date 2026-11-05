@@ -226,6 +226,25 @@ def commande_fiches_articles_bureau(args: argparse.Namespace) -> None:
     sys.exit(1 if bilan["erreur"] or not all(r["fait"] for r in bilan["resultats"]) else 0)
 
 
+def commande_prix_sage_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : prix de vente réguliers écrits dans les fiches articles de Sage."""
+    import json
+    from dataclasses import asdict
+
+    from .robot_prix_sage import DemandePrix, traiter
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    notes, bilan = [], {"resultats": [], "erreur": ""}
+    try:
+        demandes = [DemandePrix(**d) for d in json.loads(Path(args.demande).read_text(encoding="utf-8"))]
+        bilan["resultats"] = [asdict(r) for r in traiter(config_toml, demandes, journal=notes.append)]
+    except Exception as exc:
+        bilan["erreur"] = str(exc)
+    bilan["notes"] = notes
+    Path(args.resultat).write_text(json.dumps(bilan, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.exit(1 if bilan["erreur"] or not all(r["fait"] for r in bilan["resultats"]) else 0)
+
+
 def commande_comptes_bureau(args: argparse.Namespace) -> None:
     """Commande interne, lancée sur le bureau caché : crée, modifie ou supprime des comptes du plan comptable."""
     import json
@@ -1499,6 +1518,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--resultat", required=True)
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_fiches_articles_bureau)
+
+    p = sous.add_parser("prix-sage-bureau", help="(interne) Prix de vente des articles de Sage depuis Clover")
+    p.add_argument("--demande", required=True)
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_prix_sage_bureau)
 
     p = sous.add_parser("comptes-bureau", help="(interne) Plan comptable de Sage (créer, modifier, supprimer)")
     p.add_argument("--demande", required=True)

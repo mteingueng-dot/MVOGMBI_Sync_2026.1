@@ -25,7 +25,8 @@ def lire(config: dict) -> dict:
     return {"machine": str(s.get("machine") or DEFAUTS["machine"]), "adresse": adresse,
             "adresse_locale": str(s.get("adresse_locale") or DEFAUTS["adresse_locale"]),
             "nom_public": str(s.get("nom_public") or DEFAUTS["nom_public"]),
-            "port": int(w.get("port") or s.get("port") or DEFAUTS["port"])}
+            "port": int(w.get("port") or s.get("port") or DEFAUTS["port"]),
+            "certificat": str(w.get("certificat") or ""), "cle": str(w.get("cle") or "")}
 
 
 def ecrire(config: dict, valeurs: dict) -> None:
@@ -39,14 +40,25 @@ def ecrire(config: dict, valeurs: dict) -> None:
         nom_public=str(valeurs.get("nom_public", "")).strip().lower(), port=port)
     web = config.setdefault("web", {})
     web["port"] = port
+    # HTTPS (demande du propriétaire du 2026-11-04 : « https sans port ») : certificat et clé PEM (Let's Encrypt)
+    certificat, cle = str(valeurs.get("certificat", "")).strip(), str(valeurs.get("cle", "")).strip()
+    if "certificat" in valeurs:
+        if certificat:
+            web["certificat"], web["cle"] = certificat, cle
+        else:
+            web.pop("certificat", None)
+            web.pop("cle", None)
     if web.get("adresse") not in (None, "", "127.0.0.1", "0.0.0.0", "localhost"):
         web["adresse"] = config["serveur"]["adresse"] or web["adresse"]
 
 
 def url(reglages: dict) -> str:
-    """Par le nom (s'il a un point : enregistrement DNS vers l'adresse Tailscale), sinon par l'adresse."""
+    """Par le nom (s'il a un point : enregistrement DNS vers l'adresse Tailscale), sinon par l'adresse ; HTTPS si un
+    certificat est réglé ; port omis quand c'est celui du protocole (443 / 80)."""
     hote = reglages["nom_public"] if "." in reglages["nom_public"] else reglages["adresse"]
-    return f"http://{hote}:{reglages['port']}"
+    schema = "https" if reglages.get("certificat") else "http"
+    port = int(reglages["port"])
+    return f"{schema}://{hote}" + ("" if (schema, port) in (("https", 443), ("http", 80)) else f":{port}")
 
 
 def fichier_client(config: dict) -> bytes:
@@ -54,7 +66,7 @@ def fichier_client(config: dict) -> bytes:
     r = lire(config)
     noms = {r["nom_public"]: url(r), f"www.{r['nom_public']}": url(r), "marchemvogmbi.com": url(r)}
     contenu = {"serveur": r["machine"], "noms": noms, "adresse": url(r),
-               "adresse_locale": f"http://{r['adresse_locale']}:{r['port']}" if r["adresse_locale"] else ""}
+               "adresse_locale": r["adresse_locale"]}
     return json.dumps(contenu, ensure_ascii=False, indent=1).encode("utf-8")
 
 

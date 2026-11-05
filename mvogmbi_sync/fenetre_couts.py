@@ -53,6 +53,47 @@ class FenetreCoutsClover(FenetreACocher):
             t("Le coût Clover de {n} article(s) sera remplacé par le coût moyen de Sage.\n\nContinuer ?"))
 
 
+class FenetrePrixSage(FenetreACocher):
+    """Articles > « Prix de vente Sage depuis Clover » : le prix de vente régulier de Sage prend le prix de vente de
+    l'article Clover relié (prix_sage.py) ; écrit dans la fiche de Sage, l'application ouvre Sage elle-même."""
+
+    def __init__(self, parent, racine: Path):
+        from . import prix_sage as ps
+        from .design import action_permise
+
+        self.racine = Path(racine)
+
+        def valeurs(l):
+            ecart = "" if l.ecart is None else f"{l.ecart:+.2f}".replace(".", ",")
+            return (l.numero_sage, l.description_sage, " | ".join(l.articles_clover), _montant(l.prix_sage),
+                    _montant(l.prix_clover), ecart, t(l.etat), t(l.note) if l.note else "")
+
+        def lire():
+            return ps.lire(self.racine, _config(self.racine))
+
+        def traiter(lignes, progression):
+            resultats = ps.appliquer(self.racine, _config(self.racine), lignes, progression)
+            erreurs = [f"{l.numero_sage} : {e}" for l, e in resultats if e]
+            return t("{n} prix de vente mis à jour dans Sage.", n=len(resultats) - len(erreurs)) + (
+                "\n\n" + t("Non mis à jour :") + "\n" + "\n".join(erreurs[:15]) if erreurs else "")
+
+        def traiter_permis(lignes, progression):
+            if not action_permise(self, "Changer les prix de vente dans Sage"):
+                return t("Votre profil n'a pas le droit « {d} ».", d=t("Changer les prix de vente dans Sage"))
+            return traiter(lignes, progression)
+
+        super().__init__(
+            parent, t("Prix de vente Sage depuis Clover"),
+            t("Le prix de vente régulier de chaque article de Sage prend le prix de vente de l'article Clover relié "
+              "(correspondance Confirmé ou Automatique). Cochez les lignes, puis lancez la mise à jour : "
+              "l'application ouvre Sage elle-même (Sage fermé) et vérifie chaque prix."),
+            [("N° Sage", 110), ("Article Sage", 260), ("Article(s) Clover", 260), ("Prix Sage", 90),
+             ("Prix Clover", 90), ("Écart", 70), ("État", 150), ("Remarque", 260)],
+            valeurs, lire, traiter_permis, t("Mettre à jour les prix dans Sage"),
+            t("Le prix de vente de {n} article(s) sera remplacé dans Sage par le prix de Clover.\n\nContinuer ?"),
+            etat_initial=ps.DIFFERENT)
+
+
 COMPTE_MANQUANT = "Compte manquant (import bloqué)"
 
 
