@@ -40,7 +40,7 @@ def pied_menu(ctx) -> str:
     from ..aide import COPYRIGHT, VERSION
 
     return (f"<div class='personne'><div class='qui'>👤&nbsp; {e(ctx.u.nom)}</div><div class='profil'>"
-            f"{e(ctx.u.profil)}</div><a href='/mot-de-passe'>Changer mon mot de passe</a>"
+            f"{e(ctx.u.profil)}</div><a href='/mot-de-passe'>Changer mon mot de passe web</a>"
             f"<form method='post' action='/deconnexion'><input type='hidden' name='csrf' value='{e(ctx.session.csrf)}'>"
             "<button class='lien-texte' type='submit'>Se déconnecter</button></form></div>"
             "<div class='langue'>🌐 Langue / Language<div class='choix'>Français</div></div>"

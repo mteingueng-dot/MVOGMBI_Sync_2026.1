@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation.
 
@@ -45,6 +45,7 @@ Règles d'accès :
 - Des **actions dans les fenêtres** se retirent à part (traiter la paie, restaurer une sauvegarde, saisir les dépenses, modifier les articles dans Sage et Clover, modifier le plan comptable…), ainsi que **« Supprimer des éléments »** et **« Exporter les données »**.
 - Un profil peut être limité à certains **points de vente** ; le profil Employé ne voit que **ses** heures, paies et feuillets.
 - Les mêmes comptes, profils et droits servent dans l'application Windows et dans l'application web.
+- Application web : mot de passe à part, 12 caractères au moins avec minuscule, majuscule, chiffre et caractère spécial, créé à la 1re connexion web.
 - Mot de passe d'au moins 6 caractères, jamais gardé en clair ; **3 essais faux = compte verrouillé** ; écran verrouillé après 5 minutes sans activité.
 - Chaque action est notée à l'**audit** (qui, quand, sur quel poste, dans quelle fenêtre).
 

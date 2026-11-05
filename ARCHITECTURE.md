@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -421,6 +421,8 @@ flowchart LR
 | `/statistiques` | Statistiques Clover | cartes avec variation, ventes par heure ou par jour ; employé limité : ses ventes |
 | `/tableau` | Tableau du gérant (téléphone) | page écrite chaque nuit |
 | `/mot-de-passe` | — | ferme toutes les sessions du compte |
+
+Mot de passe web à part (2.17.0) : `Utilisateur.sel_web` / `empreinte_web` (PBKDF2), `Registre.verifier_web` (mot de passe web s'il existe, sinon celui de l'application puis création obligatoire : `Session.creer_web`, toute page renvoie à `/mot-de-passe`), `probleme_mot_de_passe_web` (12 caractères, minuscule, majuscule, chiffre, caractère spécial, différent du mot de passe Windows).
 
 Sécurité : témoin de session HttpOnly + SameSite=Strict (Secure en HTTPS), 15 min d'inactivité, 12 h au plus ;
 jeton anti-falsification sur chaque formulaire et refus des envois d'une autre origine ; politique de contenu sans

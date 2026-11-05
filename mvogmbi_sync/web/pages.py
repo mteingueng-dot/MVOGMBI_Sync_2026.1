@@ -274,10 +274,12 @@ def connexion(app, req) -> Reponse:
             message = "Aucun compte : créez d'abord le compte administrateur dans l'application Windows."
         else:
             with app.ecriture:
-                u = reg.verifier(req.champ("nom"), req.champ("mot_de_passe"))
+                u = reg.verifier_web(req.champ("nom"), req.champ("mot_de_passe"))
             if u is not None:
                 s = app.sessions.creer(u.nom)
-                return Reponse(303, "", entetes={"Location": "/", "Set-Cookie": temoin_session(s.jeton, app.https)})
+                s.creer_web = not u.empreinte_web  # 1re connexion web : son mot de passe web se crée tout de suite
+                return Reponse(303, "", entetes={"Location": "/mot-de-passe" if s.creer_web else "/",
+                                                 "Set-Cookie": temoin_session(s.jeton, app.https)})
             app.echec(req.adresse)
             trouve = reg.trouver(req.champ("nom"))
             message = ("Compte verrouillé : demandez à un administrateur un nouveau mot de passe."
@@ -288,7 +290,8 @@ def connexion(app, req) -> Reponse:
                "<label for='nom'>Nom d'utilisateur</label><input id='nom' name='nom' autocomplete='username' required>"
                "<label for='mdp'>Mot de passe</label><input id='mdp' name='mot_de_passe' type='password' "
                "autocomplete='current-password' required><button type='submit'>Se connecter</button></form>"
-               "<p class='note'>Même nom et même mot de passe que l'application MVOGMBI_Sync.</p></div>")
+               "<p class='note'>Même nom que l'application MVOGMBI_Sync ; mot de passe web (à la 1re connexion : "
+               "celui de l'application, puis vous créez votre mot de passe web).</p></div>")
     entetes = {"Set-Cookie": temoin_session("", app.https, effacer=True)} if req.methode == "GET" else {}
     return Reponse(200, _document("Connexion", corps), entetes=entetes)
 
@@ -788,34 +791,45 @@ def complete(ctx: Contexte) -> Reponse:
 
 # --------------------------------------------------------------------------------------------- compte
 def mot_de_passe(ctx: Contexte) -> Reponse:
-    from ..utilisateurs import ErreurUtilisateur, Registre
+    """Mot de passe de l'application web : 12 caractères au moins, minuscule, majuscule, chiffre et caractère spécial,
+    différent de celui de l'application Windows. À la 1re connexion web, il se crée ici avant toute autre page."""
+    from ..utilisateurs import LONGUEUR_MIN_WEB, ErreurUtilisateur, Registre, probleme_mot_de_passe_web
 
+    creation = bool(getattr(ctx.session, "creer_web", False))
     message = ""
     if ctx.req.methode == "POST":
         nouveau = ctx.req.champ("nouveau")
         if nouveau != ctx.req.champ("confirmation"):
             message = "<p class='erreur'>La confirmation ne correspond pas.</p>"
+        elif probleme := probleme_mot_de_passe_web(nouveau):
+            message = f"<p class='erreur'>{e(probleme)}</p>"
         else:
             with ctx.app.ecriture:
                 reg = Registre(ctx.racine)
-                if reg.verifier(ctx.u.nom, ctx.req.champ("actuel")) is None:
+                if not creation and reg.verifier_web(ctx.u.nom, ctx.req.champ("actuel")) is None:
                     message = "<p class='erreur'>Mot de passe actuel incorrect.</p>"
                 else:
                     try:
-                        reg.changer_mot_de_passe(ctx.u.nom, nouveau)
+                        reg.definir_mot_de_passe_web(ctx.u.nom, nouveau)
                         reg.enregistrer()
                         ctx.app.sessions.fermer_compte(ctx.u.nom)
                         return redirection("/connexion")
                     except ErreurUtilisateur as erreur:
                         message = f"<p class='erreur'>{e(erreur)}</p>"
-    corps = (message + f"<form method='post' class='boite'>{csrf(ctx)}"
-             "<label for='a'>Mot de passe actuel</label><input id='a' name='actuel' type='password' "
-             "autocomplete='current-password' required><label for='n'>Nouveau mot de passe (6 caractères ou plus)"
-             "</label><input id='n' name='nouveau' type='password' autocomplete='new-password' minlength='6' required>"
+    actuel = ("" if creation else "<label for='a'>Mot de passe web actuel</label><input id='a' name='actuel' "
+              "type='password' autocomplete='current-password' required>")
+    explication = ("<p class='note'>Première connexion à l'application web : créez votre mot de passe web. Il "
+                   "remplace ici celui de l'application Windows, qui ne change pas.</p>" if creation else "")
+    corps = (explication + message + f"<form method='post' class='boite'>{csrf(ctx)}{actuel}"
+             f"<label for='n'>Nouveau mot de passe web</label><input id='n' name='nouveau' type='password' "
+             f"autocomplete='new-password' minlength='{LONGUEUR_MIN_WEB}' required>"
              "<label for='c'>Confirmation</label><input id='c' name='confirmation' type='password' "
-             "autocomplete='new-password' required><button type='submit' name='action' value='Changer'>Changer le mot "
-             "de passe</button></form><p class='note'>Toutes vos sessions se ferment : reconnectez-vous ensuite.</p>")
-    return Reponse(corps=page(ctx, "Changer mon mot de passe", corps))
+             "autocomplete='new-password' required><button type='submit' name='action' value='Changer'>Enregistrer le "
+             "mot de passe web</button></form><p class='note'>Au moins 12 caractères, avec une minuscule, une "
+             "majuscule, un chiffre et un caractère spécial (! ? @ # $ % & * - _ …), différent du mot de passe de "
+             "l'application Windows. Toutes vos sessions se ferment : reconnectez-vous ensuite.</p>")
+    return Reponse(corps=page(ctx, "Créer mon mot de passe web" if creation else "Changer mon mot de passe web",
+                              corps))
 
 
 # --------------------------------------------------------------------------------------------- aiguillage

@@ -46,6 +46,7 @@ class Session:
     csrf: str
     debut: float
     vu: float
+    creer_web: bool = False  # connecté avec le mot de passe Windows : le mot de passe web est à créer
 
 
 class Sessions:
@@ -202,6 +203,8 @@ class Application:
             return redirection(req.chemin + (f"?{urlencode(reste)}" if reste else ""))
         if req.methode == "POST" and not secrets.compare_digest(req.champ("csrf"), session.csrf):
             return Reponse(403, pages.page_simple("Formulaire refusé", "Le formulaire a expiré : rouvrez la page."))
+        if getattr(session, "creer_web", False) and req.chemin not in ("/mot-de-passe", "/deconnexion"):
+            return redirection("/mot-de-passe")  # 1re connexion web : le mot de passe web d'abord
         fonction = pages.trouver(req.chemin)
         if fonction is None:
             return Reponse(404, pages.page_simple("Page introuvable", "Cette page n'existe pas."))

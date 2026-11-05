@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 

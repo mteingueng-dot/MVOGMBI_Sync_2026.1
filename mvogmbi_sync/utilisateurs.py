@@ -72,6 +72,9 @@ SANS_EXPORT_DEFAUT = ["Employé"]  # profils sans le droit d'exporter (règle du
 # heures, paies, congés, T4 / RL-1, statistiques ; l'administrateur et le gérant voient tous les employés
 LIMITES_DEFAUT = ["Employé"]
 LONGUEUR_MIN = 6
+# mot de passe de l'application web (demande du propriétaire du 2026-11-05) : 12 caractères au moins, minuscule,
+# majuscule, chiffre et caractère spécial ; distinct du mot de passe de l'application Windows
+LONGUEUR_MIN_WEB = 12
 ESSAIS_AVANT_VERROU = 3  # règle du propriétaire du 2026-11-01 : 3 mots de passe faux de suite = compte verrouillé
 BLOCAGE_DERNIER_ADMIN = 15 * 60  # s : le dernier administrateur n'est jamais verrouillé, seulement bloqué un moment
 ITERATIONS = 200_000
@@ -79,6 +82,22 @@ ITERATIONS = 200_000
 
 class ErreurUtilisateur(ValueError):
     """Opération refusée (message à afficher tel quel)."""
+
+
+def probleme_mot_de_passe_web(mot_de_passe: str) -> str:
+    """« » si le mot de passe web est assez solide, sinon ce qui manque."""
+    manque = []
+    if len(mot_de_passe) < LONGUEUR_MIN_WEB:
+        manque.append(f"au moins {LONGUEUR_MIN_WEB} caractères")
+    if not any(c.islower() for c in mot_de_passe):
+        manque.append("une minuscule")
+    if not any(c.isupper() for c in mot_de_passe):
+        manque.append("une majuscule")
+    if not any(c.isdigit() for c in mot_de_passe):
+        manque.append("un chiffre")
+    if not any(not c.isalnum() and not c.isspace() for c in mot_de_passe):
+        manque.append("un caractère spécial (! ? @ # $ % & * - _ …)")
+    return ("Le mot de passe web doit avoir " + ", ".join(manque) + ".") if manque else ""
 
 
 @dataclass
@@ -92,6 +111,8 @@ class Utilisateur:
     derniere_connexion: str = ""
     echecs: int = 0            # mots de passe faux de suite
     verrouille: bool = False   # après ESSAIS_AVANT_VERROU échecs : l'administrateur donne un nouveau mot de passe
+    sel_web: str = ""          # mot de passe de l'application web (vide : à créer à la 1re connexion web)
+    empreinte_web: str = ""
 
     @property
     def est_admin(self) -> bool:
@@ -207,7 +228,35 @@ class Registre:
         return [u for u in self.utilisateurs if u.est_admin and u.actif]
 
     # ------------------------------------------------------------------ connexion
-    def verifier(self, nom: str, mot_de_passe: str) -> Utilisateur | None:
+    def verifier_web(self, nom: str, mot_de_passe: str) -> Utilisateur | None:
+        """Connexion à l'application web : mot de passe web s'il est défini (le mot de passe Windows n'y est alors
+        plus accepté) ; sinon le mot de passe de l'application, puis le mot de passe web est à créer tout de suite
+        (`u.empreinte_web` vide). Mêmes règles de verrouillage que `verifier`."""
+        u = self.trouver(nom)
+        if u is not None and u.empreinte_web:
+            return self.verifier(nom, mot_de_passe, web=True)
+        return self.verifier(nom, mot_de_passe)
+
+    def definir_mot_de_passe_web(self, nom: str, mot_de_passe: str) -> None:
+        u = self._exige(nom)
+        if probleme := probleme_mot_de_passe_web(mot_de_passe):
+            raise ErreurUtilisateur(probleme)
+        if u.sel and hmac.compare_digest(empreinte(mot_de_passe, u.sel), u.empreinte):
+            raise ErreurUtilisateur("Le mot de passe web doit être différent du mot de passe de l'application Windows.")
+        u.sel_web = secrets.token_hex(16)
+        u.empreinte_web = empreinte(mot_de_passe, u.sel_web)
+        if u.verrouille:
+            self._noter(f"compte déverrouillé : {u.nom}")
+        u.verrouille, u.echecs = False, 0
+        self._noter(f"mot de passe web changé : {nom}")
+
+    def effacer_mot_de_passe_web(self, nom: str) -> None:
+        """L'administrateur efface le mot de passe web : il sera recréé à la prochaine connexion web."""
+        u = self._exige(nom)
+        u.sel_web = u.empreinte_web = ""
+        self._noter(f"mot de passe web effacé : {nom}")
+
+    def verifier(self, nom: str, mot_de_passe: str, web: bool = False) -> Utilisateur | None:
         """Compte et mot de passe justes, compte actif et non verrouillé. ESSAIS_AVANT_VERROU mots de passe faux de
         suite verrouillent le compte : seul un administrateur le rouvre, en lui donnant un nouveau mot de passe
         (page Utilisateurs, après vérification). Le dernier administrateur actif n'est jamais verrouillé (personne
@@ -216,7 +265,9 @@ class Registre:
         if u is not None and self.bloque(u):
             self._noter(f"refus (compte verrouillé) : {u.nom}")
             return None
-        ok = bool(u and u.actif and u.sel and hmac.compare_digest(empreinte(mot_de_passe, u.sel), u.empreinte))
+        sel, attendu = (u.sel_web, u.empreinte_web) if (u is not None and web) else (
+            (u.sel, u.empreinte) if u is not None else ("", ""))
+        ok = bool(u and u.actif and sel and hmac.compare_digest(empreinte(mot_de_passe, sel), attendu))
         self._noter(f"{'connexion' if ok else 'échec'} : {nom.strip()}")
         if ok:
             u.derniere_connexion = datetime.now().isoformat(timespec="seconds")

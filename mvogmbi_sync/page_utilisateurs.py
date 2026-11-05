@@ -10,7 +10,7 @@ from tkinter import messagebox, simpledialog, ttk
 from .design import CARTE, TEXTE, TEXTE_DOUX, VERT_FONCE, Bouton, cadre_tableau, defilement, entete_page, rayer
 from .export_tableau import bouton_exporter, placer_a_droite
 from .langues import t
-from .utilisateurs import ADMIN, LONGUEUR_MIN, PAGES, ErreurUtilisateur, Registre
+from .utilisateurs import ADMIN, LONGUEUR_MIN, LONGUEUR_MIN_WEB, PAGES, ErreurUtilisateur, Registre
 
 
 class PageUtilisateurs(ttk.Frame):
@@ -37,7 +37,7 @@ class PageUtilisateurs(ttk.Frame):
         cadre = cadre_tableau(gauche)
         cadre.pack(fill="both", expand=True)
         colonnes = (("nom", t("Nom"), 170), ("profil", t("Profil"), 130), ("etat", t("État"), 90),
-                    ("derniere", t("Dernière connexion"), 150))
+                    ("web", t("Mot de passe web"), 150), ("derniere", t("Dernière connexion"), 150))
         self.tableau = ttk.Treeview(cadre, columns=[c[0] for c in colonnes], show="headings", height=10,
                                     selectmode="browse")
         for cle, texte, largeur in colonnes:
@@ -52,7 +52,7 @@ class PageUtilisateurs(ttk.Frame):
         fiche = tk.Frame(gauche, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4", padx=14,
                          pady=10)
         fiche.pack(fill="x", pady=(10, 0))
-        self.nom, self.profil, self.mdp = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        self.nom, self.profil, self.mdp, self.mdp_web = tk.StringVar(), tk.StringVar(), tk.StringVar(), tk.StringVar()
         for col, (libelle, widget) in enumerate((
                 (t("Nom"), ttk.Entry(fiche, textvariable=self.nom, width=22)),
                 (t("Profil"), ttk.Combobox(fiche, textvariable=self.profil, state="readonly", width=18)),
@@ -62,12 +62,18 @@ class PageUtilisateurs(ttk.Frame):
                 row=0, column=col, sticky="w", padx=(0, 10))
             widget.grid(row=1, column=col, sticky="we", padx=(0, 10))
         self.liste_profils_compte = fiche.grid_slaves(row=1, column=1)[0]
+        tk.Label(fiche, text=t("Mot de passe web ({n} caractères, minuscule, majuscule, chiffre, caractère spécial)",
+                               n=LONGUEUR_MIN_WEB), font=("Segoe UI", 9), foreground=TEXTE_DOUX,
+                 background=CARTE).grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Entry(fiche, textvariable=self.mdp_web, show="•", width=20).grid(row=4, column=0, sticky="we",
+                                                                             padx=(0, 10))
         boutons = tk.Frame(fiche, background=CARTE)
-        boutons.grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        boutons.grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 0))
         for texte, commande, genre in (("➕  " + t("Ajouter"), self.ajouter, "principal"),
                                        (t("Changer le profil"), self.changer_profil, "secondaire"),
                                        (t("Nouveau mot de passe"), self.nouveau_mot_de_passe, "secondaire"),
                                        (t("Activer / désactiver"), self.basculer, "secondaire"),
+                                       (t("Mot de passe web"), self.mot_de_passe_web, "secondaire"),
                                        ("🗑  " + t("Supprimer"), self.supprimer, "danger")):
             Bouton(boutons, texte, commande, genre, fond=CARTE, petit=True).pack(side="left", padx=(0, 6))
 
@@ -221,7 +227,7 @@ class PageUtilisateurs(ttk.Frame):
         for u in self.registre.utilisateurs:
             etat = t("Verrouillé") if u.verrouille else t("Actif") if u.actif else t("Désactivé")
             self.tableau.insert("", "end", iid=u.nom, tags=() if u.actif and not u.verrouille else ("inactif",), values=(
-                u.nom, t(u.profil), etat,
+                u.nom, t(u.profil), etat, t("Défini") if u.empreinte_web else t("À créer (1re connexion)"),
                 u.derniere_connexion.replace("T", " ")))
         rayer(self.tableau)
         profils = [t(p) for p in self.registre.profils]  # noms affichés (profils de départ traduits)
@@ -340,6 +346,22 @@ class PageUtilisateurs(ttk.Frame):
         mdp = simpledialog.askstring(self.titre, question, show="•", parent=self)
         if mdp is not None:
             self._faire(lambda: self.registre.changer_mot_de_passe(u.nom, mdp), t("Mot de passe changé."))
+
+    def mot_de_passe_web(self) -> None:
+        """Mot de passe de l'application web du compte choisi (vide : effacé, recréé à sa prochaine connexion web)."""
+        u = self._selection()
+        if not u:
+            return
+        mdp = self.mdp_web.get()
+        if not mdp:
+            if messagebox.askyesno(self.titre, t("Effacer le mot de passe web de « {nom} » ? Il le créera à sa "
+                                                 "prochaine connexion à l'application web.", nom=u.nom), parent=self):
+                self._faire(lambda: self.registre.effacer_mot_de_passe_web(u.nom),
+                            t("Mot de passe web de « {nom} » effacé.", nom=u.nom))
+            return
+        if self._faire(lambda: self.registre.definir_mot_de_passe_web(u.nom, mdp),
+                       t("Mot de passe web de « {nom} » enregistré.", nom=u.nom)):
+            self.mdp_web.set("")
 
     def basculer(self) -> None:
         u = self._selection()

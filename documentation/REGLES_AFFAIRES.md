@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -293,6 +293,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 |---|---|
 | RG-SEC-01 | **Toujours au moins un administrateur actif** ; l'administrateur voit tout et gère les utilisateurs. |
 | RG-SEC-01b | **Activer / désactiver un compte** (« Administration > Utilisateurs ») : un compte désactivé ne se connecte plus, ni à l'application Windows ni à l'application web ; ses sessions web se ferment et une fenêtre Windows ouverte avec ce compte se verrouille dans les 10 secondes ; jamais son propre compte, toujours un administrateur actif ; chaque changement est noté (journal des connexions, audit). |
+| RG-SEC-02b | **Mot de passe web à part** : l'application web a son propre mot de passe, d'au moins **12 caractères avec une minuscule, une majuscule, un chiffre et un caractère spécial**, différent de celui de l'application Windows ; à la 1re connexion web (avec le mot de passe Windows), il est créé avant toute autre page ; ensuite seul lui ouvre l'application web ; l'administrateur peut le définir ou l'effacer (colonne « Mot de passe web » d'« Administration > Utilisateurs »). |
 | RG-SEC-02 | Mot de passe gardé sous forme d'empreinte salée, jamais en clair. |
 | RG-SEC-03 | **3 mots de passe faux de suite = compte verrouillé** ; l'administrateur le rouvre avec un nouveau mot de passe ; le dernier administrateur n'est que bloqué 15 minutes. |
 | RG-SEC-04 | **Verrouillage après 5 minutes sans activité** ; les traitements en cours continuent. |

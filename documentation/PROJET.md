@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 2.16.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke. 130 versions livrées en 12 jours, chacune avec son installateur.
+Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke. 130 versions livrées en 12 jours, chacune avec son installateur.
 
 ---
 
@@ -133,7 +133,7 @@ mindmap
 | 3-4 nov. 2026 | Pages web identiques à Windows : audit des boutons, comparaison côte à côte | 2.1.0 à 2.14.1 |
 | 4 nov. 2026 | Nouveau serveur SERVDCSAGE, serveur réglable, app.marchemvogmbi.com, pointage sur le Wi-Fi du magasin | 2.14.2 |
 | 4 nov. 2026 | Pause automatique d'un téléphone hors du Wi-Fi du magasin, documentation à jour | 2.15.0 |
-| 5 nov. 2026 | Comptes activés / désactivés, prix de vente Sage depuis Clover, HTTPS sans port | 2.15.1 à 2.16.0 |
+| 5 nov. 2026 | Comptes activés / désactivés, prix de vente Sage depuis Clover, HTTPS sans port, mot de passe web solide | 2.15.1 à 2.17.0 |
 
 ---
 

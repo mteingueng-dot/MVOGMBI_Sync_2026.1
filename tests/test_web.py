@@ -62,9 +62,25 @@ def ouvrir(nav, url, donnees=None, entetes=None):
         return erreur.code, erreur.read().decode("utf-8"), dict(erreur.headers)
 
 
+def mdp_web(mdp: str) -> str:
+    """Mot de passe web des tests (12 caractères, minuscule, majuscule, chiffre, caractère spécial)."""
+    return f"Web-{mdp}-2026!"
+
+
 def connecter(base, nom, mdp):
+    """Connexion web : mot de passe web s'il existe déjà, sinon mot de passe de l'application puis création du mot de
+    passe web (1re connexion)."""
     nav, jar = navigateur()
+    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": nom, "mot_de_passe": mdp_web(mdp)})
+    if statut == 303 and entetes["Location"] == "/":
+        return nav
     statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": nom, "mot_de_passe": mdp})
+    assert statut == 303 and entetes["Location"] == "/mot-de-passe"
+    _, page, _ = ouvrir(nav, base + "/mot-de-passe")
+    ouvrir(nav, base + "/mot-de-passe", {"csrf": jeton_csrf(page), "nouveau": mdp_web(mdp),
+                                         "confirmation": mdp_web(mdp)})
+    nav, jar = navigateur()
+    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": nom, "mot_de_passe": mdp_web(mdp)})
     assert statut == 303 and entetes["Location"] == "/"
     return nav
 
@@ -837,3 +853,38 @@ def test_prix_de_vente_sage_depuis_clover():
     assert lignes["S2"].etat == ps.PLUSIEURS and not lignes["S2"].cochee_par_defaut
     assert lignes["S3"].etat == ps.VARIABLE and not lignes["S3"].permis
     assert lignes["S4"].etat == ps.IDENTIQUE
+
+
+def test_mot_de_passe_web(site, tmp_path):
+    """Mot de passe web à part : 12 caractères, minuscule, majuscule, chiffre, caractère spécial ; créé à la 1re
+    connexion web (mot de passe Windows), puis seul accepté sur le web."""
+    from mvogmbi_sync.utilisateurs import ErreurUtilisateur, Registre as RegistreU, probleme_mot_de_passe_web
+
+    assert probleme_mot_de_passe_web("court") and probleme_mot_de_passe_web("motdepasse123!")
+    assert not probleme_mot_de_passe_web("Marche-Mvog2026!")
+    base, _, _ = site
+    nav, _ = navigateur()
+    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456"})
+    assert statut == 303 and entetes["Location"] == "/mot-de-passe"
+    statut, _, entetes = ouvrir(nav, base + "/horaire")
+    assert statut == 303 and entetes["Location"] == "/mot-de-passe"  # rien d'autre avant le mot de passe web
+    _, page, _ = ouvrir(nav, base + "/mot-de-passe")
+    assert "Créer mon mot de passe web" in page
+    jeton = jeton_csrf(page)
+    _, page, _ = ouvrir(nav, base + "/mot-de-passe", {"csrf": jeton, "nouveau": "faible", "confirmation": "faible"})
+    assert "au moins 12 caractères" in page
+    statut, _, _ = ouvrir(nav, base + "/mot-de-passe", {"csrf": jeton, "nouveau": "Marche-Mvog2026!",
+                                                       "confirmation": "Marche-Mvog2026!"})
+    assert statut == 303 and RegistreU(tmp_path).trouver("Awa").empreinte_web
+    nav2, _ = navigateur()
+    statut, _, _ = ouvrir(nav2, base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456"})
+    assert statut == 200  # le mot de passe Windows n'ouvre plus l'application web
+    statut, _, entetes = ouvrir(nav2, base + "/connexion", {"nom": "Awa", "mot_de_passe": "Marche-Mvog2026!"})
+    assert statut == 303 and entetes["Location"] == "/"
+    reg = RegistreU(tmp_path)
+    assert reg.verifier("Awa", "secret456") is not None  # l'application Windows garde son mot de passe
+    try:
+        reg.definir_mot_de_passe_web("Awa", "secret456")
+        assert False
+    except ErreurUtilisateur:
+        pass

@@ -2495,4 +2495,10 @@ EN: dict[str, str] = {
     'prix tapé à la caisse': 'price typed at the register',
     'n° Sage relié introuvable (ou inactif)': 'linked Sage number not found (or inactive)',
     "Votre profil n'a pas le droit « {d} ».": 'Your profile does not have the right “{d}”.',
+    'Mot de passe web': 'Web password',
+    'Mot de passe web ({n} caractères, minuscule, majuscule, chiffre, caractère spécial)': 'Web password ({n} characters, lowercase, uppercase, digit, special character)',
+    "Effacer le mot de passe web de « {nom} » ? Il le créera à sa prochaine connexion à l'application web.": 'Clear the web password of “{nom}”? They will create it at their next sign-in to the web application.',
+    'Mot de passe web de « {nom} » effacé.': 'Web password of “{nom}” cleared.',
+    'Mot de passe web de « {nom} » enregistré.': 'Web password of “{nom}” saved.',
+    'À créer (1re connexion)': 'To create (first sign-in)',
 }

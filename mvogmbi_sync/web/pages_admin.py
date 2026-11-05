@@ -849,7 +849,8 @@ def utilisateurs(ctx: Contexte) -> Reponse:
             with ctx.app.ecriture:
                 reg = Registre(ctx.racine)
                 nom = ctx.req.champ("nom").strip()
-                if action in ("Changer le profil", "Nouveau mot de passe", "Activer / désactiver", "Supprimer le compte"):
+                if action in ("Changer le profil", "Nouveau mot de passe", "Activer / désactiver", "Supprimer le compte",
+                              "Mot de passe web", "Effacer le mot de passe web"):
                     nom = ctx.req.champ("compte").strip() or nom  # compte coché dans la liste
                     if reg.trouver(nom) is None:
                         raise ErreurUtilisateur("Choisissez un compte dans la liste.")
@@ -864,6 +865,14 @@ def utilisateurs(ctx: Contexte) -> Reponse:
                 elif action == "Mot de passe":
                     reg.changer_mot_de_passe(nom, ctx.req.champ("mot_de_passe"))
                     ctx.app.sessions.fermer_compte(nom)
+                elif action == "Mot de passe web":
+                    reg.definir_mot_de_passe_web(nom, ctx.req.champ("mot_de_passe_web"))
+                    ctx.app.sessions.fermer_compte(nom)
+                    fait = f"Mot de passe web de « {nom} » enregistré."
+                elif action == "Effacer le mot de passe web":
+                    reg.effacer_mot_de_passe_web(nom)
+                    ctx.app.sessions.fermer_compte(nom)
+                    fait = f"Mot de passe web de « {nom} » effacé : il sera créé à sa prochaine connexion web."
                 elif action in ("Désactiver", "Réactiver"):
                     reg.activer(nom, action == "Réactiver", ctx.u.nom)
                     if action == "Désactiver":
@@ -949,21 +958,28 @@ def _page_utilisateurs(ctx: Contexte, reg) -> str:
     coche = ctx.req.champ("compte") or ctx.req.query.get("compte", "")
     lignes = [[f"<input type='radio' name='compte' value='{e(u.nom)}'{' checked' if u.nom == coche else ''}>",
                e(u.nom), e(u.profil), "Verrouillé" if u.verrouille else ("Actif" if u.actif else "Inactif"),
+               "Défini" if u.empreinte_web else "À créer (1re connexion)",
                e(u.derniere_connexion.replace("T", " ")[:16])] for u in reg.utilisateurs]
     classes = ["" if u.actif else "termine" for u in reg.utilisateurs]
     profils = "".join(f"<option>{e(p)}</option>" for p in reg.profils)
     comptes = (f"<form method='post' class='colonne-comptes'>{csrf(ctx)}<div class='barre-onglet'><strong "
                "class='titre-carte'>Comptes</strong></div>"
-               + tableau_section(Section("Comptes", ["", "Nom", "Profil", "État", "Dernière connexion"], lignes,
-                                         classes=classes, html=set(range(5))))
+               + tableau_section(Section("Comptes", ["", "Nom", "Profil", "État", "Mot de passe web",
+                                                     "Dernière connexion"], lignes, classes=classes,
+                                         html=set(range(6))))
                + "<div class='fiche-compte'><div class='grille-compte'><label>Nom</label><label>Profil</label><label>"
                  f"Mot de passe ({LONGUEUR_MIN} caractères min.)</label><input name='nom' size='22'><select "
                  f"name='profil'>{profils}</select><input type='password' name='mot_de_passe' "
-                 "autocomplete='new-password' size='20'></div><div class='barre-onglet'><button name='action' "
+                 "autocomplete='new-password' size='20'></div><div class='grille-compte'><label>Mot de passe web "
+                 "(12 caractères, minuscule, majuscule, chiffre, caractère spécial)</label><span></span><span></span>"
+                 "<input type='password' name='mot_de_passe_web' autocomplete='new-password' size='20'></div>"
+                 "<div class='barre-onglet'><button name='action' "
                  "value='Ajouter'>➕ Ajouter</button><button class='second' name='action' value='Changer le profil'>"
                  "Changer le profil</button><button class='second' name='action' value='Nouveau mot de passe'>Nouveau "
                  "mot de passe</button><button class='second' name='action' value='Activer / désactiver'>Activer / "
-                 "désactiver</button><button class='danger' name='action' value='Supprimer le compte'>🗑 Supprimer"
+                 "désactiver</button><button class='second' name='action' value='Mot de passe web'>Mot de passe web"
+                 "</button><button class='second' name='action' value='Effacer le mot de passe web'>Effacer le mot de "
+                 "passe web</button><button class='danger' name='action' value='Supprimer le compte'>🗑 Supprimer"
                  "</button></div></div></form>")
     choisi = ctx.req.query.get("profil") or ctx.req.champ("profil")
     if choisi not in reg.profils:
