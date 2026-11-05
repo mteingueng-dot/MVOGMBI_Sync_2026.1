@@ -590,6 +590,11 @@ def automatisation(ctx: Contexte) -> Reponse:
     from . import taches
 
     message = ""
+    if ctx.req.query.get("fichier") == "client":  # serveur.json à copier à côté de MVOGMBI_Sync_Client.exe
+        from .. import serveur_appli
+
+        return Reponse(corps=serveur_appli.fichier_client(ctx.config), type="application/json",
+                       entetes={"Content-Disposition": "attachment; filename=\"serveur.json\""})
     if ctx.req.methode == "POST" and ctx.req.champ("action") == "État":
         _tester(ctx, "auto", "État de la tâche", planification.etat)
     elif ctx.req.methode == "POST" and ctx.req.champ("action") == "Raccourci":
@@ -616,11 +621,23 @@ def automatisation(ctx: Contexte) -> Reponse:
             except (ValueError, AssertionError):
                 message = _message(erreur="Vérifiez l'heure (HH:MM).")
             else:
+                from .. import serveur_appli
+
+                valeurs = {k: ctx.req.champ(f"s_{k}") for k in ("machine", "adresse", "adresse_locale", "nom_public",
+                                                                "port")}
+
                 def modifier(c):
                     c.setdefault("automatique", {})["heure"] = heure
                     c["automatique"].setdefault("delai_import", 3600)
-                _ecrire(ctx, modifier)
-                message = _message("Configuration enregistrée (réinstallez la tâche si l'heure a changé).")
+                    if any(valeurs.values()):
+                        serveur_appli.ecrire(c, valeurs)
+                try:
+                    _ecrire(ctx, modifier)
+                    serveur_appli.copier_pour_client(ctx.racine, ctx.config)
+                    message = _message("Configuration enregistrée (réinstallez la tâche si l'heure a changé ; "
+                                       "redémarrez le serveur web si son adresse ou son port a changé).")
+                except ValueError as erreur:
+                    message = _message(erreur=str(erreur))
     a = ctx.config.get("automatique", {})
     corps = (message + _titre("Traitement automatique quotidien") + f"<form method='post'>{csrf(ctx)}"
              + _carte("1", "Tâche planifiée", _ligne(
@@ -631,6 +648,7 @@ def automatisation(ctx: Contexte) -> Reponse:
                    "tâche</button><button class='second' name='action' value='État'>État de la tâche</button><label "
                    "class='case'><input type='checkbox' name='confirme' value='1'> Je confirme le retrait</label></div>"
                  + _zone_sortie(ctx, "auto"))
+             + _carte_serveur(ctx)
              + _carte("2", "Outils", "<div class='barre-onglet'><button class='second' name='action' value='Raccourci'>"
                                      "Créer un raccourci sur le Bureau</button><a class='ouvrir' href='/parcourir-config'>"
                                      "Reprendre une configuration existante…</a></div><p class='desc'>Copie config.toml, "
@@ -643,6 +661,27 @@ def automatisation(ctx: Contexte) -> Reponse:
                       couleur="jaune")
              + ENREGISTRER_CONFIG + "</form>")
     return Reponse(corps=page(ctx, "Automatisation", corps))
+
+
+def _carte_serveur(ctx: Contexte) -> str:
+    """Carte « Serveur de l'application » (Application._onglet_automatisation, carte 3)."""
+    from .. import serveur_appli
+
+    r = serveur_appli.lire(ctx.config)
+    return _carte("3", "Serveur de l'application", _ligne(
+        "Nom de l'ordinateur", _entree("s_machine", r["machine"]),
+        "Ordinateur qui a Sage 50 et MVOGMBI_Sync (serveur web, traitement de nuit).")
+        + _ligne("Adresse Tailscale", _entree("s_adresse", r["adresse"]),
+                 "Adresse 100.x.y.z du serveur dans Tailscale (accès depuis le magasin, le bureau et les téléphones).")
+        + _ligne("Adresse locale", _entree("s_adresse_locale", r["adresse_locale"]),
+                 "Adresse sur le réseau du bureau (ex. 192.168.2.62) : Bureau à distance.")
+        + _ligne("Nom tapé dans le client", _entree("s_nom_public", r["nom_public"]),
+                 "Ce que les employés tapent dans MVOGMBI_Sync_Client (ex. marchemvogmbi.com).")
+        + _ligne("Port du serveur web", _entree("s_port", r["port"], taille=8))
+        + "<span></span><div><a class='ouvrir' href='/admin/automatisation?fichier=client'>⬇ Fichier du client "
+          "(serveur.json)</a><div class='aide'>À copier à côté de MVOGMBI_Sync_Client.exe sur chaque poste : le client "
+          "envoie alors vers ce serveur. Les postes installés avec MVOGMBI_Sync le reçoivent d'office.</div></div>",
+        "Où l'application est déployée : changez ces réglages pour l'installer sur un autre serveur.")
 
 
 def _raccourci(ctx: Contexte) -> Reponse:

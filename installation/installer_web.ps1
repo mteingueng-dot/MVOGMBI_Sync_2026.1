@@ -1,4 +1,4 @@
-﻿# Mise en service de l'application web de MVOGMBI_Sync sur le serveur (SERVDC01).
+﻿# Mise en service de l'application web de MVOGMBI_Sync sur le serveur (SERVDCSAGE, le serveur de Sage).
 # À lancer PAR LE PROPRIÉTAIRE, en Bureau à distance, dans un PowerShell « Exécuter en tant qu'administrateur »,
 # après l'installation de MVOGMBI_Sync sur le serveur :
 #     powershell -ExecutionPolicy Bypass -File "<dossier de MVOGMBI_Sync>\installer_web.ps1"
@@ -41,7 +41,13 @@ if ($texte -notmatch "(?m)^\[web\]") {
     [IO.File]::WriteAllText($config, $texte, (New-Object Text.UTF8Encoding $false))
     Write-Host "config.toml : section [web] ajoutée ($ip, port $Port)."
 } else {
-    Write-Host "config.toml a déjà une section [web] : laissée telle quelle."
+    # configuration reprise d'un autre serveur : l'adresse d'écoute devient celle de CE serveur
+    $texte = [regex]::Replace($texte, '(?ms)(^\[web\][^\[]*?^adresse\s*=\s*)"[^"]*"', "`${1}`"$ip`"")
+    if ($texte -notmatch '(?ms)^\[web\][^\[]*?^adresse\s*=') {
+        $texte = [regex]::Replace($texte, '(?m)^\[web\]\s*$', "[web]`r`nadresse = `"$ip`"")
+    }
+    [IO.File]::WriteAllText($config, $texte, (New-Object Text.UTF8Encoding $false))
+    Write-Host "config.toml : [web] adresse = $ip (adresse Tailscale de ce serveur)."
 }
 
 # 2. pare-feu : Tailscale seulement
@@ -56,7 +62,7 @@ $utilisateur = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $action = New-ScheduledTaskAction -Execute $moteur -WorkingDirectory $Dossier
 $reglages = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -AllowStartIfOnBatteries
-# À l'ouverture de la session, jamais au démarrage de Windows : sur SERVDC01, un programme lancé sans session
+# À l'ouverture de la session, jamais au démarrage de Windows : sur SERVDC01 (constat), un programme lancé sans session
 # (session 0) se fige (constat du 2026-11-03 : processus bloqué, 0,015 s de processeur). Verrouiller la session,
 # ne pas la fermer ; fenêtre du serveur à laisser ouverte.
 $principal = New-ScheduledTaskPrincipal -UserId $utilisateur -LogonType Interactive -RunLevel Limited

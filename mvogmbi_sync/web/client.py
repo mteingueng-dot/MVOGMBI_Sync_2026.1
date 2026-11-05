@@ -24,8 +24,12 @@ DELAI = 5  # s
 # noms que l'on tape dans le client (demande du propriétaire du 2026-11-03 : « marchemvogmbi.com » au lieu de
 # l'adresse et du port) -> serveur ; le domaine reste celui du site web du marché (DNS chez WHC) : il n'est pas
 # changé, c'est le client qui fait le lien
-NOMS = {"marchemvogmbi.com": "http://100.69.84.52:8765"}  # SERVDC01 par Tailscale
-ADRESSE_DEFAUT = "marchemvogmbi.com"
+# SERVDCSAGE (avec Sage) depuis le 2026-11-04 : « app.marchemvogmbi.com » (DNS chez WHC -> adresse Tailscale
+# 100.99.52.28, ajouté par le propriétaire) ; l'ancien nom « marchemvogmbi.com » y mène aussi
+NOMS = {"marchemvogmbi.com": "http://app.marchemvogmbi.com:8765",
+        "app.marchemvogmbi.com": "http://app.marchemvogmbi.com:8765",
+        "www.app.marchemvogmbi.com": "http://app.marchemvogmbi.com:8765"}
+ADRESSE_DEFAUT = "app.marchemvogmbi.com"
 
 
 def _nom(saisie: str) -> str:
@@ -35,9 +39,30 @@ def _nom(saisie: str) -> str:
     return nom
 
 
+def fichiers_serveur() -> list[Path]:
+    """serveur.json : à côté du programme (déploiement), puis dans %APPDATA%\MVOGMBI_Sync_Client."""
+    import sys
+
+    ici = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    return [ici / "serveur.json", dossier() / "serveur.json"]
+
+
+def noms() -> dict:
+    """Noms connus : ceux de serveur.json (« Administration > Automatisation > Serveur de l'application »),
+    sinon les valeurs de départ."""
+    resultat = dict(NOMS)
+    for chemin in reversed(fichiers_serveur()):
+        try:
+            donnees = json.loads(chemin.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        resultat.update({_nom(k): str(v) for k, v in (donnees.get("noms") or {}).items()})
+    return resultat
+
+
 def adresse_serveur(saisie: str) -> str:
     """Nom connu (« marchemvogmbi.com ») -> son serveur ; sinon adresse normalisée (IP, nom, port)."""
-    return NOMS.get(_nom(saisie)) or normaliser(saisie)
+    return noms().get(_nom(saisie)) or normaliser(saisie)
 
 
 def dossier() -> Path:

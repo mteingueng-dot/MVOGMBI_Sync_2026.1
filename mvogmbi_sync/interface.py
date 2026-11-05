@@ -1450,6 +1450,24 @@ class Application(tk.Tk):
         Bouton(boutons, t("État de la tâche"), self.etat_tache, "secondaire").pack(side="left")
         self.sortie_auto = self._sortie(tache, 6)
         self.sortie_auto.grid(row=3, column=0, columnspan=3, sticky="we")
+        from . import serveur_appli
+
+        r = serveur_appli.lire(self.config_toml)
+        serveur = self._carte(f, 3, t("Serveur de l'application"), "3",
+                              t("Où l'application est déployée : changez ces réglages pour l'installer sur un autre "
+                                "serveur."))
+        self._champ(serveur, 0, t("Nom de l'ordinateur"), "serveur.machine", r["machine"],
+                    aide=t("Ordinateur qui a Sage 50 et MVOGMBI_Sync (serveur web, traitement de nuit)."))
+        self._champ(serveur, 2, t("Adresse Tailscale"), "serveur.adresse", r["adresse"],
+                    aide=t("Adresse 100.x.y.z du serveur dans Tailscale (accès depuis le magasin, le bureau et les "
+                           "téléphones)."))
+        self._champ(serveur, 4, t("Adresse locale"), "serveur.adresse_locale", r["adresse_locale"],
+                    aide=t("Adresse sur le réseau du bureau (ex. 192.168.2.62) : Bureau à distance."))
+        self._champ(serveur, 6, t("Nom tapé dans le client"), "serveur.nom_public", r["nom_public"],
+                    aide=t("Ce que les employés tapent dans MVOGMBI_Sync_Client (ex. marchemvogmbi.com)."))
+        self._champ(serveur, 8, t("Port du serveur web"), "serveur.port", str(r["port"]))
+        Bouton(serveur, "⬇  " + t("Fichier du client (serveur.json)…"), self.fichier_client, "secondaire").grid(
+            row=10, column=1, sticky="w", pady=(6, 8))
         outils = self._carte(f, 2, t("Outils"), "2", couleur=JAUNE)
         ligne = tk.Frame(outils, background=CARTE)
         ligne.grid(row=0, column=0, columnspan=3, sticky="w")
@@ -1615,6 +1633,15 @@ class Application(tk.Tk):
         c.setdefault("sage_import", {}).update(fichier_entreprise=fichier)
         for cle, defaut in (("version", "12001"), ("pays", "1"), ("position_numero", 3)):
             c["sage_import"].setdefault(cle, defaut)
+        if "serveur.machine" in v:  # carte « Serveur de l'application »
+            from . import serveur_appli
+
+            try:
+                serveur_appli.ecrire(c, {k: str(v[f"serveur.{k}"]).strip() for k in (
+                    "machine", "adresse", "adresse_locale", "nom_public", "port")})
+            except ValueError as exc:
+                messagebox.showerror(TITRE, t("Serveur de l'application : {e}", e=str(exc)))
+                return False
         c.setdefault("automatique", {}).update(date_depart=str(v["auto.date_depart"]).strip(), heure=heure)
         c["automatique"].setdefault("delai_import", 3600)
         c.setdefault("encaissements", {})["compte_depot"] = str(v["enc.compte"]).strip() or "1055"
@@ -1654,6 +1681,9 @@ class Application(tk.Tk):
                 coffre.ecrire(cle_coffre, valeur)
                 self.vars[cle_var].set(MASQUE)
         ecrire_config(self.chemin_config, c)
+        from . import serveur_appli
+
+        serveur_appli.copier_pour_client(self.racine, c)  # client installé avec l'application
         self.etat.config(text=t("Configuration enregistrée."))
         self._maj_etapes()
         return True
@@ -1741,6 +1771,17 @@ class Application(tk.Tk):
         from . import planification
 
         self._tache(t("État de la tâche"), planification.etat, self.sortie_auto)
+
+    def fichier_client(self) -> None:
+        """serveur.json à copier à côté de MVOGMBI_Sync_Client.exe sur les postes."""
+        from . import serveur_appli
+
+        if not self.enregistrer():
+            return
+        chemin = filedialog.asksaveasfilename(defaultextension=".json", initialfile="serveur.json",
+                                              filetypes=[("JSON", "*.json")])
+        if chemin:
+            Path(chemin).write_bytes(serveur_appli.fichier_client(self.config_toml))
 
     def raccourci(self) -> None:
         bureau = Path(os.environ.get("USERPROFILE", "~")).expanduser() / "Desktop"

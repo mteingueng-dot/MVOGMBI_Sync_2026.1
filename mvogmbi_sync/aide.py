@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "2.14.1"
+VERSION = "2.14.2"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -708,7 +708,7 @@ FAQ = {
                     "Clover. Les autres attendent votre vérification. Pour arrêter l'import de nuit : [factures_courriel] "
                     "import_nuit = false dans config.toml."),
         ("question", "Peut-on utiliser MVOGMBI_Sync depuis un téléphone ou un autre ordinateur ?"),
-        ("reponse", "Oui, par l'application web (version 1.1.0) : le serveur (SERVDC01) la sert aux appareils reliés à "
+        ("reponse", "Oui, par l'application web (version 1.1.0) : le serveur (SERVDCSAGE, avec Sage) la sert aux appareils reliés à "
                     "Tailscale, dans un navigateur sur PC, Android ou iPhone, avec le même nom et le même mot de passe. "
                     "Même affichage et mêmes fonctions que l'application Windows (version 2.0.0) : les 76 "
                     "entrées du menu, selon le profil. Les saisies dans Sage se font sur le serveur (l'application "
@@ -1275,7 +1275,7 @@ FAQ = {
                     "The others wait for your review. To stop the night import: [factures_courriel] import_nuit = "
                     "false in config.toml."),
         ("question", "Can MVOGMBI_Sync be used from a phone or another computer?"),
-        ("reponse", "Yes, through the web application (version 1.1.0): the server (SERVDC01) serves it to devices on "
+        ("reponse", "Yes, through the web application (version 1.1.0): the server (SERVDCSAGE, with Sage) serves it to devices on "
                     "Tailscale, in a browser on PC, Android or iPhone, with the same name and password. Each person "
                     "gets the same display and functions as the Windows application (version 2.0.0): all 76 menu "
                     "entries, according to their profile. Sage entries run on the server (the application opens "

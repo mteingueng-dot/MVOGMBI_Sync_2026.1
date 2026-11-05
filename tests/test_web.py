@@ -165,7 +165,7 @@ def test_client_des_postes(site, tmp_path, monkeypatch):
     assert client.normaliser(" http://serveur:9000/ ") == "http://serveur:9000"
     assert client.normaliser("https://serveur") == "https://serveur"
     for nom in ("marchemvogmbi.com", " www.MarcheMvogmbi.com/ ", "http://marchemvogmbi.com"):
-        assert client.adresse_serveur(nom) == "http://100.69.84.52:8765"
+        assert client.adresse_serveur(nom) == "http://app.marchemvogmbi.com:8765"
     assert client.adresse_serveur("100.69.84.52") == "http://100.69.84.52:8765"
     for mauvaise in ("", "ftp://x", "http://x/page"):
         with pytest.raises(ValueError):
@@ -258,7 +258,7 @@ def test_client_bureau_a_distance(tmp_path, monkeypatch):
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     texte = client.fichier_rdp(client.adresse_serveur("marchemvogmbi.com")).read_text(encoding="utf-8")
-    assert "full address:s:100.69.84.52" in texte and "prompt for credentials:i:1" in texte
+    assert "full address:s:app.marchemvogmbi.com" in texte and "prompt for credentials:i:1" in texte
 
 
 def test_menu_comme_l_application_windows(site):
@@ -708,3 +708,23 @@ def test_exporter_les_tableaux_comme_windows(site):
         assert texte.splitlines()[0].startswith("Employé;") and awa.nom in texte
     with patron.open(base + "/employes?exporter=0&format=pdf") as r:
         assert r.read()[:4] == b"%PDF"
+
+
+def test_serveur_de_l_application(tmp_path, monkeypatch):
+    """Serveur de l'application dans config.toml ([serveur], [web]) et serveur.json du client."""
+    import json
+
+    from mvogmbi_sync import serveur_appli
+    from mvogmbi_sync.web import client
+
+    c = {"web": {"adresse": "100.69.84.52", "port": 8765}}
+    serveur_appli.ecrire(c, {"machine": "AUTRE", "adresse": "100.1.2.3", "adresse_locale": "10.0.0.5",
+                             "nom_public": "Exemple.com", "port": "9000"})
+    assert c["web"] == {"adresse": "100.1.2.3", "port": 9000} and c["serveur"]["nom_public"] == "exemple.com"
+    contenu = json.loads(serveur_appli.fichier_client(c))
+    assert contenu["noms"]["exemple.com"] == "http://exemple.com:9000"
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    (tmp_path / "MVOGMBI_Sync_Client").mkdir()
+    (tmp_path / "MVOGMBI_Sync_Client" / "serveur.json").write_bytes(serveur_appli.fichier_client(c))
+    assert client.adresse_serveur("exemple.com") == "http://exemple.com:9000"
+    assert client.adresse_serveur("app.marchemvogmbi.com") == "http://app.marchemvogmbi.com:8765"  # départ gardé
