@@ -83,15 +83,16 @@ class LigneSuivi:
     encaissement: str = "—"
     rapprochement: str = "—"
     fin: str = ""             # dernier jour (tri)
+    depot: str = ""           # dépôt du point de vente de la facture (filtre « Dépôt »)
 
     def valeurs(self) -> list[str]:
         argent = (lambda v: "" if v is None else f"{v:,.2f}")
         return [self.traitement, self.journee, self.statut, argent(self.ht), argent(self.taxes), argent(self.ttc),
-                self.commentaire, self.encaissement, self.rapprochement]
+                self.commentaire, self.encaissement, self.rapprochement, self.depot]
 
 
 ENTETES_SUIVI = ["Date de traitement", "Journée", "Statut", "Montant HT", "Taxes", "Montant TTC", "Commentaire",
-                 "État de l'encaissement", "État du rapprochement"]
+                 "État de l'encaissement", "État du rapprochement", "Dépôt"]
 
 
 def _journee(debut: str, fin: str) -> str:
@@ -127,35 +128,58 @@ def lire_historique(racine: Path) -> dict[str, LigneSuivi]:
     return suivi
 
 
-def suivi_ventes(racine: Path, base, client: str, compte_depot: int) -> list[LigneSuivi]:
-    """Tableau de suivi complet : historique + factures de Sage + encaissement + rapprochement."""
+def suivi_ventes(racine: Path, base, client: str, compte_depot: int,
+                 points: list | None = None) -> list[LigneSuivi]:
+    """Tableau de suivi complet : historique + factures de Sage + encaissement + rapprochement. `points` : points de
+    vente (points_vente.PointDeVente) dont les factures sont suivies, chacun avec son client Sage et son préfixe
+    (« Vente », « V2 ») ; None = le point de vente n° 1 seulement (`client`, préfixe « Vente »). Chaque ligne porte
+    le dépôt de son point de vente (filtre « Dépôt », demande du propriétaire du 2026-11-05)."""
+    import re
+
     from .automatique import jours_couverts_sage
+    from .depots import est_defaut
     from .encaissements import etat_factures_sage
     from .facture import jours_facture
+    from .points_vente import DEPOT_DEFAUT
 
+    if points:
+        sources = [(p.client_sage, p.prefixe, DEPOT_DEFAUT if est_defaut(p.depot_sage) else p.depot_sage.strip())
+                   for p in points if p.client_sage]
+    else:
+        sources = [(client, "Vente", DEPOT_DEFAUT)]
     suivi = lire_historique(racine)
-    lignes = base.requete(
-        "SELECT TRIM(t.sSource) s, t.dtDate d, t.dPreTaxAmt m FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
-        "WHERE c.sName = %s AND TRIM(t.sSource) REGEXP %s", (client, r"^Vente [0-9]{4}-[0-9]{2}-[0-9]{2}(/[0-9]{2})?$"))
-    _, incoherentes = jours_couverts_sage(lignes)
-    dans_sage = {l["s"] for l in lignes}
-    for ligne in suivi.values():  # importée autrefois, supprimée de Sage depuis
-        if ligne.statut == "Facture importée" and ligne.facture not in dans_sage:
-            ligne.commentaire = " — ".join(x for x in (ligne.commentaire, "n'est plus dans Sage (supprimée)") if x)
-    for l in lignes:
-        numero = l["s"]
-        jours = jours_facture(numero)
-        if not jours or any(x.startswith(numero + " ") for x in incoherentes):
-            continue
-        ligne = suivi.get(numero)
-        if ligne is None:  # facture saisie autrement (ancienne, à la main) : connue seulement de Sage
-            suivi[numero] = ligne = LigneSuivi("", _journee(str(jours[0]), str(jours[-1])), numero, "Dans Sage",
-                                               None, None, _d(l["m"]), fin=str(jours[-1]))
-        elif not ligne.statut.startswith("Facture importée"):  # bloquée puis saisie ou importée plus tard
-            ligne.statut = "Dans Sage"
-            ligne.commentaire = " — ".join(x for x in (ligne.commentaire, "facture présente dans Sage depuis") if x)
-    numeros = [l.facture for l in suivi.values() if l.facture]
-    etat = etat_factures_sage(base, client, compte_depot, numeros) if numeros else {}
+    for ligne in suivi.values():  # dépôt d'après le préfixe du n° de facture (« V2 2026-10-23 »)
+        for _c, prefixe, depot in sources:
+            if ligne.facture.startswith(prefixe + " ") or (not ligne.facture and prefixe == "Vente"):
+                ligne.depot = depot
+    etat = {}
+    for client_pv, prefixe, depot in sources:
+        lignes = base.requete(
+            "SELECT TRIM(t.sSource) s, t.dtDate d, t.dPreTaxAmt m FROM tcustr t JOIN tcustomr c ON c.lId = t.lCusId "
+            "WHERE c.sName = %s AND TRIM(t.sSource) REGEXP %s",
+            (client_pv, "^" + re.escape(prefixe) + r" [0-9]{4}-[0-9]{2}-[0-9]{2}(/[0-9]{2})?$"))
+        _, incoherentes = jours_couverts_sage(lignes, prefixe)
+        dans_sage = {l["s"] for l in lignes}
+        for ligne in suivi.values():  # importée autrefois, supprimée de Sage depuis
+            if (ligne.statut == "Facture importée" and ligne.facture.startswith(prefixe + " ")
+                    and ligne.facture not in dans_sage):
+                ligne.commentaire = " — ".join(x for x in (ligne.commentaire, "n'est plus dans Sage (supprimée)") if x)
+        for l in lignes:
+            numero = l["s"]
+            jours = jours_facture(numero, prefixe)
+            if not jours or any(x.startswith(numero + " ") for x in incoherentes):
+                continue
+            ligne = suivi.get(numero)
+            if ligne is None:  # facture saisie autrement (ancienne, à la main) : connue seulement de Sage
+                suivi[numero] = ligne = LigneSuivi("", _journee(str(jours[0]), str(jours[-1])), numero, "Dans Sage",
+                                                   None, None, _d(l["m"]), fin=str(jours[-1]), depot=depot)
+            elif not ligne.statut.startswith("Facture importée"):  # bloquée puis saisie ou importée plus tard
+                ligne.statut = "Dans Sage"
+                ligne.commentaire = " — ".join(x for x in (ligne.commentaire, "facture présente dans Sage depuis")
+                                               if x)
+        numeros = [l.facture for l in suivi.values() if l.facture.startswith(prefixe + " ")]
+        if numeros:
+            etat.update(etat_factures_sage(base, client_pv, compte_depot, numeros))
     recus_par_facture = {}
     for ligne in suivi.values():
         e = etat.get(ligne.facture)

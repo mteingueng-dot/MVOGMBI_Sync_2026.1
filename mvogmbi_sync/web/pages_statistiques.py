@@ -393,6 +393,8 @@ def _gestion(ctx: Contexte, cle: str, b: dict | None, du: date, au: date) -> str
 
     libelle = next((l for l, c, _f in ETATS if c == cle), cle)
     contexte = {"ventes_par_jour": {}, "donnees": None, "config": ctx.config}
+    if ctx.req.query.get("Point de vente", ""):
+        contexte["points_vente"] = _points(ctx)  # filtre « Point de vente » = ses dépôts
     if b:
         contexte["donnees"] = b.get("donnees")
         for l in b.get("completes", {}).get("Par jour", ([], []))[1]:

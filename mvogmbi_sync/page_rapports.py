@@ -231,6 +231,11 @@ class PageRapports(ttk.Frame):
         champ = ttk.Entry(barre, textvariable=self.texte_suivi, width=22)
         champ.pack(side="left")
         champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher_suivi))
+        from .design import filtre_depots
+
+        ttk.Label(barre, text=t("Dépôt :")).pack(side="left", padx=(16, 4))
+        choix_depots, self.depots_suivi = filtre_depots(barre, self.racine, au_choix=lambda *_: self.afficher_suivi())
+        choix_depots.pack(side="left")
         self.etat = ttk.Label(cadre, text=t("Cliquez sur « Actualiser » : historique des traitements, Sage et relevés."),
                               foreground=TEXTE_DOUX, padding=(0, 6))
         self.etat.pack(fill="x")
@@ -247,21 +252,31 @@ class PageRapports(ttk.Frame):
         from .facture import CLIENT
         from .rapports import suivi_ventes
 
-        compte = numero_compte_sage(str(self._config().get("encaissements", {}).get("compte_depot", "1055")))
+        from .points_vente import visibles
+
+        config = self._config()
+        compte = numero_compte_sage(str(config.get("encaissements", {}).get("compte_depot", "1055")))
+        points = visibles(self, config)  # tous les points de vente que le profil voit, chacun son client Sage
 
         def fin(suivi):
             self.suivi = suivi
             self.afficher_suivi()
 
-        self._lire_sage(lambda base: suivi_ventes(self.racine, base, CLIENT, compte), fin,
+        self._lire_sage(lambda base: suivi_ventes(self.racine, base, CLIENT, compte, points), fin,
                         t("Lecture de l'historique, de Sage et des relevés…"), self.etat)
 
     def afficher_suivi(self) -> None:
         from .rapports import ENTETES_SUIVI
 
+        from .depots import garde
+        from .design import depots_choisis
+
         filtre, texte = self.filtre_suivi.get(), self.texte_suivi.get().strip().casefold()
+        depots = depots_choisis(self.depots_suivi)
         lignes = []
         for l in self.suivi:
+            if not garde(l.depot, depots):
+                continue
             bloquee = any(m in l.statut for m in ("Bloquée", "Échec", "ÉCHEC", "Import :"))
             if filtre == t("Bloquées ou en échec") and not bloquee:
                 continue
@@ -273,7 +288,7 @@ class PageRapports(ttk.Frame):
                 continue
             lignes.append(l)
         valeurs = [[l.traitement, l.journee, traduire(l.statut), l.ht, l.taxes, l.ttc, traduire(l.commentaire),
-                    traduire(l.encaissement), traduire(l.rapprochement)] for l in lignes]
+                    traduire(l.encaissement), traduire(l.rapprochement), l.depot] for l in lignes]
 
         def couleur(i):
             l = lignes[i]
@@ -287,7 +302,7 @@ class PageRapports(ttk.Frame):
 
         remplir(self.tableau_suivi, ENTETES_SUIVI, valeurs, {
             "Date de traitement": 108, "Journée": 150, "Statut": 112, "Montant HT": 88, "Taxes": 64, "Montant TTC": 92,
-            "Commentaire": 160, "État de l'encaissement": 155, "État du rapprochement": 112}, couleur)
+            "Commentaire": 160, "État de l'encaissement": 155, "État du rapprochement": 112, "Dépôt": 140}, couleur)
         importees = sum(1 for l in self.suivi if l.statut in ("Facture importée", "Dans Sage"))
         self.etat.configure(text=t("{n} vente(s) affichée(s) sur {total} — dans Sage : {s}, bloquées ou en échec : {b}, "
                                    "non encaissées : {e}, non rapprochées : {r}", n=len(lignes), total=len(self.suivi),
@@ -1196,6 +1211,8 @@ class PageRapports(ttk.Frame):
             contexte["config"] = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             contexte["config"] = {}
+        if "Point de vente" in self.filtres and self.filtres["Point de vente"].get().strip():
+            contexte["points_vente"] = self._points_choisis()  # filtre « Point de vente » = ses dépôts
         self._calcul_gestion += 1
         numero = self._calcul_gestion
         self.note_gestion.configure(text=t("Calcul…"))

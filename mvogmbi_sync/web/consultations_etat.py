@@ -53,9 +53,13 @@ def _suivi(ctx, v):
     from ..rapports import ENTETES_SUIVI, suivi_ventes
 
     compte = numero_compte_sage(str(ctx.config.get("encaissements", {}).get("compte_depot", "1055")))
-    suivi = sage(ctx, lambda b: suivi_ventes(ctx.racine, b, CLIENT, compte), ("suivi_ventes",))
+    from ..points_vente import permis
+
+    points = permis(ctx.config, ctx.reg.points_vente_permis(ctx.u))
+    suivi = sage(ctx, lambda b: suivi_ventes(ctx.racine, b, CLIENT, compte, points),
+                 ("suivi_ventes", tuple(p.code for p in points)))
     lignes = [[s.traitement, s.journee, s.statut, s.ht, s.taxes, s.ttc, s.commentaire, s.encaissement,
-               s.rapprochement] for s in suivi]
+               s.rapprochement, s.depot] for s in suivi]
     return [Section("Suivi des ventes", ENTETES_SUIVI, _cherche(lignes, v),
                     "Chaque journée : facture dans Sage, encaissement (solde dû) et rapprochement avec les relevés.")]
 

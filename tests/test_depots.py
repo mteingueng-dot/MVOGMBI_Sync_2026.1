@@ -148,3 +148,59 @@ def test_main_oeuvre_par_depot(tmp_path):
     assert depot2[jour] == Decimal(2)
     _, defaut = bu.heures_par_jour_tous(tmp_path, jour, jour, ["Emplacement par défaut"])
     assert defaut[jour] == Decimal(4)
+
+
+def test_rapports_de_gestion_par_point_de_vente(tmp_path):
+    """Filtre « Point de vente » des statistiques : pertes, promotions, retours du point de vente ; main-d'œuvre à
+    ses dépôts."""
+    from datetime import date
+    from decimal import Decimal
+
+    from mvogmbi_sync import budget as bu, paie_temps as pt, rapports_gestion as rg
+    from mvogmbi_sync.planning import Planning, Quart
+    from mvogmbi_sync.points_vente import points_de_vente
+
+    config = {"clover": {"nom": "Magasin 1"},
+              "points_vente": [{"code": "2", "nom": "Magasin 2", "depot_sage": "Dépôt 2", "client_sage": "V2"}]}
+    deux = [p for p in points_de_vente(config) if p.code == "2"]
+    reg = pt.Registre(tmp_path)
+    a, b = reg.ajouter("Alice"), reg.ajouter("Bruno")
+    b.depot = "Dépôt 2"
+    reg.enregistrer()
+    jour = date(2026, 11, 3)
+    plan = Planning(tmp_path)
+    plan.definir(a.id, [jour], Quart("08:00", "12:00"))
+    plan.definir(b.id, [jour], Quart("08:00", "10:00"))
+    plan.enregistrer()
+    tous = rg.main_oeuvre(tmp_path, jour, jour, {"config": config})
+    seul = rg.main_oeuvre(tmp_path, jour, jour, {"config": config, "points_vente": deux})
+    assert tous.cartes[1][2] == Decimal("6.00") and seul.cartes[1][2] == Decimal("2.00")
+    assert rg._du_point("", {"points_vente": deux}) is False and rg._du_point("2", {"points_vente": deux})
+    assert bu.heures_par_jour_tous(tmp_path, jour, jour, rg._depots({"points_vente": deux}))[1][jour] == 2
+
+
+def test_suivi_des_ventes_de_tous_les_points_de_vente(tmp_path):
+    from datetime import datetime
+
+    from mvogmbi_sync import rapports as rp
+    from mvogmbi_sync.points_vente import points_de_vente
+
+    config = {"clover": {"nom": "Magasin 1"},
+              "points_vente": [{"code": "2", "nom": "Magasin 2", "depot_sage": "Dépôt 2", "client_sage": "Client V2",
+                                "prefixe": "V2"}]}
+
+    class Base:
+        def requete(self, sql, params=()):
+            if "REGEXP" in sql:
+                client = params[0]
+                if client == "Client V2":
+                    return [{"s": "V2 2026-11-03", "d": datetime(2026, 11, 3), "m": 50}]
+                return [{"s": "Vente 2026-11-03", "d": datetime(2026, 11, 3), "m": 100}]
+            return []
+
+    suivi = rp.suivi_ventes(tmp_path, Base(), "Vente Hebdomadaire", 10550000, points_de_vente(config))
+    par_n = {l.facture: l for l in suivi}
+    assert set(par_n) == {"Vente 2026-11-03", "V2 2026-11-03"}
+    assert par_n["V2 2026-11-03"].depot == "Dépôt 2"
+    assert par_n["Vente 2026-11-03"].depot == "Emplacement par défaut"
+    assert len(par_n["V2 2026-11-03"].valeurs()) == len(rp.ENTETES_SUIVI)

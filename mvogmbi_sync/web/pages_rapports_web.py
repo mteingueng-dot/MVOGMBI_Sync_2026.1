@@ -99,12 +99,20 @@ def suivi_ventes(ctx: Contexte) -> Reponse:
     q = ctx.req.query
     filtre = q.get("filtre", FILTRES_SUIVI[0])
     texte = (q.get("recherche") or "").strip().casefold()
+    from ..depots import garde
+    from ..points_vente import permis
+    from .filtres import depots_choisis, filtre_depots
+
+    depots = depots_choisis(ctx)
     entete = onglets("Suivi des ventes", ctx) + _formulaire(
         "<button name='actualiser' value='1'>🔄 Actualiser</button>"
-        + _choix("filtre", "Afficher :", FILTRES_SUIVI, filtre) + _recherche(q.get("recherche", "")))
+        + _choix("filtre", "Afficher :", FILTRES_SUIVI, filtre) + _recherche(q.get("recherche", ""))
+        + filtre_depots(ctx))
     try:
         compte = numero_compte_sage(str(ctx.config.get("encaissements", {}).get("compte_depot", "1055")))
-        suivi = sage(ctx, lambda b: calculer(ctx.racine, b, CLIENT, compte), ("suivi_ventes",))
+        points = permis(ctx.config, ctx.reg.points_vente_permis(ctx.u))  # chacun son client Sage et son préfixe
+        suivi = sage(ctx, lambda b: calculer(ctx.racine, b, CLIENT, compte, points),
+                     ("suivi_ventes", tuple(p.code for p in points)))
     except (Exception, SystemExit) as erreur:  # noqa: BLE001
         ctx.app.noter(f"Suivi des ventes : {erreur!r}")
         return Reponse(corps=page(ctx, "Rapports", entete + "<p class='erreur'>Lecture impossible : Sage ne répond pas "
@@ -115,6 +123,8 @@ def suivi_ventes(ctx: Contexte) -> Reponse:
 
     lignes = []
     for l in suivi:
+        if not garde(l.depot, depots):
+            continue
         if filtre == "Bloquées ou en échec" and not bloquee(l):
             continue
         if filtre == "Non encaissées" and (bloquee(l) or l.encaissement.startswith("Encaissée")):
@@ -141,7 +151,7 @@ def suivi_ventes(ctx: Contexte) -> Reponse:
             f"non rapprochées : {sum(1 for l in suivi if l.rapprochement == 'Non rapproché')}")
     section = Section("Suivi complet des ventes : traitement, encaissement et rapprochement", ENTETES_SUIVI,
                       [[l.traitement, l.journee, traduire(l.statut), l.ht, l.taxes, l.ttc, traduire(l.commentaire),
-                        traduire(l.encaissement), traduire(l.rapprochement)] for l in lignes],
+                        traduire(l.encaissement), traduire(l.rapprochement), l.depot] for l in lignes],
                       classes=[couleur(l) for l in lignes])
     corps = entete + f"<p class='note'>{e(etat)}</p>" + tableau_section(section, limite=5000)
     return Reponse(corps=page(ctx, "Rapports", corps))

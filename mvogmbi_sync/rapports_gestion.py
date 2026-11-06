@@ -73,10 +73,32 @@ def _pourcent(partie: Decimal, total: Decimal) -> Decimal:
 
 
 # --------------------------------------------------------------------------------------------- pertes
+def _codes(contexte: dict) -> set[str] | None:
+    """Codes des points de vente choisis dans le filtre « Point de vente » des statistiques (None = tous)."""
+    points = contexte.get("points_vente")
+    return None if not points else {str(p.code) for p in points}
+
+
+def _depots(contexte: dict) -> list[str] | None:
+    """Dépôts Sage des points de vente choisis (None = tous)."""
+    from .depots import est_defaut
+    from .points_vente import DEPOT_DEFAUT
+
+    points = contexte.get("points_vente")
+    if not points:
+        return None
+    return sorted({DEPOT_DEFAUT if est_defaut(p.depot_sage) else p.depot_sage.strip() for p in points})
+
+
+def _du_point(code, contexte: dict) -> bool:
+    codes = _codes(contexte)
+    return codes is None or str(code or "1") in codes
+
+
 def pertes(racine: Path, du: date, au: date, contexte: dict) -> RapportGestion:
     from . import pertes as pe
 
-    liste = [p for p in pe.Registre(racine).pertes if _dans(p.jour, du, au)]
+    liste = [p for p in pe.Registre(racine).pertes if _dans(p.jour, du, au) and _du_point(p.point_vente, contexte)]
     r = RapportGestion(entetes=["Date", "N°", "Motif", "Article", "Catégorie", "Quantité", "Coût unitaire", "Valeur",
                                 "Point de vente"])
     par_jour, par_motif, total, articles = {}, {}, ZERO, 0
@@ -109,7 +131,12 @@ def caisse(racine: Path, du: date, au: date, contexte: dict) -> RapportGestion:
     if not donnees:
         r.note = "Calculez d'abord les statistiques de la période (espèces lues dans Clover)."
         return r
-    r.lignes = ca.lignes_jours(ca.attendus(donnees), ca.Registre(racine), du, au, contexte.get("config", {}))
+    points = contexte.get("points_vente") or []
+    # un tiroir par point de vente : comptages du point de vente choisi (plusieurs ou tous : le n° 1)
+    registre = ca.Registre(racine, points[0]) if len(points) == 1 else ca.Registre(racine)
+    if len(points) > 1:
+        r.note = "Comptages du point de vente n° 1 ; choisissez un seul point de vente pour voir son tiroir."
+    r.lignes = ca.lignes_jours(ca.attendus(donnees), registre, du, au, contexte.get("config", {}))
     ecarts, attendu, comptes, non_comptes, hors_seuil = {}, ZERO, 0, 0, 0
     for l in r.lignes:
         attendu += _d(l[5])
@@ -167,7 +194,8 @@ def main_oeuvre(racine: Path, du: date, au: date, contexte: dict) -> RapportGest
     from .budget import heures_par_jour_tous, main_oeuvre as calcul, taux_et_charges
 
     taux, charges = taux_et_charges(contexte.get("config", {}))
-    pointees, planifiees = heures_par_jour_tous(racine, du, au)
+    depots = _depots(contexte)  # heures au dépôt du quart du jour (sinon dépôt principal de l'employé)
+    pointees, planifiees = heures_par_jour_tous(racine, du, au, depots)
     ventes = contexte.get("ventes_par_jour", {})
     r = RapportGestion(entetes=["Date", "Ventes nettes", "Heures pointées", "Heures planifiées", "Coût estimé",
                                 "Part des ventes"])
@@ -181,10 +209,14 @@ def main_oeuvre(racine: Path, du: date, au: date, contexte: dict) -> RapportGest
     r.etiquettes, v1 = evolution(pointees, du, au)
     _, v2 = evolution(planifiees, du, au)
     r.series = [("Heures pointées", v1), ("Heures planifiées", v2)]
-    registre, par_employe = pt.Registre(racine), {}
+    from .depots import garde
+    from .planning import Planning, depot_du_quart
+
+    registre, par_employe, planning = pt.Registre(racine), {}, Planning(racine)
     for e in registre.employes:
         liste, _ = pt.presences(registre.valides(e.id))
-        heures = sum((p.heures for p in liste if du <= p.jour <= au), ZERO)
+        heures = sum((p.heures for p in liste if du <= p.jour <= au and (depots is None or garde(
+            depot_du_quart(planning.quart(f"{p.jour:%Y-%m}", e.id, p.jour), e), depots))), ZERO)
         if heures:
             par_employe[e.nom] = heures
     r.titre_repartition, r.genre_repartition, r.argent_repartition = "Heures pointées par employé", "classement", False
@@ -197,7 +229,8 @@ def main_oeuvre(racine: Path, du: date, au: date, contexte: dict) -> RapportGest
 def promotions(racine: Path, du: date, au: date, contexte: dict) -> RapportGestion:
     from .paquet3 import Promotions
 
-    liste = [p for p in Promotions(racine).liste if p.du <= au.isoformat() and p.au >= du.isoformat()]
+    liste = [p for p in Promotions(racine).liste if p.du <= au.isoformat() and p.au >= du.isoformat()
+             and _du_point(p.point_vente, contexte)]
     r = RapportGestion(entetes=["N°", "Article", "Prix normal", "Prix promotionnel", "Baisse", "Du", "Au", "État",
                                 "Point de vente"])
     actives, par_etat, baisses = {}, {}, []
@@ -227,7 +260,8 @@ def promotions(racine: Path, du: date, au: date, contexte: dict) -> RapportGesti
 def retours(racine: Path, du: date, au: date, contexte: dict) -> RapportGestion:
     from . import retours as rt
 
-    liste = [x for x in rt.Registre(racine).retours if _dans(x.jour, du, au)]
+    liste = [x for x in rt.Registre(racine).retours if _dans(x.jour, du, au)
+             and _du_point(getattr(x, "point_vente", "1"), contexte)]
     r = RapportGestion(entetes=["Date", "N°", "Fournisseur", "Facture d'origine", "Motif", "Lignes", "Montant", "État"])
     par_jour, par_fournisseur, total = {}, {}, ZERO
     for x in liste:
