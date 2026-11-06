@@ -88,6 +88,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-ENC-07 | Un lot Clover le même jour qu'un encaissement d'espèces n'est appliqué que si son montant exact est dans Sage. |
 | RG-ENC-08 | Un **encaissement manuel** noté au rapprochement retire ce mouvement de la répartition automatique. |
 | RG-ENC-09 | La part d'un dépôt d'espèces **au-delà des ventes** est une part RIA : rien n'est encaissé avant sa confirmation (voir section 8). |
+| RG-ENC-10 | Un lot de cartes dont le **montant exact est déjà au compte de dépôt** par une autre écriture (3 jours avant à 7 jours après le dépôt) passe à « Déjà au compte de dépôt ? » : jamais encaissé d'office, pour ne pas compter la banque deux fois. |
 
 ---
 

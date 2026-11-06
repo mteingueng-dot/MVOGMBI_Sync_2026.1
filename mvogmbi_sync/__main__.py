@@ -765,6 +765,7 @@ def fermer_bases() -> None:
     un autre utilisateur dans l'entreprise et refuse le mode mono-utilisateur (« D'autres utilisateurs travaillent
     maintenant avec cette entreprise », constat du 2026-10-28). La base gardée ouverte par l'outil d'import est
     refermée aussi (sauf depuis son propre fil)."""
+    SURVEILLANCE_SAGE["pret"].clear()  # pages web : plus de lecture directe tant que la surveillance n'a pas rouvert
     fil = _GARDE["fil"]
     if fil is not None and fil.is_alive() and threading.current_thread() is not fil:
         _GARDE["arret"].set()
@@ -828,6 +829,26 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True
     import time as _temps
 
     echec = _ECHECS_LECTURE.get(str(fichier))
+    import threading as _fils
+
+    if not ouvrir and SURVEILLANCE_SAGE["active"] and _fils.current_thread().name != "sage-pret":
+        # serveur web : seule la surveillance de fond ouvre la base (outil d'import, 10 à 26 s) ; une page ne fait
+        # qu'une lecture sur la base déjà ouverte, sinon répond tout de suite « Sage ne répond pas » et réveille la
+        # surveillance (demande du propriétaire du 2026-11-06 : « je veux que le processus soit instantané »)
+        if echec or not SURVEILLANCE_SAGE["pret"].get(str(fichier)):
+            SURVEILLANCE_SAGE["reveil"].set()
+            raise RuntimeError(f"Sage ne répond pas pour l'instant ({echec[1] if echec else 'connexion en cours'}).")
+        try:
+            return fonction(base_partagee(config_toml, fichier))
+        except _ErreurLecture as exc:
+            raise exc.origine from None
+        except Exception as exc:
+            if getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE:
+                raise
+            SURVEILLANCE_SAGE["pret"].pop(str(fichier), None)
+            _ECHECS_LECTURE[str(fichier)] = (_temps.time(), str(exc)[:160])
+            SURVEILLANCE_SAGE["reveil"].set()
+            raise
     if not ouvrir and echec and _temps.time() - echec[0] < DUREE_ECHEC:
         # lecture automatique (pages web, préchargement) : Sage vient de ne pas répondre ; inutile de refaire
         # 3 à 10 s d'essais à chaque page (demande du propriétaire du 2026-11-05 : « le mode web est très lent »)
@@ -835,15 +856,25 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True
     try:
         resultat = _lire_sage(config_toml, fonction, fichier, ouvrir, lire_pendant_connexion)
         _ECHECS_LECTURE.pop(str(fichier), None)
+        SURVEILLANCE_SAGE["pret"][str(fichier)] = True
         return resultat
     except _ErreurLecture as exc:
         raise exc.origine from None
     except Exception as exc:
         if not (getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE):
             _ECHECS_LECTURE[str(fichier)] = (_temps.time(), str(exc)[:160])
+            SURVEILLANCE_SAGE["pret"].pop(str(fichier), None)
         raise
 
 
+def _evenement():
+    import threading
+
+    return threading.Event()
+
+
+# serveur web : « active » quand le fil « sage-pret » surveille Sage ; « pret » = fichiers dont la base répond
+SURVEILLANCE_SAGE: dict = {"active": False, "pret": {}, "reveil": _evenement()}
 _ECHECS_LECTURE: dict = {}  # fichier -> (moment, raison) du dernier échec de lecture
 DUREE_ECHEC = 45  # s
 

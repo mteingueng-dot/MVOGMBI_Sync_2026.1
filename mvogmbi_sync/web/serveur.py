@@ -432,12 +432,25 @@ def _garder_sage_pret(app) -> None:
     de suite au lieu de 3 à 10 s par page (demande du propriétaire du 2026-11-05 : « le mode web est très lent »).
     Rien quand personne n'est connecté ; Sage lancé par la personne : la base de l'application est relâchée comme
     avant (`sage_ouvert`)."""
+    from ..__main__ import SURVEILLANCE_SAGE
+
+    SURVEILLANCE_SAGE["active"] = True  # les pages ne font plus que lire la base ouverte ici (jamais d'attente)
+    reveil = SURVEILLANCE_SAGE["reveil"]
+    premier, dernier = True, 0.0
     while True:
-        time.sleep(45)
-        if not app.sessions.active_depuis(15 * 60) or datetime.now().hour < 6:  # la nuit : traitement automatique
+        if not premier:
+            pret = bool(SURVEILLANCE_SAGE["pret"])
+            reveille = reveil.wait(45 if pret else 20)  # Sage absent : réessai plus souvent
+            if reveille and not pret:  # réveillé par une page : au plus un essai toutes les 20 s
+                time.sleep(max(0.0, 20 - (time.time() - dernier)))
+            reveil.clear()
+            if not reveille and not app.sessions.active_depuis(15 * 60):
+                continue
+        premier, dernier = False, time.time()
+        if datetime.now().hour < 6:  # la nuit : traitement automatique, on ne touche pas à Sage
             continue
         try:
-            from ..__main__ import base_partagee, lire_sage
+            from ..__main__ import _ECHECS_LECTURE, base_partagee, lire_sage
             from ..sage_bureau import sage_ouvert
             from .taches import VERROU_SAGE
 
@@ -447,10 +460,56 @@ def _garder_sage_pret(app) -> None:
                 continue
             if sage_ouvert():  # Sage tourne (personne, import) : simple lecture, jamais l'outil d'import
                 base_partagee(app.config, fichier).requete("SELECT 1")
+                _ECHECS_LECTURE.pop(str(fichier), None)
+                SURVEILLANCE_SAGE["pret"][str(fichier)] = True
             else:
                 lire_sage(app.config, lambda b: b.requete("SELECT 1"), ouvrir=False)
-        except Exception:  # noqa: BLE001 — Sage absent : les pages le disent elles-mêmes
+        except Exception as exc:  # noqa: BLE001 — Sage absent : les pages le disent elles-mêmes
+            try:
+                from ..__main__ import _ECHECS_LECTURE
+
+                _ECHECS_LECTURE[str(fichier)] = (time.time(), str(exc)[:160])
+                SURVEILLANCE_SAGE["pret"].pop(str(fichier), None)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+# pages dont la 1re ouverture lit Clover (1 à 3 s) : préparées au démarrage puis chaque heure, avant le premier clic
+PAGES_A_PREPARER = ("/statistiques", "/caisse", "/main-oeuvre", "/inactifs", "/pareto", "/articles-clover",
+                    "/creer-article", "/pertes", "/prix-marges", "/couts-clover", "/prix-sage", "/ria", "/encaissements")
+
+
+def prechauffer(app, chemins=PAGES_A_PREPARER) -> int:
+    """Prépare les pages lentes à la première ouverture (lectures Clover et Sage gardées en mémoire) avec un compte
+    administrateur actif, sans session ni audit : rien n'est envoyé à personne. Renvoie le nombre de pages faites."""
+    from ..utilisateurs import Registre
+    from . import pages
+
+    reg = Registre(app.racine)
+    u = next((x for x in reg.utilisateurs if x.actif and x.est_admin), None)
+    if u is None:
+        return 0
+    session = Session("", u.nom, "", time.time(), time.time())  # jamais enregistrée dans app.sessions
+    faites = 0
+    for chemin in chemins:
+        fonction = pages.trouver(chemin)
+        if fonction is None:
+            continue
+        try:
+            fonction.gestionnaire(pages.Contexte(app, Requete("GET", chemin, {}, {}, "127.0.0.1"), reg, u, session))
+            faites += 1
+        except Exception:  # noqa: BLE001 — Clover ou Sage absent : la page le dira à son ouverture
             pass
+    return faites
+
+
+def _preparer_pages(app) -> None:
+    while True:
+        if datetime.now().hour >= 6:  # la nuit : traitement automatique
+            debut = time.time()
+            n = prechauffer(app)
+            app.noter(f"pages préparées : {n} en {time.time() - debut:.1f} s")
+        time.sleep(3600)
 
 
 def lancer(racine: Path, adresse: str | None = None, port: int | None = None) -> None:
@@ -465,6 +524,7 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     serveur.app.noter(f"démarrage {schema}://{hote}:{port_reel}/")  # type: ignore[attr-defined]
     threading.Thread(target=_suivre_telephones, args=(serveur.app,), daemon=True).start()
     threading.Thread(target=_garder_sage_pret, args=(serveur.app,), daemon=True, name="sage-pret").start()
+    threading.Thread(target=_preparer_pages, args=(serveur.app,), daemon=True, name="pages-pretes").start()
     if serveur.app.https:  # type: ignore[attr-defined]
         threading.Thread(target=_relire_certificat, args=(serveur,), daemon=True).start()
     try:

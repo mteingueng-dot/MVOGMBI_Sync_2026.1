@@ -111,7 +111,7 @@ def encaissements(ctx: Contexte) -> Reponse:
     calcule = depots is not None
     depots = depots or []  # pas encore calculé : tableau et carte de saisie vides, comme la fenêtre Windows
     ordre = sorted(enumerate(depots), key=lambda x: (x[1].date, x[0]), reverse=True)  # plus récent en haut
-    a_saisir = [d for d in depots if d.etat in (en.A_SAISIR, en.ECART, en.A_VERIFIER, en.A_RIA)]
+    a_saisir = [d for d in depots if d.etat in (en.A_SAISIR, en.ECART, en.DEJA_EN_BANQUE, en.A_VERIFIER, en.A_RIA)]
     try:
         choisi = depots[int(ctx.req.query["choix"])]
     except (KeyError, ValueError, IndexError):
@@ -150,7 +150,7 @@ def encaissements(ctx: Contexte) -> Reponse:
 
 # couleurs de page_encaissements.COULEURS (état sans couleur : terminé, texte grisé)
 COULEURS = {"Appliqué": "etat-applique", "À saisir dans Sage": "etat-a-saisir", "Montant différent dans Sage":
-            "etat-ecart", "Espèces à répartir à la main": "etat-ecart", "Part RIA à confirmer": "etat-ria"}
+            "etat-ecart", "Espèces à répartir à la main": "etat-ecart", "Déjà au compte de dépôt ?": "etat-ecart", "Part RIA à confirmer": "etat-ria"}
 
 
 def _entete_encaissements() -> str:

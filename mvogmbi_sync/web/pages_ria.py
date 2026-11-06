@@ -28,7 +28,8 @@ def _lignes_ria(ctx: Contexte, du: date, au: date, forcer: bool = False):
     cle = ("ria", du, au)
     gardee = ctx.app.memoire.get(cle)
     if gardee and not forcer and time.time() - gardee[0] < 300:
-        mouvements, depots = gardee[1]
+        mouvements, depots, absents = gardee[1]
+        ctx.absents.update(absents)
     else:
         from ..__main__ import charger_config
         from ..api_clover import ClientClover
@@ -56,8 +57,9 @@ def _lignes_ria(ctx: Contexte, du: date, au: date, forcer: bool = False):
             return mouvements, depots
 
         mouvements, depots = lire_ou_vide(ctx, lire)
-        if "Sage" not in ctx.absents:
-            ctx.app.memoire[cle] = (time.time(), (mouvements, depots))
+        # Sage absent : lecture vide gardée 45 s seulement (même délai que la surveillance de Sage), sinon 5 min
+        ctx.app.memoire[cle] = (time.time() - (255 if "Sage" in ctx.absents else 0),
+                                (mouvements, depots, set(ctx.absents)))
     with ctx.app.ecriture:
         registre = ria.Registre(ctx.racine)
         nouvelles = [c for c in commissions_reconnues(mouvements, RegistreEtats(ctx.racine).etats)

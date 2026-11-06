@@ -42,6 +42,7 @@ ECART = "Montant différent dans Sage"
 SANS_FACTURE = "Facture pas encore dans Sage"
 A_VENIR = "Dépôt à venir"
 A_VERIFIER = "Espèces à répartir à la main"
+DEJA_EN_BANQUE = "Déjà au compte de dépôt ?"  # même montant déjà inscrit au compte par une autre écriture
 A_RIA = "Part RIA à confirmer"     # dépôt d'espèces supérieur aux ventes : le surplus appartient à RIA
 JOURS_CUMUL_ESPECES = 14           # un dépôt d'espèces cumule souvent plusieurs journées de ventes
 
@@ -215,6 +216,33 @@ def evaluer(depots: list[Depot], etat_sage: dict[str, dict], aujourdhui: date,
                 break
 
 
+def marquer_deja_en_banque(depots: list[Depot], mouvements) -> None:
+    """Lot de cartes « À saisir » dont le montant exact est déjà au compte de dépôt par une autre écriture de Sage
+    (journal général, dépôt saisi à la main…), de 3 jours avant à 7 jours après le dépôt : « Déjà au compte de
+    dépôt ? », jamais encaissé d'office (sinon la banque serait comptée deux fois). Chaque écriture ne sert qu'une
+    fois. `mouvements` : `rapprochement.mouvements_sage` du compte de dépôt."""
+    libres = [m for m in mouvements if m.montant > 0]
+    for depot in depots:  # les encaissements déjà appliqués ont leur propre écriture : écartée d'abord
+        if depot.etat == APPLIQUE:
+            meme = next((m for m in libres if m.montant == depot.montant and m.date == depot.date.isoformat()), None)
+            if meme:
+                libres.remove(meme)
+    for depot in depots:
+        if depot.origine or depot.etat != A_SAISIR:
+            continue
+        for m in libres:
+            ecart = (date.fromisoformat(m.date) - depot.date).days
+            if m.montant == depot.montant and -3 <= ecart <= 7:
+                libres.remove(m)
+                depot.etat = DEJA_EN_BANQUE
+                depot.remarque = (f"{m.montant:,.2f} $ déjà au compte le {m.date} (écriture « {m.source or m.description} »)"
+                                  " : vérifier avant d'encaisser")
+                for l in depot.lignes:
+                    if l.etat == A_SAISIR:
+                        l.etat = DEJA_EN_BANQUE
+                break
+
+
 def calculer(client, base, client_sage: str, compte_depot: int, debut: date, fin: date,
              aujourdhui: date | None = None, racine=None, prefixe: str = "Vente") -> list[Depot]:
     """Dépôts des ventes du `debut` au `fin` inclus, avec leur état dans Sage ; avec `racine`, aussi les virements
@@ -228,6 +256,15 @@ def calculer(client, base, client_sage: str, compte_depot: int, debut: date, fin
     factures = [l.facture for d in depots for l in d.lignes]
     evaluer(depots, etat_factures_sage(base, client_sage, compte_depot, factures) if base else {},
             aujourdhui or date.today(), dates_especes)
+    if base and any(d.etat == A_SAISIR for d in depots):
+        from .rapprochement import mouvements_sage
+
+        try:
+            debut_m = min(d.date for d in depots) - timedelta(days=3)
+            marquer_deja_en_banque(depots, mouvements_sage(base, debut_m, max(d.date for d in depots)
+                                                           + timedelta(days=7), compte_depot))
+        except Exception:  # contrôle de prudence : une lecture impossible ne bloque pas le calcul
+            pass
     if banque:
         from .ria import Registre as RegistreRia
 
@@ -506,6 +543,8 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, facture
                 if d.etat == ECART:
                     bilan["a_verifier"].append(f"{nom}Dépôt du {d.date} ({d.montant:,.2f} $) : montant différent "
                                                "déjà saisi dans Sage.")
+                elif d.etat == DEJA_EN_BANQUE:
+                    bilan["a_verifier"].append(f"{nom}Dépôt du {d.date} ({d.montant:,.2f} $) : {d.remarque}.")
                 elif d.etat in (A_VERIFIER, A_RIA):
                     bilan["a_verifier"].append(f"{nom}{d.origine} du {d.date} ({d.montant:,.2f} $) : {d.remarque}.")
             journal(f"{nom}{len(depots)} dépôt(s) " + (f"des {len(factures)} vente(s) importée(s) " if factures else

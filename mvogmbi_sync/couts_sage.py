@@ -63,17 +63,33 @@ def correspondance(racine: Path, pv=None) -> dict[str, str]:
             if l[i_id] and l[i_sage] and str(l[i_statut]) in ("Confirmé", "Automatique")}
 
 
-def charger(racine: Path, config_toml: dict, forcer: bool = False) -> dict[str, CoutSage]:
-    """Coûts du jour depuis donnees/couts_sage.json, sinon lus dans Sage (l'application ouvre Sage s'il est fermé)."""
+def _du_fichier(donnees: dict) -> dict[str, CoutSage]:
+    return {n: CoutSage(n, c["nom"], Decimal(c["cump"]) if c["cump"] else None, Decimal(c["quantite"]),
+                        Decimal(c["valeur"])) for n, c in donnees["couts"].items()}
+
+
+def charger(racine: Path, config_toml: dict, forcer: bool = False, ouvrir: bool = True,
+            secours: bool = False) -> dict[str, CoutSage]:
+    """Coûts du jour depuis donnees/couts_sage.json, sinon lus dans Sage (l'application ouvre Sage s'il est fermé,
+    sauf `ouvrir` faux : application web). `secours` : Sage illisible -> derniers coûts enregistrés (affichage)."""
     chemin = Path(racine) / "donnees" / FICHIER
-    if not forcer and chemin.exists():
-        donnees = json.loads(chemin.read_text(encoding="utf-8"))
-        if donnees.get("date") == date.today().isoformat():
-            return {n: CoutSage(n, c["nom"], Decimal(c["cump"]) if c["cump"] else None, Decimal(c["quantite"]),
-                                Decimal(c["valeur"])) for n, c in donnees["couts"].items()}
+    donnees = None
+    if chemin.exists():
+        try:
+            donnees = json.loads(chemin.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            donnees = None
+    if not forcer and donnees and donnees.get("date") == date.today().isoformat():
+        return _du_fichier(donnees)
     from .__main__ import lire_sage
 
-    couts = lire_sage(config_toml, lire_couts, config_toml.get("sage_import", {}).get("fichier_entreprise"))
+    try:
+        couts = lire_sage(config_toml, lire_couts, config_toml.get("sage_import", {}).get("fichier_entreprise"),
+                          ouvrir=ouvrir)
+    except (Exception, SystemExit):
+        if secours and donnees:
+            return _du_fichier(donnees)
+        raise
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(json.dumps({"date": date.today().isoformat(), "couts": {
         n: {**{k: str(v) if isinstance(v, Decimal) else v for k, v in asdict(c).items()}} for n, c in couts.items()}},

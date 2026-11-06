@@ -359,8 +359,9 @@ def travail_bureau(config_toml: dict, fichier_imp: Path, fichier_sai: Path, sort
     from .__main__ import executable_import
     from .sage_bureau import SessionSage, executable_sage, sage_ouvert_dans_cette_session
 
-    bilan = {"termine": False, "resume": "", "erreurs": []}
+    bilan = {"termine": False, "resume": "", "erreurs": [], "durees": {}}
     session = None
+    debut = time.time()
     try:
         if sage_ouvert_dans_cette_session():
             raise ErreurAssistant("Sage est ouvert : fermez-le, l'application l'ouvre elle-même pour l'import.")
@@ -374,7 +375,10 @@ def travail_bureau(config_toml: dict, fichier_imp: Path, fichier_sai: Path, sort
 
         assistant = ouvrir_assistant(session.processus.pid, session.principale, journal,
                                      Path(RACINE) / "donnees" / "diagnostic_assistant")
+        bilan["durees"]["ouverture"] = round(time.time() - debut, 1)  # Sage ouvert + assistant affiché
+        debut_import = time.time()
         resume, erreurs, fenetre_resume = importer(session.processus.pid, assistant, Path(fichier_imp))
+        bilan["durees"]["import"] = round(time.time() - debut_import, 1)  # travail de Sage lui-même
         bilan.update(termine=True, resume=resume, erreurs=erreurs)
         sortie.write_text(json.dumps(bilan, ensure_ascii=False), encoding="utf-8")
         _attendre(signal.exists, ATTENTE_SIGNAL)  # l'appelant vérifie les factures, Sage ouvert
@@ -412,13 +416,18 @@ def importer_par_assistant(fichier_imp: Path, fichier_sai: Path, pendant_resume=
             pass
         resultat.resume = bilan.get("resume", "")
         resultat.erreurs = list(bilan.get("erreurs", []))
+        resultat.durees = dict(bilan.get("durees", {}))
+        debut = time.time()
         if bilan.get("termine") and pendant_resume:
             try:
                 pendant_resume(resultat.resume)  # Sage encore ouvert : la base se lit
             except Exception as exc:  # noqa: BLE001
                 resultat.erreurs.append(f"Vérification après l'import : {exc}")
+        resultat.durees["verification"] = round(time.time() - debut, 1)
         signal.write_text("1", encoding="utf-8")
+        debut = time.time()
         fil.join(600)
+        resultat.durees["fermeture"] = round(time.time() - debut, 1)
         resultat.termine = bool(bilan.get("termine"))
         resultat.code_retour = code.get("r")
         if not bilan:

@@ -374,6 +374,13 @@ def importer_lot(racine: Path, lot: list, chemin_imp: Path, exe: Path, fichier_s
                         delai=int(config_toml.get("automatique", {}).get("delai_import", 3600)))
     if not presentes and sage_ouvert:
         verifier()
+    d = getattr(resultat, "durees", None) or {}
+    if d:  # où passe le temps d'un lot (demande du propriétaire du 2026-11-06 : « optimiser cette partie de 22 min »)
+        lignes = sum(len(imp.lignes) for imp in lot)
+        cr.note("  Durées du lot : " + ", ".join(f"{nom} {d[cle] / 60:.1f} min" for cle, nom in (
+            ("ouverture", "ouverture de Sage"), ("import", "import par Sage"), ("verification", "vérification"),
+            ("fermeture", "fermeture de Sage")) if cle in d)
+                + (f" ; {d['import'] / lignes:.2f} s par ligne ({lignes} lignes)" if lignes and "import" in d else ""))
     for texte in resultat.erreurs:
         cr.problemes.append(f"Sage : {texte}")
     journal = racine / "donnees" / "journal_imports.csv"

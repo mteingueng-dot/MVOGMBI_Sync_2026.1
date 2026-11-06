@@ -84,7 +84,7 @@ def pertes(ctx: Contexte) -> Reponse:
 
     liens = correspondance(ctx.racine, pv)
     try:
-        couts = charger(ctx.racine, ctx.config)  # CUMP du jour (gardé), sinon lu dans Sage
+        couts = charger(ctx.racine, ctx.config, ouvrir=False, secours=True)  # CUMP du jour (gardé), sinon lu dans Sage
     except (Exception, SystemExit):  # noqa: BLE001 — Sage illisible : coût Clover
         couts = {}
     par_cle = {f"{a.get('name', '')} — {a.get('code') or a.get('sku') or a['id'][:6]}": a for a in articles}
@@ -534,7 +534,7 @@ def prix_marges(ctx: Contexte) -> Reponse:
     try:  # changer la marge ou l'arrondi recalcule sans relire Clover ni Sage (comme Windows)
         donnees = gardee[1] if gardee and time.time() - gardee[0] < 600 and not q.get("actualiser") else None
         if donnees is None:
-            donnees = pm.lire_donnees(ctx.racine, ctx.config)
+            donnees = pm.lire_donnees(ctx.racine, ctx.config, ouvrir=False)
             ctx.app.memoire[cle] = (time.time(), donnees)
     except (Exception, SystemExit) as erreur:  # noqa: BLE001 — tableau vide avec ses colonnes
         ctx.app.noter(f"Prix et marges : {erreur!r}")
@@ -652,7 +652,7 @@ def couts_clover(ctx: Contexte) -> Reponse:
         if gardee and time.time() - gardee[0] < 600 and not ctx.req.query.get("actualiser"):
             propositions, a_jour = gardee[1]
         else:
-            propositions, a_jour = cc.lire(ctx.racine, ctx.config)
+            propositions, a_jour = cc.lire(ctx.racine, ctx.config, ouvrir=False)
             ctx.app.memoire[cle] = (time.time(), (propositions, a_jour))
     except (Exception, SystemExit) as erreur:  # noqa: BLE001 — tableau vide avec ses colonnes
         ctx.app.noter(f"Coûts Clover : {erreur!r}")

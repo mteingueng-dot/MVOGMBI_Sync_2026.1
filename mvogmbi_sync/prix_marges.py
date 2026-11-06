@@ -138,7 +138,7 @@ def analyser(articles: list[dict], liens: dict[str, str], couts: dict, ventes: d
     return lignes, correctes
 
 
-def lire_donnees(racine: Path, config_toml: dict) -> dict:
+def lire_donnees(racine: Path, config_toml: dict, ouvrir: bool = True) -> dict:
     """Catalogue Clover, correspondance, CUMP Sage relus et ventes Clover des 90 derniers jours (cache)."""
     from .__main__ import charger_config
     from .api_clover import ClientClover
@@ -151,7 +151,7 @@ def lire_donnees(racine: Path, config_toml: dict) -> dict:
     from .cache_lectures import inventaire_clover
 
     return {"articles": inventaire_clover(racine), "liens": correspondance(racine),
-            "couts": charger(racine, config_toml, forcer=True), "ventes": ventes_par_article_rapide(client, debut, hier, Path(racine) / "donnees" / "cache_clover")}
+            "couts": charger(racine, config_toml, forcer=True, ouvrir=ouvrir, secours=not ouvrir), "ventes": ventes_par_article_rapide(client, debut, hier, Path(racine) / "donnees" / "cache_clover")}
 
 
 @vide_apres  # mémoire des lectures vidée après une écriture

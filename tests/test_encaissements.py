@@ -90,3 +90,25 @@ def test_fin_de_semaine_facturee_en_partie():
     factures_fin_de_semaine(depots, {"Vente 2026-10-23", "Vente 2026-10-24/25"})
     assert [(l.facture, l.montant) for l in depots[0].lignes] == [
         ("Vente 2026-10-23", D("100.00")), ("Vente 2026-10-24/25", D("250.00"))]
+
+
+def test_depot_deja_au_compte_par_une_autre_ecriture():
+    """Un lot « À saisir » dont le montant est déjà au 1055 (journal général…) n'est jamais encaissé d'office."""
+    from mvogmbi_sync.encaissements import (A_SAISIR, APPLIQUE, DEJA_EN_BANQUE, Depot, LigneEncaissement,
+                                            marquer_deja_en_banque)
+    from mvogmbi_sync.rapprochement import MouvementSage
+
+    deja = Depot(date(2026, 1, 6), [LigneEncaissement(date(2026, 1, 5), D("812.40"), etat=A_SAISIR)],
+                 etat=A_SAISIR)
+    libre = Depot(date(2026, 1, 7), [LigneEncaissement(date(2026, 1, 6), D("500.00"), etat=A_SAISIR)],
+                  etat=A_SAISIR)
+    applique = Depot(date(2026, 1, 8), [LigneEncaissement(date(2026, 1, 7), D("300.00"), etat=APPLIQUE)],
+                     etat=APPLIQUE)
+    autre = Depot(date(2026, 1, 9), [LigneEncaissement(date(2026, 1, 8), D("300.00"), etat=A_SAISIR)],
+                  etat=A_SAISIR)
+    mouvements = [MouvementSage(1, "2026-01-07", "Dépôt", "", D("812.40")),
+                  MouvementSage(2, "2026-01-07", "Chèque", "", D("-500.00")),   # sortie : ignorée
+                  MouvementSage(3, "2026-01-08", "Encaissement", "", D("300.00"))]  # celle de « applique »
+    marquer_deja_en_banque([deja, libre, applique, autre], mouvements)
+    assert deja.etat == DEJA_EN_BANQUE and deja.lignes[0].etat == DEJA_EN_BANQUE and "2026-01-07" in deja.remarque
+    assert libre.etat == A_SAISIR and autre.etat == A_SAISIR and applique.etat == APPLIQUE

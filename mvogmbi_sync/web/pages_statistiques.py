@@ -72,7 +72,7 @@ def _brut(ctx: Contexte, du: date, au: date, nom_periode: str) -> dict:
         try:
             from ..couts_sage import charger, cout_par_clover
 
-            couts = cout_par_clover(ctx.racine, charger(ctx.racine, ctx.config))
+            couts = cout_par_clover(ctx.racine, charger(ctx.racine, ctx.config, ouvrir=False, secours=True))
         except (Exception, SystemExit):  # noqa: BLE001 — Sage illisible : pas de bénéfices
             couts = {}
         return {"donnees": donnees, "autres": autres, "couts": couts, "du": du, "au": au, "du2": du2, "au2": au2,
@@ -253,7 +253,7 @@ def _liste_articles(ctx: Contexte) -> tuple[list[str], list[list], str]:
         articles = [a for a in client(ctx.racine)._pages("items", {"expand": "categories,itemStock"})
                     if not a.get("deleted")]
         try:
-            couts = charger(ctx.racine, ctx.config)
+            couts = charger(ctx.racine, ctx.config, ouvrir=False, secours=True)
         except (Exception, SystemExit):  # noqa: BLE001
             couts = {}
         return articles, couts, correspondance(ctx.racine)

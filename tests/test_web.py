@@ -577,7 +577,7 @@ def test_articles_web(site, tmp_path, monkeypatch):
                     SimpleNamespace(nom="Attiéké 1kg", numero_sage="C0001", prix=Decimal("5.99"), cout_clover=None,
                                     cump=Decimal("99"), etat="Valeur aberrante", note="", permis=False,
                                     cochee_par_defaut=False)]
-    monkeypatch.setattr(cc, "lire", lambda racine, config: (propositions, 3))
+    monkeypatch.setattr(cc, "lire", lambda racine, config, ouvrir=True: (propositions, 3))
     _, page, _ = ouvrir(patron, base + "/couts-clover")
     assert "Tout cocher" in page and "name='choix' value='0' checked" in page and "value='1'" not in page
     _, page, _ = ouvrir(patron, base + "/couts-clover?filtre=Valeur%20aberrante")

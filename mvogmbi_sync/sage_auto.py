@@ -169,6 +169,7 @@ class ResultatSage:
     resume: str = ""
     erreurs: list[str] = field(default_factory=list)
     connexion_annulee: bool = False
+    durees: dict = field(default_factory=dict)  # s : ouverture, import, verification, fermeture (assistant de Sage)
 
 
 FICHIER_PARTAGEES = "entreprises_partagees.json"

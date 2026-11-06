@@ -88,14 +88,14 @@ def proposer(articles_clover: list[dict], liens: dict[str, str], couts: dict) ->
     return propositions, a_jour
 
 
-def lire(racine: Path, config_toml: dict) -> tuple[list[PropositionCout], int]:
+def lire(racine: Path, config_toml: dict, ouvrir: bool = True) -> tuple[list[PropositionCout], int]:
     """Articles Clover (coût, prix) et CUMP Sage relus maintenant (l'application ouvre Sage s'il est fermé)."""
     from .api_clover import ClientClover
     from .__main__ import charger_config
     from .couts_sage import charger, correspondance
 
     client = ClientClover(charger_config(Path(racine) / "config.toml"))
-    couts = charger(racine, config_toml, forcer=True)
+    couts = charger(racine, config_toml, forcer=True, ouvrir=ouvrir)
     from .cache_lectures import inventaire_clover
     del client
     return proposer(inventaire_clover(racine), correspondance(racine), couts)

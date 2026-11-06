@@ -11,11 +11,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from .design import CARTE, TEXTE_DOUX, Bouton, ChampDate, cadre_tableau, entete_page
-from .encaissements import A_RIA, A_SAISIR, A_VENIR, A_VERIFIER, APPLIQUE, ECART, SANS_FACTURE
+from .encaissements import DEJA_EN_BANQUE, A_RIA, A_SAISIR, A_VENIR, A_VERIFIER, APPLIQUE, ECART, SANS_FACTURE
 from .export_tableau import bouton_exporter, export_permis, placer_a_droite
 from .langues import courante, jours_semaine, t
 
-COULEURS = {APPLIQUE: "#e6f4ea", A_SAISIR: "#fff4d6", ECART: "#fde2e4", A_VERIFIER: "#fde2e4", A_RIA: "#e4ecfb",
+COULEURS = {APPLIQUE: "#e6f4ea", A_SAISIR: "#fff4d6", ECART: "#fde2e4", DEJA_EN_BANQUE: "#fde2e4", A_VERIFIER: "#fde2e4", A_RIA: "#e4ecfb",
             SANS_FACTURE: None, A_VENIR: None}
 
 
@@ -150,7 +150,7 @@ class PageEncaissements(ttk.Frame):
             for j, l in enumerate(d.lignes):
                 self.tableau.insert(parent, "end", iid=f"d{i}l{j}", text=f"   {l.facture}",
                                     values=(argent(l.montant), argent(l.montant_du), t(l.etat)), tags=(l.etat,))
-        a_saisir = [d for d in depots if d.etat in (A_SAISIR, ECART, A_VERIFIER, A_RIA)]
+        a_saisir = [d for d in depots if d.etat in (A_SAISIR, ECART, DEJA_EN_BANQUE, A_VERIFIER, A_RIA)]
         self.resume.configure(text=t("{n} dépôt(s), {total} au total — {a} à saisir dans Sage, {ok} déjà appliqué(s).",
                                      n=len(depots), total=argent(sum((d.montant for d in depots), Decimal(0))),
                                      a=len(a_saisir), ok=sum(1 for d in depots if d.etat == APPLIQUE)))
