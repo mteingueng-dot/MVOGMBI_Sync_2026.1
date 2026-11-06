@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -29,6 +29,8 @@ flowchart LR
 ```
 
 **Sage ouvert pour la journée (version 1.0.3).** Au démarrage, l'application ouvre Sage en multi-utilisateur, sans fenêtre visible, et le garde ouvert jusqu'à sa fermeture : les saisies (encaissements, transferts, documents de stock, articles, dépenses, paies) commencent tout de suite au lieu d'attendre 1,5 à 2 min. Il occupe un poste de la licence Sage. Chacun ouvre Sage dans **sa propre session** (Bureau à distance) : Windows refuse une 2e copie de Sage dans la session où tourne l'application. L'import et la nuit le referment comme avant. Pour revenir à l'ancien fonctionnement : `[sage] garder_ouvert = false` dans config.toml.
+
+Après une installation ou un redémarrage du serveur web, comptez **2 à 3 minutes** avant que Sage soit prêt (ligne « Sage ouvert pour les saisies de la journée » dans `journal_web.log`, étapes dans `journal_sage_garde.log`). Une saisie lancée pendant ce temps attend simplement la fin de l'ouverture. Pendant l'ouverture et tant que ce Sage tourne, l'application ne lit plus la base par l'outil d'import (version 1.0.5) : sinon l'outil prenait l'entreprise et Sage refusait de s'ouvrir. Si l'ouverture échoue, l'application réessaie 10 minutes plus tard.
 
 **Règle d'or : tout est sur le même serveur.** Sage 50, MVOGMBI_Sync, son serveur web et le traitement de nuit doivent être sur la même machine : l'application ouvre elle-même les fenêtres de Sage pour y saisir les encaissements, paiements, transferts, etc. Les postes et les téléphones n'installent rien d'autre que le client (ou un navigateur) et Tailscale.
 
@@ -171,9 +173,9 @@ Ne jamais publier `config.toml` ni le dossier `donnees/`.
 | **Imports** (factures de vente, d'achat, retours) | **mono-utilisateur** | doit être **fermé partout** |
 | **Saisies** (encaissements, paiements, journal, dépenses, stock, transferts, fiches, prix, paie) | multi-utilisateur | peut rester ouvert sur le même fichier |
 | Rendre un compte ou un article **inactif** | mono-utilisateur (exigé par Sage) | fermé |
-| Lectures | base de Sage, Sage ouvert ou fermé | indifférent |
+| Lectures | base du Sage de la journée (le jour) ; base ouverte par l'outil d'import (la nuit, ou `garder_ouvert = false`) | indifférent |
 
-Sage fermé, **l'application ouvre Sage elle-même**, fait la saisie, vérifie dans la base, puis referme Sage proprement. Ne jamais arrêter Sage de force : sa base garde alors l'entreprise ouverte (« D'autres utilisateurs travaillent avec cette entreprise ») ; il faut fermer Sage partout ou redémarrer le serveur.
+Le jour, la saisie se fait dans le **Sage de la journée** que l'application garde ouvert ; la nuit (ou `garder_ouvert = false`), **l'application ouvre Sage elle-même**, fait la saisie, vérifie dans la base, puis referme Sage proprement. Ne jamais arrêter Sage de force : sa base garde alors l'entreprise ouverte (« D'autres utilisateurs travaillent avec cette entreprise ») ; il faut fermer Sage partout ou redémarrer le serveur.
 
 ### 4.3 Entreprise partagée et assistant d'importation
 
@@ -349,6 +351,9 @@ Tous dans `donnees/` (raccourci « Journal du traitement automatique » au menu 
 | `journal_articles_crees.csv`, `journal_ugs_effacees.csv` | articles créés, UGS effacées |
 | `journal_bulletins_envoyes.csv`, `journal_feuillets_envoyes.csv` | bulletins, T4 / RL-1 envoyés |
 | `diagnostic_assistant/` | photos de l'assistant d'importation de Sage en cas d'échec |
+| `diagnostic_encaissements/` | photo de la fenêtre Encaissements quand une cellule ne s'ouvre pas |
+| `journal_sage_garde.log` | étapes de l'ouverture du Sage de la journée (et la raison d'un échec) |
+| `sage_garde.json`, `sage_mono.verrou` | Sage de la journée (en ouverture ou prêt) ; travail mono-utilisateur en cours |
 | `entreprises_partagees.json` | fichiers Sage importés par l'assistant |
 | `traitement.verrou`, `base_gardee.pid` | traitement en cours, base de Sage gardée ouverte |
 
@@ -369,6 +374,11 @@ Tous dans `donnees/` (raccourci « Journal du traitement automatique » au menu 
 | « Article Clover introuvable (supprimé ou recréé) » à la mise à jour du stock | article renommé ou recréé dans Clover | relier le nouvel article (Correspondance), puis « 🔁 Refaire la mise à jour Clover » |
 | Transfert vers le dépôt « à refaire » | Sage occupé, dépôt absent | vérifier l'emplacement dans Sage, refaire le transfert (Stock > Transferts) |
 | Page web « Sage ne répond pas » | Sage / base indisponible | tableaux vides affichés ; réessayer après 45 s ; vérifier le service de Sage |
+| « Sage s'ouvre pour les saisies de la journée : réessayez dans un instant » | Sage de la journée en cours d'ouverture (2 à 3 min après un démarrage) | attendre ; les saisies lancées attendent d'elles-mêmes |
+| « Fermez Sage sur le serveur : l'application l'ouvre elle-même » alors que personne n'a ouvert Sage | (corrigé en 1.0.5) le Sage de la journée en ouverture était pris pour celui d'une personne | mettre à jour ; sinon, vérifier qu'aucun Sage n'est ouvert dans la session Windows de l'application |
+| « Un autre utilisateur utilise actuellement cette entreprise sur cet ordinateur » (journal_sage_garde.log) | entreprise prise par l'outil d'import ou par un autre Sage de la même machine | depuis 1.0.5 l'outil n'est plus utilisé pendant la journée ; sinon fermer le Sage resté ouvert, l'application réessaie 10 min plus tard |
+| « La cellule Montant reçu ne s'est pas ouverte » | (corrigé en 1.0.4) fenêtre Encaissements plus petite sur le serveur | mettre à jour ; sinon joindre la photo de `diagnostic_encaissements/` |
+| Dépôt « Déjà au compte de dépôt ? » (Encaissements) | le montant exact est déjà au 1055 par une autre écriture Sage | vérifier dans Sage : si c'est bien ce dépôt, rien à faire ; sinon l'encaisser à la main |
 | Le client ne s'ouvre pas sur le serveur | Tailscale déconnecté, serveur web arrêté, certificat expiré | Tailscale connecté ? `journal_web.log` ; relancer « Serveur de l'application web » ; renouveler le certificat |
 | « Certificat refusé » dans le client | certificat expiré ou nom différent | renouveler (§ 5.3) ; l'adresse doit être `app.marchemvogmbi.com` |
 | Pointage refusé « connectez-vous au Wi-Fi du magasin » | appareil sur un autre réseau, ou adresse du magasin changée | relever la nouvelle adresse (§ 5.5) |

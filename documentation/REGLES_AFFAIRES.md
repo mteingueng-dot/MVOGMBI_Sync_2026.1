@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -40,6 +40,9 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-SAGE-07 | Un compte saisi dans l'application (dépenses, RIA, catégories, fiches) **doit exister dans le plan comptable** de Sage et recevoir des écritures (ni en-tête, ni total, ni inactif). |
 | RG-SAGE-09 | **Entreprise partagée** : le partage n'est jamais arrêté ; quand l'outil d'import refuse l'entreprise partagée, l'import passe par l'**Assistant d'importation des transactions** de Sage (ouvert en mono-utilisateur par l'application) ; le fichier est retenu et passe ensuite directement par l'assistant. |
 | RG-SAGE-10 | **Sage ouvert pour la journée** : au démarrage de l'application (serveur web ou fenêtre Windows), Sage s'ouvre en **multi-utilisateur** (les employés travaillent en même temps, chacun dans sa session Bureau à distance) et reste ouvert jusqu'à la fermeture de l'application ; les saisies l'utilisent tel quel. L'import (mono-utilisateur), la nuit (0 h - 6 h) et le traitement de nuit le referment d'abord, comme avant ; il se rouvre ensuite de lui-même. Un seul Sage gardé par serveur ; `[sage] garder_ouvert = false` revient à l'ancien fonctionnement. |
+| RG-SAGE-10b | Le Sage ouvert par l'application (pour la journée, ou pour une saisie) n'est **jamais pris pour le Sage d'une personne**, même pendant son ouverture : il ne bloque aucune saisie. |
+| RG-SAGE-10c | Tant que le Sage de la journée est ouvert **ou en train de s'ouvrir**, aucune lecture ne passe par l'outil d'import (il prendrait l'entreprise pour lui seul). Une saisie ou un import lancé pendant l'ouverture **attend** qu'elle soit finie. |
+| RG-SAGE-10d | Une ouverture du Sage de la journée qui échoue est **réessayée 10 minutes plus tard**, jamais à chaque minute ; la raison est notée. |
 | RG-SAGE-08 | Sage tient chaque compte dans son **sens normal** (débit positif pour actif et charge, crédit positif pour passif et produit) ; l'application lit les soldes sans changer le signe. |
 
 ---
@@ -90,6 +93,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-ENC-08 | Un **encaissement manuel** noté au rapprochement retire ce mouvement de la répartition automatique. |
 | RG-ENC-09 | La part d'un dépôt d'espèces **au-delà des ventes** est une part RIA : rien n'est encaissé avant sa confirmation (voir section 8). |
 | RG-ENC-10 | Un lot de cartes dont le **montant exact est déjà au compte de dépôt** par une autre écriture (3 jours avant à 7 jours après le dépôt) passe à « Déjà au compte de dépôt ? » : jamais encaissé d'office, pour ne pas compter la banque deux fois. |
+| RG-ENC-11 | La saisie d'un montant dans la fenêtre Encaissements se fait toujours dans la colonne « Montant reçu », quelle que soit la taille de la fenêtre de Sage ; une cellule ouverte ailleurs est refermée **sans rien taper**. |
 
 ---
 
@@ -164,6 +168,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 
 | Code | Règle |
 |---|---|
+| RG-RIA-00 | Toutes les fonctions RIA sont dans la rubrique **RIA** du menu : Opérations RIA, États de compte RIA, Comptes RIA (demande du propriétaire du 6 novembre 2026). |
 | RG-RIA-01 | **Envoi reçu en espèces** (« MT Send ») : débit espèces / crédit compte RIA (dû à RIA). |
 | RG-RIA-02 | **Versement ou remboursement payé en espèces** (« MT Payout », « MT Refund ») : débit compte RIA / crédit espèces. |
 | RG-RIA-03 | Un versement **payé par virement Interac** (même montant au relevé de banque, à 3 jours près) n'a pas d'écriture d'état : la banque l'a déjà. |
@@ -400,4 +405,5 @@ Ordre des étapes :
 | RG-WEB-06 | Un seul travail dans Sage à la fois ; le jeton anti-falsification ne paraît jamais dans une adresse. |
 | RG-WEB-08 | **Le client des postes ouvre directement l'application web** (Edge en mode application), même si le serveur ne répond pas encore ; la fenêtre de réglage seulement par le raccourci « adresse du serveur ». Installateur du client sans droits d'administrateur. |
 | RG-WEB-09 | Le **serveur web** tourne sans fenêtre, une seule copie à la fois, démarré à l'ouverture de session. |
+| RG-WEB-10 | Dans un tableau web, un texte de plus de 45 caractères est **coupé** (« … ») et se lit en entier au survol : les montants et les états d'une ligne restent toujours visibles ; une cellule avec un champ ou un bouton n'est jamais coupée. |
 | RG-WEB-07 | Changer de serveur : reprendre `config.toml` et `donnees/`, retaper les mots de passe (coffre-fort propre à chaque machine), régler le serveur, relancer `installer_web.ps1` et la tâche planifiée ; retirer tâche et serveur web de l'ancien serveur (jamais deux traitements de nuit). |

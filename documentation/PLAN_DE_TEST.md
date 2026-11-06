@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 301 tests
+## 3. Tests automatiques — 305 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -59,9 +59,12 @@ Règles :
 | Autres tests ajoutés depuis la 1.0.11 | divers | 1 |
 | Dépôts (filtres, transferts après import, documents de stock, main-d'œuvre, rapports de gestion, suivi des ventes) | test_depots | 9 |
 | Ajouts des versions 2.17 à 2.24 (mot de passe web, feuilles de temps, relevés BNC, client, photo de facture, état partagé des factures) | test_web, test_paie_temps, test_rapprochement, test_page_fournisseurs | 5 |
-| **Total** | 57 fichiers | **295** |
+| Ajouts des versions 1.0.1 à 1.0.7 (imports internes, port 465, « Déjà au compte de dépôt ? », rapidité web, Sage de la journée et son ouverture, grille des encaissements, textes longs des tableaux, aide sans paramètre) | test_imports_internes, test_courriel, test_encaissements, test_rapidite_web, test_sage_journee, test_web | 10 |
+| **Total** | 60 fichiers | **305** |
 
-Résultat du 5 novembre 2026 (version 1.0.0) : **292 réussis, 1 sauté** (export d'image sans écran disponible), 2 tests de fenêtres Tk lancés à part (ils réussissent seuls, voir la note).
+Résultat du 6 novembre 2026 (version 1.0.7) : **305 réussis**, y compris les 2 tests de fenêtres Tk ; compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
+
+Résultat du 5 novembre 2026 (version 1.0.0) : 292 réussis, 1 sauté (export d'image sans écran disponible), 2 tests de fenêtres Tk lancés à part.
 
 Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find a usable tk.tcl / init.tcl » ; Windows refuse un instant la lecture des fichiers de Tcl (antivirus). Le test passe à l'exécution suivante : ce n'est pas un défaut de l'application.
 
@@ -117,6 +120,9 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | S18 | Assistant d'importation : factures de vente (3) et facture d'achat, puis réimport | mono-utilisateur | Réussi ; réimport refusé « numéro existe déjà » |
 | S19 | Transferts après import (dépôt) : achat puis vente, stocks revenus au départ | Sage fermé | Réussi (environ 2 min 45 par transfert) |
 | S20 | Vrai fichier partagé (serveur) : 2 factures fournisseurs par l'assistant, stock et coût Clover | mono-utilisateur | Réussi le 5 novembre 2026 |
+| S21 | Sage de la journée : ouvert en arrière-plan, 2 saisies qui l'empruntent, puis libéré pour un import par l'assistant | multi, puis mono pour l'import | Réussi : prêt en 0,2 s, saisies en 11 à 13 s, libéré en 30 s, « ESSAI ASSIST 5 » importée |
+| S22 | Course reproduite : lectures toutes les 5 s et saisie lancée pendant l'ouverture du Sage de la journée | multi-utilisateur | Réussi : outil d'import jamais lancé, Sage jamais pris pour celui d'une personne, saisie qui attend puis emprunte Sage (fenêtre Encaissements en 7 s) |
+| S23 | Fenêtre Encaissements : cellule « Montant reçu » avec la grille normale (791 points) et réduite à la taille du serveur (641 × 96) | multi-utilisateur | Réussi : x = 696 puis 559, bonne colonne, rien de traité |
 
 ### 4.4 Profils et droits
 
@@ -163,6 +169,9 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | DNS `app.marchemvogmbi.com` | adresse Tailscale du serveur |
 | Rapidité : 64 pages du menu, 2e tour | 3,8 s (60 ms par page), au lieu de 62,8 s |
 | Même facture ouverte dans Windows et sur le web | état identique, jamais ramenée avant « Importée » |
+| Rapidité (1.0.3) : 64 pages, 1er passage | 2,8 s au lieu de 70,5 s, aucune page au-dessus de 0,3 s |
+| Largeur des tableaux (1.0.6) : 66 pages mesurées dans Chrome sans fenêtre (largeur du tableau / largeur de sa zone) | plus aucun tableau poussé hors de sa zone par un texte long ; 4 tableaux à beaucoup de colonnes défilent à l'horizontale |
+| Tour complet (1.0.7) : 124 adresses (menu, onglets, 18 états des statistiques, calculs, rapprochement, encaissements) | toutes en 200, aucune erreur au journal (après correction de /aide) |
 
 ## 5. Défauts trouvés et corrigés lors des campagnes
 
@@ -191,6 +200,12 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | Déconnexion juste après la connexion web | L'icône du site menait à la page de connexion, qui effaçait la session | Icône publique |
 | Ajustements du journal 14 pris pour des transferts | Type déduit du journal | Indicateur de transfert de Sage |
 | Pages web lentes (3 s) | Recherche de Sage refaite à chaque page | Échec retenu 45 s, base gardée prête |
+| Encaissements sur le serveur : 0 dépôt sur 364, « La cellule Montant reçu ne s'est pas ouverte » | Grille plus petite sur le serveur (~640 points, 4 lignes) : clic fixe à x = 692 hors de la grille | Position en proportion de la largeur réelle, lignes lues sur la hauteur, cellule hors colonne refusée (1.0.4) |
+| « Fermez Sage sur le serveur » alors que personne n'avait ouvert Sage | Sage de la journée en ouverture pris pour celui d'une personne ; son ouverture refusée parce que l'outil d'import (surveillance du web) prenait l'entreprise | Marque d'ouverture, plus d'outil d'import pendant la journée, saisies qui attendent la fin de l'ouverture (1.0.5) |
+| Programme qui ouvre le Sage de la journée bloqué 15 min | Il attendait sa propre marque d'ouverture (trouvé à l'essai S22) | Jamais d'attente de soi-même (1.0.5) |
+| Page Rapprochement : Entrée, Sortie, État hors de la zone | Une description très longue élargissait la colonne | Textes longs coupés, texte complet au survol (1.0.6) |
+| `/aide` sans « ?page= » : aucune réponse | Paramètre lu sans valeur par défaut, et la page d'erreur plantait aussi | Valeur par défaut, page d'erreur de secours (1.0.7) |
+| Avertissement « invalid escape sequence » (lanceur du serveur web) | « \M » dans un nom de verrou | Chaîne brute (1.0.7) |
 
 ---
 
@@ -209,6 +224,7 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 ## 7. Reste à tester
 
 - Mise en service complète sur SERVDCSAGE : traitement de nuit, HTTPS, client des postes (l'import par l'assistant et la mise à jour Clover y sont validés).
+- Sur le vrai fichier (serveur, version 1.0.7) : Sage de la journée ouvert au démarrage, puis « Encaisser dans Sage » des 364 dépôts en retard (grille du serveur).
 - Transferts vers un dépôt sur le vrai fichier (dès qu'un deuxième dépôt sera créé dans Sage).
 - Relevés BNC de plusieurs mois et écritures saisies au compte 1060.
 - Pointage depuis le Wi-Fi du magasin (adresse publique du magasin à relever sur place) et pause automatique d'un téléphone qui sort du Wi-Fi.

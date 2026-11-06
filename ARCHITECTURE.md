@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -16,7 +16,7 @@ MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabili
 - plusieurs sites : dépôts (emplacements de Sage) avec ou sans Clover ;
 - utilisateurs, profils, droits par fonction et audit des actions.
 
-L'application est écrite en Python 3.13, a une interface tkinter et une application web identique, et tourne sur le serveur SERVDCSAGE, à côté de Sage 50 (version 2.14.2). Elle n'utilise aucun service d'IA ni d'API externe autre que Clover : c'est le choix du propriétaire.
+L'application est écrite en Python 3.13, a une interface tkinter et une application web identique, et tourne sur le serveur SERVDCSAGE, à côté de Sage 50 (depuis la version 2.14.2). Pendant la journée, l'application garde Sage ouvert en multi-utilisateur pour les saisies (version 1.0.3). Elle n'utilise aucun service d'IA ni d'API externe autre que Clover : c'est le choix du propriétaire.
 
 Ce document décrit les composants, les données, les intégrations et les principaux flux. Les règles d'affaires sont réunies dans `documentation/REGLES_AFFAIRES.md` (codes RG-…) ; le fichier `CLAUDE.md` garde le détail technique de chaque règle. Le manuel d'utilisation (`documentation/creer_manuel.py`) décrit l'usage au quotidien ; le guide de l'administrateur (`documentation/GUIDE_ADMINISTRATEUR.md`) l'installation, la configuration, l'exploitation et le dépannage.
 
@@ -531,6 +531,12 @@ Pause automatique (version 2.15.0) : le téléphone qui a servi à pointer est s
 
 Une lecture de Sage qui échoue est retenue 45 s (`_ECHECS_LECTURE`) : les pages suivantes s'affichent tout de suite avec le bandeau « Sage ne répond pas ». Tant que quelqu'un a utilisé le site dans les 15 dernières minutes, un fil du serveur (`_garder_sage_pret`) garde la base ouverte (`SELECT 1` toutes les 45 s), jamais la nuit ni pendant un travail Sage. Feuille de style et logo sont gardés par le navigateur. Mesure sur une copie : 64 pages du menu en 3,8 s au 2e tour (60 ms par page) au lieu de 62,8 s.
 
+Version 1.0.3 (« je veux que le processus soit instantané ») : seule la surveillance de fond (fil « sage-pret ») ouvre la base ; une page ne fait qu'une lecture sur la base déjà ouverte, sinon répond tout de suite « Sage ne répond pas » et réveille la surveillance (`SURVEILLANCE_SAGE`). Les pages lentes à la 1re ouverture (lectures Clover) sont préparées au démarrage puis chaque heure de 6 h à minuit (`prechauffer`, `PAGES_A_PREPARER`). Mesure : 1er passage des 64 pages en 2,8 s au lieu de 70,5 s, aucune page au-dessus de 0,3 s.
+
+#### Tableaux : textes longs coupés (version 1.0.6)
+
+Les cellules restent sur une ligne, comme dans Windows. Une seule description très longue élargissait sa colonne au point de pousser les montants hors de la zone (page Rapprochement). Le serveur passe sur chaque page affichée (`export_web.couper_textes_longs`) : une cellule de plus de 45 caractères est coupée à 34 caractères de large environ (« … ») et son texte complet vient au survol (`title`) ; les cellules avec un champ, un bouton ou un formulaire ne sont jamais touchées. Tour des 66 pages : seuls quatre tableaux à beaucoup de colonnes défilent encore à l'horizontale (Articles Clover, Feuilles de temps, Produits inactifs, Articles 20/80).
+
 #### Même état dans Windows et sur le web (version 2.23.1)
 
 Le registre des factures fournisseurs retient ce qu'il a lu ; s'il a changé sur le disque entre-temps (autre plateforme), `enregistrer` fusionne : seules les factures modifiées ici remplacent celles du disque, et une facture « Importée » n'est jamais ramenée à un autre état. La page Windows relit le registre toutes les 3 s s'il a changé.
@@ -598,10 +604,10 @@ Sage 50 CA n'a pas d'API ouverte. L'application passe par trois voies :
 
 | Voie | Utilisée pour | Sage | Vérification |
 |---|---|---|---|
-| MySQL en lecture seule (`base_sage.py`) | Tout ce qui se lit | ouvert ; sinon base ouverte par l'outil d'import ; refusée : Sage ouvert par l'application (`garder-sage`) | — |
+| MySQL en lecture seule (`base_sage.py`) | Tout ce qui se lit | Sage de la journée ouvert par l'application, ou Sage de la personne ; sinon (la nuit, ou réglage `[sage] garder_ouvert = false`) base ouverte par l'outil d'import ; refusée : Sage ouvert par l'application (`garder-sage`) | — |
 | `Sage_SA_import.exe` (`sage_auto.py`) | Factures de vente `<SalInvoice>` et d'achat `<PurInvoice>` (retours compris) | fermé, **mono-utilisateur** (accès exclusif) | présence dans `tcustr` / `tventr` |
 | Assistant d'importation de Sage (`robot_import_assistant.py`) | Mêmes fichiers `.IMP`, quand l'outil refuse une **entreprise partagée** (« You cannot use this utility to import transactions into a shared company ») | ouvert par l'application en **mono-utilisateur** ; menu repéré par son texte (OCR de Windows) | résumé de Sage lu, facture retrouvée dans la base pendant le résumé |
-| Fenêtres de Sage (`sage_bureau.py` + `robot_*.py`) | Encaissements, paiements, journal général, dépenses, documents de stock, inventaire, transferts, articles, clients, fournisseurs, employés, paie | lancé par l'application sur un bureau Windows séparé, **multi-utilisateur** ; fonctionne session verrouillée | baisse des soldes, écriture présente, stock relu |
+| Fenêtres de Sage (`sage_bureau.py` + `robot_*.py`) | Encaissements, paiements, journal général, dépenses, documents de stock, inventaire, transferts, articles, clients, fournisseurs, employés, paie | le jour : Sage de la journée **emprunté** tel quel ; la nuit : lancé par l'application sur un bureau Windows séparé, **multi-utilisateur** ; fonctionne session verrouillée | baisse des soldes, écriture présente, stock relu |
 
 Règles d'ouverture de Sage :
 
@@ -648,6 +654,32 @@ sequenceDiagram
     B->>S: fermeture de Sage
 ```
 
+Grille de la fenêtre Encaissements (version 1.0.4) : sa taille dépend de l'écran où Sage s'ouvre (791 points de large et 8 lignes sur la copie d'essai, environ 640 points et 4 lignes sur le serveur). La colonne « Montant reçu » est visée à 90 % de la largeur réelle de la grille (`FenetreEncaissements.x_montant`), le nombre de lignes visibles est lu sur sa hauteur ; une cellule ouverte hors de la dernière colonne est refermée sans rien taper (photo dans `donnees/diagnostic_encaissements/`).
+
+### 5.2 Sage ouvert pour la journée (versions 1.0.3 à 1.0.5)
+
+Règle du propriétaire du 6 novembre 2026 : Sage s'ouvre au démarrage de l'application (serveur web, ou fenêtre Windows après la connexion) en **multi-utilisateur**, sur le bureau séparé, et reste ouvert jusqu'à sa fermeture ; la nuit, le traitement fonctionne comme avant. Chacun travaille dans sa propre session Bureau à distance : personne n'ouvre Sage dans la session Windows de l'application (Windows y refuse une deuxième copie).
+
+```mermaid
+flowchart TD
+    F["Fil « sage-journee »<br/>(chaque minute)"] --> N{"0 h - 6 h, traitement de nuit<br/>ou garder_ouvert = false ?"}
+    N -- oui --> X["Sage de la journée refermé"]
+    N -- non --> D{"Sage déjà gardé, en ouverture,<br/>travail mono-utilisateur en cours ?"}
+    D -- oui --> F
+    D -- non --> M["marque « ouverture »<br/>donnees/sage_garde.json"]
+    M --> O["garder-sage : Sage ouvert<br/>en multi-utilisateur (~2 min)"]
+    O --> P["marque « pid » :<br/>Sage prêt"]
+    P --> S1["Saisie (encaissement, transfert…) :<br/>Sage emprunté, prêt en 0,2 s,<br/>fenêtres de travail refermées après"]
+    P --> S2["Lectures : base de ce Sage,<br/>jamais l'outil d'import"]
+    P --> S3["Import (mono-utilisateur) :<br/>Sage de la journée libéré (~30 s),<br/>import, puis rouvert à la minute suivante"]
+```
+
+- Marque `donnees/sage_garde.json` : `ouverture` (programme qui ouvre Sage) pendant l'ouverture, puis `pid` de Sage, fichier, dossier de travail et session Windows. Un Sage lancé par l'application n'est jamais pris pour « le Sage de la personne » (`pids_gardes`, y compris pendant l'ouverture : instantané des processus, parent = programme qui l'ouvre).
+- Tant que ce Sage est ouvert ou s'ouvre (`sage_journee_en_cours`), aucune lecture ne passe par l'outil d'import : il prendrait l'entreprise pour lui seul et Sage refuserait de s'ouvrir (« Un autre utilisateur utilise actuellement cette entreprise sur cet ordinateur », constat du 6 novembre 2026 sur SERVDCSAGE, version 1.0.4). Une lecture demandée attend qu'il soit prêt ; une lecture automatique répond « Sage s'ouvre pour les saisies de la journée ».
+- Une saisie lancée pendant l'ouverture attend la fin de l'ouverture (`attendre_fin_ouverture`), puis emprunte ce Sage. Un import attend aussi la fin de l'ouverture, puis le libère (`liberer_sage_garde`, fichier « arret »).
+- Échec de l'ouverture : nouvel essai 10 minutes plus tard. Chaque étape est notée dans `donnees/journal_sage_garde.log`.
+- `donnees/sage_mono.verrou` marque un travail mono-utilisateur en cours (import, compte ou article rendu inactif) : le Sage de la journée attend.
+
 ---
 
 ## 6. Sécurité
@@ -684,7 +716,7 @@ flowchart TD
 - Le serveur web (`MVOGMBI_Sync_Serveur.exe`) tourne sans fenêtre, une seule copie à la fois (verrou nommé), démarré par le dossier Démarrage ; ses erreurs vont dans `donnees/journal_web.log`.
 - RACINE est le dossier de l'exe ; la variable `MVOGMBI_RACINE` en force un autre.
 - Mise en service sur un serveur : installer, reprendre `config.toml` et `donnees/` (« Reprendre une configuration existante… »), retaper les mots de passe (coffre-fort propre à chaque machine), régler « Serveur de l'application », lancer `installer_web.ps1` (il remet `[web] adresse` à l'adresse Tailscale de la machine) et la tâche planifiée ; sur l'ancien serveur, retirer la tâche et le serveur web.
-- Tests : `tests/`, 295 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
+- Tests : `tests/`, 305 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
 - Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, du guide de l'administrateur, de la documentation fonctionnelle, des règles d'affaires, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
 
 ---
@@ -702,7 +734,9 @@ flowchart TD
 | 1re lecture, Sage fermé | outil d'import, puis base gardée 10 min | ~10 s, puis immédiat |
 | Listes Sage au démarrage | préchargement en arrière-plan (clients, fournisseurs, articles) | 0,1 à 0,4 s au clic |
 | Ventes par article sur 365 jours | résumés par jour sur disque | 0,3 s (4,6 s au 1er appel du jour) |
-| Page de l'application web | base gardée prête, échec de Sage retenu 45 s, style en cache | 60 ms (2e tour des 64 pages : 3,8 s) |
+| Page de l'application web | base gardée prête par la surveillance de fond, échec de Sage retenu 45 s, pages lentes préparées, style en cache | aucune page au-dessus de 0,3 s ; 64 pages en 2,8 s au 1er passage, 2,5 s ensuite |
+| Saisie dans Sage pendant la journée | Sage de la journée emprunté tel quel | prêt en 0,2 s ; saisie complète en 11 à 13 s au lieu d'environ 2 min |
+| Import de nuit, rattrapage de 10 mois | lots de 25 factures par l'assistant d'importation | ~0,28 s par ligne écrite par Sage + 2 à 3 min d'ouverture et de fermeture par lot (durées notées par lot) ; une nuit normale = 1 facture |
 | Import par l'assistant d'importation | Sage ouvert par l'application, menu repéré par son texte | 1 min 40 à 1 min 45 par fichier |
 | Transfert vers le dépôt après un import | fenêtre « Ajustements des Stocks & Transferts », Sage fermé | environ 2 min 45 |
 | Lecture des boîtes de courriel | en-têtes de tous les messages en une demande, messages déjà lus sautés | une demande au lieu d'une par message |

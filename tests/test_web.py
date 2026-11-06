@@ -937,3 +937,11 @@ def test_photographier_une_facture(site):
         Image.new("RGB", (800, 1100), couleur).save(tampon, "JPEG")
         photos.append(tampon.getvalue())
     assert len(PdfReader(BytesIO(pdf_des_photos(photos))).pages) == 2
+
+
+def test_aide_sans_parametre_et_page_d_erreur(site):
+    """Tour du 2026-11-06 : /aide sans « ?page= » plantait, et la page d'erreur aussi (aucune réponse)."""
+    base, _srv, _awa = site
+    patron = connecter(base, "Patron", "secret123")
+    statut, page, _ = ouvrir(patron, base + "/aide")
+    assert statut == 200 and "Aide" in page

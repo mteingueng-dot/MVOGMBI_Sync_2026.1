@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation ; l'installation, la configuration et le dépannage sont dans le guide de l'administrateur.
 
@@ -123,8 +123,6 @@ Règles d'accès :
 | Encaissements | Voir 4.2 |
 | Paiements fournisseurs | Avis Interac rapprochés, confirmés par le propriétaire, saisis dans Sage ; jamais plus que le solde dû |
 | Rapprochement bancaire | Relevé **Desjardins ou BNC** (banque reconnue à la lecture, rangé dans son compte) comparé au compte Sage de cette banque ; liste « Banque » ; écart expliqué ligne par ligne ; un virement entre deux comptes de banque est permis |
-| États de compte RIA | États RIA importés à la main ou par courriel, recontrôlés ligne par ligne ; « Traiter dans Sage » crée les opérations (voir 4.3) |
-| Comptes RIA | Comptes RIA, commissions et espèces ; chacun doit exister dans le plan comptable |
 | Contrôle de la caisse | Espèces attendues (fond + ventes en espèces − remboursements − remises) contre comptage par coupures ; alerte au-delà de 5 $ |
 | Petite caisse et dépenses | Dépense avec reçu, TPS / TVQ séparées dans les bons comptes, écriture dans Sage |
 | Plan comptable | Comptes de Sage lus, créés, modifiés, rendus inactifs ou supprimés depuis l'application |
@@ -135,6 +133,8 @@ Règles d'accès :
 | Fonction | Règles principales |
 |---|---|
 | Opérations RIA | Mouvements RIA des relevés, surplus de dépôts d'espèces, paiements en espèces, commissions et opérations venues des états ; « Saisir dans Sage » écrit les écritures de journal ; le compte RIA de bilan revient à zéro, seules les commissions sont un revenu |
+| États de compte RIA | États RIA importés à la main ou par courriel, recontrôlés ligne par ligne ; « Traiter dans Sage » crée les opérations (voir 4.3) |
+| Comptes RIA | Comptes RIA, commissions et espèces ; chacun doit exister dans le plan comptable |
 
 ### 3.9 Paie
 
@@ -156,6 +156,8 @@ Règles d'accès :
 Suivi des ventes facture par facture (**tous les points de vente**, colonne et filtre Dépôt), recherche dans l'historique Sage (client, fournisseur, article, catégorie), statistiques comme Clover (aperçu, rapports, finances, articles, employés, clients, prévisions), produits inactifs, articles 20/80. Les filtres acceptent **plusieurs valeurs** (articles, catégories, employés…) et un ou plusieurs **points de vente**.
 
 Section **« Gestion »** des statistiques : un rapport par fonction de gestion (pertes et démarque, contrôle de la caisse, petite caisse et dépenses, main-d'œuvre, promotions, retours fournisseurs, bons de commande). Ils suivent le filtre « Point de vente » (pertes, promotions, retours, caisse et main-d'œuvre du point de vente choisi). Pour la période choisie, chacun présente des **cartes d'indicateurs**, un **graphique d'évolution** (par jour jusqu'à 62 jours, sinon par mois), une **carte graphique de répartition** (par motif, compte, employé, fournisseur ou état) et le **rapport détaillé** exportable. Chaque tableau s'exporte (si le profil le permet) en Excel, CSV, PDF ou s'imprime avec l'en-tête de l'entreprise.
+
+Dans l'application web, chaque tableau garde ses cellules sur une ligne, comme dans Windows : un texte de plus de 45 caractères est coupé (« … ») et se lit en entier en passant la souris dessus, pour que les montants et les états restent toujours visibles.
 
 ---
 
@@ -179,6 +181,7 @@ Les règles complètes, codées par module, sont dans le document **Règles d'af
 3. Virements Interac et dépôts d'espèces du relevé : répartis sur les factures qui ont encore des espèces dues.
 4. Dépôt d'espèces supérieur aux espèces dues, même cumulé sur plusieurs journées : les factures sont couvertes de la plus ancienne à la plus récente, le surplus est la part de RIA à confirmer ; rien n'est encaissé avant sa confirmation.
 5. Un dépôt n'est jamais saisi deux fois ; le solde dû de la facture est vérifié après chaque saisie.
+6. Un lot de cartes dont le **montant exact est déjà au compte de dépôt** par une autre écriture Sage (3 jours avant à 7 jours après le dépôt) passe à « Déjà au compte de dépôt ? » : il est à vérifier et n'est jamais encaissé d'office, pour ne pas compter la banque deux fois.
 
 ### 4.3 RIA
 
@@ -192,6 +195,7 @@ Les règles complètes, codées par module, sont dans le document **Règles d'af
 
 - **Import** (factures de vente et d'achat) : Sage fermé, **mono-utilisateur**. L'entreprise est **partagée** : l'outil d'import la refuse, l'application passe alors par l'**Assistant d'importation des transactions** de Sage, sans arrêter le partage.
 - **Saisies** (encaissements, paiements, journal, stock, fiches, plan comptable, paie) : **multi-utilisateur**, la personne peut garder Sage ouvert. Exception : rendre un compte ou un article inactif, que Sage n'accepte qu'en mono-utilisateur.
+- **Sage ouvert pour la journée** : de 6 h à minuit, l'application garde Sage ouvert en multi-utilisateur ; chaque saisie l'utilise tel quel (prête en moins d'une seconde au lieu d'environ 2 minutes d'ouverture). Un import le referme d'abord, puis il se rouvre de lui-même. La nuit, Sage est refermé et le traitement de nuit fonctionne comme avant. Personne n'ouvre Sage dans la session Windows de l'application : chacun travaille dans sa session Bureau à distance. Réglage `[sage] garder_ouvert = false` : ancien fonctionnement.
 - Chaque écriture est **vérifiée dans la base de Sage** après coup.
 - Tout essai se fait d'abord sur une **copie** du fichier d'entreprise.
 - L'application ne modifie jamais les paramètres de Sage.
@@ -215,7 +219,7 @@ Les règles complètes, codées par module, sont dans le document **Règles d'af
 
 ## 5. Traitement de nuit
 
-Chaque nuit, sans intervention :
+Chaque nuit, sans intervention (le Sage gardé ouvert pour la journée est refermé d'abord) :
 
 1. Factures fournisseurs et avis de paiement reçus par courriel lus ; factures « Prête à importer » importées dans Sage.
 2. États de compte RIA reçus lus ; opérations saisies dans Sage si les comptes sont renseignés.

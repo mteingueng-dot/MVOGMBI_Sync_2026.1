@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -675,6 +675,32 @@ FAQ = {
                     "Wi-Fi du magasin (« Administration > Automatisation > Wi-Fi du magasin »). Si vous avez pointé "
                     "depuis votre téléphone et qu'il quitte le Wi-Fi 5 minutes de suite, vous êtes mis en pause (à "
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi."),
+        ("sous_titre", "Nouveautés des versions 1.0.3 à 1.0.7 (6 novembre 2026)"),
+        ("question", "Pourquoi Sage reste-t-il ouvert sur le serveur pendant la journée ?"),
+        ("reponse", "Pour que les saisies commencent tout de suite : de 6 h à minuit, l'application garde Sage ouvert "
+                    "en multi-utilisateur, sans fenêtre visible. Un encaissement, un transfert ou une dépense l'utilise "
+                    "tel quel (prêt en moins d'une seconde au lieu d'environ 2 minutes d'ouverture). Un import le "
+                    "referme d'abord, puis il se rouvre de lui-même ; la nuit, il est refermé et le traitement de nuit "
+                    "fonctionne comme avant. Chacun travaille dans sa propre session Bureau à distance : n'ouvrez pas "
+                    "Sage dans la session Windows où tourne l'application."),
+        ("question", "Le message « Sage s'ouvre pour les saisies de la journée » s'affiche : que faire ?"),
+        ("reponse", "Attendre 2 à 3 minutes : c'est le temps que Sage met à s'ouvrir après un démarrage ou une mise à "
+                    "jour du serveur. Une saisie lancée pendant ce temps attend d'elle-même la fin de l'ouverture, "
+                    "puis se fait. Depuis la version 1.0.5, ce Sage n'est plus jamais pris pour celui d'une personne "
+                    "(l'ancien message « Fermez Sage sur le serveur » ne doit plus paraître quand personne n'a ouvert "
+                    "Sage)."),
+        ("question", "Que veut dire l'état « Déjà au compte de dépôt ? » dans les encaissements ?"),
+        ("reponse", "Le montant exact de ce dépôt de cartes est déjà inscrit au compte de dépôt (1055) par une autre "
+                    "écriture de Sage, entre 3 jours avant et 7 jours après le dépôt. L'application ne l'encaisse "
+                    "jamais d'office, pour ne pas compter la banque deux fois : vérifiez dans Sage. Si c'est bien ce "
+                    "dépôt, il n'y a rien à faire ; sinon, encaissez-le à la main."),
+        ("question", "Pourquoi certains textes des tableaux web se terminent-ils par « … » ?"),
+        ("reponse", "Comme dans les listes de Windows, les cellules restent sur une ligne. Un texte de plus de 45 "
+                    "caractères est coupé pour que les montants et les états restent visibles ; passez la souris "
+                    "dessus pour lire le texte en entier. L'export Excel, CSV ou PDF garde le texte complet."),
+        ("question", "Où sont passés « États de compte RIA » et « Comptes RIA » ?"),
+        ("reponse", "Dans la rubrique « RIA » du menu, sous « Opérations RIA » (ils étaient dans Comptabilité). Les "
+                    "droits des profils ne changent pas."),
         ("sous_titre", "Nouveautés de la version 1.0.0 : dépôts, imports, banques, impressions"),
         ("question", "Comment travailler avec plusieurs dépôts ?"),
         ("reponse", "Chaque point de vente a son dépôt (emplacement de Sage) ; d'autres dépôts sans Clover (entrepôt, "
@@ -1300,6 +1326,31 @@ FAQ = {
                     "addresses (“Administration > Automation > Store Wi-Fi”). If you clocked in from your phone and it "
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi."),
+        ("sous_titre", "What's new in versions 1.0.3 to 1.0.7 (November 6, 2026)"),
+        ("question", "Why does Sage stay open on the server during the day?"),
+        ("reponse", "So that entries start right away: from 6 a.m. to midnight, the application keeps Sage open in "
+                    "multi-user mode, with no visible window. A receipt, a transfer or an expense uses it as is "
+                    "(ready in under a second instead of about 2 minutes to open). An import closes it first, then it "
+                    "reopens by itself; at night it is closed and the night run works as before. Everyone works in "
+                    "their own Remote Desktop session: do not open Sage in the Windows session where the application "
+                    "runs."),
+        ("question", "The message “Sage is opening for the day's entries” appears: what should I do?"),
+        ("reponse", "Wait 2 to 3 minutes: that is how long Sage takes to open after the server starts or is updated. "
+                    "An entry started meanwhile waits by itself for the opening to finish, then runs. Since version "
+                    "1.0.5, this Sage is never mistaken for someone's Sage (the old message “Close Sage on the "
+                    "server” should no longer appear when nobody has opened Sage)."),
+        ("question", "What does the “Already in the deposit account?” status mean in receipts?"),
+        ("reponse", "The exact amount of this card deposit is already in the deposit account (1055) through another "
+                    "Sage entry, between 3 days before and 7 days after the deposit. The application never posts it "
+                    "automatically, so the bank is not counted twice: check in Sage. If it is this deposit, there is "
+                    "nothing to do; otherwise, post it by hand."),
+        ("question", "Why do some texts in web tables end with “…”?"),
+        ("reponse", "As in Windows lists, cells stay on one line. A text longer than 45 characters is cut so that "
+                    "amounts and statuses stay visible; hover over it to read the full text. Excel, CSV or PDF "
+                    "exports keep the full text."),
+        ("question", "Where are “RIA account statements” and “RIA accounts” now?"),
+        ("reponse", "In the “RIA” section of the menu, under “RIA operations” (they used to be under Accounting). "
+                    "Profile permissions do not change."),
         ("sous_titre", "What's new in version 1.0.0: locations, imports, banks, printing"),
         ("question", "How do I work with several locations?"),
         ("reponse", "Each point of sale has its location (a Sage location); other locations without Clover (warehouse, "

@@ -9,7 +9,7 @@ import sys
 
 from mvogmbi_sync.__main__ import main
 
-VERROU = "Local\MVOGMBI_Sync_Serveur_web"
+VERROU = r"Local\MVOGMBI_Sync_Serveur_web"
 
 
 def deja_lance() -> bool:

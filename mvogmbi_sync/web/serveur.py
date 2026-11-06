@@ -251,8 +251,12 @@ class Application:
             return reponse
         except (Exception, SystemExit):  # noqa: BLE001 — une page en erreur n'arrête jamais le serveur
             self.noter(f"ERREUR {req.methode} {req.chemin} ({u.nom})\n{traceback.format_exc()}")
-            return Reponse(500, pages.page(ctx, "Erreur", "<p class='erreur'>Une erreur est survenue ; elle est notée "
-                                                          "dans donnees/journal_web.log.</p>"))
+            message = "<p class='erreur'>Une erreur est survenue ; elle est notée dans donnees/journal_web.log.</p>"
+            try:
+                return Reponse(500, pages.page(ctx, "Erreur", message))
+            except Exception:  # noqa: BLE001 — la page d'erreur elle-même ne peut pas s'afficher : page simple
+                return Reponse(500, pages.page_simple("Erreur", "Une erreur est survenue ; elle est notée dans "
+                                                                 "donnees/journal_web.log."))
 
 
 # --------------------------------------------------------------------------------------------- HTTP

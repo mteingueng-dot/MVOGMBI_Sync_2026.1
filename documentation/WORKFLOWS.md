@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 
@@ -298,6 +298,24 @@ flowchart TD
     D -->|non| F["Approuver les feuilles sans anomalie"]
     F --> G([Traitement de la paie])
     H([Période non approuvée]) -.-> I["Rappel en rouge<br/>au courriel du matin"]
+```
+
+## 8 octies. Encaisser les dépôts en retard
+
+```mermaid
+flowchart TD
+    A([Dépôts Clover pas encore encaissés]) --> B["Comptabilité > Encaissements<br/>Ventes du … au … , Calculer"]
+    B --> C{État du dépôt}
+    C -->|À saisir dans Sage| D["Encaisser dans Sage"]
+    C -->|Déjà au compte de dépôt ?| E["Vérifier dans Sage :<br/>le montant exact est déjà au 1055<br/>par une autre écriture"]
+    E -->|c'est bien ce dépôt| F([Rien à faire])
+    E -->|autre écriture| G["Encaisser à la main dans Sage"]
+    C -->|Part RIA à confirmer| H["RIA > Opérations RIA<br/>confirmer le surplus"]
+    D --> I{"Sage de la journée prêt ?"}
+    I -->|en ouverture, 2 à 3 min| J["La saisie attend<br/>la fin de l'ouverture"] --> K
+    I -->|oui| K["Fenêtre Encaissements :<br/>montant dans « Montant reçu »,<br/>total contrôlé, Traiter"]
+    K --> L["Solde de chaque facture<br/>vérifié dans Sage"]
+    L --> M([Dépôt « Appliqué »])
 ```
 
 ## 9. Droits d'un profil

@@ -80,7 +80,7 @@ def entrees(reg, u) -> list[tuple[str, str, list[tuple[str, str, str]]]]:
 
 def barre(ctx) -> str:
     """Menu de gauche (sur téléphone : en haut, replié) ; rubrique de la page affichée ouverte."""
-    chemin = ctx.req.chemin + (f"?page={ctx.req.query['page']}" if ctx.req.chemin == "/aide" else "")
+    chemin = ctx.req.chemin + (f"?page={ctx.req.query.get('page', 'faq')}" if ctx.req.chemin == "/aide" else "")
     actuel = ctx.req.query.get("f", "") if ctx.req.chemin == "/complete" else ""
     html = ""
     for nom, icone, lignes in entrees(ctx.reg, ctx.u):

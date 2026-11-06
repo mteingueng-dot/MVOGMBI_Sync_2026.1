@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
+Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
 
 ---
 
@@ -57,6 +57,8 @@ gantt
     Assistant d'importation (entreprise partagée) :done, x2, 2026-11-05, 1d
     Dépôts, photos de factures, BNC, impressions :done, x3, 2026-11-05, 1d
     Version 1.0.0, guide de l'administrateur    :done, x4, 2026-11-06, 1d
+    Pages web instantanées, Sage de la journée  :done, x5, 2026-11-06, 1d
+    Encaissements sur le serveur, tableaux web  :done, x6, 2026-11-06, 1d
     section Suite
     Mise en service sur SERVDCSAGE              :g4, 2026-11-06, 2d
     Comptes RIA dans Sage, premières écritures  :g0, 2026-11-06, 2d
@@ -147,6 +149,9 @@ mindmap
 | 5 nov. 2026 | **Version 1.0.0** : numérotation remise à zéro | 1.0.0 |
 | 6 nov. 2026 | Documentation complète à jour et guide de l'administrateur | 1.0.1 |
 | 6 nov. 2026 | PDF de la documentation lisibles : diagrammes à la bonne taille, pages en largeur, titres gardés avec leurs diagrammes | 1.0.2 |
+| 6 nov. 2026 | 221 factures de vente (janvier à novembre) importées dans le vrai fichier ; pages web instantanées ; **Sage gardé ouvert pour les saisies de la journée** ; contrôle « Déjà au compte de dépôt ? » | 1.0.3 |
+| 6 nov. 2026 | Encaissements sur le serveur (grille de Sage plus petite), ouverture du Sage de la journée fiabilisée, textes longs des tableaux web, fonctions RIA dans la rubrique RIA | 1.0.4 à 1.0.6 |
+| 6 nov. 2026 | Tests complets (305 tests, tour de 124 pages web), corrections, documentation à jour | 1.0.7 |
 
 ---
 
@@ -173,3 +178,5 @@ Méthode : une demande → une version livrée avec son installateur, ses tests 
 | Données réelles dans le dépôt public | `.gitignore`, contrôle avant chaque envoi |
 | Installation bloquée sur un serveur (Sage sur SERVDC01) | Nouveau serveur SERVDCSAGE ; adresses réglées dans la configuration |
 | Deux serveurs qui traitent les mêmes ventes | Retirer la tâche et le serveur web de l'ancien serveur à la mise en service |
+| Sage gardé ouvert qui bloque l'entreprise | Refermé la nuit, avant chaque import et à la sortie ; jamais l'outil d'import pendant la journée ; `[sage] garder_ouvert = false` pour revenir en arrière |
+| Écran du serveur différent de la copie d'essai (taille des fenêtres de Sage) | Positions calculées d'après la fenêtre réelle ; photo de diagnostic à chaque échec |
