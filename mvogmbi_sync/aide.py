@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.7"
+VERSION = "1.0.10"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -676,16 +676,20 @@ FAQ = {
                     "depuis votre téléphone et qu'il quitte le Wi-Fi 5 minutes de suite, vous êtes mis en pause (à "
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi."),
         ("sous_titre", "Nouveautés des versions 1.0.3 à 1.0.7 (6 novembre 2026)"),
-        ("question", "Pourquoi Sage reste-t-il ouvert sur le serveur pendant la journée ?"),
-        ("reponse", "Pour que les saisies commencent tout de suite : de 6 h à minuit, l'application garde Sage ouvert "
-                    "en multi-utilisateur, sans fenêtre visible. Un encaissement, un transfert ou une dépense l'utilise "
+        ("question", "Pourquoi Sage est-il ouvert sur le serveur quand l'application est ouverte ?"),
+        ("reponse", "Pour que les saisies commencent tout de suite : de 6 h à minuit, tant que l'application Windows "
+                    "est ouverte, elle garde Sage ouvert en multi-utilisateur, sans fenêtre visible ; quand vous la fermez, "
+                    "Sage se ferme, et il reste fermé tant qu'elle n'est pas ouverte. Un encaissement, un transfert ou une dépense l'utilise "
                     "tel quel (prêt en moins d'une seconde au lieu d'environ 2 minutes d'ouverture). Un import le "
                     "referme d'abord, puis il se rouvre de lui-même ; la nuit, il est refermé et le traitement de nuit "
-                    "fonctionne comme avant. Chacun travaille dans sa propre session Bureau à distance : n'ouvrez pas "
-                    "Sage dans la session Windows où tourne l'application."),
+                    "fonctionne comme avant. Vous pouvez ouvrir Sage vous-même sur le serveur : le Sage de la "
+                    "journée vous laisse la place en quelques secondes (Sage n'ouvre l'entreprise qu'une fois par "
+                    "ordinateur). Si Sage affiche « Cette entreprise partagée est déjà ouverte », cliquez sur OK, "
+                    "attendez 30 secondes et rouvrez le fichier. Pendant que votre Sage est ouvert, les saisies de "
+                    "l'application vous demandent de le fermer ; le Sage de la journée se rouvre 5 minutes après."),
         ("question", "Le message « Sage s'ouvre pour les saisies de la journée » s'affiche : que faire ?"),
-        ("reponse", "Attendre 2 à 3 minutes : c'est le temps que Sage met à s'ouvrir après un démarrage ou une mise à "
-                    "jour du serveur. Une saisie lancée pendant ce temps attend d'elle-même la fin de l'ouverture, "
+        ("reponse", "Attendre 2 à 3 minutes : c'est le temps que Sage met à s'ouvrir après l'ouverture de "
+                    "l'application. Une saisie lancée pendant ce temps attend d'elle-même la fin de l'ouverture, "
                     "puis se fait. Depuis la version 1.0.5, ce Sage n'est plus jamais pris pour celui d'une personne "
                     "(l'ancien message « Fermez Sage sur le serveur » ne doit plus paraître quand personne n'a ouvert "
                     "Sage)."),
@@ -1327,15 +1331,18 @@ FAQ = {
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi."),
         ("sous_titre", "What's new in versions 1.0.3 to 1.0.7 (November 6, 2026)"),
-        ("question", "Why does Sage stay open on the server during the day?"),
-        ("reponse", "So that entries start right away: from 6 a.m. to midnight, the application keeps Sage open in "
-                    "multi-user mode, with no visible window. A receipt, a transfer or an expense uses it as is "
+        ("question", "Why is Sage open on the server while the application is open?"),
+        ("reponse", "So that entries start right away: from 6 a.m. to midnight, while the Windows application is "
+                    "open, it keeps Sage open in multi-user mode, with no visible window; when you close it, Sage "
+                    "closes, and it stays closed while the application is not open. A receipt, a transfer or an expense uses it as is "
                     "(ready in under a second instead of about 2 minutes to open). An import closes it first, then it "
-                    "reopens by itself; at night it is closed and the night run works as before. Everyone works in "
-                    "their own Remote Desktop session: do not open Sage in the Windows session where the application "
-                    "runs."),
+                    "reopens by itself; at night it is closed and the night run works as before. You can open Sage "
+                    "yourself on the server: the day's Sage steps aside within a few seconds (Sage opens the company "
+                    "only once per computer). If Sage shows “This shared company is already open”, click OK, wait "
+                    "30 seconds and open the file again. While your Sage is open, the application's entries ask "
+                    "you to close it; the day's Sage reopens by itself 5 minutes later."),
         ("question", "The message “Sage is opening for the day's entries” appears: what should I do?"),
-        ("reponse", "Wait 2 to 3 minutes: that is how long Sage takes to open after the server starts or is updated. "
+        ("reponse", "Wait 2 to 3 minutes: that is how long Sage takes to open after the application is opened. "
                     "An entry started meanwhile waits by itself for the opening to finish, then runs. Since version "
                     "1.0.5, this Sage is never mistaken for someone's Sage (the old message “Close Sage on the "
                     "server” should no longer appear when nobody has opened Sage)."),

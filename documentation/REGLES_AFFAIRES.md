@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -39,9 +39,11 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-SAGE-06 | Les **questions de Sage** reçoivent une réponse prudente : « Non » à une erreur d'import, « Oui » seulement aux confirmations connues (date antérieure, comptes de taxe associés, suppression demandée) ; toute autre question arrête l'opération. |
 | RG-SAGE-07 | Un compte saisi dans l'application (dépenses, RIA, catégories, fiches) **doit exister dans le plan comptable** de Sage et recevoir des écritures (ni en-tête, ni total, ni inactif). |
 | RG-SAGE-09 | **Entreprise partagée** : le partage n'est jamais arrêté ; quand l'outil d'import refuse l'entreprise partagée, l'import passe par l'**Assistant d'importation des transactions** de Sage (ouvert en mono-utilisateur par l'application) ; le fichier est retenu et passe ensuite directement par l'assistant. |
-| RG-SAGE-10 | **Sage ouvert pour la journée** : au démarrage de l'application (serveur web ou fenêtre Windows), Sage s'ouvre en **multi-utilisateur** (les employés travaillent en même temps, chacun dans sa session Bureau à distance) et reste ouvert jusqu'à la fermeture de l'application ; les saisies l'utilisent tel quel. L'import (mono-utilisateur), la nuit (0 h - 6 h) et le traitement de nuit le referment d'abord, comme avant ; il se rouvre ensuite de lui-même. Un seul Sage gardé par serveur ; `[sage] garder_ouvert = false` revient à l'ancien fonctionnement. |
+| RG-SAGE-10 | **Sage lié à l'application Windows** (règle du propriétaire du 6 novembre 2026) : Sage s'ouvre quand on ouvre l'application Windows MVOGMBI_Sync (après la connexion), en **multi-utilisateur**, et se ferme quand on la ferme ; **si l'application n'est pas ouverte, Sage reste fermé**. Le serveur web ne garde jamais Sage ouvert : ses saisies utilisent le Sage de l'application Windows s'il est ouvert, sinon ouvrent Sage le temps de la saisie. L'import (mono-utilisateur), la nuit (0 h - 6 h) et le traitement de nuit le referment d'abord. Une saisie en cours est toujours terminée avant que Sage se referme ; une application arrêtée brutalement referme quand même Sage (le gardien la surveille). `[sage] garder_ouvert = false` : plus jamais gardé ouvert. |
 | RG-SAGE-10b | Le Sage ouvert par l'application (pour la journée, ou pour une saisie) n'est **jamais pris pour le Sage d'une personne**, même pendant son ouverture : il ne bloque aucune saisie. |
 | RG-SAGE-10c | Tant que le Sage de la journée est ouvert **ou en train de s'ouvrir**, aucune lecture ne passe par l'outil d'import (il prendrait l'entreprise pour lui seul). Une saisie ou un import lancé pendant l'ouverture **attend** qu'elle soit finie. |
+| RG-SAGE-10e | **Le Sage d'une personne passe d'abord** : Sage n'ouvre une entreprise partagée qu'une fois par ordinateur ; dès qu'une personne lance Sage sur le serveur (n'importe quelle session), le Sage de la journée se referme en quelques secondes et ne se rouvre que 5 minutes après la fermeture du dernier Sage d'une personne. |
+| RG-SAGE-10f | Un **Sage resté seul** sur le bureau de l'application (programme qui le gardait arrêté) est reconnu et **refermé proprement**, jamais arrêté de force ; une mise à jour de l'application referme d'abord le Sage de la journée. |
 | RG-SAGE-10d | Une ouverture du Sage de la journée qui échoue est **réessayée 10 minutes plus tard**, jamais à chaque minute ; la raison est notée. |
 | RG-SAGE-08 | Sage tient chaque compte dans son **sens normal** (débit positif pour actif et charge, crédit positif pour passif et produit) ; l'application lit les soldes sans changer le signe. |
 

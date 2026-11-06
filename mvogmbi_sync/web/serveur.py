@@ -532,10 +532,12 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     threading.Thread(target=_suivre_telephones, args=(serveur.app,), daemon=True).start()
     threading.Thread(target=_garder_sage_pret, args=(serveur.app,), daemon=True, name="sage-pret").start()
     threading.Thread(target=_preparer_pages, args=(serveur.app,), daemon=True, name="pages-pretes").start()
-    from ..__main__ import garder_sage_ouvert  # Sage ouvert pour les saisies de la journée (2026-11-06)
+    from ..__main__ import garder_sage_ouvert  # Sage lié à l'application Windows (2026-11-06) : ici, seulement
+    # la fermeture d'un Sage resté seul sur le bureau caché
 
     threading.Thread(target=garder_sage_ouvert, args=(serveur.app.racine,),  # type: ignore[attr-defined]
-                     kwargs={"journal": serveur.app.noter}, daemon=True, name="sage-journee").start()  # type: ignore[attr-defined]
+                     kwargs={"journal": serveur.app.noter, "ouvrir": False}, daemon=True,  # type: ignore[attr-defined]
+                     name="sage-orphelins").start()
     if serveur.app.https:  # type: ignore[attr-defined]
         threading.Thread(target=_relire_certificat, args=(serveur,), daemon=True).start()
     try:

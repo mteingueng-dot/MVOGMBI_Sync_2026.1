@@ -14,6 +14,7 @@ import argparse
 import atexit
 import sys
 import threading
+import time
 import tomllib
 from datetime import date, timedelta
 from pathlib import Path
@@ -752,11 +753,94 @@ def _fermer_sage_garde(sage: bool = True) -> None:
     _SAGE_GARDE.update(fil=None, fichier=None, pid=None, permanent=False)
 
 
-def garder_sage_ouvert(racine: Path, lire_config=None, journal=None) -> None:
+def _fermer_orphelins(pids, journal=None):
+    """Referme proprement (fenêtre fermée, mise à jour remise à plus tard ; jamais arrêté de force) les Sage restés
+    seuls sur le bureau caché ; renvoie le fil qui s'en occupe."""
+    from . import sage_bureau
+
+    def travail():
+        for pid in sorted(pids):
+            if journal:
+                journal(f"Sage resté ouvert sans l'application (n° {pid}) : fermeture.")
+            sage_bureau.executer_sur_bureau_cache(commande_moteur() + ["fermer-sage-orphelin", "--pid", str(pid)],
+                                                  RACINE, delai=300, fermer=False)
+            if journal:
+                journal(f"Sage n° {pid} : {'refermé' if pid not in sage_bureau.sages_du_bureau_cache() else 'toujours ouvert'}.")
+
+    fil = threading.Thread(target=travail, daemon=True, name="sage-orphelin")
+    fil.start()
+    return fil
+
+
+def commande_fermer_sage_orphelin(args) -> None:
+    """(interne, bureau caché) Referme le Sage n° `args.pid` resté seul sur le bureau caché."""
+    import time
+
+    from .sage_bureau import SessionSage, _Emprunt, _texte
+
+    journal = Path(RACINE) / "donnees" / "journal_sage_garde.log"
+
+    def noter(message) -> None:
+        try:
+            with journal.open("a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+        except OSError:
+            pass
+
+    session = SessionSage(Path("Sage50Accounting.exe"), noter)
+    session.processus = _Emprunt(args.pid)  # jamais arrêté de force : seule la fermeture normale de Sage
+    fenetres = session.fenetres()
+    session.principale = next((h for h in fenetres if _texte(h).upper().endswith(".SAI")), fenetres[0] if fenetres else None)
+    noter(f"Sage n° {args.pid} resté ouvert sans l'application : fermeture (fenêtres : {[_texte(h) for h in fenetres]}).")
+    session._fermer(delai=180)
+
+
+DEMARRAGE = time.time()
+
+
+def _fichier_pause() -> Path:
+    return Path(RACINE) / "donnees" / "sage_pause.txt"
+
+
+def sage_en_pause() -> bool:
+    """Pause demandée par l'installateur APRÈS le démarrage de ce programme (15 min au plus) : pas de Sage rouvert."""
+    try:
+        moment = float(_fichier_pause().read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    return moment > DEMARRAGE and time.time() - moment < 900
+
+
+def commande_liberer_sage(args) -> None:
+    """(installateur) Referme le Sage de la journée et les Sage restés seuls sur le bureau caché, avant l'arrêt des
+    programmes : sinon l'installation coupe le programme qui le garde et Sage reste seul (constat du 2026-11-06)."""
+    from . import sage_bureau
+
+    try:  # les programmes déjà lancés (serveur web, fenêtre) ne rouvrent plus Sage : ils vont être arrêtés
+        _fichier_pause().write_text(str(time.time()), encoding="utf-8")
+    except OSError:
+        pass
+    sage_bureau.liberer_sage_garde(delai=180)
+    orphelins = sage_bureau.sages_orphelins()
+    if orphelins:
+        _fermer_orphelins(orphelins).join(600)
+
+
+APRES_SAGE_PERSONNE = 300  # s : le Sage de la journée ne se rouvre que 5 min après le dernier Sage d'une personne
+
+
+def garder_sage_ouvert(racine: Path, lire_config=None, journal=None, ouvrir: bool = True) -> None:
     """Fil de l'application (fenêtre Windows ou serveur web) : Sage ouvert en multi-utilisateur sur le bureau caché
     pendant la journée (règle du propriétaire du 2026-11-06), refermé la nuit (0 h - 6 h) et pendant le traitement
     de nuit (donnees/traitement.verrou), jamais rouvert pendant un travail mono-utilisateur (import) ; un seul Sage
-    gardé pour tout le serveur (marque donnees/sage_garde.json). [sage] garder_ouvert = false : comme avant."""
+    gardé pour tout le serveur (marque donnees/sage_garde.json). [sage] garder_ouvert = false : comme avant.
+    Constat du propriétaire du 2026-11-06 sur SERVDCSAGE : Sage n'ouvre une entreprise partagée qu'une fois par
+    ordinateur (« Cette entreprise partagée est déjà ouverte ») ; la personne travaille dans la même session que
+    l'application. Un Sage lancé par une PERSONNE (n'importe quelle session) a donc la priorité : le Sage de la
+    journée se referme dans les secondes qui suivent et ne se rouvre qu'après la fermeture de ce Sage.
+    Règle du propriétaire du 2026-11-06 (soir) : Sage est lié à l'APPLICATION WINDOWS (« si l'application n'est pas
+    ouverte, Sage reste fermé ») : seule la fenêtre Windows l'ouvre (`ouvrir=True`) ; le serveur web (`ouvrir=False`)
+    ne fait que refermer un Sage resté seul sur le bureau caché."""
     import time as _temps
     from datetime import datetime as _maintenant
 
@@ -768,9 +852,18 @@ def garder_sage_ouvert(racine: Path, lire_config=None, journal=None) -> None:
         chemin = Path(racine) / "config.toml"
         return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
 
-    reessai = 0.0
+    reessai = prochain = personne = 0.0
+    fermeture: dict = {"fil": None}
     while True:
         try:
+            orphelins = sage_bureau.sages_orphelins()
+            if orphelins and not (fermeture["fil"] and fermeture["fil"].is_alive()):
+                fermeture["fil"] = _fermer_orphelins(orphelins, journal)
+            if not ouvrir:  # serveur web : jamais de Sage ouvert pour la journée
+                _temps.sleep(30)
+                continue
+            if sage_bureau.sage_ouvert():  # Sage d'une personne (jamais celui de l'application)
+                personne = _temps.time()
             c = config()
             fichier = c.get("sage_import", {}).get("fichier_entreprise")
             nuit = _maintenant.now().hour < 6 or (Path(racine) / "donnees" / "traitement.verrou").exists()
@@ -783,9 +876,17 @@ def garder_sage_ouvert(racine: Path, lire_config=None, journal=None) -> None:
                     fermer_bases(sage=True)
                     if journal:
                         journal("Sage refermé pour la nuit.")
-            elif (not a_moi and _temps.time() >= reessai and not sage_bureau.garde_en_ouverture()
+            elif a_moi and personne and _temps.time() - personne < 6:
+                # une personne lance Sage : elle passe d'abord (Sage n'ouvre l'entreprise qu'une fois par ordinateur)
+                fermer_bases(sage=True)
+                if journal:
+                    journal("Sage ouvert par une personne : Sage de la journée refermé pour lui laisser l'entreprise.")
+                prochain = _temps.time() + 60
+            elif (not a_moi and _temps.time() >= max(reessai, prochain, personne + APRES_SAGE_PERSONNE)
+                  and not orphelins and not sage_en_pause() and not sage_bureau.garde_en_ouverture()
                   and not sage_bureau.sage_garde(meme_session=False) and not sage_bureau.mono_en_cours()
-                  and executable_import() and not sage_bureau.sage_ouvert_dans_cette_session()):
+                  and executable_import() and not sage_bureau.sage_ouvert()):
+                prochain = _temps.time() + 60
                 debut = _temps.time()
                 try:
                     _sage_garde(c, fichier, permanent=True)
@@ -797,7 +898,7 @@ def garder_sage_ouvert(racine: Path, lire_config=None, journal=None) -> None:
         except Exception as exc:  # noqa: BLE001 — réessayé plus tard
             if journal:
                 journal(f"Sage gardé ouvert : {exc}")
-        _temps.sleep(60)
+        _temps.sleep(5)  # une personne qui lance Sage n'attend que quelques secondes
 
 
 def commande_garder_sage(args) -> None:
@@ -844,17 +945,28 @@ def commande_garder_sage(args) -> None:
         noter_sage_garde(session.processus.pid, args.fichier, dossier)  # les saisies l'utilisent tel quel
         lecture = dossier / "lecture"
         debut = time.time()
+        from .sage_bureau import _vivant
+
+        appli = os.getppid()  # l'application qui a demandé Sage : partie (fermée, arrêtée) -> Sage refermé
         while not (dossier / "arret").exists():
+            if permanent and not _vivant(appli):
+                break
             derniere = lecture.stat().st_mtime if lecture.exists() else debut
             if time.time() - max(derniere, debut) > args.duree:
                 break
             time.sleep(1)
+        from .sage_bureau import emprunt_en_cours
+
+        fin = time.time() + 1800  # une saisie l'utilise encore (web) : Sage refermé quand elle a fini
+        while emprunt_en_cours() and time.time() < fin:
+            time.sleep(2)
     finally:
-        if session.processus is not None and not getattr(session, "emprunte", False):
+        pid = session.processus.pid if session.processus is not None else None
+        session.fermer()  # Sage refermé d'abord : si ce programme est coupé pendant la fermeture, la marque reste
+        if pid is not None and not getattr(session, "emprunte", False):
             from .sage_bureau import oublier_sage_garde
 
-            oublier_sage_garde(session.processus.pid)
-        session.fermer()
+            oublier_sage_garde(pid)
 
 
 def _fermer_a_la_sortie() -> None:
@@ -1756,6 +1868,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--duree", type=int, default=DUREE_GARDE)
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_garder_sage)
+
+    p = sous.add_parser("fermer-sage-orphelin", help="(interne) Refermer un Sage resté seul sur le bureau caché")
+    p.add_argument("--pid", type=int, required=True)
+    p.set_defaults(fonction=commande_fermer_sage_orphelin)
+
+    p = sous.add_parser("liberer-sage", help="(installateur) Refermer le Sage gardé ouvert avant une mise à jour")
+    p.set_defaults(fonction=commande_liberer_sage)
 
     p = sous.add_parser("verifier-sage", help="Vérifier la lecture directe des données de Sage 50")
     p.add_argument("--config", default=str(RACINE / "config.toml"))

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 305 tests
+## 3. Tests automatiques — 309 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -60,7 +60,10 @@ Règles :
 | Dépôts (filtres, transferts après import, documents de stock, main-d'œuvre, rapports de gestion, suivi des ventes) | test_depots | 9 |
 | Ajouts des versions 2.17 à 2.24 (mot de passe web, feuilles de temps, relevés BNC, client, photo de facture, état partagé des factures) | test_web, test_paie_temps, test_rapprochement, test_page_fournisseurs | 5 |
 | Ajouts des versions 1.0.1 à 1.0.7 (imports internes, port 465, « Déjà au compte de dépôt ? », rapidité web, Sage de la journée et son ouverture, grille des encaissements, textes longs des tableaux, aide sans paramètre) | test_imports_internes, test_courriel, test_encaissements, test_rapidite_web, test_sage_journee, test_web | 10 |
-| **Total** | 60 fichiers | **305** |
+| Version 1.0.8 : le Sage d'une personne passe d'abord | test_sage_journee | 1 |
+| Version 1.0.9 : Sage orphelin, pause de l'installateur | test_sage_journee | 2 |
+| Version 1.0.10 : le serveur web n'ouvre jamais Sage | test_sage_journee | 1 |
+| **Total** | 60 fichiers | **309** |
 
 Résultat du 6 novembre 2026 (version 1.0.7) : **305 réussis**, y compris les 2 tests de fenêtres Tk ; compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
 
@@ -122,6 +125,8 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | S20 | Vrai fichier partagé (serveur) : 2 factures fournisseurs par l'assistant, stock et coût Clover | mono-utilisateur | Réussi le 5 novembre 2026 |
 | S21 | Sage de la journée : ouvert en arrière-plan, 2 saisies qui l'empruntent, puis libéré pour un import par l'assistant | multi, puis mono pour l'import | Réussi : prêt en 0,2 s, saisies en 11 à 13 s, libéré en 30 s, « ESSAI ASSIST 5 » importée |
 | S22 | Course reproduite : lectures toutes les 5 s et saisie lancée pendant l'ouverture du Sage de la journée | multi-utilisateur | Réussi : outil d'import jamais lancé, Sage jamais pris pour celui d'une personne, saisie qui attend puis emprunte Sage (fenêtre Encaissements en 7 s) |
+| S24 | Sage de la journée rendu orphelin (gardien arrêté comme par l'installateur, Sage jamais touché) | multi-utilisateur | Réussi : reconnu orphelin, jamais pris pour le Sage d'une personne, refermé proprement en 12 s |
+| S25 | Application Windows arrêtée brutalement pendant que son Sage est ouvert | multi-utilisateur | Réussi : Sage refermé proprement 10 s après, aucun orphelin |
 | S23 | Fenêtre Encaissements : cellule « Montant reçu » avec la grille normale (791 points) et réduite à la taille du serveur (641 × 96) | multi-utilisateur | Réussi : x = 696 puis 559, bonne colonne, rien de traité |
 
 ### 4.4 Profils et droits
@@ -204,6 +209,8 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | « Fermez Sage sur le serveur » alors que personne n'avait ouvert Sage | Sage de la journée en ouverture pris pour celui d'une personne ; son ouverture refusée parce que l'outil d'import (surveillance du web) prenait l'entreprise | Marque d'ouverture, plus d'outil d'import pendant la journée, saisies qui attendent la fin de l'ouverture (1.0.5) |
 | Programme qui ouvre le Sage de la journée bloqué 15 min | Il attendait sa propre marque d'ouverture (trouvé à l'essai S22) | Jamais d'attente de soi-même (1.0.5) |
 | Page Rapprochement : Entrée, Sortie, État hors de la zone | Une description très longue élargissait la colonne | Textes longs coupés, texte complet au survol (1.0.6) |
+| « Cette entreprise partagée est déjà ouverte » quand le propriétaire ouvre Sage sur le serveur (vrai fichier) | Sage n'ouvre l'entreprise qu'une fois par ordinateur ; le Sage de la journée la tenait dans la même session | Le Sage d'une personne passe d'abord : Sage de la journée refermé en quelques secondes, rouvert 5 min après (1.0.8) |
+| Après l'installation de la 1.0.8 : « Fermez Sage » à l'encaissement, Sage impossible à ouvrir (vrai fichier) | L'installation a coupé le gardien pendant la fermeture de Sage ; marque effacée avant la fermeture ; Sage seul sur le bureau caché | Sage du bureau caché toujours celui de l'application, orphelin refermé proprement, installateur qui referme Sage d'abord (1.0.9) |
 | `/aide` sans « ?page= » : aucune réponse | Paramètre lu sans valeur par défaut, et la page d'erreur plantait aussi | Valeur par défaut, page d'erreur de secours (1.0.7) |
 | Avertissement « invalid escape sequence » (lanceur du serveur web) | « \M » dans un nom de verrou | Chaîne brute (1.0.7) |
 

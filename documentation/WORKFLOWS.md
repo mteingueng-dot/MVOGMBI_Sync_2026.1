@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 

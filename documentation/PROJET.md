@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
+Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
 
 ---
 
@@ -152,6 +152,9 @@ mindmap
 | 6 nov. 2026 | 221 factures de vente (janvier à novembre) importées dans le vrai fichier ; pages web instantanées ; **Sage gardé ouvert pour les saisies de la journée** ; contrôle « Déjà au compte de dépôt ? » | 1.0.3 |
 | 6 nov. 2026 | Encaissements sur le serveur (grille de Sage plus petite), ouverture du Sage de la journée fiabilisée, textes longs des tableaux web, fonctions RIA dans la rubrique RIA | 1.0.4 à 1.0.6 |
 | 6 nov. 2026 | Tests complets (305 tests, tour de 124 pages web), corrections, documentation à jour | 1.0.7 |
+| 6 nov. 2026 | Sage de la journée validé sur le vrai fichier partagé ; le Sage d'une personne passe d'abord | 1.0.8 |
+| 6 nov. 2026 | Sage resté seul après une mise à jour : reconnu et refermé ; mises à jour qui referment Sage d'abord | 1.0.9 |
+| 6 nov. 2026 | Sage lié à l'application Windows : ouvert avec elle, fermé avec elle, fermé si elle n'est pas ouverte | 1.0.10 |
 
 ---
 

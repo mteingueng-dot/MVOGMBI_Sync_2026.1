@@ -225,27 +225,81 @@ class _PROCESSENTRY32W(ctypes.Structure):
                 ("szExeFile", ctypes.c_wchar * 260)]
 
 
-def _sages_lances_par(parent: int) -> set[int]:
-    """Sage50Accounting.exe dont le parent est `parent` (le programme qui ouvre le Sage de la journée)."""
+def _processus() -> dict[int, tuple[int, str]]:
+    """Processus de la machine : {pid: (pid du parent, nom de l'exécutable en minuscules)}."""
     if kernel32 is None:
-        return set()
+        return {}
     creer = kernel32.CreateToolhelp32Snapshot
     creer.restype = wt.HANDLE
     instantane = creer(2, 0)  # TH32CS_SNAPPROCESS
     if not instantane or instantane == ctypes.c_void_p(-1).value:
-        return set()
-    trouves = set()
+        return {}
+    trouves = {}
     try:
         entree = _PROCESSENTRY32W()
         entree.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
         ok = kernel32.Process32FirstW(instantane, ctypes.byref(entree))
         while ok:
-            if entree.th32ParentProcessID == parent and entree.szExeFile.lower() == "sage50accounting.exe":
-                trouves.add(int(entree.th32ProcessID))
+            trouves[int(entree.th32ProcessID)] = (int(entree.th32ParentProcessID), entree.szExeFile.lower())
             ok = kernel32.Process32NextW(instantane, ctypes.byref(entree))
     finally:
         kernel32.CloseHandle(instantane)
     return trouves
+
+
+def _sages_lances_par(parent: int) -> set[int]:
+    """Sage50Accounting.exe dont le parent est `parent` (le programme qui ouvre le Sage de la journée)."""
+    return {p for p, (pere, nom) in _processus().items() if pere == parent and nom == "sage50accounting.exe"}
+
+
+def sages_du_bureau_cache() -> dict[int, int]:
+    """Sage50Accounting.exe qui ont une fenêtre sur le bureau caché de l'application : {pid : pid du parent}. Un Sage
+    de ce bureau est toujours celui de l'application (une personne travaille sur son bureau à elle)."""
+    if user32 is None:
+        return {}
+    ouvrir = user32.OpenDesktopW
+    ouvrir.restype = wt.HANDLE
+    ouvrir.argtypes = [wt.LPCWSTR, wt.DWORD, wt.BOOL, wt.DWORD]
+    bureau = ouvrir(BUREAU, 0, False, 0x0041)  # DESKTOP_READOBJECTS | DESKTOP_ENUMERATE
+    if not bureau:
+        return {}
+    pids: set[int] = set()
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def rappel(h, _):
+        pid = wt.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        pids.add(int(pid.value))
+        return True
+
+    try:
+        user32.EnumDesktopWindows(wt.HANDLE(bureau), rappel, 0)
+    finally:
+        user32.CloseDesktop(wt.HANDLE(bureau))
+    tous = _processus()
+    return {p: tous[p][0] for p in pids if p in tous and tous[p][1] == "sage50accounting.exe"}
+
+
+def sages_orphelins() -> set[int]:
+    """Sage du bureau caché dont le programme qui l'a lancé n'existe plus (constat du 2026-11-06 sur SERVDCSAGE :
+    l'installation de la 1.0.8 a coupé le programme qui gardait Sage pendant sa fermeture ; Sage est resté seul sur
+    le bureau caché, a tenu l'entreprise partagée et a été pris pour le Sage d'une personne)."""
+    sages = sages_du_bureau_cache()
+    if not sages:
+        return set()
+    tous = _processus()
+    return {p for p, pere in sages.items() if pere not in tous}
+
+
+def attendre_orphelins(delai: float = 240, journal=None) -> None:
+    """Un Sage orphelin tient l'entreprise : on attend que l'application l'ait refermé (fil de la journée)."""
+    if not sages_orphelins():
+        return
+    if journal:
+        journal("Un Sage resté ouvert sans l'application se referme : attente…")
+    fin = time.time() + delai
+    while time.time() < fin and sages_orphelins():
+        time.sleep(2)
 
 
 def sage_garde(fichier=None, meme_session: bool = True) -> dict | None:
@@ -272,7 +326,7 @@ def pids_gardes() -> set[int]:
     ouverture = garde_en_ouverture()
     if ouverture:  # Sage de la journée en train de s'ouvrir : déjà celui de l'application
         pids = pids | _sages_lances_par(int(ouverture["ouverture"]))
-    return pids
+    return pids | set(sages_du_bureau_cache())  # tout Sage du bureau caché est celui de l'application
 
 
 def noter_sage_garde(pid: int, fichier, dossier) -> None:
@@ -308,6 +362,20 @@ def liberer_sage_garde(delai: float = 180) -> bool:
         time.sleep(1)
     time.sleep(2)  # l'entreprise finit d'être relâchée
     return True
+
+
+def _marque_emprunt() -> Path:
+    from .__main__ import RACINE
+
+    return Path(RACINE) / "donnees" / "sage_emprunt.json"
+
+
+def emprunt_en_cours() -> bool:
+    """Une saisie utilise en ce moment le Sage gardé ouvert : il n'est refermé qu'après elle."""
+    try:
+        return _vivant(int(json.loads(_marque_emprunt().read_text(encoding="utf-8"))["pid"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def mono_en_cours() -> bool:
@@ -449,6 +517,7 @@ class SessionSage:
 
         self.emprunte = False
         attendre_fin_ouverture(journal=self.journal)  # Sage de la journée en train de s'ouvrir : on l'attend
+        attendre_orphelins(journal=self.journal)  # Sage resté seul sur le bureau caché : refermé d'abord
         if not mono and self.emprunter(fichier_sai):
             return
         liberer_sage_garde()  # mono-utilisateur, ou Sage gardé hors de ce bureau : une seule copie par session
@@ -546,6 +615,10 @@ class SessionSage:
             return False
         self.emprunte = True
         self._avant = set(self.fenetres())
+        try:
+            _marque_emprunt().write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
+        except OSError:
+            pass
         self.fermer_mise_a_jour()
         self.journal(f"Sage déjà ouvert sur {Path(fichier_sai).name} : utilisé tel quel.")
         return True
@@ -564,6 +637,11 @@ class SessionSage:
             time.sleep(1)
             self._confirmer_abandon()
         self.journal("Sage laissé ouvert pour les saisies suivantes.")
+        try:
+            if int(json.loads(_marque_emprunt().read_text(encoding="utf-8")).get("pid", 0)) == os.getpid():
+                _marque_emprunt().unlink()
+        except (OSError, ValueError, TypeError):
+            pass
 
     def _repondre_entreprise_partagee(self, mono: bool) -> bool:
         """Entreprise partagée (le vrai fichier, constat du 2026-10-29) : Sage demande « Comment voulez-vous ouvrir

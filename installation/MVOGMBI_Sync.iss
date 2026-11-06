@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.0.7"
+#define Version "1.0.10"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -135,7 +135,8 @@ Type: files; Name: "{userdesktop}\MVOGMBI_Sync.lnk"
 [UninstallRun]
 ; Retire la tâche planifiée de 1 h (les données et la configuration restent dans le dossier).
 Filename: "{app}\MVOGMBI_Sync_console.exe"; Parameters: "planifier --retirer"; Flags: runhidden; RunOnceId: "RetirerTache"
-; Serveur web arrêté avant la désinstallation
+; Sage gardé ouvert refermé proprement, puis serveur web arrêté avant la désinstallation
+Filename: "{app}\MVOGMBI_Sync_console.exe"; Parameters: "liberer-sage"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "LibererSage"
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM MVOGMBI_Sync_Serveur.exe /F"; Flags: runhidden; RunOnceId: "ArreterServeurWeb"
 
 [Code]
@@ -175,11 +176,15 @@ begin
 end;
 
 { Serveur web en marche : arrêté avant la copie des fichiers (sinon MVOGMBI_Sync_Serveur.exe ne se remplace pas),
-  redémarré à la fin par [Run]. }
+  redémarré à la fin par [Run]. Avant : le Sage gardé ouvert pour la journée est refermé proprement (liberer-sage),
+  sinon l'arrêt coupe le programme qui le garde et Sage reste seul sur le bureau caché (constat du 2026-11-06). }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
 begin
+  if FileExists(ExpandConstant('{app}\MVOGMBI_Sync_console.exe')) then
+    Exec(ExpandConstant('{app}\MVOGMBI_Sync_console.exe'), 'liberer-sage', ExpandConstant('{app}'), SW_HIDE,
+      ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM MVOGMBI_Sync_Serveur.exe /F', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Result := '';
 end;

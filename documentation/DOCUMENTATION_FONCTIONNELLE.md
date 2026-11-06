@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation ; l'installation, la configuration et le dépannage sont dans le guide de l'administrateur.
 
@@ -195,7 +195,7 @@ Les règles complètes, codées par module, sont dans le document **Règles d'af
 
 - **Import** (factures de vente et d'achat) : Sage fermé, **mono-utilisateur**. L'entreprise est **partagée** : l'outil d'import la refuse, l'application passe alors par l'**Assistant d'importation des transactions** de Sage, sans arrêter le partage.
 - **Saisies** (encaissements, paiements, journal, stock, fiches, plan comptable, paie) : **multi-utilisateur**, la personne peut garder Sage ouvert. Exception : rendre un compte ou un article inactif, que Sage n'accepte qu'en mono-utilisateur.
-- **Sage ouvert pour la journée** : de 6 h à minuit, l'application garde Sage ouvert en multi-utilisateur ; chaque saisie l'utilise tel quel (prête en moins d'une seconde au lieu d'environ 2 minutes d'ouverture). Un import le referme d'abord, puis il se rouvre de lui-même. La nuit, Sage est refermé et le traitement de nuit fonctionne comme avant. Personne n'ouvre Sage dans la session Windows de l'application : chacun travaille dans sa session Bureau à distance. Réglage `[sage] garder_ouvert = false` : ancien fonctionnement.
+- **Sage lié à l'application Windows** : de 6 h à minuit, tant que l'application Windows est ouverte, elle garde Sage ouvert en multi-utilisateur (fermée : Sage reste fermé) ; chaque saisie l'utilise tel quel (prête en moins d'une seconde au lieu d'environ 2 minutes d'ouverture). Un import le referme d'abord, puis il se rouvre de lui-même. La nuit, Sage est refermé et le traitement de nuit fonctionne comme avant. Une personne qui ouvre Sage sur le serveur passe d'abord : le Sage de la journée lui laisse la place en quelques secondes et se rouvre 5 minutes après la fermeture de son Sage. Réglage `[sage] garder_ouvert = false` : ancien fonctionnement.
 - Chaque écriture est **vérifiée dans la base de Sage** après coup.
 - Tout essai se fait d'abord sur une **copie** du fichier d'entreprise.
 - L'application ne modifie jamais les paramètres de Sage.

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.7 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -658,11 +658,11 @@ Grille de la fenêtre Encaissements (version 1.0.4) : sa taille dépend de l'éc
 
 ### 5.2 Sage ouvert pour la journée (versions 1.0.3 à 1.0.5)
 
-Règle du propriétaire du 6 novembre 2026 : Sage s'ouvre au démarrage de l'application (serveur web, ou fenêtre Windows après la connexion) en **multi-utilisateur**, sur le bureau séparé, et reste ouvert jusqu'à sa fermeture ; la nuit, le traitement fonctionne comme avant. Chacun travaille dans sa propre session Bureau à distance : personne n'ouvre Sage dans la session Windows de l'application (Windows y refuse une deuxième copie).
+Règles du propriétaire du 6 novembre 2026 : Sage s'ouvre quand on ouvre l'**application Windows** (après la connexion) en **multi-utilisateur**, sur le bureau séparé, et se ferme quand on la ferme ; si l'application n'est pas ouverte, Sage reste fermé (version 1.0.10 : le serveur web ne lance plus que la fermeture des Sage orphelins, `garder_sage_ouvert(ouvrir=False)`). Le gardien (`garder-sage`) surveille l'application qui l'a lancé (`os.getppid`) : partie, il referme Sage ; il attend la fin d'une saisie qui emprunte Sage (`donnees/sage_emprunt.json`). La nuit, le traitement fonctionne comme avant. Une personne peut ouvrir Sage sur le serveur, dans n'importe quelle session : Sage n'ouvre une entreprise partagée qu'une fois par ordinateur (« Cette entreprise partagée est déjà ouverte », constat du 6 novembre 2026), le Sage de la journée lui laisse donc la place en quelques secondes et ne se rouvre que 5 minutes après la fermeture de ce Sage (version 1.0.8). Pendant ce temps, les saisies de l'application demandent de le fermer.
 
 ```mermaid
 flowchart TD
-    F["Fil « sage-journee »<br/>(chaque minute)"] --> N{"0 h - 6 h, traitement de nuit<br/>ou garder_ouvert = false ?"}
+    F["Fil « sage-journee »<br/>de l'application Windows<br/>(toutes les 5 s)"] --> N{"0 h - 6 h, traitement de nuit<br/>ou garder_ouvert = false ?"}
     N -- oui --> X["Sage de la journée refermé"]
     N -- non --> D{"Sage déjà gardé, en ouverture,<br/>travail mono-utilisateur en cours ?"}
     D -- oui --> F
@@ -677,6 +677,7 @@ flowchart TD
 - Marque `donnees/sage_garde.json` : `ouverture` (programme qui ouvre Sage) pendant l'ouverture, puis `pid` de Sage, fichier, dossier de travail et session Windows. Un Sage lancé par l'application n'est jamais pris pour « le Sage de la personne » (`pids_gardes`, y compris pendant l'ouverture : instantané des processus, parent = programme qui l'ouvre).
 - Tant que ce Sage est ouvert ou s'ouvre (`sage_journee_en_cours`), aucune lecture ne passe par l'outil d'import : il prendrait l'entreprise pour lui seul et Sage refuserait de s'ouvrir (« Un autre utilisateur utilise actuellement cette entreprise sur cet ordinateur », constat du 6 novembre 2026 sur SERVDCSAGE, version 1.0.4). Une lecture demandée attend qu'il soit prêt ; une lecture automatique répond « Sage s'ouvre pour les saisies de la journée ».
 - Une saisie lancée pendant l'ouverture attend la fin de l'ouverture (`attendre_fin_ouverture`), puis emprunte ce Sage. Un import attend aussi la fin de l'ouverture, puis le libère (`liberer_sage_garde`, fichier « arret »).
+- **Sage orphelin** (version 1.0.9) : tout Sage dont une fenêtre est sur le bureau séparé est celui de l'application (`sages_du_bureau_cache`, `EnumDesktopWindows`) ; s'il n'a plus de programme parent (`sages_orphelins` : gardien coupé, par exemple par une installation), il est refermé proprement sur ce bureau (`fermer-sage-orphelin` : fenêtre fermée, mise à jour remise à plus tard, jamais arrêté de force) avant toute nouvelle ouverture. L'installateur lance `liberer-sage` avant d'arrêter les programmes (pause `donnees/sage_pause.txt` pour les programmes déjà lancés) ; le gardien referme Sage avant d'effacer sa marque.
 - Échec de l'ouverture : nouvel essai 10 minutes plus tard. Chaque étape est notée dans `donnees/journal_sage_garde.log`.
 - `donnees/sage_mono.verrou` marque un travail mono-utilisateur en cours (import, compte ou article rendu inactif) : le Sage de la journée attend.
 
