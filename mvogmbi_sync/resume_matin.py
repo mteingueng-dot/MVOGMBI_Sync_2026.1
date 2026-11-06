@@ -162,6 +162,13 @@ def calculer(racine: Path, config_toml: dict, aujourdhui: date | None = None) ->
         r.infos += [f"Congé : {nom} ({', '.join(sorted(jours))})" for nom, jours in sorted(absents.items())]
     except Exception as exc:
         r.erreurs.append(f"Congés : {exc}")
+    try:  # feuilles de temps des périodes de paie terminées pas encore approuvées (paie_temps.rappels)
+        from . import paie_temps as pt
+        from .fenetre_pointage import reference
+
+        r.alertes += pt.rappels(pt.Registre(racine), reference(racine), aujourdhui)
+    except Exception as exc:
+        r.erreurs.append(f"Feuilles de temps : {exc}")
     try:  # caisse d'hier : comptée ? écart ? (caisse.py)
         from . import caisse as ca
 

@@ -358,3 +358,25 @@ def pieces_jointes(cr) -> list[tuple[str, bytes]]:
         lignes.append(["", f"{t('Erreur')} : {cr.erreur}"])
     pieces.append((f"{t('Journal')}_{jour}.xlsx", _classeur(t("Journal"), [t("Heure"), t("Message")], lignes)))
     return pieces
+
+
+def envoyer_bilan_factures_fournisseurs(config_toml: dict, resultats: dict[str, str]) -> None:
+    """Courriel après un import de factures fournisseurs lancé à la demande (page Factures fournisseurs, Windows ou
+    web ; demande du propriétaire du 2026-11-05 : « je n'ai pas reçu de courriel à la suite de cette
+    transaction »). Mêmes destinataires que le compte rendu de la nuit ; rien si le courriel n'est pas configuré."""
+    from html import escape
+
+    c = parametres(config_toml)
+    if not c.get("serveur") or not adresses(c.get("destinataires", "")):
+        return
+    importees = [f for f, t in resultats.items() if t.startswith("importée")]
+    echecs = [f for f in resultats if f not in importees]
+    sujet = (f"MVOGMBI_Sync — Factures fournisseurs : {len(importees)} importée(s)"
+             + (f", {len(echecs)} non importée(s)" if echecs else ""))
+    texte = "\n\n".join(f"{f} : {t}" for f, t in resultats.items())
+    html = ("<div style='font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
+            f"<h2 style='color:#13772d;margin:0 0 8px'>{escape(sujet)}</h2>"
+            + "".join(f"<p style='margin:10px 0 4px;color:{'#13772d' if f in importees else '#c8102e'}'><b>"
+                      f"{escape(f)}</b></p><pre style='margin:0;font-family:Consolas,monospace;font-size:12px;"
+                      f"white-space:pre-wrap'>{escape(t)}</pre>" for f, t in resultats.items()) + "</div>")
+    envoyer(config_toml, sujet, texte, html)

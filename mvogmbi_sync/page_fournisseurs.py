@@ -72,21 +72,32 @@ class PageFournisseurs(ttk.Frame):
         self.avec_clover = tk.BooleanVar(value=True)
         ttk.Checkbutton(barre, text=t("Mettre aussi à jour Clover"), variable=self.avec_clover).pack(side="right",
                                                                                                     padx=(8, 0))
-        Bouton(barre, "📤  " + t("Importer toutes les factures prêtes"), lambda: self.importer(toutes=True),
-               "accent").pack(side="right", padx=(8, 0))
-        self.resume = ttk.Label(self, text="", foreground=TEXTE_DOUX, padding=(0, 6))
-        self.resume.pack(fill="x")
+        # les deux boutons d'import sur la ligne du résumé : dans la barre du haut, trop large, ils sortaient de la
+        # fenêtre (constat du propriétaire du 2026-11-05 : « le bouton n'existe pas dans la version Windows »)
+        ligne = ttk.Frame(self)
+        ligne.pack(fill="x", pady=(4, 0))
+        Bouton(ligne, "📤  " + t("Importer toutes les factures prêtes"), lambda: self.importer(toutes=True),
+               "accent", petit=True).pack(side="right", padx=(8, 0))
+        # cases à cocher : plusieurs factures importées à la fois (demande du propriétaire du 2026-11-05)
+        self.cochees: set[str] = set()
+        Bouton(ligne, "☑  " + t("Importer les factures cochées"), lambda: self.importer(cochees=True),
+               "principal", petit=True).pack(side="right", padx=(8, 0))
+        self.resume = ttk.Label(ligne, text="", foreground=TEXTE_DOUX, padding=(0, 6))
+        self.resume.pack(side="left", fill="x", expand=True)
 
         volets = ttk.PanedWindow(self, orient="vertical")
         volets.pack(fill="both", expand=True)
         haut = cadre_tableau(volets)
         volets.add(haut, weight=1)
-        colonnes = (("fichier", "Fichier", 220), ("fournisseur", "Fournisseur Sage", 220), ("numero", "N°", 90),
-                    ("date", "Date", 85), ("total", "Total", 90), ("etat", "État", 130))
+        colonnes = (("case", "☐", 34), ("fichier", "Fichier", 220), ("fournisseur", "Fournisseur Sage", 220), ("numero", "N°", 90),
+                    ("date", "Date", 85), ("total", "Total", 90), ("depot", "Dépôt", 120), ("etat", "État", 130))
         self.liste = ttk.Treeview(haut, columns=[c[0] for c in colonnes], show="headings", height=3, selectmode="browse")
         for cle, titre_col, largeur in colonnes:
             self.liste.heading(cle, text=t(titre_col))
-            self.liste.column(cle, width=largeur, anchor="e" if cle == "total" else "w", stretch=cle == "fichier")
+            self.liste.column(cle, width=largeur, anchor="e" if cle == "total" else "center" if cle == "case" else "w",
+                              stretch=cle == "fichier")
+        self.liste.heading("case", text="☐", command=self.cocher_pretes)
+        self.liste.bind("<Button-1>", self._clic_case, add="+")
         for etat, couleur in COULEURS.items():  # sans couleur : état terminé, texte grisé sur lignes rayées
             self.liste.tag_configure(etat, **({"background": couleur} if couleur else {"foreground": TEXTE_DOUX}))
         defil = ttk.Scrollbar(haut, orient="vertical", command=self.liste.yview)
@@ -97,6 +108,7 @@ class PageFournisseurs(ttk.Frame):
         placer_a_droite(bouton_exporter(barre, self.liste, t("Factures fournisseurs")))
         self.liste.bind("<Delete>", lambda _e: action_permise(self, "Supprimer") and self.ecarter())
         self.bind("<Map>", lambda _e: self.actualiser(silencieux=True))  # retour sur la page : liste à jour
+        self.after(3000, self._suivre_disque)  # même état que le web et la nuit, en temps réel
         # départ de la page ou fermeture : la saisie en cours est gardée
         self.bind("<Unmap>", lambda e: self.sauvegarder_auto() if e.widget is self else None)
         self.bind("<Destroy>", lambda e: self.sauvegarder_auto() if e.widget is self else None)
@@ -110,7 +122,8 @@ class PageFournisseurs(ttk.Frame):
 
     # ---------------------------------------------------------------- construction du détail
     def _construire_detail(self, parent) -> None:
-        self.v = {cle: tk.StringVar() for cle in ("fournisseur", "numero", "date", "sous_total", "tps", "tvq", "total")}
+        self.v = {cle: tk.StringVar() for cle in ("fournisseur", "numero", "date", "sous_total", "tps", "tvq", "total",
+                                                  "depot")}
         entete = ttk.Frame(parent, padding=(0, 6, 0, 2))
         entete.pack(fill="x")
         ttk.Label(entete, text=t("Fournisseur Sage")).pack(side="left")
@@ -121,6 +134,10 @@ class PageFournisseurs(ttk.Frame):
         ttk.Entry(entete, textvariable=self.v["numero"], width=12).pack(side="left", padx=(4, 12))
         ttk.Label(entete, text=t("Date")).pack(side="left")
         ChampDate(entete, self.v["date"]).pack(side="left", padx=(4, 12))
+        # dépôt qui reçoit la marchandise (demande du propriétaire du 2026-11-05) : transfert fait après l'import
+        ttk.Label(entete, text=t("Dépôt")).pack(side="left")
+        ttk.Combobox(entete, textvariable=self.v["depot"], state="readonly", width=22,
+                     values=self._noms_depots()).pack(side="left", padx=(4, 12))
         Bouton(entete, "🗑  " + t("Écarter"), self.ecarter, "danger", petit=True).pack(side="right", padx=(6, 0))
         Bouton(entete, "👁  " + t("Voir la facture"), self.voir_facture, "secondaire", petit=True).pack(side="right")
         Bouton(entete, "✖  " + t("Supprimer"), self.supprimer_facture, "danger", petit=True).pack(side="right",
@@ -133,6 +150,13 @@ class PageFournisseurs(ttk.Frame):
             ttk.Label(montants, text=t(libelle)).pack(side="left", padx=(0, 4))
             ttk.Entry(montants, textvariable=self.v[cle], width=11).pack(side="left", padx=(0, 14))
         Bouton(montants, "📤  " + t("Importer cette facture"), self.importer, "principal").pack(side="right", padx=(8, 0))
+        Bouton(montants, "🔁  " + t("Refaire la mise à jour Clover"), self.refaire_clover, "secondaire",
+               petit=True).pack(side="right", padx=(8, 0))
+        # impressions (demande du propriétaire du 2026-11-05) : bon de réception sans prix, facture avec prix
+        Bouton(montants, "🖨  " + t("Facture (avec prix)"), lambda: self.imprimer("facture"), "secondaire",
+               petit=True).pack(side="right", padx=(8, 0))
+        Bouton(montants, "🖨  " + t("Bon de réception"), lambda: self.imprimer("bon"), "secondaire",
+               petit=True).pack(side="right", padx=(8, 0))
         Bouton(montants, "💾  " + t("Enregistrer la facture"), self.enregistrer_facture, "accent").pack(side="right")
         self.controle = tk.Label(parent, text="", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=900,
                                  background=fond_de(parent))
@@ -244,13 +268,36 @@ class PageFournisseurs(ttk.Frame):
             if choix != t("Toutes") and t(f.etat) != choix:
                 continue
             self.liste.insert("", "end", iid=str(i), tags=(f.etat,), values=self._valeurs_liste(f))
+        self.cochees &= {f.fichier for f in self.registre.factures}
         rayer(self.liste)
         self._afficher_resume()
 
-    @staticmethod
-    def _valeurs_liste(f) -> tuple:
-        return (f.fichier, f.fournisseur_sage or f"({f.fournisseur_lu or '?'})", f.numero, f.date_facture,
-                f"{f.total:,.2f}" if f.total is not None else "", t(f.etat))
+    def _clic_case(self, evenement):
+        """Clic dans la colonne des cases : coche ou décoche la facture, sans l'ouvrir."""
+        if self.liste.identify_region(evenement.x, evenement.y) != "cell" or                 self.liste.identify_column(evenement.x) != "#1":
+            return None
+        iid = self.liste.identify_row(evenement.y)
+        if not iid:
+            return None
+        f = self.registre.factures[int(iid)]
+        self.cochees ^= {f.fichier}
+        self.liste.item(iid, values=self._valeurs_liste(f))
+        self._afficher_resume()
+        return "break"
+
+    def cocher_pretes(self) -> None:
+        """En-tête de la colonne des cases : coche toutes les factures prêtes affichées, ou décoche tout."""
+        affichees = [self.registre.factures[int(i)] for i in self.liste.get_children()]
+        pretes = {f.fichier for f in affichees if f.etat == PRETE}
+        self.cochees = set() if pretes and pretes <= self.cochees else (self.cochees | pretes)
+        for i in self.liste.get_children():
+            self.liste.item(i, values=self._valeurs_liste(self.registre.factures[int(i)]))
+        self.liste.heading("case", text="☑" if self.cochees else "☐")
+        self._afficher_resume()
+
+    def _valeurs_liste(self, f) -> tuple:
+        return ("☑" if f.fichier in getattr(self, "cochees", set()) else "☐", f.fichier, f.fournisseur_sage or f"({f.fournisseur_lu or '?'})", f.numero, f.date_facture,
+                f"{f.total:,.2f}" if f.total is not None else "", f.depot or t("Emplacement par défaut"), t(f.etat))
 
     def _afficher_resume(self, suite: str = "") -> None:
         compte = {e: sum(1 for f in self.registre.factures if f.etat == e) for e in ETATS}
@@ -259,6 +306,7 @@ class PageFournisseurs(ttk.Frame):
                                      p=compte[PRETE], i=compte[IMPORTEE])
                               + ("" if self.fournisseurs_sage else
                                  t("   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »"))
+                              + (t("   •   {n} cochée(s)", n=len(self.cochees)) if getattr(self, "cochees", None) else "")
                               + suite)
 
     def ajouter_factures(self) -> None:
@@ -324,6 +372,30 @@ class PageFournisseurs(ttk.Frame):
             return
         self.lire_nouvelles()
 
+    def _suivre_disque(self) -> None:
+        """Toutes les 3 s : liste écrite ailleurs (import web, nuit) -> relue, la facture choisie gardée (demande du
+        propriétaire du 2026-11-05 : « une facture importée en mode web doit être archivée aussi en mode Windows et
+        vice versa, le même statut en temps réel »). Jamais pendant une frappe ou une lecture en cours."""
+        try:
+            if not self.winfo_exists():
+                return
+            occupe = getattr(self, "_lecture_en_cours", False) or getattr(self, "_minuterie", None)
+            if self.winfo_ismapped() and not occupe and self.registre.change_ailleurs():
+                self.sauvegarder_auto()  # fusion : seules les saisies faites ici remplacent celles du disque
+                choisi = self.facture.fichier if self.facture else None
+                self.registre.charger()
+                self.facture = None
+                self.afficher_liste()
+                rang = next((i for i, f in enumerate(self.registre.factures) if f.fichier == choisi), None)
+                if rang is not None and self.liste.exists(str(rang)):
+                    self.liste.selection_set(str(rang))
+                    self.liste.see(str(rang))
+                self._afficher_resume("   •   " + t("liste mise à jour (changée ailleurs) à {h}",
+                                                  h=datetime.now().strftime("%H:%M:%S")))
+        except tk.TclError:
+            return
+        self.after(3000, self._suivre_disque)
+
     def actualiser(self, silencieux: bool = False) -> None:
         """Relit la liste enregistrée et lit les nouvelles factures déposées dans le dossier."""
         if getattr(self, "_lecture_en_cours", False):
@@ -340,12 +412,27 @@ class PageFournisseurs(ttk.Frame):
         elif not silencieux:
             self.resume.configure(text=self.resume.cget("text") + "   •   " + t("aucune nouvelle facture"))
 
-    def importer(self, toutes: bool = False) -> None:
-        """Importe dans Sage la facture ouverte (ou, avec `toutes`, toutes les factures « Prêtes à importer »), Sage
-        fermé, puis vérifie chacune."""
+    def importer(self, toutes: bool = False, cochees: bool = False) -> None:
+        """Importe dans Sage la facture ouverte (ou, avec `toutes`, toutes les factures « Prêtes à importer » ; avec
+        `cochees`, les factures cochées), Sage fermé, puis vérifie chacune."""
         if self.facture:
             self.enregistrer_facture()
-        if toutes:
+        if cochees:
+            choisies = [f for f in self.registre.factures if f.fichier in self.cochees]
+            pretes = [f for f in choisies if f.etat == PRETE]
+            if not choisies:
+                messagebox.showinfo(self.titre, t("Cochez les factures à importer (case de la 1re colonne ; clic sur "
+                                                  "son en-tête : toutes les factures prêtes)."))
+                return
+            if len(pretes) < len(choisies):
+                autres = "\n".join(f"  • {f.fichier} ({t(f.etat)})" for f in choisies if f.etat != PRETE)
+                if not pretes:
+                    messagebox.showinfo(self.titre, t("Aucune facture cochée n'est « Prête à importer » :\n\n{l}",
+                                                      l=autres))
+                    return
+                messagebox.showinfo(self.titre, t("Ces factures cochées ne sont pas prêtes et ne seront pas "
+                                                  "importées :\n\n{l}", l=autres))
+        elif toutes:
             pretes = [f for f in self.registre.factures if f.etat == PRETE]
             if not pretes:
                 messagebox.showinfo(self.titre, t("Aucune facture « Prête à importer ». Reliez tous les articles et "
@@ -391,11 +478,51 @@ class PageFournisseurs(ttk.Frame):
 
         threading.Thread(target=travail, daemon=True).start()
 
+    def imprimer(self, modele: str) -> None:
+        """« bon » : bon de réception sans prix (article, qté Sage, qté Clover, observation) ; « facture » : facture
+        complète avec prix, à joindre à la facture du fournisseur (impression_fournisseur)."""
+        if not self.facture:
+            messagebox.showinfo(self.titre, t("Choisissez une facture dans la liste."))
+            return
+        self.enregistrer_facture()
+        from .impression_fournisseur import bon_reception, facture_complete
+
+        try:
+            chemin = (bon_reception if modele == "bon" else facture_complete)(self.racine, self.facture)
+            os.startfile(chemin)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(self.titre, t("Impression impossible : {e}", e=exc))
+
+    def refaire_clover(self) -> None:
+        """Facture déjà importée : stock et coût Clover des lignes pas encore faites (article relié depuis, article
+        Clover recréé) ; le journal du stock Clover écarte les lignes déjà ajoutées."""
+        if not self.facture or self.facture.etat != IMPORTEE:
+            messagebox.showinfo(self.titre, t("Choisissez une facture déjà importée dans Sage."))
+            return
+        f = self.facture
+        self.resume.configure(text=t("Mise à jour de Clover en cours…"))
+
+        def travail():
+            try:
+                import tomllib
+
+                from .import_achats import mettre_a_jour_clover
+
+                config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
+                resultats = mettre_a_jour_clover(self.racine, config, [f], {f.fichier: ""})
+                message = "\n\n".join(f"{x} : {texte}" for x, texte in resultats.items())
+            except Exception as exc:
+                message = f"✘ {exc}"
+            self.after(0, lambda: self._fin_import(message))
+
+        threading.Thread(target=travail, daemon=True).start()
+
     def _fin_import(self, message: str) -> None:
         from .fournisseurs import DEJA_DANS_SAGE
 
         if self.facture is not None and self.facture.etat == DEJA_DANS_SAGE:  # archivée, retirée de la liste
             self.facture = None
+        self.cochees = {f.fichier for f in self.registre.factures if f.fichier in self.cochees and f.etat == PRETE}
         self.registre.enregistrer()
         self.afficher_liste()
         messagebox.showinfo(self.titre, message)
@@ -530,7 +657,8 @@ class PageFournisseurs(ttk.Frame):
         f = self.facture
         valeurs = {"fournisseur": f.fournisseur_sage, "numero": f.numero, "date": f.date_facture,
                    "sous_total": "" if f.sous_total is None else f"{f.sous_total:.2f}", "tps": f"{f.tps:.2f}",
-                   "tvq": f"{f.tvq:.2f}", "total": "" if f.total is None else f"{f.total:.2f}"}
+                   "tvq": f"{f.tvq:.2f}", "total": "" if f.total is None else f"{f.total:.2f}",
+                   "depot": f.depot or self._depot_par_defaut()}
         self._chargement = True  # affichage seulement : rien à enregistrer
         for cle, valeur in valeurs.items():
             self.v[cle].set(valeur)
@@ -563,8 +691,28 @@ class PageFournisseurs(ttk.Frame):
                 "values": (l.code, l.description, f"{l.quantite:g}", f"{l.prix:.2f}", f"{l.montant:.2f}", l.numero_sage,
                            l.description_sage, f"{quantite:g}", f"{prix_sage:.4f}", f"{l.facteur:g}", etat)}
 
+    def _depot_par_defaut(self) -> str:
+        from .points_vente import DEPOT_DEFAUT
+
+        return DEPOT_DEFAUT
+
+    def _noms_depots(self) -> list[str]:
+        try:
+            import tomllib
+
+            from .depots import noms
+
+            return noms(tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            from .points_vente import DEPOT_DEFAUT
+
+            return [DEPOT_DEFAUT]
+
     def lire_entete(self) -> None:
         f = self.facture
+        from .depots import est_defaut
+
+        f.depot = "" if est_defaut(self.v["depot"].get()) else self.v["depot"].get().strip()
         f.fournisseur_sage = self.v["fournisseur"].get().strip()
         f.numero, f.date_facture = self.v["numero"].get().strip(), self.v["date"].get().strip()
         f.sous_total = decimal(self.v["sous_total"].get()) if self.v["sous_total"].get().strip() else None
@@ -582,10 +730,21 @@ class PageFournisseurs(ttk.Frame):
         return problemes
 
     def voir_facture(self) -> None:
-        if self.facture:
-            chemin = self.registre.chemin_fichier(self.facture)
-            if chemin.exists():
-                os.startfile(chemin)
+        """Ouvre le fichier de la facture ; absent ou sans programme pour l'ouvrir : message (avant : rien, constat du
+        2026-11-05 sur SERVDCSAGE : fichiers copiés dans donnees/donnees)."""
+        if not self.facture:
+            messagebox.showinfo(self.titre, t("Choisissez une facture dans la liste."))
+            return
+        chemin = self.registre.chemin_fichier(self.facture)
+        if not chemin.exists():
+            messagebox.showwarning(self.titre, t("Le fichier de la facture est introuvable :\n{c}\n\nRemettez-le dans "
+                                                 "le dossier des factures (« Dossier des factures »).", c=chemin))
+            return
+        try:
+            os.startfile(chemin)
+        except OSError as exc:
+            messagebox.showerror(self.titre, t("Aucun programme n'ouvre ce fichier sur ce poste ({e}) :\n{c}",
+                                               e=exc, c=chemin))
 
     def enregistrer_facture(self) -> None:
         if not self.facture:

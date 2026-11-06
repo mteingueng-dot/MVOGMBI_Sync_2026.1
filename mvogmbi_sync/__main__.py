@@ -226,6 +226,15 @@ def commande_fiches_articles_bureau(args: argparse.Namespace) -> None:
     sys.exit(1 if bilan["erreur"] or not all(r["fait"] for r in bilan["resultats"]) else 0)
 
 
+def commande_import_assistant_bureau(args: argparse.Namespace) -> None:
+    """Commande interne, lancée sur le bureau caché : import d'un .IMP par l'assistant d'importation de Sage
+    (entreprise partagée, refusée par l'outil d'import)."""
+    from .robot_import_assistant import travail_bureau
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    travail_bureau(config_toml, Path(args.imp), Path(args.sai), Path(args.resultat), Path(args.signal))
+
+
 def commande_prix_sage_bureau(args: argparse.Namespace) -> None:
     """Commande interne, lancée sur le bureau caché : prix de vente réguliers écrits dans les fiches articles de Sage."""
     import json
@@ -816,10 +825,27 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True
     fichier = fichier_sai or config_toml.get("sage_base", {}).get("fichier_entreprise") \
         or config_toml.get("sage_import", {}).get("fichier_entreprise")
     fonction = _lecture_sure(fonction)
+    import time as _temps
+
+    echec = _ECHECS_LECTURE.get(str(fichier))
+    if not ouvrir and echec and _temps.time() - echec[0] < DUREE_ECHEC:
+        # lecture automatique (pages web, préchargement) : Sage vient de ne pas répondre ; inutile de refaire
+        # 3 à 10 s d'essais à chaque page (demande du propriétaire du 2026-11-05 : « le mode web est très lent »)
+        raise RuntimeError(f"Sage ne répond pas pour l'instant ({echec[1]}).")
     try:
-        return _lire_sage(config_toml, fonction, fichier, ouvrir, lire_pendant_connexion)
+        resultat = _lire_sage(config_toml, fonction, fichier, ouvrir, lire_pendant_connexion)
+        _ECHECS_LECTURE.pop(str(fichier), None)
+        return resultat
     except _ErreurLecture as exc:
         raise exc.origine from None
+    except Exception as exc:
+        if not (getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE):
+            _ECHECS_LECTURE[str(fichier)] = (_temps.time(), str(exc)[:160])
+        raise
+
+
+_ECHECS_LECTURE: dict = {}  # fichier -> (moment, raison) du dernier échec de lecture
+DUREE_ECHEC = 45  # s
 
 
 def _lire_sage(config_toml: dict, fonction, fichier, ouvrir: bool, lire_pendant_connexion):
@@ -1518,6 +1544,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--resultat", required=True)
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_fiches_articles_bureau)
+
+    p = sous.add_parser("import-assistant-bureau", help="(interne) Import par l'assistant de Sage (entreprise partagée)")
+    p.add_argument("--imp", required=True)
+    p.add_argument("--sai", required=True)
+    p.add_argument("--resultat", required=True)
+    p.add_argument("--signal", required=True)
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_import_assistant_bureau)
 
     p = sous.add_parser("prix-sage-bureau", help="(interne) Prix de vente des articles de Sage depuis Clover")
     p.add_argument("--demande", required=True)

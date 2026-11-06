@@ -79,6 +79,7 @@ class Facture:
     modele: str = ""
     remarques: list[str] = field(default_factory=list)
     etat: str = A_VERIFIER
+    depot: str = ""                  # dépôt (emplacement Sage) qui reçoit la marchandise ; vide = par défaut
 
     @property
     def somme_lignes(self) -> Decimal:
@@ -129,6 +130,7 @@ class Facture:
         lignes = [Ligne(**{**l, "quantite": Decimal(l["quantite"]), "prix": Decimal(l["prix"]),
                            "montant": Decimal(l["montant"]), "facteur": Decimal(l.get("facteur", 1))})
                   for l in d.get("lignes", [])]
+        d = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         return cls(**{**d, "lignes": lignes, "sous_total": dec(d.get("sous_total")), "tps": dec(d.get("tps")) or ZERO,
                       "tvq": dec(d.get("tvq")) or ZERO, "total": dec(d.get("total"))})
 
@@ -180,20 +182,60 @@ class Registre:
         self.factures: list[Facture] = []
         self.charger()
 
+    def _lire_disque(self) -> list[Facture]:
+        factures = [Facture.depuis_dict(d) for d in json.loads(self.chemin.read_text(encoding="utf-8"))]
+        for f in factures:
+            if f.etat == ANCIEN_IMPORTEE:
+                f.etat = IMPORTEE
+        return factures
+
+    def _date_disque(self) -> float:
+        try:
+            return self.chemin.stat().st_mtime_ns
+        except OSError:
+            return 0
+
     def charger(self) -> None:
-        if self.chemin.exists():
-            self.factures = [Facture.depuis_dict(d) for d in json.loads(self.chemin.read_text(encoding="utf-8"))]
-            for f in self.factures:
-                if f.etat == ANCIEN_IMPORTEE:
-                    f.etat = IMPORTEE
+        self.factures = self._lire_disque() if self.chemin.exists() else []
+        self._lues = {f.fichier: json.dumps(f.en_dict(), sort_keys=True) for f in self.factures}
+        self._date = self._date_disque()
+
+    def change_ailleurs(self) -> bool:
+        """Le fichier a-t-il été écrit par une autre plateforme (web, Windows, nuit) depuis la lecture ?"""
+        return self._date_disque() != getattr(self, "_date", None)
 
     def enregistrer(self) -> None:
+        """Écrit la liste. Mêmes données pour le web, Windows et la nuit (demande du propriétaire du 2026-11-05 :
+        « les deux plateformes doivent avoir le même statut en temps réel ») : si une autre a écrit entre-temps,
+        seules les factures modifiées, ajoutées ou retirées ICI remplacent celles du disque (jamais d'écrasement
+        d'un import fait ailleurs)."""
         self.factures = [f for f in self.factures if f.etat != DEJA_DANS_SAGE]  # archivées : plus à traiter
         self.donnees.mkdir(parents=True, exist_ok=True)
+        lues = getattr(self, "_lues", {})
+        if self.chemin.exists() and self.change_ailleurs():
+            locales = {f.fichier: f for f in self.factures}
+            changees = {n for n, f in locales.items()
+                        if lues.get(n) != json.dumps(f.en_dict(), sort_keys=True)}
+            retirees = set(lues) - set(locales)
+            fusion = []
+            for f in self._lire_disque():
+                if f.fichier in retirees or f.etat == DEJA_DANS_SAGE:
+                    continue
+                ici = locales.get(f.fichier)
+                if f.fichier in changees and not (f.etat == IMPORTEE and ici.etat != IMPORTEE):
+                    fusion.append(ici)  # importée ailleurs : jamais ramenée à « Prête à importer »
+                else:
+                    fusion.append(f)
+            vues = {f.fichier for f in fusion}
+            fusion += [f for n, f in locales.items() if n in changees and n not in vues]  # ajoutées ici
+            # les objets gardés en mémoire suivent la fusion (même état partout)
+            self.factures[:] = fusion
         provisoire = self.chemin.with_suffix(".tmp")
         provisoire.write_text(json.dumps([f.en_dict() for f in self.factures], ensure_ascii=False, indent=1),
                               encoding="utf-8")
         provisoire.replace(self.chemin)
+        self._lues = {f.fichier: json.dumps(f.en_dict(), sort_keys=True) for f in self.factures}
+        self._date = self._date_disque()
 
     def nouveaux_fichiers(self) -> list[Path]:
         self.dossier.mkdir(parents=True, exist_ok=True)

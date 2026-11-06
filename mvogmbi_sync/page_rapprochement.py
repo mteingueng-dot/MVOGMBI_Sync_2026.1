@@ -1,4 +1,4 @@
-"""Page « Rapprochement bancaire » : relevés PDF Desjardins (compte 1055) rapprochés des écritures de Sage."""
+"""Page « Rapprochement bancaire » : relevés PDF Desjardins (compte 1055) ou BNC (1060) rapprochés des écritures de Sage."""
 
 from __future__ import annotations
 
@@ -37,19 +37,31 @@ class PageRapprochement(ttk.Frame):
         fournisseur manuel)."""
         super().__init__(parent, padding=10)
         self.racine, self.titre, self.naviguer = Path(racine), titre, naviguer
-        self.registre = RegistreReleves(self.racine)
+        self.banque_choisie = tk.StringVar(value="desjardins")  # « bnc » : Banque Nationale (compte 1060)
+        self.registre = self._registre()
         self.releves, self.banque, self.sage, self.comptes = [], [], [], []
         self.chiffres: dict = {}
         self.soldes = (None, None, None, None)
         self.mouvement = None
 
         entete_page(self, "🏦", t("Rapprochement bancaire"),
-                    t("relevés Desjardins (compte 1055) rapprochés des écritures de Sage")).pack(fill="x")
+                    t("relevés Desjardins et BNC rapprochés des écritures de Sage")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         Bouton(barre, "📂  " + t("Charger des relevés…"), self.charger).pack(side="left")
         Bouton(barre, "🔄  " + t("Actualiser"), self.actualiser, "secondaire").pack(side="left", padx=8)
         Bouton(barre, "🗑  " + t("Supprimer le relevé"), self.supprimer, "danger").pack(side="left")
+        # plusieurs banques (demande du propriétaire du 2026-11-05) : Desjardins (1055), BNC (1060)
+        config = self._config()
+        from .rapprochement import comptes_bancaires
+
+        self._libelles_banques = {c.libelle: c.code for c in comptes_bancaires(config)}
+        ttk.Label(barre, text=t("Banque")).pack(side="left", padx=(16, 4))
+        self._banque_affichee = tk.StringVar(value=next(iter(self._libelles_banques)))
+        choix_banque = ttk.Combobox(barre, textvariable=self._banque_affichee, state="readonly", width=30,
+                                    values=list(self._libelles_banques))
+        choix_banque.pack(side="left")
+        choix_banque.bind("<<ComboboxSelected>>", lambda _e: self.changer_banque())
         if export_permis():
             Bouton(barre, "📗  " + t("Rapport Excel"), self.rapport, "secondaire").pack(side="right")
         Bouton(barre, "📤  " + t("Saisir dans Sage"), self.saisir, "accent").pack(side="right", padx=8)
@@ -89,7 +101,7 @@ class PageRapprochement(ttk.Frame):
         self.cartes = tk.Frame(self, background=fond_de(self))
         self.cartes.pack(fill="x", pady=8)
         self.valeurs = {}
-        for cle, libelle in (("solde_banque", "Solde du relevé"), ("solde_sage", "Solde Sage (1055)"),
+        for cle, libelle in (("solde_banque", "Solde du relevé"), ("solde_sage", "Solde Sage"),
                              ("ecart", "Écart"), ("ecart_ouverture", "dont écart d'ouverture"),
                              ("non_explique", "Écart non expliqué")):
             carte = tk.Frame(self.cartes, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
@@ -155,6 +167,22 @@ class PageRapprochement(ttk.Frame):
         self.afficher_releves()
 
     # ---------------------------------------------------------------- configuration
+    def _registre(self):
+        from .rapprochement import registre_de
+
+        return registre_de(self.racine, self._config(), self.banque_choisie.get())
+
+    def _compte(self) -> int:
+        from .rapprochement import compte_entier
+
+        return compte_entier(self._config(), self.banque_choisie.get())
+
+    def changer_banque(self) -> None:
+        self.banque_choisie.set(self._libelles_banques.get(self._banque_affichee.get(), "desjardins"))
+        self.registre = self._registre()
+        self.releves, self.banque, self.sage = [], [], []
+        self.toute_la_periode()
+
     def _config(self) -> dict:
         import tomllib
         chemin = self.racine / "config.toml"
@@ -162,15 +190,20 @@ class PageRapprochement(ttk.Frame):
 
     # ---------------------------------------------------------------- relevés
     def charger(self) -> None:
-        fichiers = filedialog.askopenfilenames(parent=self, title=t("Relevés de compte Desjardins (PDF)"),
+        fichiers = filedialog.askopenfilenames(parent=self, title=t("Relevés de compte Desjardins ou BNC (PDF)"),
                                                filetypes=[("PDF", "*.pdf")])
         if not fichiers:
             return
-        self.registre.dossier.mkdir(parents=True, exist_ok=True)
-        for f in fichiers:
-            cible = self.registre.dossier / Path(f).name
-            if Path(f).resolve() != cible.resolve():
-                shutil.copy2(f, cible)
+        from .rapprochement import ranger_releve
+
+        banques = {ranger_releve(self.racine, Path(f), config_toml=self._config())[0] for f in fichiers}  # banque reconnue d'après le PDF
+        if len(banques) == 1 and banques != {self.banque_choisie.get()}:
+            banque = banques.pop()
+            libelle = next((l for l, b in self._libelles_banques.items() if b == banque), None)
+            if libelle:
+                self._banque_affichee.set(libelle)
+                self.changer_banque()
+                return
         self.toute_la_periode()
 
     def supprimer(self) -> None:
@@ -225,14 +258,15 @@ class PageRapprochement(ttk.Frame):
         choix = self._choix_periode()
         if choix is False:
             return
-        self.resume.configure(text=t("Lecture des relevés et des écritures du compte 1055 dans Sage…"))
+        self.resume.configure(text=t("Lecture des relevés et des écritures de la banque dans Sage…"))
 
         def travail():
             try:
                 from .__main__ import lire_sage
 
-                self.registre = RegistreReleves(self.racine)
+                self.registre = self._registre()
                 releves = self.registre.lire()
+                compte = self._compte()
                 periode = periode_des(releves)
                 if periode and choix:  # période choisie, ramenée à celle des relevés chargés
                     periode = (max(periode[0], choix[0]), min(periode[1], choix[1]))
@@ -242,10 +276,11 @@ class PageRapprochement(ttk.Frame):
                 fichier = config.get("sage_import", {}).get("fichier_entreprise")
                 if periode:
                     sage, solde, ouverture, comptes, paies = lire_sage(config, lambda base: (
-                        mouvements_sage(base, periode[0], periode[1]), solde_sage(base, periode[1]),
-                        solde_sage(base, periode[0] - timedelta(days=1)), comptes_sage(base),
+                        mouvements_sage(base, periode[0], periode[1], compte), solde_sage(base, periode[1], compte),
+                        solde_sage(base, periode[0] - timedelta(days=1), compte), comptes_sage(base),
                         [s for s in mouvements_sage(base, periode[0] - timedelta(days=DELAI_PAIE),
-                                                    periode[0] - timedelta(days=1)) if s.source.upper().startswith("PAY")]),
+                                                    periode[0] - timedelta(days=1), compte)
+                         if s.source.upper().startswith("PAY")]),
                         fichier)
                 else:
                     sage, solde, ouverture, comptes, paies = [], None, None, [], []
@@ -427,7 +462,7 @@ class PageRapprochement(ttk.Frame):
                 from .rapprochement import factures_ventes
 
                 config = self._config()
-                compte = numero_compte_sage(str(config.get("encaissements", {}).get("compte_depot", "1055")))
+                compte = self._compte()  # compte de la banque du relevé (1055, BNC 1060)
 
                 def lire(base):
                     dates = factures_ventes(base, CLIENT)
@@ -523,8 +558,8 @@ class PageRapprochement(ttk.Frame):
         liste = "\n".join(f"  • {m.date}  {argent(m.montant)}  → {m.compte}   {m.description[:40]}" for m in choisis[:25])
         if len(choisis) > 25:
             liste += "\n  …"
-        if not messagebox.askyesno(self.titre, t("Enregistrer {n} écriture(s) dans Sage (compte 1055) ?\n\n{liste}",
-                                                 n=len(choisis), liste=liste)):
+        if not messagebox.askyesno(self.titre, t("Enregistrer {n} écriture(s) dans Sage (compte {c}) ?\n\n{liste}",
+                                                 n=len(choisis), liste=liste, c=self._compte() // 10000)):
             return
         self.registre.enregistrer()  # les comptes choisis doivent être sur le disque pour la saisie
         self.resume.configure(text=t("Enregistrement des écritures dans Sage…"))
@@ -558,7 +593,7 @@ class PageRapprochement(ttk.Frame):
             messagebox.showinfo(self.titre, t("Cliquez d'abord sur « Actualiser »."))
             return
         debut, fin = self.periode
-        chemin = self.racine / "sortie" / f"rapprochement_1055_{debut}_{fin}.xlsx"
+        chemin = self.racine / "sortie" / f"rapprochement_{self._compte() // 10000}_{debut}_{fin}.xlsx"
         try:
             ecrire_rapport(chemin, self.releves, self.banque, self.sage, self.chiffres, (debut, fin))
         except PermissionError:

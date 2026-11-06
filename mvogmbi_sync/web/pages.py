@@ -17,6 +17,15 @@ from typing import Callable
 from .serveur import Reponse, echapper as e, redirection, temoin_session
 
 NOM_APPLICATION = "MVOGMBI_Sync"
+
+
+def _version_style() -> str:
+    from ..aide import VERSION
+
+    return VERSION
+
+
+VERSION_STYLE = _version_style()  # adresse du style : change à chaque version (style gardé par le navigateur)
 DUREE_MEMOIRE = 300  # s : statistiques Clover gardées 5 min
 JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
 
@@ -142,12 +151,23 @@ def _entete(ctx: Contexte | None) -> str:
     return entete()
 
 
+def _expiration(ctx: Contexte | None, corps: str) -> str:
+    """Page laissée ouverte sans rien faire : elle passe d'elle-même à la connexion quand la session est fermée
+    ([web] inactivite_minutes, 5 par défaut ; balise meta, aucun script). Les pages qui se rafraîchissent déjà
+    (travaux en cours, journée en cours) gardent leur propre balise."""
+    session = getattr(ctx, "session", None) if ctx is not None else None
+    if session is None or "http-equiv='refresh'" in corps:
+        return ""
+    delai = int(ctx.app.sessions.inactivite) + 5
+    return f"<meta http-equiv='refresh' content='{delai};url=/connexion?expire=1'>"
+
+
 def _document(titre: str, corps: str, ctx: Contexte | None = None, menu: str = "") -> str:
     contenu = f"<div class='cadre'>{menu}<main>{corps}</main></div>" if menu else f"<main>{corps}</main>"
-    return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
+    return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'>{_expiration(ctx, corps)}"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>"
             f"<meta name='robots' content='noindex'><title>{e(titre)} · {NOM_APPLICATION}</title>"
-            f"<link rel='stylesheet' href='/style.css'></head><body>{_entete(ctx)}{contenu}</body></html>")
+            f"<link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'></head><body>{_entete(ctx)}{contenu}</body></html>")
 
 
 def page(ctx: Contexte, titre: str, corps: str) -> str:
@@ -221,7 +241,7 @@ def page_poste(ctx: Contexte, corps: str) -> str:
     """Poste de pointage (fenetre_pointage.PostePointage) : fenêtre à part, sans bandeau ni menu, avec « ✖ Fermer »."""
     return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'><meta name='viewport' "
             f"content='width=device-width, initial-scale=1'><meta name='robots' content='noindex'><title>Pointage des "
-            f"employés · {NOM_APPLICATION}</title><link rel='stylesheet' href='/style.css'></head><body "
+            f"employés · {NOM_APPLICATION}</title><link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'></head><body "
             f"class='poste-seul'><main><div class='entete-outil'><span></span><a class='fermer' href='/'>✖ Fermer</a>"
             f"</div>{corps}</main></body></html>")
 
@@ -266,6 +286,8 @@ def connexion(app, req) -> Reponse:
     from ..utilisateurs import Registre
 
     message = ""
+    if req.methode == "GET" and req.jeton and app.sessions.lire(req.jeton) is not None:
+        return Reponse(303, "", entetes={"Location": "/"})  # déjà connecté : la session n'est jamais effacée ici
     if req.methode == "POST":
         reg = Registre(app.racine)
         if app.adresse_bloquee(req.adresse):
@@ -290,8 +312,7 @@ def connexion(app, req) -> Reponse:
                "<label for='nom'>Nom d'utilisateur</label><input id='nom' name='nom' autocomplete='username' required>"
                "<label for='mdp'>Mot de passe</label><input id='mdp' name='mot_de_passe' type='password' "
                "autocomplete='current-password' required><button type='submit'>Se connecter</button></form>"
-               "<p class='note'>Même nom que l'application MVOGMBI_Sync ; mot de passe web (à la 1re connexion : "
-               "celui de l'application, puis vous créez votre mot de passe web).</p></div>")
+               "</div>")  # sans message d'expiration ni note (demande du propriétaire du 2026-11-05)
     entetes = {"Set-Cookie": temoin_session("", app.https, effacer=True)} if req.methode == "GET" else {}
     return Reponse(200, _document("Connexion", corps), entetes=entetes)
 
@@ -598,7 +619,13 @@ def feuilles(ctx: Contexte) -> Reponse:
         debut = pt.debut_periode(date.fromisoformat(ctx.req.query.get("debut") or ctx.req.champ("debut")), reference)
     except ValueError:
         debut = pt.debut_periode(date.today(), reference)
-    visibles = {x.id for x in ctx.employes_visibles(pt.Registre(ctx.racine))}
+    from ..depots import garde
+    from .filtres import depots_choisis, filtre_depots, parametres_depots
+
+    filtre = depots_choisis(ctx)  # dépôt principal de l'employé (demande du propriétaire du 2026-11-05)
+    visibles = {x.id for x in ctx.employes_visibles(pt.Registre(ctx.racine)) if garde(x.depot, filtre)}
+    if ctx.req.query.get("suivi"):
+        return Reponse(corps=page(ctx, "Suivi des périodes de paie", _suivi_periodes(ctx, reference, visibles)))
     message = ""
     if ctx.req.methode == "POST":
         if not ctx.voit_tous():
@@ -636,16 +663,44 @@ def feuilles(ctx: Contexte) -> Reponse:
             f"{sum(1 for f in liste if f.anomalies)}. Rose : anomalie à corriger ; jaune : pointage corrigé par le gérant ;"
             " vert : approuvée. Heures supplémentaires au-delà de 40 h par semaine ; pauses pointées non payées.")
     avant, apres = debut - timedelta(days=pt.JOURS_PERIODE), debut + timedelta(days=pt.JOURS_PERIODE)
-    barre = (f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='debut' value='{debut}'>"
-             f"<a class='ouvrir' href='?debut={avant}'>◀</a><strong class='periode'>Période de paie du {debut} au {fin}"
-             f"</strong><a class='ouvrir' href='?debut={apres}'>▶</a><button name='action' value='Approuver'>✔ Approuver "
-             "les feuilles sans anomalie</button><a class='ouvrir' href='/employes'>👥 Employés et NIP…</a></form>")
+    garder = parametres_depots(ctx)
+    choix = (f"<form method='get' class='barre-onglet'><input type='hidden' name='debut' value='{debut}'>"
+             + filtre_depots(ctx) + "<button class='second'>Afficher</button></form>")
+    barre = (choix + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='debut' value='{debut}'>"
+             + "".join(f"<input type='hidden' name='depot' value='{e(d)}'>" for d in (filtre or []))
+             + f"<a class='ouvrir' href='?debut={avant}{garder}'>◀</a><strong class='periode'>Période de paie du {debut} au {fin}"
+             f"</strong><a class='ouvrir' href='?debut={apres}{garder}'>▶</a><button name='action' value='Approuver'>✔ Approuver "
+             "les feuilles sans anomalie</button><a class='ouvrir' href='/feuilles?suivi=1'>📋 Suivi des périodes…</a>"
+             "<a class='ouvrir' href='/employes'>👥 Employés et NIP…</a></form>")
     tableau_html = tableau_section(Section(f"Période de paie du {debut} au {fin}", entetes, lignes, classes=classes,
                                            html={0}))
     corps = (message + barre + f"<p class='note'>{e(etat)}</p>" + tableau_html
              + "<p class='note'>Cliquez sur un employé pour ses pointages et les corrections (« Pointages de "
                "l'employé… »).</p>")
     return Reponse(corps=page(ctx, "Feuilles de temps", corps))
+
+
+def _suivi_periodes(ctx: Contexte, reference, visibles) -> str:
+    """Comme fenetre_feuilles_temps.FenetreSuiviPeriodes : chaque période de paie et son état d'approbation ; clic
+    sur la date = la feuille de la période."""
+    from .. import paie_temps as pt
+    from ..fenetre_feuilles_temps import ENTETES_SUIVI, lignes_suivi
+    from .consultations import Section, tableau_section
+
+    suivi = pt.suivi_periodes(pt.Registre(ctx.racine), reference, permis=visibles)
+    lignes = lignes_suivi(suivi)
+    for l, p in zip(lignes, suivi):
+        l[0] = f"<a href='/feuilles?debut={p.debut}'>{e(l[0])}</a>"
+    classes = {pt.PERIODE_A_APPROUVER: "ligne-anomalie", pt.PERIODE_APPROUVEE: "ligne-approuvee",
+               pt.PERIODE_ENVOYEE: "ligne-approuvee", pt.EN_COURS: "ligne-corrigee"}
+    attente = sum(1 for p in suivi if p.etat == pt.PERIODE_A_APPROUVER)
+    return ("<form class='barre-onglet' method='get'><input type='hidden' name='suivi' value='1'><button>🔄 "
+            "Actualiser</button><a class='ouvrir' href='/feuilles'>◀ Feuilles de temps</a></form>"
+            f"<p class='{'erreur-texte' if attente else 'note'}'>Chaque période de paie de 2 semaines se valide par "
+            f"l'approbation des feuilles de temps. {attente} période(s) terminée(s) à approuver. Rose : à approuver ; "
+            "vert : approuvée ; jaune : en cours. Cliquez sur une date pour ouvrir la période.</p>"
+            + tableau_section(Section("Suivi des périodes de paie", ENTETES_SUIVI, lignes,
+                                      classes=[classes.get(p.etat, "") for p in suivi], html={0})))
 
 
 def tableau_gerant(ctx: Contexte) -> Reponse:

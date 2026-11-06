@@ -392,4 +392,45 @@ def saisir(racine: Path, config_toml: dict, chemin: Path, journal=print) -> tupl
             resultats_sage = {a.numero: {"texte": f"NON fait : {exc}", "montant": None} for a in saisie.sage}
     rapport = ecrire_rapport(saisie, Path(racine) / "sortie" / "inventaire" / nom_fichier("Saisie_inventaire"),
                              resultats_sage, resultats_clover)
+    if saisie.sage:
+        try:
+            ecrire_pdf_ecarts(racine, saisie, rapport.with_suffix(".pdf"), resultats_sage)
+        except Exception as exc:  # le PDF ne doit jamais faire échouer la saisie
+            journal(f"PDF de l'écart d'inventaire non créé : {exc}")
     return saisie, rapport
+
+
+def ecrire_pdf_ecarts(racine: Path, saisie: Saisie, chemin: Path, resultats_sage: dict[str, dict] | None = None,
+                      jour: str = "") -> Path:
+    """Écart d'inventaire (modèle des documents de stock, demande du propriétaire du 2026-11-05) : stock théorique
+    (Sage avant la saisie), stock compté, écart, coût unitaire (CUMP) et valeur de l'écart ; totaux en plus, en
+    moins et net ; signatures « Compté par » / « Approuvé par »."""
+    from .pdf_documents import argent, document_stock, quantite
+
+    jour = jour or datetime.now().strftime("%Y-%m-%d")
+    colonnes = [("N° article", 28, "L"), ("Article", 0, "L"), ("Stock théorique", 24, "R"),
+                ("Stock compté", 22, "R"), ("Écart", 18, "R"), ("Coût unitaire", 24, "R"),
+                ("Valeur de l'écart", 28, "R")]
+    lignes, plus, moins = [], ZERO, ZERO
+    for a in saisie.sage:
+        r = (resultats_sage or {}).get(a.numero) or {}
+        montant = Decimal(r["montant"]) if r.get("montant") else a.montant
+        if montant:
+            plus += max(montant, ZERO)
+            moins += min(montant, ZERO)
+        lignes.append([a.numero, a.description, quantite(a.avant), quantite(a.apres),
+                       ("+" if a.ecart > 0 else "") + quantite(a.ecart), argent(a.cout) if a.cout is not None else "—",
+                       argent(montant) if montant is not None else "—"])
+    faits = sum(1 for a in saisie.sage if not str(((resultats_sage or {}).get(a.numero) or {}).get("texte", ""))
+                .startswith("NON"))
+    numero = f"Inv. {jour}"
+    return document_stock(
+        chemin, racine, "Écart d'inventaire", numero, jour,
+        ("Inventaire", [f"{len(lignes)} article(s) avec écart", f"{len(saisie.clover)} stock(s) Clover ajusté(s)"]),
+        ("Informations", [f"Source Sage : {numero}", f"Ajustements passés dans Sage : {faits} / {len(lignes)}"]),
+        colonnes, lignes, [f"Problèmes à vérifier : {len(saisie.problemes)}"] if saisie.problemes else [],
+        totaux=[("Écarts en plus", argent(plus)), ("Écarts en moins", argent(moins))],
+        final=("Écart net", argent(plus + moins)), signatures=("Compté par", "Approuvé par"),
+        remarque="\n".join(saisie.problemes[:15]),
+        note="Stock théorique = stock de Sage juste avant la saisie ; valeur = écart × coût moyen (CUMP), ou "
+             "variation de la valeur du stock lue dans Sage après l'ajustement.")

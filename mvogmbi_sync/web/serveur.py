@@ -4,7 +4,7 @@ Sécurité (règles de l'application de bureau reprises) :
 - mêmes comptes que l'application (utilisateurs.Registre : empreinte PBKDF2, 3 mots de passe faux = compte
   verrouillé, dernier administrateur seulement bloqué 15 min) ; en plus, 10 échecs en 10 min depuis une même adresse
   = connexion refusée 10 min depuis cette adresse ;
-- session dans un témoin HttpOnly, SameSite=Strict (Secure en HTTPS), fermée après [web] inactivite_minutes (15) sans
+- session dans un témoin HttpOnly, SameSite=Strict (Secure en HTTPS), fermée après [web] inactivite_minutes (5) sans
   requête et au plus tard après 12 h ; jeton tiré au hasard, jamais dans une adresse ;
 - chaque formulaire porte un jeton anti-falsification lié à la session ; un envoi venu d'une autre origine est refusé ;
 - en-têtes : aucune page dans un cadre, aucun script, pas de mise en cache, référent jamais envoyé à un autre site ;
@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlsplit
 
 ADRESSE_DEFAUT = "127.0.0.1"   # rien n'est ouvert au réseau tant que [web] adresse n'est pas réglée
 PORT_DEFAUT = 8765
-INACTIVITE_DEFAUT = 15         # minutes
+INACTIVITE_DEFAUT = 5          # minutes (demande du propriétaire du 2026-11-05 : déconnecté après 5 min)
 DUREE_MAX = 12 * 3600          # une session ne dure jamais plus de 12 h
 TAILLE_MAX = 64 * 1024         # corps d'un formulaire
 TAILLE_MAX_FICHIERS = 25 * 1024 * 1024  # formulaire avec fichiers (reçus, relevés, factures PDF, états RIA)
@@ -78,6 +78,12 @@ class Sessions:
         with self._verrou:
             self._sessions.pop(jeton or "", None)
 
+    def active_depuis(self, secondes: float) -> bool:
+        """Quelqu'un a-t-il utilisé le site dans les `secondes` dernières secondes ?"""
+        limite = time.time() - secondes
+        with self._verrou:
+            return any(s.vu >= limite for s in self._sessions.values())
+
     def fermer_compte(self, nom: str) -> None:
         """Toutes les sessions d'un compte (mot de passe changé)."""
         with self._verrou:
@@ -94,6 +100,11 @@ class Requete:
     adresse: str
     jeton: str = ""
     fichiers: dict = field(default_factory=dict)  # champ -> (nom du fichier, contenu)
+    listes: dict = field(default_factory=dict)    # paramètres de l'adresse répétés (cases à cocher d'un filtre)
+
+    def valeurs(self, nom: str) -> list[str]:
+        """Toutes les valeurs d'un paramètre (adresse ou formulaire) : filtres à choix multiples."""
+        return list(self.listes.get(nom) or self.form.get(nom) or [])
 
     def champ(self, nom: str, defaut: str = "") -> str:
         valeurs = self.form.get(nom)
@@ -131,8 +142,10 @@ class Application:
         self.racine = Path(racine)
         self.config = config if config is not None else lire_config(self.racine)
         web = self.config.get("web", {})
-        self.sessions = Sessions(max(1, int(web.get("inactivite_minutes", INACTIVITE_DEFAUT) or INACTIVITE_DEFAUT))
-                                 * 60)
+        minutes = int(web.get("inactivite_minutes", INACTIVITE_DEFAUT) or INACTIVITE_DEFAUT)
+        if minutes == 15:  # ancienne valeur écrite d'office par installer_web.ps1 : la règle est 5 min
+            minutes = INACTIVITE_DEFAUT
+        self.sessions = Sessions(max(1, minutes) * 60)
         self.https = bool(web.get("certificat"))
         self.ecriture = threading.Lock()   # écritures dans donnees/ (fichiers JSON)
         self.echecs: dict[str, list[float]] = {}
@@ -174,12 +187,16 @@ class Application:
             from .pages_rapports_web import STYLE_RAPPORTS
 
             from .export_web import STYLE_EXPORT
+            from .filtres import STYLE as STYLE_FILTRES
             from .style_windows import STYLE_WINDOWS
 
             return Reponse(corps=pages.STYLE + STYLE_MENU + STYLE_ACCUEIL + STYLE_STATS + STYLE_RAPPORTS + STYLE_EXPORT
-                           + STYLE_WINDOWS,
-                           type="text/css; charset=utf-8")
-        if req.chemin == "/logo.png":
+                           + STYLE_WINDOWS + STYLE_FILTRES,
+                           type="text/css; charset=utf-8",
+                           entetes={"Cache-Control": "max-age=86400"})  # adresse avec la version : jamais périmé
+        if req.chemin in ("/logo.png", "/favicon.ico"):
+            # icône demandée d'office par le navigateur : publique (constat du 2026-11-05 : renvoyée vers /connexion,
+            # dont l'affichage efface le témoin, elle déconnectait la personne juste après sa connexion)
             from .accueil import logo
 
             return logo(self, req)
@@ -270,7 +287,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
     def _servir(self, methode: str) -> None:
         url = urlsplit(self.path)
-        query = {k: v[-1] for k, v in parse_qs(url.query).items()}
+        listes = parse_qs(url.query)
+        query = {k: v[-1] for k, v in listes.items()}
         form: dict[str, list[str]] = {}
         fichiers: dict = {}
         if methode == "POST":
@@ -292,7 +310,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
         except cookies.CookieError:
             pass
         jeton = temoin[COOKIE].value if COOKIE in temoin else ""
-        req = Requete(methode, url.path.rstrip("/") or "/", query, form, self.client_address[0], jeton, fichiers)
+        req = Requete(methode, url.path.rstrip("/") or "/", query, form, self.client_address[0], jeton, fichiers,
+                      listes)
         self._envoyer(self.app.traiter(req))
 
     def _envoyer(self, rep: Reponse) -> None:
@@ -306,7 +325,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         # « same-origin » : « no-referrer » fait envoyer « Origin: null » aux formulaires (connexion refusée)
         self.send_header("Referrer-Policy", "same-origin")
-        self.send_header("Cache-Control", "no-store")
+        if "Cache-Control" not in rep.entetes:  # pages : jamais gardées ; style et logo : gardés (rep.entetes)
+            self.send_header("Cache-Control", "no-store")
         if self.app.https:
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         for nom, valeur in rep.entetes.items():
@@ -406,6 +426,33 @@ def _suivre_telephones(app) -> None:
             app.noter(f"suivi des téléphones : {traceback.format_exc(limit=2)}")
 
 
+def _garder_sage_pret(app) -> None:
+    """Tant que quelqu'un utilise le site (15 min), une petite lecture toutes les 45 s garde la base de Sage ouverte
+    (connexion de l'application et base ouverte par l'outil d'import si Sage est fermé) : les pages lisent Sage tout
+    de suite au lieu de 3 à 10 s par page (demande du propriétaire du 2026-11-05 : « le mode web est très lent »).
+    Rien quand personne n'est connecté ; Sage lancé par la personne : la base de l'application est relâchée comme
+    avant (`sage_ouvert`)."""
+    while True:
+        time.sleep(45)
+        if not app.sessions.active_depuis(15 * 60) or datetime.now().hour < 6:  # la nuit : traitement automatique
+            continue
+        try:
+            from ..__main__ import base_partagee, lire_sage
+            from ..sage_bureau import sage_ouvert
+            from .taches import VERROU_SAGE
+
+            fichier = (app.config.get("sage_base", {}).get("fichier_entreprise")
+                       or app.config.get("sage_import", {}).get("fichier_entreprise"))
+            if not fichier or VERROU_SAGE.locked():  # import ou saisie dans Sage en cours : on ne touche à rien
+                continue
+            if sage_ouvert():  # Sage tourne (personne, import) : simple lecture, jamais l'outil d'import
+                base_partagee(app.config, fichier).requete("SELECT 1")
+            else:
+                lire_sage(app.config, lambda b: b.requete("SELECT 1"), ouvrir=False)
+        except Exception:  # noqa: BLE001 — Sage absent : les pages le disent elles-mêmes
+            pass
+
+
 def lancer(racine: Path, adresse: str | None = None, port: int | None = None) -> None:
     try:
         serveur = creer_serveur(racine, adresse, port)
@@ -417,6 +464,7 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     print(f"Application web : {schema}://{hote}:{port_reel}/  (Ctrl+C pour arrêter)")
     serveur.app.noter(f"démarrage {schema}://{hote}:{port_reel}/")  # type: ignore[attr-defined]
     threading.Thread(target=_suivre_telephones, args=(serveur.app,), daemon=True).start()
+    threading.Thread(target=_garder_sage_pret, args=(serveur.app,), daemon=True, name="sage-pret").start()
     if serveur.app.https:  # type: ignore[attr-defined]
         threading.Thread(target=_relire_certificat, args=(serveur,), daemon=True).start()
     try:

@@ -362,8 +362,13 @@ def _test_sage(ctx: Contexte) -> str:
 def sage(ctx: Contexte) -> Reponse:
     from .. import coffre
     from ..calendrier_paie import Calendrier
+    from ..depots import sans_clover
+    from ..rapprochement import compte_banque
 
     message = ""
+    if ctx.req.methode == "POST" and ctx.req.champ("action") in ("Ajouter le compte bancaire",
+                                                                  "Retirer le compte bancaire"):
+        message = _comptes_bancaires_action(ctx)
     if ctx.req.methode == "POST" and ctx.req.champ("action") == "Tester":
         from . import taches
 
@@ -408,11 +413,16 @@ def sage(ctx: Contexte) -> Reponse:
                         c.setdefault("sage_import", {}).update(fichier_entreprise=fichier)
                         for cle, defaut in (("version", "12001"), ("pays", "1"), ("position_numero", 3)):
                             c["sage_import"].setdefault(cle, defaut)
+                        if ctx.req.champ("compte_bnc").strip():  # compte de la Banque Nationale
+                            c.setdefault("rapprochement", {})["compte_bnc"] = ctx.req.champ("compte_bnc").strip()
+                        if "depots" in ctx.req.form:  # dépôts sans Clover
+                            c.setdefault("sage", {})["depots_sans_clover"] = "; ".join(
+                                x.strip() for x in ctx.req.champ("depots").split(";") if x.strip())
                     _ecrire(ctx, modifier)
                     _garder_secrets(ctx, [("lecture", coffre.SAGE_LECTURE), ("import", coffre.SAGE_IMPORT)])
                     message = _message("Configuration Sage 50 enregistrée.")
                 except ValueError as erreur:
-                    message = _message(erreur=f"Vérifiez les dates (AAAA-MM-JJ) : {erreur}")
+                    message = _message(erreur=f"Vérifiez les dates : {erreur}")
     b = ctx.config.get("sage_base", {})
     cal = Calendrier(ctx.racine)
     premiere = cal.premiere(date.today().year)
@@ -426,13 +436,17 @@ def sage(ctx: Contexte) -> Reponse:
                  "Le fichier dans lequel les factures sont importées (chemin sur le serveur). Pour les essais : une "
                  "COPIE.")
                  + _ligne("Premier jour à importer", _entree("date_depart", a.get("date_depart") or date.today().isoformat(), "date", 12),
-                          "AAAA-MM-JJ. Utilisé seulement si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ ».")
+                          "Utilisé seulement si Sage ne contient encore aucune facture de vente de Clover.")
                  + _ligne("Compte de dépôt des encaissements", _entree("compte", en.get("compte_depot", "1055"),
                                                                         taille=10),
                           "Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins).")
                  + _ligne("Encaisser à partir des ventes du", _entree("enc_depart", en.get("date_depart") or date.today().isoformat(), "date",
                                                                        12),
-                          "AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés."))
+                          "Les dépôts des ventes antérieures ne sont jamais encaissés.")
+                 + _ligne("Compte Sage du compte BNC", _entree("compte_bnc", compte_banque(ctx.config, "bnc"), taille=10),
+                          "Compte de banque Sage du compte de la Banque Nationale (rapprochement des relevés BNC).")
+                 + _ligne("Dépôts sans Clover", _entree("depots", "; ".join(sans_clover(ctx.config)), taille=40),
+                          "Emplacements Sage sans caisse Clover (entrepôt, réserve), séparés par « ; ». Les dépôts des points de vente viennent de la carte « Points de vente » (page Clover)."))
              + _carte("2", "Utilisateurs Sage", _ligne(
                  "Utilisateur Sage (lecture)", _entree("utilisateur", b.get("utilisateur") or "mvogmbi_sync"),
                  "Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » et accès Vue aux "
@@ -448,8 +462,68 @@ def sage(ctx: Contexte) -> Reponse:
                  "Date de la première paie de l'année : les paies suivantes (tous les 14 jours) et leurs périodes se "
                  "calculent (« Paie > Calendrier de paie »).")
                  + _ligne("Jours entre la fin de la période et la paie", _entree("delai", cal.delai, taille=5)))
-             + ENREGISTRER_CONFIG + "</form>")
+             + ENREGISTRER_CONFIG + "</form>" + _carte_comptes_bancaires(ctx))
     return Reponse(corps=page(ctx, "Sage 50", corps))
+
+
+FORMATS_RELEVES = {"desjardins": "Desjardins", "bnc": "Banque Nationale (BNC)"}
+
+
+def _carte_comptes_bancaires(ctx: Contexte) -> str:
+    """Comptes bancaires du rapprochement (demande du propriétaire du 2026-11-05 : « ajouter la possibilité
+    d'ajouter un compte bancaire ») : Desjardins et BNC d'office, comptes ajoutés retirables."""
+    from ..rapprochement import comptes_bancaires
+
+    ajoutes = {str(c.get("code")) for c in ctx.config.get("comptes_bancaires", []) or []}
+    lignes = "".join(
+        f"<tr><td>{e(c.nom)}</td><td>{e(FORMATS_RELEVES.get(c.format, c.format))}</td><td>{e(c.compte_sage)}</td>"
+        f"<td>{e(c.numero or '—')}</td><td>{e(c.code)}</td><td>"
+        + (f"<form method='post'>{csrf(ctx)}<input type='hidden' name='code' value='{e(c.code)}'><button "
+           "class='danger' name='action' value='Retirer le compte bancaire'>🗑 Retirer</button></form>"
+           if c.code in ajoutes else "<span class='note'>d'office</span>") + "</td></tr>"
+        for c in comptes_bancaires(ctx.config))
+    formats = "".join(f"<option value='{k}'>{e(v)}</option>" for k, v in FORMATS_RELEVES.items())
+    contenu = ("<div class='defile'><table><thead><tr><th>Compte</th><th>Banque (relevé)</th><th>Compte Sage</th>"
+               f"<th>N° à la banque</th><th>Dossier</th><th></th></tr></thead><tbody>{lignes}</tbody></table></div>"
+               f"<form method='post' class='ligne'>{csrf(ctx)}"
+               "<div><label>Nom</label><input name='nom' size='22' required placeholder='ex. BNC épargne'></div>"
+               f"<div><label>Banque</label><select name='format'>{formats}</select></div>"
+               "<div><label>Compte Sage</label><input name='compte_sage' size='8' required inputmode='numeric'></div>"
+               "<div><label>N° à la banque</label><input name='numero' size='16' placeholder='facultatif'></div>"
+               "<button name='action' value='Ajouter le compte bancaire'>➕ Ajouter le compte bancaire</button></form>")
+    return _carte("4", "Comptes bancaires (rapprochement)", contenu,
+                  "Chaque compte a ses relevés (Comptabilité > Rapprochement) et son compte de banque dans Sage. Un "
+                  "relevé chargé va d'office dans le bon compte : la banque est reconnue d'après le PDF, puis le n° du "
+                  "compte à la banque quand elle en a plusieurs.")
+
+
+def _comptes_bancaires_action(ctx: Contexte) -> str:
+    from ..rapprochement import comptes_bancaires
+
+    if ctx.req.champ("action") == "Retirer le compte bancaire":  # page Sage 50 : réservée par les droits du profil
+        code = ctx.req.champ("code")
+
+        def retirer(c):
+            c["comptes_bancaires"] = [x for x in c.get("comptes_bancaires", []) or [] if str(x.get("code")) != code]
+        _ecrire(ctx, retirer)
+        return _message(f"Compte bancaire « {code} » retiré (ses relevés restent dans donnees/releves_{code}).")
+    nom, compte = ctx.req.champ("nom").strip(), ctx.req.champ("compte_sage").strip()
+    fmt = ctx.req.champ("format") if ctx.req.champ("format") in FORMATS_RELEVES else "desjardins"
+    if not nom or not compte.isdigit():
+        return _message(erreur="Donnez un nom et un n° de compte Sage (chiffres).")
+    existants = {c.code for c in comptes_bancaires(ctx.config)}
+    base = "".join(x for x in nom.lower() if x.isalnum())[:16] or "compte"
+    code, n = base, 2
+    while code in existants:
+        code, n = f"{base}{n}", n + 1
+    if compte in {c.compte_sage for c in comptes_bancaires(ctx.config)}:
+        return _message(erreur=f"Le compte Sage {compte} est déjà celui d'un autre compte bancaire.")
+
+    def ajouter(c):
+        c.setdefault("comptes_bancaires", []).append({"code": code, "nom": nom, "format": fmt, "compte_sage": compte,
+                                                      "numero": ctx.req.champ("numero").strip(), "actif": True})
+    _ecrire(ctx, ajouter)
+    return _message(f"Compte bancaire « {nom} » ajouté (compte Sage {compte}).")
 
 
 # --------------------------------------------------------------------------------------------- Courriel
@@ -484,7 +558,7 @@ def courriel(ctx: Contexte) -> Reponse:
                     if jour:
                         date.fromisoformat(jour)
             except ValueError:
-                message = _message(erreur="Vérifiez le port et les dates (AAAA-MM-JJ).")
+                message = _message(erreur="Vérifiez le port et les dates.")
             else:
                 if invalides:
                     message = _message(erreur="Adresse(s) invalide(s) : " + ", ".join(invalides))

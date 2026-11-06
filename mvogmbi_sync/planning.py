@@ -28,6 +28,7 @@ class Quart:
     debut: str   # HH:MM
     fin: str     # HH:MM (après minuit : fin < début, compté le lendemain)
     pause: int = 0  # minutes non payées
+    depot: str = ""  # dépôt de ce quart quand il n'est pas le dépôt principal de l'employé (2026-11-05)
 
     @property
     def heures(self) -> Decimal:
@@ -82,7 +83,7 @@ class Planning:
     def definir(self, employe: str, jours: list[date], quart: Quart | None) -> None:
         """Horaire de l'employé pour ces jours (None = repos) ; vérifié avant d'écrire."""
         if quart is not None:
-            quart = Quart(lire_heure(quart.debut), lire_heure(quart.fin), int(quart.pause or 0))
+            quart = Quart(lire_heure(quart.debut), lire_heure(quart.fin), int(quart.pause or 0), quart.depot or "")
             if quart.heures <= 0:
                 raise ErreurPlanning("La pause est plus longue que le quart.")
         for jour in jours:
@@ -92,6 +93,8 @@ class Planning:
                 jours_employe.pop(jour.isoformat(), None)
             else:
                 jours_employe[jour.isoformat()] = {"debut": quart.debut, "fin": quart.fin, "pause": quart.pause}
+                if quart.depot:
+                    jours_employe[jour.isoformat()]["depot"] = quart.depot
         self.enregistrer()
 
     def copier_mois(self, depuis: str, vers: str, employes: list[str]) -> int:
@@ -129,3 +132,29 @@ class Planning:
                 continue
             resultat.append((jour, self.quart(mois, employe, jour)))
         return resultat
+
+
+def depot_du_quart(quart: Quart | None, employe) -> str:
+    """Dépôt où l'employé travaille ce jour-là : celui du quart, sinon son dépôt principal (vide = par défaut)."""
+    from .depots import est_defaut
+    from .points_vente import DEPOT_DEFAUT
+
+    nom = (quart.depot if quart and quart.depot else "") or getattr(employe, "depot", "")
+    return DEPOT_DEFAUT if est_defaut(nom) else nom
+
+
+def employes_du_depot(employes, filtre: list[str] | None, planning: "Planning | None" = None,
+                      mois: str | None = None) -> list:
+    """Employés d'un planning filtré par dépôt (None = tous) : dépôt principal, ou au moins un quart du mois dans
+    un des dépôts choisis."""
+    from .depots import garde
+
+    if filtre is None:
+        return list(employes)
+    sortie = []
+    for e in employes:
+        quarts = planning.mois.get(mois, {}).get(e.id, {}) if planning is not None and mois else {}
+        if garde(getattr(e, "depot", ""), filtre) or any(garde(q.get("depot") or e.depot, filtre)
+                                                         for q in quarts.values()):
+            sortie.append(e)
+    return sortie

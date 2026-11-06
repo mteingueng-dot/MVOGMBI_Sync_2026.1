@@ -60,6 +60,7 @@ class MouvementBanque:
     sage: list[int] = field(default_factory=list)  # n° d'écritures Sage rapprochées
     compte: str = ""          # compte Sage choisi pour la saisie (ex. 5450)
     remarque: str = ""
+    compte_banque: str = ""   # compte Sage de la banque du relevé (vide = Desjardins, [encaissements] compte_depot)
 
     @property
     def cle(self) -> str:
@@ -226,7 +227,100 @@ def lire_releve_garde(chemin: Path) -> Releve:
     return _releve_depuis_dict(donnees)
 
 
+BANQUES = {"desjardins": "Desjardins", "bnc": "Banque Nationale (BNC)"}
+
+
+def banque_du_texte(texte: str) -> str:
+    """« bnc » : relevé de la Banque Nationale (« MM JJ DESCRIPTION DÉBIT ($) CRÉDIT ($) SOLDE ($) », « No
+    succursale ») ; sinon « desjardins »."""
+    t = texte.lower()
+    if "no succursale" in t and re.search(r"mm\s+jj\s+description", t):
+        return "bnc"
+    return "desjardins"
+
+
 def lire_releve(chemin: Path) -> Releve:
+    """Relevé PDF : Desjardins ou Banque Nationale (BNC), reconnu d'après son texte."""
+    import pdfplumber
+
+    with pdfplumber.open(chemin) as pdf:
+        texte = "\n".join((p.extract_text() or "") for p in pdf.pages)
+        if banque_du_texte(texte) == "bnc":
+            return lire_releve_bnc(chemin, pdf, texte)
+    return lire_releve_desjardins(chemin)
+
+
+LIGNE_BNC = re.compile(r"^(\d{2}) (\d{2}) (.*?) ((?:\d{1,3}(?: \d{3})*,\d{2} ?){1,3})$")
+
+
+def lire_releve_bnc(chemin: Path, pdf, texte: str) -> Releve:
+    """Relevé de compte de la Banque Nationale (demande du propriétaire du 2026-11-05 : « ajoute aussi les relevés
+    de compte de BNC ») : « Période du 01-09-2025 au 30-09-2025 », lignes « MM JJ DESCRIPTION  DÉBIT  CRÉDIT
+    SOLDE » (montants « 1 802,86 ») ; débit ou crédit d'après la variation du solde imprimé ; « SOLDE PRECEDENT » ;
+    facturation détaillée ignorée ; contrôle avec « TRANSACTIONS DÉBIT n montant CRÉDIT n montant »."""
+    releve = Releve(Path(chemin).name)
+    m = re.search(r"P.riode du (\d{2})-(\d{2})-(\d{4}) au (\d{2})-(\d{2})-(\d{4})", texte)
+    debut = date(int(m[3]), int(m[2]), int(m[1])) if m else None
+    fin = date(int(m[6]), int(m[5]), int(m[4])) if m else None
+    releve.debut, releve.fin = (debut.isoformat() if debut else ""), (fin.isoformat() if fin else "")
+    solde_courant: Decimal | None = None
+    dans_tableau = False
+    for ligne in texte.splitlines():
+        ligne = ligne.replace(" ", " ").replace(" ", " ").strip()
+        if re.match(r"MM JJ DESCRIPTION", ligne):
+            dans_tableau = True
+            continue
+        if not dans_tableau:
+            continue
+        if re.match(r"(FACTURATION D.TAILL|NOMBRE MONTANT|Veuillez v.rifier)", ligne):
+            dans_tableau = False  # fin du tableau de la page (repris à l'en-tête suivant)
+            continue
+        trouve = LIGNE_BNC.match(ligne)
+        if not trouve:
+            continue
+        mois, jour, description = int(trouve[1]), int(trouve[2]), trouve[3].strip()
+        montants = [_montant(x) for x in re.findall(r"\d{1,3}(?: \d{3})*,\d{2}", trouve[4])]
+        solde = montants[-1]
+        if re.match(r"SOLDE PR.C.DENT", description, re.I):
+            releve.solde_ouverture = solde_courant = solde
+            continue
+        if len(montants) < 2:
+            continue
+        valeur = montants[-2]
+        if solde_courant is not None and solde_courant + valeur == solde:
+            montant = valeur          # crédit (dépôt)
+        elif solde_courant is not None and solde_courant - valeur == solde:
+            montant = -valeur         # débit (retrait)
+        else:
+            montant = -valeur if solde_courant is None or solde < solde_courant else valeur
+        annee = fin.year if fin else date.today().year
+        if fin and mois > fin.month + 1:  # relevé de janvier avec des jours de décembre
+            annee -= 1
+        try:
+            jour_mvt = date(annee, mois, jour)
+        except ValueError:
+            releve.remarques.append(f"date illisible ignorée : {ligne}")
+            continue
+        mvt = MouvementBanque(jour_mvt.isoformat(), description, montant, solde, releve.fichier,
+                              len(releve.mouvements))
+        if solde_courant is not None and solde_courant + montant != solde:
+            mvt.remarque = f"solde attendu {solde_courant + montant} $, imprimé {solde} $"
+        solde_courant = solde
+        releve.mouvements.append(mvt)
+    releve.solde_fermeture = solde_courant
+    totaux = re.search(r"TRANSACTIONS D.BIT (\d+) ([\d  ]+,\d{2}) CR.DIT (\d+) ([\d  ]+,\d{2})", texte)
+    if totaux:  # contrôle avec les totaux imprimés par la banque
+        debits = [x for x in releve.mouvements if x.montant < 0]
+        credits = [x for x in releve.mouvements if x.montant > 0]
+        attendus = (int(totaux[1]), _montant(totaux[2]), int(totaux[3]), _montant(totaux[4]))
+        lus = (len(debits), -sum((x.montant for x in debits), Decimal(0)), len(credits),
+               sum((x.montant for x in credits), Decimal(0)))
+        if lus != attendus:
+            releve.remarques.append(f"totaux lus {lus} ≠ totaux du relevé {attendus}")
+    return releve
+
+
+def lire_releve_desjardins(chemin: Path) -> Releve:
     """Relevé Desjardins : colonnes Date, Code, Description, Frais, Retrait, Dépôt, Solde ; « 6 840.89 » ;
     description parfois sur deux lignes (les montants sont alors sur la seconde)."""
     import pdfplumber
@@ -486,11 +580,62 @@ def resume(banque: list[MouvementBanque], sage: list[MouvementSage], solde_banqu
 
 
 # --------------------------------------------------------------------------------------------- registre
-class RegistreReleves:
-    """Relevés chargés et décisions du propriétaire (donnees/releves_desjardins/releves.json)."""
+@dataclass
+class CompteBancaire:
+    """Compte bancaire rapproché (demande du propriétaire du 2026-11-05 : « ajouter la possibilité d'ajouter un
+    compte bancaire ») : `format` = lecteur du relevé (« desjardins », « bnc ») ; `numero` = n° du compte à la
+    banque, pour ranger un relevé quand une banque a plusieurs comptes ; relevés dans donnees/releves_<code>/."""
+    code: str
+    nom: str
+    format: str
+    compte_sage: str
+    numero: str = ""
 
-    def __init__(self, racine: Path):
-        self.dossier = Path(racine) / "donnees" / "releves_desjardins"
+    @property
+    def libelle(self) -> str:
+        return f"{self.nom} ({self.compte_sage})"
+
+
+def comptes_bancaires(config_toml: dict) -> list[CompteBancaire]:
+    """Desjardins (1055, [encaissements] compte_depot) et BNC (1060, [rapprochement] compte_bnc) d'office, puis
+    les comptes ajoutés ([[comptes_bancaires]] code, nom, format, compte_sage, numero, actif)."""
+    r = config_toml.get("rapprochement", {})
+    comptes = [CompteBancaire("desjardins", "Desjardins", "desjardins",
+                              str(config_toml.get("encaissements", {}).get("compte_depot", "1055") or "1055").strip(),
+                              str(r.get("numero_desjardins", "") or "")),
+               CompteBancaire("bnc", "Banque Nationale (BNC)", "bnc",  # 1060 : indication du propriétaire du 2026-11-05
+                              str(r.get("compte_bnc", "1060") or "1060").strip(), str(r.get("numero_bnc", "") or ""))]
+    for c in config_toml.get("comptes_bancaires", []) or []:
+        code = "".join(x for x in str(c.get("code", "")).lower() if x.isalnum() or x in "-_")
+        if not code or code in {x.code for x in comptes} or not c.get("actif", True):
+            continue
+        comptes.append(CompteBancaire(code, str(c.get("nom") or code), str(c.get("format") or "desjardins"),
+                                      str(c.get("compte_sage") or "").strip(), str(c.get("numero") or "")))
+    return [c for c in comptes if c.compte_sage]
+
+
+def compte_bancaire(config_toml: dict, code: str = "desjardins") -> CompteBancaire:
+    comptes = comptes_bancaires(config_toml)
+    return next((c for c in comptes if c.code == code), comptes[0])
+
+
+def compte_banque(config_toml: dict, banque: str = "desjardins") -> str:
+    """Compte Sage du compte bancaire (1055 Desjardins, 1060 BNC, ou un compte ajouté)."""
+    return compte_bancaire(config_toml, banque).compte_sage
+
+
+def banques_reglees(config_toml: dict) -> list[str]:
+    """Codes des comptes bancaires du rapprochement, dans l'ordre."""
+    return [c.code for c in comptes_bancaires(config_toml)]
+
+
+class RegistreReleves:
+    """Relevés chargés et décisions du propriétaire (donnees/releves_<banque>/releves.json) ; une banque par
+    registre (« desjardins » par défaut, « bnc » : Banque Nationale, demande du propriétaire du 2026-11-05)."""
+
+    def __init__(self, racine: Path, banque: str = "desjardins", compte: str = ""):
+        self.banque, self.compte = banque, compte
+        self.dossier = Path(racine) / "donnees" / f"releves_{banque}"
         self.chemin = self.dossier / "releves.json"
         self.decisions: dict[str, dict] = {}   # clé de mouvement -> {"etat", "compte", "sage", "remarque"}
         self.memoire: dict[str, str] = {}      # description normalisée -> compte Sage (pour les mouvements semblables)
@@ -516,6 +661,8 @@ class RegistreReleves:
             except Exception as exc:
                 r = Releve(chemin.name, remarques=[f"lecture impossible : {exc}"])
             for m in r.mouvements:
+                if self.banque != "desjardins":
+                    m.compte_banque = self.compte  # écriture au compte de cette banque (robot_journal)
                 d = self.decisions.get(m.cle)
                 if d:
                     m.etat, m.compte, m.sage, m.remarque = d["etat"], d.get("compte", ""), d.get("sage", []), \
@@ -632,3 +779,46 @@ def periode_des(releves: list[Releve]) -> tuple[date, date] | None:
         return None
     return min(debuts + jours), max(fins + jours)
 
+
+
+# --------------------------------------------------------------------------------------------- plusieurs banques
+def registre_de(racine: Path, config_toml: dict, banque: str = "desjardins") -> RegistreReleves:
+    return RegistreReleves(racine, banque, compte_banque(config_toml, banque))
+
+
+def compte_entier(config_toml: dict, banque: str = "desjardins") -> int:
+    """Compte Sage de la banque au format de Sage (1055 -> 10550000)."""
+    from .encaissements import numero_compte_sage
+
+    return numero_compte_sage(compte_banque(config_toml, banque) or "1055")
+
+
+def banque_du_fichier(chemin: Path) -> str:
+    import pdfplumber
+
+    with pdfplumber.open(chemin) as pdf:
+        return banque_du_texte("\n".join((p.extract_text() or "") for p in pdf.pages[:1]))
+
+
+def ranger_releve(racine: Path, source: Path, nom: str | None = None, config_toml: dict | None = None
+                  ) -> tuple[str, Path]:
+    """Relevé chargé : sa banque est reconnue d'après le PDF, puis le compte bancaire dont le n° figure sur le
+    relevé (sinon le premier compte de cette banque) ; copié dans donnees/releves_<code>/. Renvoie (code, fichier)."""
+    import shutil
+
+    import pdfplumber
+
+    with pdfplumber.open(source) as pdf:
+        texte = "\n".join((p.extract_text() or "") for p in pdf.pages[:1])
+    fmt = banque_du_texte(texte)
+    chiffres = "".join(c for c in texte if c.isdigit())
+    candidats = [c for c in comptes_bancaires(config_toml or {}) if c.format == fmt]
+    choisi = next((c for c in candidats if c.numero and "".join(x for x in c.numero if x.isdigit()) in chiffres),
+                  candidats[0] if candidats else None)
+    banque = choisi.code if choisi else fmt
+    dossier = Path(racine) / "donnees" / f"releves_{banque}"
+    dossier.mkdir(parents=True, exist_ok=True)
+    cible = dossier / (nom or Path(source).name)
+    if Path(source).resolve() != cible.resolve():
+        shutil.copy2(source, cible)
+    return banque, cible

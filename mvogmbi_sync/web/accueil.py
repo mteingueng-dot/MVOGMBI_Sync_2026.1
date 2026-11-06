@@ -157,7 +157,10 @@ def bienvenue() -> str:
         else:
             html += f"<p>{e(texte)}</p>"
     fermer()
-    return f"<section class='bienvenue'>{html}</section>"
+    # comme Application._zone_document : texte sur toute la largeur, logo pâli dans la marge de droite, immobile
+    # pendant le défilement (colonne collante)
+    return (f"<section class='bienvenue'><div class='texte'>{html}</div>"
+            "<div class='filigrane' aria-hidden='true'></div></section>")
 
 
 def page_accueil(ctx) -> Reponse:
@@ -227,16 +230,21 @@ section.mise-en-route h2 { margin: 4px 0 8px; font-size: 17px; font-weight: 600;
 a.ouvrir { border: 1px solid #b9c7be; border-radius: 14px; padding: 4px 12px; font-size: 13px; color: var(--vert);
            text-decoration: none; font-weight: 600; background: var(--carte); }
 a.ouvrir:hover { border-color: var(--vert); }
-section.bienvenue { background-image: url('/logo.png'); background-repeat: no-repeat; background-position: right 40px top 40px;
-                    background-size: 200px auto; }
-section.bienvenue::before { content: ""; }
-section.bienvenue h1 { font-size: 28px; color: var(--vert-vif); font-weight: 600; }
-section.bienvenue h2 { color: var(--vert); font-size: 19px; font-weight: 600; margin-top: 24px; }
-section.bienvenue p, section.bienvenue ul { max-width: 620px; font-size: 14px; }
+section.bienvenue { display: grid; grid-template-columns: minmax(0, 1fr) 250px; column-gap: 40px;
+                    padding: 20px 28px; }
+section.bienvenue .texte { min-width: 0; }
+section.bienvenue .filigrane { position: sticky; top: 24px; align-self: start; height: 250px;
+                               background: url('/logo.png') no-repeat center / contain; opacity: 0.11;
+                               pointer-events: none; }
+section.bienvenue h1 { font-size: 26px; color: var(--vert-vif); font-weight: 600; margin: 0 0 12px; }
+section.bienvenue h2 { color: var(--vert); font-size: 17px; font-weight: 600; margin: 18px 0 6px; }
+section.bienvenue p { font-size: 14px; line-height: 1.5; margin: 0 0 6px; }
+section.bienvenue ul { font-size: 14px; line-height: 1.5; margin: 0 0 6px; padding-left: 30px; }
+section.bienvenue li { margin-bottom: 3px; }
 @media (max-width: 820px) {
   header.bandeau .logo img { height: 48px; } header.bandeau .nom { font-size: 19px; }
   header.bandeau .expl { display: none; }
   .etapes { grid-template-columns: 1fr; grid-auto-flow: row; grid-template-rows: none; }
-  section.bienvenue { background-image: none; }
+  section.bienvenue { display: block; } section.bienvenue .filigrane { display: none; }
 }
 """

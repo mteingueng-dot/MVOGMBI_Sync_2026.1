@@ -27,7 +27,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from . import coffre
+from . import coffre, depots
 from .correspondance import memoriser_a_relier
 from .periodes import jours as jours_periode
 
@@ -135,15 +135,13 @@ def jours_couverts_sage(lignes: list[dict], prefixe: str = "Vente") -> tuple[set
 def blocage_depot(point_vente, depots_sage: list[str] | None, config_toml: dict) -> str:
     """Raison qui empêche d'importer les factures d'un point de vente dans son dépôt Sage ; « » si rien.
 
-    Le fichier d'import de Sage n'a pas de champ d'emplacement connu : les lignes vont dans l'emplacement par défaut.
-    Un autre dépôt reste bloqué tant que [sage_import] depots_valides n'est pas vrai (essai sur la copie d'abord)."""
+    Le fichier d'import de Sage n'a pas de champ d'emplacement : les lignes vont dans l'emplacement par défaut, puis
+    l'application transfère le stock vendu du dépôt vers l'emplacement par défaut (`depots.apres_import`, choix du
+    propriétaire du 2026-11-05) ; seul un dépôt absent de Sage bloque."""
     depot = point_vente.depot_sage.strip()
     if depots_sage is not None and depot.lower() not in {d.lower() for d in depots_sage}:
         return (f"dépôt Sage « {depot} » introuvable (Sage : Configuration > Paramètres > Stocks et services > "
                 "Emplacements)")
-    if not point_vente.depot_par_defaut and not config_toml.get("sage_import", {}).get("depots_valides", False):
-        return (f"dépôt Sage « {depot} » : l'import dans un autre emplacement que « Emplacement par défaut » doit "
-                "d'abord être validé sur la copie d'essai")
     return ""
 
 
@@ -386,6 +384,9 @@ def importer_lot(racine: Path, lot: list, chemin_imp: Path, exe: Path, fichier_s
             w.writerow(["Date et heure", "Facture", "Fichier d'entreprise", "Lignes", "Sous-total", "Total",
                         "Code de retour", "Résultat"])
         etats = {e.numero: e for e in cr.jours if e.numero}  # n° unique, même avec plusieurs points de vente
+        from .points_vente import points_de_vente
+
+        depot_du_client = {p.client_sage.strip().lower(): p.depot_sage for p in points_de_vente(config_toml)}
         for imp in lot:
             ok = presentes.get(imp.facture.numero)
             statut = "importée" if ok else ("non vérifiable" if ok is None else "ÉCHEC")
@@ -398,6 +399,13 @@ def importer_lot(racine: Path, lot: list, chemin_imp: Path, exe: Path, fichier_s
             if ok:
                 cr.importees.append(f"{imp.facture.numero} : {imp.total:,.2f} $")
                 cr.numeros_importes.append(imp.facture.numero)
+                depot = depot_du_client.get(str(imp.facture.client).strip().lower(), "")
+                if depot and not depots.est_defaut(depot):  # stock vendu sorti du dépôt du point de vente
+                    for m in depots.apres_import(racine, config_toml, imp.facture.numero, depot,
+                                                 [(l.numero_sage, l.quantite) for l in imp.lignes], vente=True,
+                                                 journal=cr.note):
+                        if "non fait" in m:
+                            cr.problemes.append(f"{imp.facture.numero} : {m}")
             else:
                 cr.problemes.append(f"{imp.facture.numero} : {statut} après l'import")
 
@@ -609,10 +617,14 @@ def importer_factures_pretes(racine: Path, config_toml: dict, cr: CompteRendu) -
     if not config_toml.get("factures_courriel", {}).get("import_nuit", True):
         return
     try:
-        pretes = [f for f in Registre(racine).factures if f.etat == PRETE]
+        registre = Registre(racine)
+        pretes = [f for f in registre.factures if f.etat == PRETE]
         if not pretes:
             return
-        resultats = importer_achats(racine, config_toml, pretes, journal=lambda _t: None)
+        try:
+            resultats = importer_achats(racine, config_toml, pretes, journal=lambda _t: None, courriel=False)
+        finally:
+            registre.enregistrer()  # état « Importée » gardé (sinon proposées de nouveau la nuit suivante)
         importees = sum(1 for texte in resultats.values() if texte.startswith("importée"))
         cr.note(f"Factures fournisseurs prêtes : {importees} importée(s) sur {len(pretes)}"
                 + "".join(f"\n   {f} : {t}" for f, t in resultats.items() if not t.startswith("importée")))

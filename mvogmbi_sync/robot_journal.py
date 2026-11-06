@@ -48,7 +48,7 @@ def source(m: MouvementBanque) -> str:
 
 def compte_contrepartie(m: MouvementBanque, defaut: str) -> str:
     """Compte de l'autre côté de l'écriture : le compte de banque, sauf une opération RIA payée en espèces."""
-    return getattr(m, "compte_contre", "") or defaut
+    return getattr(m, "compte_contre", "") or getattr(m, "compte_banque", "") or defaut
 
 
 def ecriture_presente(base, m: MouvementBanque) -> int | None:
@@ -65,7 +65,8 @@ def comptes_valides(base, mouvements: list[MouvementBanque]) -> dict[str, str]:
     """Problème par compte choisi : inexistant, inactif, ou compte de banque lui-même."""
     problemes = {}
     for numero in {m.compte for m in mouvements}:
-        if not numero.isdigit() or compte_sage(numero) == COMPTE_BANQUE:
+        # le compte de la banque du mouvement lui-même est refusé plus bas (un virement BNC -> Desjardins est permis)
+        if not numero.isdigit():
             problemes[numero] = "compte invalide"
             continue
         lignes = base.requete("SELECT bInactive FROM taccount WHERE lId = %s", (compte_sage(numero),))
@@ -115,6 +116,9 @@ def appliquer(config_toml: dict, mouvements: list[MouvementBanque], journal=prin
             r = ResultatEncaissement(m.date, m.montant, True, [f"déjà dans Sage (écriture n° {deja[m.cle]})"])
         elif m.compte in problemes:
             r = ResultatEncaissement(m.date, m.montant, False, [f"compte {m.compte} : {problemes[m.compte]}"])
+        elif compte_sage(m.compte) == compte_sage(compte_contrepartie(m, compte_banque)):
+            r = ResultatEncaissement(m.date, m.montant, False,
+                                     [f"compte {m.compte} : c'est le compte de banque du relevé lui-même"])
         else:
             r = saisir_ecriture(fenetre, m, compte_banque)
             time.sleep(1.5)
@@ -143,9 +147,17 @@ def journal_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
     from .rapprochement import CONFIRME, RegistreReleves
     from .sage_bureau import SessionSage, executable_sage
 
+    from .rapprochement import banques_reglees, compte_banque
+
     bilan = {"saisis": [], "a_verifier": [], "erreur": ""}
-    registre = RegistreReleves(racine)
-    mouvements = [m for r in registre.lire() for m in r.mouvements if m.etat == CONFIRME and m.compte]
+    registres = [RegistreReleves(racine, b, compte_banque(config_toml, b)) for b in banques_reglees(config_toml)]
+    registre = registres[0]
+    du_registre = {}  # mouvement -> registre de sa banque (Desjardins, BNC)
+    mouvements = []
+    for reg in registres:
+        for m in (m for r in reg.lire() for m in r.mouvements if m.etat == CONFIRME and m.compte):
+            du_registre[id(m)] = reg
+            mouvements.append(m)
     from .ria import Registre as RegistreRia
 
     ria = RegistreRia(racine)
@@ -170,12 +182,13 @@ def journal_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
             if hasattr(m, "operation"):
                 ria.noter_saisie(m, r.traite)
             else:
-                registre.retenir(m)
+                du_registre.get(id(m), registre).retenir(m)
     except Exception as exc:
         bilan["erreur"] = str(exc)
         journal(f"Erreur : {exc}")
     finally:
-        registre.enregistrer()
+        for reg in registres:
+            reg.enregistrer()
         ria.enregistrer()
         session.fermer()
     return bilan

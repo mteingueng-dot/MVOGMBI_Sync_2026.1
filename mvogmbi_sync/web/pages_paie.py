@@ -44,6 +44,12 @@ def _decimal(texte: str) -> Decimal:
 
 
 # --------------------------------------------------------------------------------------------- planning
+def _noms_depots(ctx: Contexte) -> list[str]:
+    from ..depots import noms
+
+    return noms(ctx.config)
+
+
 def planning(ctx: Contexte) -> Reponse:
     """Comme fenetre_planning.FenetrePlanning : ◀ mois ▶ (publié / non publié), grille des employés × jours du mois
     (quart de chaque jour, heures du mois), employés choisis (cases) puis « Horaire des employés choisis » (jours de
@@ -52,6 +58,10 @@ def planning(ctx: Contexte) -> Reponse:
     from .. import planning as pl
     from ..fenetre_planning import _mois_suivant
     from .consultations import lire_ou_vide, Section, tableau_section
+
+    from ..depots import garde
+    from ..fenetre_planning import DEPOT_PRINCIPAL
+    from .filtres import depots_choisis, filtre_depots, parametres_depots
 
     registre = pt.Registre(ctx.racine)
     employes = ctx.employes_visibles(registre)
@@ -90,24 +100,39 @@ def planning(ctx: Contexte) -> Reponse:
                     semaine = {int(j) for j in ctx.req.champs("jours")} or set(range(7))
                     jours = [du + timedelta(days=k) for k in range((au - du).days + 1)
                              if (du + timedelta(days=k)).weekday() in semaine]
-                    quart = None if action == "Repos" else pl.Quart(ctx.req.champ("debut"), ctx.req.champ("fin"),
-                                                                    int(ctx.req.champ("pause") or 0))
+                    lieu = ctx.req.champ("depot_quart")
+                    lieu = "" if lieu in ("", DEPOT_PRINCIPAL) else lieu
+                    par_id = {x.id: x for x in employes}
                     for ident in choisis:
+                        quart = None if action == "Repos" else pl.Quart(
+                            ctx.req.champ("debut"), ctx.req.champ("fin"), int(ctx.req.champ("pause") or 0),
+                            "" if pl.depot_du_quart(None, par_id[ident]) == lieu else lieu)
                         plan.definir(ident, jours, quart)
                     message = _message(f"{len(jours)} jour(s) mis à jour pour {len(choisis)} employé(s).")
         except (ValueError, pl.ErreurPlanning) as erreur:
             message = _message(erreur=str(erreur))
     plan = pl.Planning(ctx.racine)
+    filtre = depots_choisis(ctx)  # une cédule par dépôt (demande du propriétaire du 2026-11-05)
+    employes = pl.employes_du_depot(employes, filtre, plan, mois)
     jours = pl.jours_du_mois(mois)
     publie = plan.publies.get(mois)
     libelle = f"Planning de {mois}" + (f"  ✔ publié le {publie[:10]}" if publie else "  ● non publié")
-    entetes = ["", "Employé"] + [f"{pl.JOURS[j.weekday()]} {j:%d}" for j in jours] + ["Heures"]
+    entetes = ["", "Employé", "Dépôt"] + [f"{pl.JOURS[j.weekday()]} {j:%d}" for j in jours] + ["Heures"]
     lignes = []
     for x in employes:
         quarts = [plan.quart(mois, x.id, j) for j in jours]
         case = (f"<input type='checkbox' name='employe' value='{e(x.id)}'{' checked' if x.id in choisis else ''} "
                 f"aria-label='{e(x.nom)}'>")
-        lignes.append([case, x.nom] + [q.texte().replace(" min)", ")") if q else "" for q in quarts]
+        textes = []
+        for q in quarts:  # quart dans un autre dépôt : « @dépôt » ; hors du filtre : entre crochets
+            if not q:
+                textes.append("")
+                continue
+            texte = q.texte().replace(" min)", ")")
+            if pl.depot_du_quart(q, x) != pl.depot_du_quart(None, x):
+                texte += f" @{pl.depot_du_quart(q, x)}"
+            textes.append(texte if garde(pl.depot_du_quart(q, x), filtre) else f"[{texte}]")
+        lignes.append([case, x.nom, pl.depot_du_quart(None, x)] + textes
                       + [f"{plan.heures(mois, x.id):.2f}".replace(".", ",")])
     cases = "".join(f"<label class='case'><input type='checkbox' name='jours' value='{k}'{' checked' if k < 5 else ''}>"
                     f" {j}</label> " for k, j in enumerate(JOURS))
@@ -121,16 +146,24 @@ def planning(ctx: Contexte) -> Reponse:
                 f"<p>{cases}</p><div class='ligne'>"
                 "<div><label>Début</label><input name='debut' value='08:00' size='7'></div>"
                 "<div><label>Fin</label><input name='fin' value='16:00' size='7'></div>"
-                "<div><label>Pause (min)</label><input name='pause' value='30' size='5'></div></div>"
+                "<div><label>Pause (min)</label><input name='pause' value='30' size='5'></div>"
+                "<div><label>Dépôt</label><select name='depot_quart'>"
+                + "".join(f"<option>{e(n)}</option>" for n in [DEPOT_PRINCIPAL] + _noms_depots(ctx))
+                + "</select></div></div>"
                 f"<div class='barre-onglet'><span class='a-droite'><a class='ouvrir' href='?mois={mois}'>✖ Fermer</a> "
                 "<button class='second' name='action' value='Repos'>Repos ces jours-là</button> <button name='action' "
                 "value='Définir'>Appliquer l'horaire</button></span></div></div>") if ouvrir_horaire else ""
-    barre = (f"<div class='barre-onglet'><a class='ouvrir' href='?mois={_mois_suivant(mois, -1)}'>◀</a><strong "
-             f"class='periode'>{e(libelle)}</strong><a class='ouvrir' href='?mois={_mois_suivant(mois, 1)}'>▶</a>"
+    garder = parametres_depots(ctx)
+    barre = (f"<div class='barre-onglet'><a class='ouvrir' href='?mois={_mois_suivant(mois, -1)}{garder}'>◀</a><strong "
+             f"class='periode'>{e(libelle)}</strong><a class='ouvrir' href='?mois={_mois_suivant(mois, 1)}{garder}'>▶</a>"
              "<button name='action' value='horaire'>🕑 Horaire des employés choisis…</button><button class='second' "
              "name='action' value='Reprendre le mois précédent'>📋 Reprendre le mois précédent</button><button "
              "name='action' value='Publier le mois'>📣 Publier le mois</button></div>")
-    corps = (message + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='mois' value='{mois}'>" + barre
+    caches = "".join(f"<input type='hidden' name='depot' value='{e(d)}'>" for d in (filtre or []))
+    choix = (f"<form method='get' class='barre-onglet'><input type='hidden' name='mois' value='{mois}'>"
+             + filtre_depots(ctx) + "<button class='second'>Afficher</button></form>")
+    corps = (message + choix + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='mois' value='{mois}'>"
+             + caches + barre
              + "<p class='note'>Cochez un ou plusieurs employés, puis « Horaire des employés choisis… ». « Publier le "
                "mois » : chaque employé voit son horaire (« Paie > Mon horaire » et poste de pointage).</p>"
              + dialogue + tableau_section(Section(libelle, entetes, lignes, html={0})) + "</form>")
@@ -141,7 +174,8 @@ def planning(ctx: Contexte) -> Reponse:
 BOUTONS_EMPLOYES = [("importer", "⬇ Importer les employés de Clover"), ("ajouter", "➕ Ajouter"),
                     ("modifier", "✎ Modifier"), ("supprimer", "🗑 Supprimer"), ("nip", "🔑 Définir le NIP"),
                     ("relier", "🔗 Relier à un compte…"), ("sage", "🔗 Lier aux employés Sage…"),
-                    ("courriel", "✉ Courriel…"), ("adresse", "🏠 Adresse…"), ("basculer", "⏻ Activer / désactiver")]
+                    ("courriel", "✉ Courriel…"), ("adresse", "🏠 Adresse…"), ("depot", "🏬 Dépôt…"),
+                    ("basculer", "⏻ Activer / désactiver")]
 
 
 def employes(ctx: Contexte) -> Reponse:
@@ -213,6 +247,10 @@ def employes(ctx: Contexte) -> Reponse:
                         x.courriel = adresse
                     elif action == "adresse":
                         x.adresse = " | ".join(v.strip() for v in ctx.req.champ("adresse").split("|") if v.strip())
+                    elif action == "depot":  # dépôt principal (demande du propriétaire du 2026-11-05)
+                        from ..depots import est_defaut
+
+                        x.depot = "" if est_defaut(ctx.req.champ("depot")) else ctx.req.champ("depot").strip()
                     elif action == "basculer":
                         x.actif = not x.actif
                     reg.enregistrer()
@@ -223,17 +261,19 @@ def employes(ctx: Contexte) -> Reponse:
         registre = pt.Registre(ctx.racine)
     liste = (sorted(registre.employes, key=lambda x: (not x.actif, x.nom.casefold())) if ctx.voit_tous()
              else ctx.employes_visibles(registre))
+    from ..planning import depot_du_quart
+
     lignes = [[f"<input type='radio' name='id' value='{e(x.id)}'{' checked' if x.id == choisi else ''}>", e(x.nom),
-               "Défini" if x.nip else "<span class='erreur-texte'>À définir</span>", "Oui" if x.actif else "Non",
+               e(depot_du_quart(None, x)), "Défini" if x.nip else "<span class='erreur-texte'>À définir</span>", "Oui" if x.actif else "Non",
                "Oui" if x.clover else "", e(x.numero_sage), e(x.courriel), e(x.compte)] for x in liste]
     boutons = "".join(f"<button class='second' name='op' value='{k}'>{e(t)}</button>" for k, t in BOUTONS_EMPLOYES)
     corps = (message
              + (f"<form method='get'><div class='barre-onglet'>{boutons}</div>" if ctx.voit_tous() else "<form>")
              + "<p class='note'>Le NIP (4 à 6 chiffres) n'est jamais gardé : seule son empreinte l'est. Un employé sans "
                "NIP apparaît au poste de pointage, mais ne peut pas pointer.</p>"
-             + tableau_section(Section("Employés et NIP", ["", "Employé", "NIP", "Actif", "Employé Clover",
+             + tableau_section(Section("Employés et NIP", ["", "Employé", "Dépôt", "NIP", "Actif", "Employé Clover",
                                                            "Employé Sage", "Courriel", "Compte de l'application"],
-                                       lignes, html=set(range(8))))
+                                       lignes, html=set(range(9))))
              + "</form>" + _action_employe(ctx, registre, op, choisi))
     return Reponse(corps=page(ctx, "Employés et NIP", corps))
 
@@ -283,6 +323,13 @@ def _action_employe(ctx: Contexte, registre, op: str, choisi: str) -> str:
         return forme(f"Adresse de {x.nom} (T4 et RL-1)", "<div class='large'><label>Lignes séparées par « | » :"
                                                          f"</label><input name='adresse' value='{e(x.adresse)}' "
                                                          "size='60'></div>", "🏠 Enregistrer")
+    if op == "depot":
+        from ..depots import est_defaut, noms
+
+        options = "".join(f"<option{' selected' if (n == x.depot or (not x.depot and est_defaut(n))) else ''}>"
+                          f"{e(n)}</option>" for n in noms(ctx.config))
+        return forme(f"Dépôt principal de {x.nom}", f"<div><label>Dépôt :</label><select name='depot'>{options}"
+                                                   "</select></div>", "🏬 Enregistrer")
     if op == "basculer":
         return forme(f"{x.nom} : {'actif' if x.actif else 'inactif'}", "",
                      "⏻ Désactiver" if x.actif else "⏻ Activer")

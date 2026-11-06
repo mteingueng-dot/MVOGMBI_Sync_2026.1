@@ -22,8 +22,9 @@ LIMITE = 300
 
 
 def _telecharger(chemin: Path, nom: str = "") -> Reponse:
+    pdf = Path(chemin).suffix.lower() == ".pdf"
     return Reponse(corps=Path(chemin).read_bytes(),
-                   type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                   type="application/pdf" if pdf else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                    entetes={"Content-Disposition": f"attachment; filename=\"{nom or Path(chemin).name}\""})
 
 
@@ -554,7 +555,9 @@ def inventaire(ctx: Contexte) -> Reponse:
 
             def saisir(journal):
                 saisie, rapport = inv.saisir(ctx.racine, ctx.config, chemin, journal)
-                return [f"Saisie faite : rapport {rapport.name} (liste ci-dessous)."]
+                pdf = rapport.with_suffix(".pdf")
+                return [f"Saisie faite : rapport {rapport.name}"
+                        + (f" et écart d'inventaire {pdf.name}" if pdf.exists() else "") + " (📂 Dossier)."]
 
             return taches.lancer(ctx, "Saisie de l'inventaire compté", saisir, "/inventaire", sage=True)
     corps = ("<div class='texte-fixe'>1. Exportez l'inventaire : un fichier Excel avec, pour chaque article, code et "
@@ -571,7 +574,7 @@ def inventaire(ctx: Contexte) -> Reponse:
 
 def inventaire_fichier(ctx: Contexte) -> Reponse:
     chemin = ctx.racine / "sortie" / "inventaire" / Path(ctx.req.query.get("f", "")).name
-    if not chemin.exists() or chemin.suffix.lower() != ".xlsx":
+    if not chemin.exists() or chemin.suffix.lower() not in (".xlsx", ".pdf"):
         return Reponse(404, page(ctx, "Inventaire", "<p>Fichier introuvable.</p>"))
     return _telecharger(chemin)
 
@@ -685,6 +688,13 @@ def transferts(ctx: Contexte) -> Reponse:
                     return taches.lancer(ctx, f"Transfert {numero}", transferer, f"/transferts?numero={numero}",
                                          sage=True)
                 message = _message(f"✔ {numero} enregistré.")
+            elif action == "Bon de transfert":  # modèle des documents de stock (2026-11-05)
+                t_ = registre.trouver(ctx.req.champ("choisi") or numero)
+                if t_ is None:
+                    raise ValueError("Choisissez d'abord un transfert enregistré dans la liste.")
+                chemin = tr.ecrire_pdf(ctx.racine, ctx.config, t_)
+                return Reponse(corps=chemin.read_bytes(), type="application/pdf",
+                               entetes={"Content-Disposition": f"inline; filename=\"{chemin.name}\""})
             elif action == "Supprimer":
                 if not action_permise(ctx, "Supprimer"):
                     raise ValueError("Votre profil n'a pas le droit « Supprimer ».")
@@ -735,7 +745,9 @@ def transferts(ctx: Contexte) -> Reponse:
              "les deux dépôts (même valeur, sans vente) ; dans Clover, stock diminué au départ et augmenté à l'arrivée. "
              "Sage d'abord (vérifié), Clover ensuite ; un transfert n'est jamais fait deux fois.</p>"
              + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><a class='ouvrir' href='/transferts'>➕ "
-               "Nouveau transfert</a><button class='second' name='action' value='Supprimer'>🗑 Supprimer</button></div>"
+               "Nouveau transfert</a><button class='second' name='action' value='Supprimer'>🗑 Supprimer</button>"
+               "<button class='second' name='action' value='Bon de transfert' formtarget='_blank'>🖨 Bon de transfert"
+               "</button></div>"
              + tableau_section(Section("Transferts", ["", "N°", "Date", "De", "Vers", "Articles", "Quantité", "État",
                                                      "Remarques"], liste, classes=couleurs, html=set(range(9))))
              + "</form>"

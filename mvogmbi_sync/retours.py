@@ -156,6 +156,13 @@ def importer(racine: Path, config_toml: dict, numero: str, journal=print) -> Ret
     resultat = executer(exe, chemin, fichier, coffre.lire(coffre.SAGE_IMPORT), pendant_resume=verifier)
     if present.get("oui"):
         r.etat, r.messages = IMPORTE, [f"importé dans Sage ({f.total} $)"]
+        from . import depots
+
+        depot = depots.du_point_de_vente(config_toml, r.point_vente or None)
+        if not depots.est_defaut(depot):  # marchandise rendue sortie du dépôt du point de vente (2026-11-05)
+            r.messages += depots.apres_import(racine, config_toml, r.numero, depot,
+                                              [(l.numero_sage, Decimal(str(l.quantite))) for l in r.lignes],
+                                              vente=True, jour=r.jour, journal=journal)
         try:
             from .points_vente import point_de_vente
             from .stock_clover import mettre_a_jour_factures

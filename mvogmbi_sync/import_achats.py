@@ -22,6 +22,7 @@ from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
+from . import depots
 from .facture import TAUX_TPS, TAUX_TVQ
 from .fournisseurs import IMPORTEE, Facture, archiver, archiver_deja_dans_sage
 from .cache_lectures import vide_apres
@@ -170,7 +171,7 @@ def sage_ouvert() -> bool:
 
 @vide_apres  # mémoire des lectures vidée après une écriture
 def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], journal=print,
-                    clover: bool = True) -> dict[str, str]:
+                    clover: bool = True, courriel: bool = True) -> dict[str, str]:
     """Contrôle, écrit le .IMP et l'importe (Sage fermé, fenêtres de l'outil cachées), puis vérifie chaque facture.
 
     Renvoie {fichier: résultat} ; les factures importées passent à l'état « Importée ». `clover` faux : Sage
@@ -233,18 +234,52 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
             resultats[f.fichier] = "ÉCHEC : absente de Sage après l'import" + (
                 " — " + " ; ".join(resultat.erreurs) if resultat.erreurs else "")
     importees = [f for f in a_importer if f.etat == IMPORTEE]
+    for f in importees:  # dépôt autre que par défaut : la marchandise y passe aussitôt (depots.apres_import)
+        if f.depot and not depots.est_defaut(f.depot):
+            lignes = [(l.numero_sage, l.en_sage()[0]) for l in f.lignes if l.numero_sage]
+            for m in depots.apres_import(racine, config_toml, f.numero, f.depot, lignes, vente=False,
+                                         jour=f.date_facture or None, journal=journal):
+                resultats[f.fichier] += "\n   " + m
     if importees and not clover:
         for f in importees:
             resultats[f.fichier] += "\n   Clover : non mis à jour (import dans Sage seulement)"
     elif importees:  # Clover suit : stock + quantité reçue, coût = nouveau prix d'achat (règle du 2026-10-28)
-        try:
-            from .stock_clover import mettre_a_jour_factures
-            for fichier, messages in mettre_a_jour_factures(racine, Path(racine) / "config.toml", importees).items():
-                if messages:
-                    resultats[fichier] += "\n   Clover : " + "\n   ".join(messages)
-        except Exception as exc:
-            for f in importees:
-                resultats[f.fichier] += f"\n   Clover non mis à jour : {exc}"
+        mettre_a_jour_clover(racine, config_toml, importees, resultats)
     for f in factures:
         journal(f"{f.fichier} : {resultats[f.fichier]}")
+    if courriel:  # import à la demande : compte rendu par courriel (la nuit : dans le compte rendu de la nuit)
+        try:
+            from .courriel import envoyer_bilan_factures_fournisseurs
+
+            envoyer_bilan_factures_fournisseurs(config_toml, resultats)
+        except Exception as exc:  # noqa: BLE001 — l'import est fait ; le courriel manque seulement
+            journal(f"Courriel du compte rendu non envoyé : {exc}")
+    return resultats
+
+
+def mettre_a_jour_clover(racine: Path, config_toml: dict, importees: list, resultats: dict) -> dict:
+    """Stock et coût Clover des factures importées, dans le Clover du point de vente de leur dépôt (rien pour un dépôt
+    sans Clover). Refaisable (« 🔁 Refaire la mise à jour Clover », demande du 2026-11-05) : le journal du stock
+    Clover écarte les lignes déjà ajoutées."""
+    try:
+        from .points_vente import point_de_vente
+        from .stock_clover import mettre_a_jour_factures
+
+        par_depot: dict[str, list] = {}  # Clover du point de vente du dépôt de chaque facture
+        for f in importees:
+            par_depot.setdefault(depots.du_nom(config_toml, f.depot).nom, []).append(f)
+        for nom, groupe in par_depot.items():
+            depot = depots.du_nom(config_toml, nom)
+            if not depot.avec_clover:  # entrepôt sans caisse : Clover ne change pas
+                for f in groupe:
+                    resultats[f.fichier] = resultats.get(f.fichier, "") + (
+                        f"\n   Clover : dépôt « {nom} » sans point de vente Clover, rien à changer")
+                continue
+            pv = point_de_vente(config_toml, depot.points_vente[0])
+            for fichier, messages in mettre_a_jour_factures(racine, Path(racine) / "config.toml", groupe, pv).items():
+                if messages:
+                    resultats[fichier] = resultats.get(fichier, "") + "\n   Clover : " + "\n   ".join(messages)
+    except Exception as exc:  # noqa: BLE001
+        for f in importees:
+            resultats[f.fichier] = resultats.get(f.fichier, "") + f"\n   Clover non mis à jour : {exc}"
     return resultats

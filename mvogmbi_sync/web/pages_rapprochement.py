@@ -33,11 +33,12 @@ def _lire(ctx: Contexte, choix, forcer: bool = False):
     from .. import rapprochement as rp
     from ..__main__ import lire_sage
 
-    cle = ("rapprochement", choix)
+    cle = ("rapprochement", choix, _banque(ctx))
+    compte = rp.compte_entier(ctx.config, _banque(ctx))
     gardee = ctx.app.memoire.get(cle)
     if gardee and not forcer and time.time() - gardee[0] < 300:
         return gardee[1]
-    registre = rp.RegistreReleves(ctx.racine)
+    registre = _registre(ctx)
     releves = registre.lire()
     periode = rp.periode_des(releves)
     if periode and choix:
@@ -46,10 +47,11 @@ def _lire(ctx: Contexte, choix, forcer: bool = False):
             periode = None
     if periode:
         sage, solde, ouverture, comptes, paies = lire_ou_vide(ctx, lambda base: (
-            rp.mouvements_sage(base, periode[0], periode[1]), rp.solde_sage(base, periode[1]),
-            rp.solde_sage(base, periode[0] - timedelta(days=1)), rp.comptes_sage(base),
+            rp.mouvements_sage(base, periode[0], periode[1], compte), rp.solde_sage(base, periode[1], compte),
+            rp.solde_sage(base, periode[0] - timedelta(days=1), compte), rp.comptes_sage(base),
             [s for s in rp.mouvements_sage(base, periode[0] - timedelta(days=rp.DELAI_PAIE),
-                                           periode[0] - timedelta(days=1)) if s.source.upper().startswith("PAY")]))
+                                           periode[0] - timedelta(days=1), compte)
+             if s.source.upper().startswith("PAY")]))
         banque, ouverture_banque, solde_banque = rp.restreindre(releves, *periode)
     else:
         sage, solde, ouverture, comptes, paies, banque, ouverture_banque, solde_banque = [], None, None, [], [], [], \
@@ -61,6 +63,28 @@ def _lire(ctx: Contexte, choix, forcer: bool = False):
     if "Sage" not in ctx.absents:  # une lecture vide n'est jamais gardée
         ctx.app.memoire[cle] = (time.time(), etat)
     return etat
+
+
+def _banque(ctx: Contexte) -> str:
+    """Banque affichée (« desjardins » par défaut, « bnc » : Banque Nationale, compte 1060)."""
+    from .. import rapprochement as rp
+
+    choix = ctx.req.query.get("banque") or ctx.req.champ("banque") or "desjardins"
+    return choix if choix in rp.banques_reglees(ctx.config) else "desjardins"
+
+
+def _registre(ctx: Contexte):
+    from .. import rapprochement as rp
+
+    return rp.registre_de(ctx.racine, ctx.config, _banque(ctx))
+
+
+def _choix_banque(ctx: Contexte) -> str:
+    from .. import rapprochement as rp
+
+    options = "".join(f"<option value='{c.code}'{' selected' if c.code == _banque(ctx) else ''}>{e(c.libelle)}"
+                      "</option>" for c in rp.comptes_bancaires(ctx.config))
+    return f"<div><label>Banque</label><select name='banque'>{options}</select></div>"
 
 
 def rapprochement(ctx: Contexte) -> Reponse:
@@ -78,22 +102,27 @@ def rapprochement(ctx: Contexte) -> Reponse:
     filtre = ctx.req.query.get("filtre") or ctx.req.champ("filtre") or A_TRAITER_LIBELLE
     cle_m = ctx.req.query.get("m") or ctx.req.champ("m")
     releve = ctx.req.query.get("releve") or ctx.req.champ("releve")
-    retour = f"/rapprochement?du={du}&au={au}&filtre={filtre}"
+    retour = f"/rapprochement?du={du}&au={au}&filtre={filtre}&banque={_banque(ctx)}"
     message = ""
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
-        registre = rp.RegistreReleves(ctx.racine)
+        registre = _registre(ctx)
         if action == "Charger":
             if "releves" not in ctx.req.fichiers:
-                message = _message(erreur="Choisissez un relevé de compte Desjardins en PDF.")
+                message = _message(erreur="Choisissez un relevé de compte (Desjardins ou BNC) en PDF.")
             else:
                 nom, contenu = ctx.req.fichiers["releves"]
                 if not nom.lower().endswith(".pdf") or not contenu.startswith(b"%PDF"):
-                    message = _message(erreur="Choisissez un relevé de compte Desjardins en PDF.")
+                    message = _message(erreur="Choisissez un relevé de compte (Desjardins ou BNC) en PDF.")
                 else:
-                    registre.dossier.mkdir(parents=True, exist_ok=True)
-                    (registre.dossier / Path(nom).name).write_bytes(contenu)
-                    message = _message(f"Relevé « {nom} » chargé.")
+                    import tempfile
+
+                    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
+                        provisoire = Path(dossier) / Path(nom).name
+                        provisoire.write_bytes(contenu)
+                        banque, _cible = rp.ranger_releve(ctx.racine, provisoire, config_toml=ctx.config)  # Desjardins ou BNC, d'après le PDF
+                    ctx.req.query["banque"] = banque
+                    message = _message(f"Relevé « {nom} » chargé ({rp.compte_bancaire(ctx.config, banque).libelle}).")
                     choix, du, au = None, "", ""  # comme Windows : toute la période des relevés
                     _oublier(ctx)
         elif action == "Supprimer le relevé":
@@ -141,10 +170,11 @@ def rapprochement(ctx: Contexte) -> Reponse:
         etat = _sans_sage(ctx, choix)
     if etat and etat["periode"] and not (du or au) and not choix:
         du, au = etat["periode"][0].isoformat(), etat["periode"][1].isoformat()
-    lien = f"du={du}&amp;au={au}&amp;filtre={e(filtre)}"
+    lien = f"du={du}&amp;au={au}&amp;filtre={e(filtre)}&amp;banque={_banque(ctx)}"
     barre = (f"<form method='post' enctype='multipart/form-data' class='barre-onglet'>{csrf(ctx)}"
              f"<input type='hidden' name='du' value='{du}'><input type='hidden' name='au' value='{au}'>"
-             f"<input type='hidden' name='filtre' value='{e(filtre)}'><input type='hidden' name='releve' "
+             f"<input type='hidden' name='filtre' value='{e(filtre)}'><input type='hidden' name='banque' "
+             f"value='{_banque(ctx)}'><input type='hidden' name='releve' "
              f"value='{e(releve)}'><input type='file' name='releves' accept='.pdf'><button name='action' "
              "value='Charger'>📂 Charger des relevés…</button>"
              f"<a class='ouvrir' href='?{lien}&amp;actualiser=1'>🔄 Actualiser</a>"
@@ -155,10 +185,11 @@ def rapprochement(ctx: Contexte) -> Reponse:
              f"<form method='get' class='barre-onglet'><div><label>Période du</label><input type='date' name='du' "
              f"value='{du}'></div><div><label>au</label><input type='date' name='au' value='{au}'></div>"
              f"<input type='hidden' name='filtre' value='{e(filtre)}'><input type='hidden' name='actualiser' value='1'>"
-             "<button>🔄 Rapprocher cette période</button><a class='ouvrir' "
-             f"href='?filtre={e(filtre)}&amp;actualiser=1'>Toute la période des relevés</a></form>")
-    corps = ("<p class='sous-titre'>🏦 Rapprochement bancaire — relevés Desjardins (compte 1055) rapprochés des "
-             "écritures de Sage</p>" + message + barre)
+             + _choix_banque(ctx) + "<button>🔄 Rapprocher cette période</button><a class='ouvrir' "
+             f"href='?filtre={e(filtre)}&amp;banque={_banque(ctx)}&amp;actualiser=1'>Toute la période des relevés</a>"
+             "</form>")
+    corps = (f"<p class='sous-titre'>🏦 Rapprochement bancaire — relevés {e(rp.compte_bancaire(ctx.config, _banque(ctx)).nom)} (compte "
+             f"{e(rp.compte_banque(ctx.config, _banque(ctx)))}) rapprochés des écritures de Sage</p>" + message + barre)
     if etat is None:
         return Reponse(corps=page(ctx, "Rapprochement bancaire", corps))
     corps += _corps(ctx, etat, filtre, du, au, cle_m, releve)
@@ -169,7 +200,7 @@ def _sans_sage(ctx: Contexte, choix):
     """Relevés et mouvements de banque sans les écritures de Sage (Sage ne répond pas)."""
     from .. import rapprochement as rp
 
-    releves = rp.RegistreReleves(ctx.racine).lire()
+    releves = _registre(ctx).lire()
     periode = rp.periode_des(releves)
     if periode and choix:
         periode = (max(periode[0], choix[0]), min(periode[1], choix[1]))
@@ -195,7 +226,7 @@ def _corps(ctx: Contexte, etat: dict, filtre: str, du: str, au: str, cle_m: str,
     from .. import rapprochement as rp
     from .consultations import lire_ou_vide, Section, tableau_section
 
-    lien = f"du={du}&amp;au={au}&amp;filtre={e(filtre)}"
+    lien = f"du={du}&amp;au={au}&amp;filtre={e(filtre)}&amp;banque={_banque(ctx)}"
     releves, classes = [], []
     for r in etat["releves"]:
         problemes = r.controles()
@@ -204,7 +235,7 @@ def _corps(ctx: Contexte, etat: dict, filtre: str, du: str, au: str, cle_m: str,
                         e("; ".join(problemes) or "✔ relevé complet et cohérent")])
         classes.append("etat-ecart" if problemes else "")
     if not etat["releves"]:
-        for chemin in rp.RegistreReleves(ctx.racine).fichiers():
+        for chemin in _registre(ctx).fichiers():
             releves.append([e(chemin.name), "", "", "", "cliquez sur « Actualiser »"])
     html = tableau_section(Section("Relevés chargés", ["Relevé", "Période", "Solde d'ouverture", "Solde de fermeture",
                                                        "Contrôle"], releves, classes=classes, html=set(range(5))))
@@ -212,7 +243,7 @@ def _corps(ctx: Contexte, etat: dict, filtre: str, du: str, au: str, cle_m: str,
     banque, sage = etat["banque"], etat["sage"]
     chiffres = rp.resume(banque, sage, *etat["soldes"], debut=periode[0]) if periode else {}
     cartes = ""
-    for cle, libelle in (("solde_banque", "Solde du relevé"), ("solde_sage", "Solde Sage (1055)"), ("ecart", "Écart"),
+    for cle, libelle in (("solde_banque", "Solde du relevé"), ("solde_sage", f"Solde Sage ({rp.compte_banque(ctx.config, _banque(ctx))})"), ("ecart", "Écart"),
                          ("ecart_ouverture", "dont écart d'ouverture"), ("non_explique", "Écart non expliqué")):
         v = chiffres.get(cle)
         classe = "baisse" if cle in ("ecart", "non_explique") and v not in (None, Decimal(0)) else "hausse"
@@ -221,7 +252,7 @@ def _corps(ctx: Contexte, etat: dict, filtre: str, du: str, au: str, cle_m: str,
     html += f"<div class='cartes-cinq'>{cartes}</div>"
     if not periode:
         return html + ("<p class='note'>Aucun relevé chargé ne couvre cette période.</p>" if etat["releves"] else
-                       "<p class='note'>Chargez un relevé PDF Desjardins, puis « Actualiser ».</p>")
+                       "<p class='note'>Chargez un relevé PDF (Desjardins ou BNC), puis « Actualiser ».</p>")
     a_traiter = (rp.A_SAISIR, rp.A_ENCAISSER, rp.A_PAIE, rp.CONFIRME)
     etats = [rp.A_SAISIR, rp.A_ENCAISSER, rp.A_PAIE, rp.CONFIRME, rp.RAPPROCHE, rp.SAISI, rp.IGNORE]
     renvois = {rp.A_ENCAISSER: "→ Comptabilité > Encaissements", rp.A_PAIE: "→ module Paie de Sage"}
@@ -332,7 +363,9 @@ def _factures_ventes(ctx: Contexte):
     from ..facture import CLIENT
     from ..rapprochement import factures_ventes
 
-    compte = numero_compte_sage(str(ctx.config.get("encaissements", {}).get("compte_depot", "1055")))
+    from .. import rapprochement as rp
+
+    compte = rp.compte_entier(ctx.config, _banque(ctx))  # compte de la banque du relevé (1055, BNC 1060)
 
     def lire(base):
         dates = factures_ventes(base, CLIENT)
@@ -393,7 +426,7 @@ def _decider(ctx: Contexte, etat: dict, cle_m: str, action: str) -> str:
     else:
         return ""
     with ctx.app.ecriture:
-        registre = rp.RegistreReleves(ctx.racine)
+        registre = _registre(ctx)
         registre.retenir(m)
         registre.enregistrer()
     return ""
@@ -465,7 +498,7 @@ def _rapport(ctx: Contexte, choix) -> Reponse:
         chemin = Path(dossier) / "rapport.xlsx"
         rp.ecrire_rapport(chemin, etat["releves"], etat["banque"], etat["sage"], chiffres, (debut, fin))
         contenu = chemin.read_bytes()
-    nom = f"rapprochement_1055_{debut}_{fin}.xlsx"
+    nom = f"rapprochement_{rp.compte_banque(ctx.config, _banque(ctx))}_{debut}_{fin}.xlsx"
     return Reponse(corps=contenu, type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                    entetes={"Content-Disposition": f"attachment; filename=\"{nom}\"; filename*=UTF-8''{quote(nom)}"})
 

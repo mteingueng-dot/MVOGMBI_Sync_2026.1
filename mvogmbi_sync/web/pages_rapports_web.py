@@ -332,9 +332,12 @@ button.lien { background: none; border: 0; color: var(--texte); padding: 0; text
 .carte-total .v.baisse { color: #c8102e; } button.danger { background: #c8102e; }
 a.ouvrir.accent { background: #e0a800; color: #222; }
 @media (max-width: 820px) { .cartes-cinq { grid-template-columns: 1fr 1fr; } }
-.fiche-bas { display: flex; gap: 14px; flex-wrap: wrap; } .fiche-bas .factures { flex: 1; min-width: 280px; }
+.fiche-bas { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+.fiche-bas .factures { flex: 1; min-width: 280px; max-height: 300px; overflow: auto; }
 label.facture { display: block; padding: 2px 0; } label.facture code { white-space: pre; font-size: 12.5px; }
-.boutons-colonne { display: flex; flex-direction: column; gap: 6px; min-width: 210px; }
+.boutons-colonne { display: flex; flex-direction: column; gap: 6px; min-width: 210px; flex: none; }
+.boutons-colonne > button, .boutons-colonne > a { flex: none; text-align: center; white-space: nowrap; }
+.carte:has(.fiche-bas) { height: auto; overflow: visible; display: flow-root; }
 .erreur-texte { color: #c8102e; font-size: 13px; align-self: center; }
 .barre-onglet .periode { padding: 7px 10px; } .barre-onglet { align-items: center; margin-bottom: 8px; }
 @media (max-width: 820px) { .cartes-totaux { grid-template-columns: 1fr 1fr; } .barre-onglet .a-droite { margin-left: 0; } }

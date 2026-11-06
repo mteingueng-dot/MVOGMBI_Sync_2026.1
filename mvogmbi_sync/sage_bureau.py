@@ -149,6 +149,24 @@ def sage_ouvert() -> bool:
     return False
 
 
+def sage_ouvert_dans_cette_session() -> bool:
+    """Sage tourne-t-il dans la session Windows de l'application ? Une 2e copie de Sage dans la même session n'ouvre
+    pas d'entreprise : elle n'affiche qu'une fenêtre « Sage 50 » (constat du 2026-11-05 sur SERVDCSAGE : « Écran
+    d'accueil de Sage absent (['Sage 50']) » après 3 minutes d'attente)."""
+    session = wt.DWORD()
+    if not kernel32.ProcessIdToSessionId(kernel32.GetCurrentProcessId(), ctypes.byref(session)):
+        return sage_ouvert()
+    sortie = subprocess.run(["tasklist", "/fo", "csv", "/nh", "/fi", "IMAGENAME eq Sage50Accounting.exe", "/fi",
+                             f"SESSION eq {session.value}"], capture_output=True, text=True,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    import csv
+
+    for ligne in csv.reader(sortie.splitlines()):
+        if len(ligne) >= 5 and ligne[0].lower().startswith("sage50accounting") and ligne[1].isdigit()                 and int(ligne[1]) not in PIDS_GARDES and int("".join(c for c in ligne[4] if c.isdigit()) or 0) > 1024:
+            return True
+    return False
+
+
 def executable_sage(executable_import: Path | None) -> Path | None:
     """Sage50Accounting.exe, à côté de l'outil d'import."""
     if executable_import:
@@ -156,6 +174,12 @@ def executable_sage(executable_import: Path | None) -> Path | None:
         if candidat.is_file():
             return candidat
     return None
+
+
+def _attente(texte: str) -> bool:
+    """Écran de démarrage ou de chargement de Sage (pas un message d'erreur)."""
+    t = texte.lower()
+    return any(m in t for m in ("veuillez patienter", "lancement de sage", "chargement", "please wait", "loading"))
 
 
 def _est_mise_a_jour(titre: str) -> bool:
@@ -219,10 +243,26 @@ class SessionSage:
         from .__main__ import fermer_bases
 
         fermer_bases()  # aucune connexion de l'application ouverte quand Sage ouvre l'entreprise
+        if sage_ouvert_dans_cette_session():
+            raise ErreurSage("Sage 50 est déjà ouvert sur ce poste, sur un autre fichier que celui réglé dans "
+                             "« Administration > Sage 50 » : ouvrez ce fichier dans Sage, ou fermez Sage, puis "
+                             "recommencez.")
         self.processus = subprocess.Popen([str(self.exe)])
         self.journal("Sage lancé.")
-        accueil = _attendre(lambda: next((h for h in self.fenetres()
-                                          if self._bouton(h, "Sélectionner une &entreprise")), None), delai)
+        debut = time.time()
+
+        def accueil_ou_message():
+            trouve = next((h for h in self.fenetres() if self._bouton(h, "Sélectionner une &entreprise")), None)
+            if trouve or time.time() - debut < 60:
+                return trouve
+            # Sage affiche un message au lieu de l'accueil : inutile d'attendre 3 min ; l'écran de démarrage
+            # (« Lancement de Sage 50. Veuillez patienter... », constat du 2026-11-05 sur SERVDCSAGE) n'en est pas un
+            messages = [m for m in self._messages() if not _attente(m)]
+            return ("message", messages) if messages else None
+
+        accueil = _attendre(accueil_ou_message, delai)
+        if isinstance(accueil, tuple):
+            raise ErreurSage("Sage n'a pas ouvert son écran d'accueil : « " + " / ".join(accueil[1])[:400] + " ».")
         if not accueil:
             raise ErreurSage(f"Écran d'accueil de Sage absent ({[ _texte(h) for h in self.fenetres()]}).")
         user32.SendMessageW(self._bouton(accueil, "Sélectionner une &entreprise"), BM_CLICK, 0, 0)

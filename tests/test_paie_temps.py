@@ -94,3 +94,19 @@ def test_periode_et_import_clover(tmp_path):
     assert r.importer_clover([{"id": "c1", "name": "Employé A"}, {"id": "c2", "name": "Employé A"},
                               {"id": "c3", "name": ""}]) == 1
     assert r.importer_clover([{"id": "c1", "name": "Employé A"}]) == 0
+
+
+def test_suivi_des_periodes_de_paie(tmp_path):
+    """Chaque période de 14 jours : en cours, à approuver (rappel) puis approuvée par le gérant."""
+    r = pt.Registre(tmp_path)
+    e = r.ajouter("Paul Essai")
+    debut = date(2026, 10, 18)
+    r.pointer(e.id, pt.ARRIVEE, datetime(2026, 10, 19, 9))
+    r.pointer(e.id, pt.DEPART, datetime(2026, 10, 19, 17))
+    suivi = pt.suivi_periodes(r, debut, date(2026, 11, 5), nombre=2)
+    assert [p.etat for p in suivi] == [pt.EN_COURS, pt.PERIODE_A_APPROUVER]
+    assert suivi[1].a_approuver == ["Paul Essai"] and suivi[1].heures == Decimal(8)
+    assert pt.rappels(r, debut, date(2026, 11, 5))[0].startswith("Feuilles de temps du 2026-10-18 au 2026-10-31")
+    pt.approuver(r, pt.feuille(r, e, debut), "Gérant")
+    assert pt.suivi_periodes(r, debut, date(2026, 11, 5), nombre=2)[1].etat == pt.PERIODE_APPROUVEE
+    assert pt.rappels(r, debut, date(2026, 11, 5)) == []

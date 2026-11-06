@@ -46,6 +46,7 @@ class FenetreTransferts(FenetreOutil):
         haut.pack(fill="x", pady=(8, 4))
         haut.ajouter(Bouton(haut, "➕  " + t("Nouveau transfert"), self.nouveau, fond=CARTE, petit=True))
         haut.ajouter(Bouton(haut, "🗑  " + t("Supprimer"), self.supprimer, "secondaire", fond=CARTE, petit=True))
+        haut.ajouter(Bouton(haut, "🖨  " + t("Bon de transfert"), self.imprimer, "secondaire", fond=CARTE, petit=True))
         cadre = cadre_tableau(self)
         cadre.pack(fill="x")
         colonnes = (("numero", "N°", 90), ("jour", "Date", 95), ("de", "De", 170), ("vers", "Vers", 170),
@@ -222,6 +223,23 @@ class FenetreTransferts(FenetreOutil):
         self.note.set("")
         self.afficher_lignes([])
         self.liste.selection_remove(self.liste.selection())
+
+    def imprimer(self) -> None:
+        """Bon de transfert en PDF (transfert choisi dans la liste)."""
+        import os
+
+        from .transferts import ecrire_pdf
+
+        choix = self.liste.selection()
+        tr = self.registre.trouver(choix[0]) if choix else None
+        if tr is None:
+            messagebox.showinfo(self.title(), t("Choisissez d'abord un transfert dans la liste."), parent=self)
+            return
+        try:
+            config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
+            os.startfile(ecrire_pdf(self.racine, config, tr))
+        except Exception as exc:
+            messagebox.showerror(self.title(), t("Le PDF n'a pas pu être créé : {e}", e=exc), parent=self)
 
     def supprimer(self) -> None:
         choix = self.liste.selection()

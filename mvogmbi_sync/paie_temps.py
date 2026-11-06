@@ -60,6 +60,7 @@ class Employe:
     compte: str = ""       # compte de l'application relié (« Paie > Mon horaire »)
     courriel: str = ""     # adresse où l'employé reçoit son bulletin de paie (aussi dans sa fiche Sage)
     adresse: str = ""      # adresse postale imprimée sur ses T4 et RL-1 (lignes séparées par « | »)
+    depot: str = ""        # dépôt principal (emplacement Sage) ; vide = emplacement par défaut (2026-11-05)
 
 
 @dataclass
@@ -381,3 +382,66 @@ def approuver(registre: Registre, f: Feuille, par: str) -> None:
         "etat": APPROUVEE, "par": par, "le": _maintenant(), "empreinte": f.empreinte(),
         "normales": str(f.normales), "supplementaires": str(f.supplementaires)}
     registre.enregistrer()
+
+
+# --------------------------------------------------------------------------------------------- suivi des périodes
+# Validation aux deux semaines (demande du propriétaire du 2026-11-05 : « ajoute la validation de la feuille de temps
+# aux deux semaines pour chaque période de paie » ; puis « enlève l'approbation par l'employé ») : le gérant approuve
+# chaque feuille de la période terminée (`approuver`) ; `suivi_periodes` donne l'état de chaque période, `rappels`
+# les périodes terminées dont des feuilles attendent encore l'approbation (courriel du matin).
+EN_COURS, PERIODE_A_APPROUVER, PERIODE_APPROUVEE = "En cours", "À approuver", "Approuvée"
+PERIODE_ENVOYEE, PERIODE_VIDE = "Envoyée à Sage", "Aucune heure"
+
+
+@dataclass
+class SuiviPeriode:
+    debut: date
+    fin: date
+    etat: str
+    employes: int            # feuilles avec des heures
+    heures: Decimal
+    a_approuver: list[str]   # employés dont la feuille attend l'approbation
+    approuvees: int
+    envoyees: int
+    anomalies: list[str]     # employés avec une anomalie de pointage
+
+
+def suivi_periodes(registre: Registre, reference: date = DEBUT_REFERENCE, aujourdhui: date | None = None,
+                   nombre: int = 13, permis=None) -> list[SuiviPeriode]:
+    """Période en cours et les `nombre` - 1 précédentes, la plus récente d'abord. `permis` : ID des employés
+    visibles (None = tous)."""
+    aujourdhui = aujourdhui or date.today()
+    actuelle = debut_periode(aujourdhui, reference)
+    sortie = []
+    for i in range(nombre):
+        debut = actuelle - timedelta(days=JOURS_PERIODE * i)
+        fin = debut + timedelta(days=JOURS_PERIODE - 1)
+        liste = [f for f in feuilles(registre, debut) if f.total > 0 and (permis is None or f.employe.id in permis)]
+        attente = [f.employe.nom for f in liste if f.etat == A_APPROUVER]
+        envoyees = sum(1 for f in liste if f.etat == ENVOYEE)
+        if fin >= aujourdhui:
+            etat = EN_COURS
+        elif not liste:
+            etat = PERIODE_VIDE
+        elif attente:
+            etat = PERIODE_A_APPROUVER
+        elif envoyees == len(liste):
+            etat = PERIODE_ENVOYEE
+        else:
+            etat = PERIODE_APPROUVEE
+        sortie.append(SuiviPeriode(debut, fin, etat, len(liste), sum((f.total for f in liste), Decimal(0)), attente,
+                                   len(liste) - len(attente), envoyees, [f.employe.nom for f in liste if f.anomalies]))
+    return sortie
+
+
+def rappels(registre: Registre, reference: date = DEBUT_REFERENCE, aujourdhui: date | None = None,
+            nombre: int = 4) -> list[str]:
+    """Périodes terminées (parmi les `nombre` dernières) dont des feuilles ne sont pas encore approuvées."""
+    sortie = []
+    for p in suivi_periodes(registre, reference, aujourdhui, nombre + 1)[1:]:
+        if p.a_approuver:
+            noms = ", ".join(p.a_approuver[:6]) + ("…" if len(p.a_approuver) > 6 else "")
+            sortie.append(f"Feuilles de temps du {p.debut:%Y-%m-%d} au {p.fin:%Y-%m-%d} : {len(p.a_approuver)} à "
+                          f"approuver ({noms}) — Paie > Feuilles de temps"
+                          + (f" ; anomalies : {', '.join(p.anomalies[:6])}" if p.anomalies else ""))
+    return sortie

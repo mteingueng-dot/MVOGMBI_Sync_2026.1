@@ -771,3 +771,24 @@ def action_permise(widget, action: str) -> bool:
         return True
     messagebox.showwarning(t("Accès refusé"), t("Votre profil ne permet pas : {a}.", a=t(action)), parent=widget)
     return False
+
+
+def filtre_depots(parent, racine, au_choix=None, largeur: int = 18):
+    """Filtre « Dépôt » des états (demande du propriétaire du 2026-11-05) : ChoixMultiple des dépôts, « Tout
+    sélectionner » = tous. Renvoie (widget, variable) ; `depots_choisis(variable)` -> liste ou None (tous)."""
+    import tomllib
+    from pathlib import Path
+
+    from .depots import noms
+
+    try:
+        valeurs = noms(tomllib.loads((Path(racine) / "config.toml").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        valeurs = []
+    variable = tk.StringVar()
+    return ChoixMultiple(parent, variable, valeurs, largeur=largeur, au_choix=au_choix), variable
+
+
+def depots_choisis(variable) -> list[str] | None:
+    choisis = choix_multiples(variable.get())
+    return choisis or None

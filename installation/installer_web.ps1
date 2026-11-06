@@ -38,7 +38,7 @@ $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
 if (-not $ip) { throw "Aucune adresse Tailscale : connectez Tailscale sur ce serveur." }
 $texte = Get-Content $config -Raw -Encoding UTF8
 if ($texte -notmatch "(?m)^\[web\]") {
-    $texte = $texte.TrimEnd() + "`r`n`r`n[web]`r`nadresse = `"$ip`"`r`nport = $Port`r`ninactivite_minutes = 15`r`n" +
+    $texte = $texte.TrimEnd() + "`r`n`r`n[web]`r`nadresse = `"$ip`"`r`nport = $Port`r`ninactivite_minutes = 5`r`n" +
              "# postes du magasin qui peuvent pointer (adresses Tailscale ou débuts d'adresse)`r`npostes_pointage = []`r`n"
     [IO.File]::WriteAllText($config, $texte, (New-Object Text.UTF8Encoding $false))
     Write-Host "config.toml : section [web] ajoutée ($ip, port $Port)."
@@ -72,7 +72,7 @@ $reglages = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New
     -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -AllowStartIfOnBatteries
 # À l'ouverture de la session, jamais au démarrage de Windows : sur SERVDC01 (constat), un programme lancé sans session
 # (session 0) se fige (constat du 2026-11-03 : processus bloqué, 0,015 s de processeur). Verrouiller la session,
-# ne pas la fermer ; fenêtre du serveur à laisser ouverte.
+# ne pas la fermer. Le serveur n'a pas de fenêtre (2.18.0) : il tourne en arrière-plan ; une 2e copie s'arrête seule.
 $principal = New-ScheduledTaskPrincipal -UserId $utilisateur -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $Tache -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $utilisateur) `
     -Settings $reglages -Principal $principal -Force | Out-Null

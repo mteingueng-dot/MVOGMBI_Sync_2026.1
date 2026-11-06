@@ -10,9 +10,12 @@ python ..\documentation\creer_documents.py
 python -m PyInstaller --noconfirm --clean --distpath ..\dist --workpath ..\build MVOGMBI_Sync.spec || goto erreur
 rem Client des postes (un seul fichier, copie aussi dans l'installateur)
 python -m PyInstaller --noconfirm --clean --distpath ..\dist --workpath ..\build\client MVOGMBI_Sync_Client.spec || goto erreur
+rem Adresse du serveur pour l'installateur du client (build\client\serveur.json, d'apres config.toml)
+python serveur_client.py || goto erreur
 set ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe
 if not exist "%ISCC%" set ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe
 "%ISCC%" MVOGMBI_Sync.iss || goto erreur
+"%ISCC%" MVOGMBI_Sync_Client.iss || goto erreur
 echo.
 echo Installateur pret dans le dossier dist.
 exit /b 0

@@ -53,11 +53,20 @@ def _point_vente(ctx: Contexte):
 
 # --------------------------------------------------------------------------------------------- caisse
 def _attendus(ctx: Contexte, debut: date, fin: date, pv):
+    import time
+
     from .. import caisse as ca
     from ..points_vente import cache_clover, client
     from ..statistiques_clover import lire
 
-    return ca.attendus(lire(client(ctx.racine, pv), debut, fin, cache_clover(ctx.racine, pv)))
+    # journée en cours relue dans Clover au plus une fois par minute (« 🔄 Actualiser » : tout de suite)
+    cle = ("caisse_attendus", getattr(pv, "code", "1"), debut.isoformat(), fin.isoformat())
+    garde = ctx.app.memoire.get(cle)
+    if garde and time.time() - garde[0] < 60 and not ctx.req.query.get("actualiser"):
+        return garde[1]
+    resultat = ca.attendus(lire(client(ctx.racine, pv), debut, fin, cache_clover(ctx.racine, pv)))
+    ctx.app.memoire[cle] = (time.time(), resultat)
+    return resultat
 
 
 def caisse(ctx: Contexte) -> Reponse:
@@ -138,7 +147,7 @@ def caisse(ctx: Contexte) -> Reponse:
              "<button class='second'>Afficher</button></form>" if choix_pv else "")
     corps += (message + onglets("Comptage du soir", ctx) + "<div class='onglet-corps'>"
               f"<form class='barre-onglet' method='get'><input type='hidden' name='pv' value='{e(code_pv)}'><div>"
-              f"<label>Journée</label><input type='date' name='jour' value='{jour}'></div><button>🔄 Actualiser</button>"
+              f"<label>Journée</label><input type='date' name='jour' value='{jour}'></div><button name='actualiser' value='1'>🔄 Actualiser</button>"
               "</form><div class='colonnes'><fieldset class='groupe'><legend>Espèces attendues (Clover)</legend>"
               f"<div class='texte-fixe'>{e(chr(10).join(lignes))}</div></fieldset>"
               f"<form method='post'>{csrf(ctx)}<input type='hidden' name='jour' value='{jour}'><input type='hidden' "

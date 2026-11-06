@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from . import depots as depots_
 from .cache_lectures import vide_apres
 
 CENT = Decimal("0.01")
@@ -268,6 +269,32 @@ def _argent(v: Decimal) -> str:
     return f"{v:,.2f} $".replace(",", " ").replace(".", ",")
 
 
+# modèles d'impression par type (demande du propriétaire du 2026-11-05) : bons de logistique SANS PRIX
+# genre -> (titre, colonne de quantité, colonnes vides à remplir, signatures, note)
+MODELES_SANS_PRIX = {
+    PREPARATION: ("Bon de préparation", "Qté à préparer", ("Qté préparée", "Observation"), ("Préparé par",),
+                  "Cochez chaque article préparé ; notez l'écart et sa raison dans « Observation »."),
+    LIVRAISON: ("Bon de livraison", "Qté livrée", ("Observation",), ("Livré par", "Reçu par (client)"),
+                "Marchandise reçue en bon état, sauf indication dans « Observation »."),
+    RETOUR: ("Bon de retour client", "Qté retournée", ("Motif / observation",), ("Reçu par",), ""),
+    RECEPTION: ("Bon de réception", "Qté reçue", ("Qté contrôlée", "Observation"), ("Reçu par",),
+                "Notez dans « Observation » les manquants, les articles abîmés ou les dates de péremption courtes."),
+    RETOUR_ACHAT: ("Bon de retour fournisseur", "Qté retournée", ("Motif / observation",),
+                   ("Remis par", "Reçu par (fournisseur)"), ""),
+}
+# documents avec prix : titre et mention en bas
+TITRES_AVEC_PRIX = {DEVIS: "Devis", COMMANDE: "Commande client", AVOIR: "Avoir financier", FACTURE: "Facture de vente",
+                    FACTURE_RETOUR: "Facture de retour", FACTURE_AVOIR: "Facture d'avoir",
+                    PREPARATION_ACHAT: "Proposition de commande", COMMANDE_ACHAT: "Bon de commande",
+                    AVOIR_ACHAT: "Avoir financier fournisseur", FACTURE_ACHAT: "Facture d'achat",
+                    FACTURE_RETOUR_ACHAT: "Facture de retour fournisseur",
+                    FACTURE_AVOIR_ACHAT: "Facture d'avoir fournisseur"}
+MENTIONS = {DEVIS: "Devis valable 30 jours. Prix en dollars canadiens, taxes en sus.",
+            COMMANDE: "Merci de votre commande.",
+            FACTURE: "Merci de votre confiance.",
+            PREPARATION_ACHAT: "Proposition interne : à confirmer avant l'envoi au fournisseur."}
+
+
 def ecrire_pdf(racine: Path, doc: Document) -> Path:
     """PDF du document sur son modèle (pdf_documents.document_commercial : en-tête, cadre du document, client ou
     fournisseur, lignes, totaux avec TPS et TVQ) ; un PDF ouvert dans le lecteur n'empêche pas d'en écrire un autre."""
@@ -275,6 +302,8 @@ def ecrire_pdf(racine: Path, doc: Document) -> Path:
     from .points_vente import DEPOT_DEFAUT
 
     titres = {STOCK: f"Document de stock — {doc.sens}", COMMANDE: "Commande client", FACTURE: "Facture de vente"}
+    titres.update({k: v[0] for k, v in MODELES_SANS_PRIX.items()})
+    titres.update(TITRES_AVEC_PRIX)
     titres.setdefault(doc.genre, libelle(doc.genre))
     dossier = Path(racine) / "donnees" / "documents"
     chemin = dossier / (re.sub(r'[\\/:*?"<>|]+', "-", f"{doc.numero} {doc.tiers}".strip())[:100] + ".pdf")
@@ -285,9 +314,57 @@ def ecrire_pdf(racine: Path, doc: Document) -> Path:
     tiers = [doc.tiers] if doc.tiers else [doc.sens or ""]
     lignes = [{"numero": l.numero_sage, "description": l.description, "quantite": l.quantite, "prix": l.prix or 0,
                "montant": l.montant, "taxe": l.taxe or ("GQ" if l.taxable else "")} for l in doc.lignes]
+    if doc.genre in MODELES_SANS_PRIX:  # préparation, livraison, réception, retour : sans prix
+        from .pdf_documents import bon_sans_prix
+
+        titre, quantite, vides, signatures, note = MODELES_SANS_PRIX[doc.genre]
+        return bon_sans_prix(chemin, racine, titre, doc.numero, doc.date, tiers_titre, tiers,
+                             [x for x in infos if x], lignes, quantite, vides, signatures, doc.etat, doc.remarque, note)
+    if doc.genre == STOCK:  # mouvement d'entrée ou de sortie
+        return pdf_stock(chemin, racine, doc, [x for x in infos if x])
+    remarque = doc.remarque
+    if doc.genre in MENTIONS:
+        remarque = f"{remarque}\n{MENTIONS[doc.genre]}".strip()
     return document_commercial(chemin, racine, titres[doc.genre], doc.numero, doc.date, tiers_titre, tiers,
                                [x for x in infos if x], lignes, avec_taxes=doc.genre != STOCK, etat=doc.etat,
-                               remarque=doc.remarque, libelle_prix="Coût unitaire" if doc.genre == STOCK else "Prix")
+                               remarque=remarque, libelle_prix="Coût unitaire" if doc.genre == STOCK else "Prix")
+
+
+# modèles des documents de stock (demande du propriétaire du 2026-11-05) : sens -> (titre, colonne de quantité,
+# colonne à remplir, signatures, note)
+MODELES_STOCK = {
+    ENTREE: ("Mouvement d'entrée", "Qté entrée", "Observation", ("Reçu par", "Vérifié par"),
+             "Entrée en stock au coût unitaire indiqué ; « CUMP » = coût moyen de Sage."),
+    SORTIE: ("Mouvement de sortie", "Qté sortie", "Motif / observation", ("Sorti par", "Approuvé par"),
+             "Sortie du stock au coût moyen (CUMP) de Sage ; la valeur indiquée est une estimation."),
+}
+
+
+def pdf_stock(chemin: Path, racine: Path, doc: Document, infos: list[str]) -> Path:
+    from .pdf_documents import argent, document_stock, quantite
+    from .points_vente import DEPOT_DEFAUT
+
+    titre, colonne, vide, signatures, note = MODELES_STOCK.get(doc.sens, MODELES_STOCK[ENTREE])
+    colonnes = [("N° article", 28, "L"), ("Article", 0, "L"), (colonne, 22, "R"), ("Coût unitaire", 26, "R"),
+                ("Valeur", 26, "R"), (vide, 40, "L")]
+    lignes, total, quantites, inconnue = [], Decimal(0), Decimal(0), False
+    for l in doc.lignes:
+        q = Decimal(l.quantite or 0)
+        quantites += q
+        prix = Decimal(l.prix or 0)
+        if prix > 0:
+            total += l.montant
+        else:
+            inconnue = True
+        lignes.append([l.numero_sage, l.description, quantite(q), argent(prix) if prix > 0 else "CUMP",
+                       argent(l.montant) if prix > 0 else "—", ""])
+    return document_stock(
+        chemin, racine, titre, doc.numero, doc.date, ("Mouvement", [titre, f"Dépôt : {doc.depot or DEPOT_DEFAUT}"]),
+        ("Informations", [x for x in infos if not x.startswith("Dépôt")]), colonnes, lignes,
+        [f"{len(lignes)} ligne(s) — quantité totale : {quantite(quantites)}"]
+        + (["Lignes « CUMP » : valeur calculée par Sage, absente du total."] if inconnue else []),
+        final=("Valeur", argent(total)),
+        signatures=signatures, etat=doc.etat, remarque=doc.remarque, note=note)
 
 
 # --------------------------------------------------------------------------------------------- factures de vente
@@ -382,6 +459,11 @@ def importer_factures(racine: Path, config_toml: dict, numeros: list[str], journ
 
                 d.etat, d.messages = IMPORTEE, []
                 d.messages = clover_du_document(racine, config_toml, d)  # la facture touche aussi le stock Clover
+                if d.depot and not depots_.est_defaut(d.depot):  # stock sorti du dépôt de la facture (2026-11-05)
+                    lignes = [(l.numero_sage, Decimal(str(l.quantite or 0)) * (-1 if d.genre == FACTURE_RETOUR else 1))
+                              for l in d.lignes if l.numero_sage]
+                    d.messages += depots_.apres_import(racine, config_toml, d.numero, d.depot, lignes, vente=True,
+                                                       jour=d.date or None, journal=journal)
                 resultats[d.numero] = f"importée dans Sage ({_argent(d.total)})" + (
                     " ; " + " ; ".join(d.messages) if d.messages else "")
             else:
@@ -400,10 +482,10 @@ def depots(config_toml: dict) -> dict[str, str]:
     dépôt, rattaché aux points de vente) : {« dépôt (points de vente) » : emplacement Sage}."""
     from .points_vente import points_de_vente
 
-    par_depot: dict[str, list[str]] = {}
-    for p in points_de_vente(config_toml, actifs=True):
-        par_depot.setdefault(p.depot_sage, []).append(p.libelle)
-    return {f"{d} ({', '.join(noms)})": d for d, noms in par_depot.items()}
+    libelles = {p.code: p.libelle for p in points_de_vente(config_toml, actifs=True)}
+    # dépôts sans Clover aussi (entrepôt, réserve : [sage] depots_sans_clover, 2026-11-05)
+    return {(f"{d.nom} ({', '.join(libelles[c] for c in d.points_vente)})" if d.points_vente else
+             f"{d.nom} (sans Clover)"): d.nom for d in depots_.liste(config_toml)}
 
 
 @vide_apres  # mémoire des lectures vidée après une écriture

@@ -111,6 +111,8 @@ class FenetreInventaire(FenetreOutil):
 
         def travail():
             saisie, rapport = saisir(self.racine, self._config(), Path(chemin))
+            if rapport.with_suffix(".pdf").exists():  # écart d'inventaire (PDF) ouvert avec le rapport Excel
+                os.startfile(rapport.with_suffix(".pdf"))
             return t("Clover : {c} stock(s), Sage : {s} ajustement(s). Rapport : {f}", c=len(saisie.clover),
                      s=len(saisie.sage), f=rapport.name), rapport
 

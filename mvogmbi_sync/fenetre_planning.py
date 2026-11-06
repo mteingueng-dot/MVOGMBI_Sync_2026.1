@@ -45,6 +45,13 @@ class FenetrePlanning(FenetreOutil):
                                        ("📋  " + t("Reprendre le mois précédent"), self.copier, "secondaire"),
                                        ("📣  " + t("Publier le mois"), self.publier, "principal")):
             barre.ajouter(Bouton(barre, texte, commande, genre, fond=CARTE, petit=True))
+        # une cédule par dépôt (demande du propriétaire du 2026-11-05) : employés du dépôt, « Tout sélectionner »
+        from .design import filtre_depots
+
+        groupe = barre.ajouter(barre.groupe(), 10)
+        tk.Label(groupe, text=t("Dépôt"), background=CARTE).pack(side="left")
+        self.choix_depot, self.depot = filtre_depots(groupe, self.racine, self.afficher)
+        self.choix_depot.pack(side="left", padx=4)
         self.etat = tk.Label(self, text="", background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left",
                              wraplength=1250)
         self.etat.pack(fill="x", pady=(6, 0))
@@ -62,19 +69,34 @@ class FenetrePlanning(FenetreOutil):
         from .page_rapports import remplir
 
         self.planning = pl.Planning(self.racine)
-        self.employes = employes_visibles(self, pt.Registre(self.racine).actifs())
+        from .design import depots_choisis
+
+        self.employes = pl.employes_du_depot(employes_visibles(self, pt.Registre(self.racine).actifs()),
+                                             depots_choisis(self.depot), self.planning, self.mois)
+        filtre = depots_choisis(self.depot)
         jours = pl.jours_du_mois(self.mois)
         publie = self.planning.publies.get(self.mois)
         self.libelle.configure(text=t("Planning de {m}", m=self.mois) + (
             "  ✔ " + t("publié le {d}", d=publie[:10]) if publie else "  ● " + t("non publié")))
-        entetes = ["Employé"] + [f"{t(pl.JOURS[j.weekday()])} {j:%d}" for j in jours] + ["Heures"]
+        from .depots import garde
+
+        entetes = ["Employé", "Dépôt"] + [f"{t(pl.JOURS[j.weekday()])} {j:%d}" for j in jours] + ["Heures"]
         lignes = []
         for e in self.employes:
             quarts = [self.planning.quart(self.mois, e.id, j) for j in jours]
-            lignes.append([e.nom] + [q.texte().replace(" min)", ")") if q else "" for q in quarts]
+            cases = []
+            for q in quarts:  # quart dans un autre dépôt : son nom ; hors du filtre : grisé (entre crochets)
+                if not q:
+                    cases.append("")
+                    continue
+                texte = q.texte().replace(" min)", ")")
+                ailleurs = pl.depot_du_quart(q, e) != pl.depot_du_quart(None, e)
+                texte += f" @{pl.depot_du_quart(q, e)}" if ailleurs else ""
+                cases.append(texte if garde(pl.depot_du_quart(q, e), filtre) else f"[{texte}]")
+            lignes.append([e.nom, pl.depot_du_quart(None, e)] + cases
                           + [f"{self.planning.heures(self.mois, e.id):.2f}".replace(".", ",")])
         largeurs = {x: 78 for x in entetes[1:-1]}
-        largeurs.update({"Employé": 170, "Heures": 70})
+        largeurs.update({"Employé": 170, "Dépôt": 120, "Heures": 70})
         remplir(self.tableau, entetes, lignes, largeurs, decroissant=False)
         self.etat.configure(text=t("Choisissez un ou plusieurs employés (Ctrl+clic), puis « Horaire des employés "
                                    "choisis… » : jours de la semaine, période, heures de début et de fin, pause non "
@@ -89,7 +111,7 @@ class FenetrePlanning(FenetreOutil):
         if not employes:
             messagebox.showinfo(self.title(), t("Choisissez au moins un employé dans la liste."), parent=self)
             return
-        DialogueHoraire(self, self.planning, employes, self.mois, self.afficher)
+        DialogueHoraire(self, self.planning, employes, self.mois, self.afficher, self.racine)
 
     def copier(self) -> None:
         precedent = _mois_suivant(self.mois, -1)
@@ -109,10 +131,26 @@ class FenetrePlanning(FenetreOutil):
         self.afficher()
 
 
+DEPOT_PRINCIPAL = "(dépôt principal de l'employé)"
+
+
+def _noms_depots(racine) -> list[str]:
+    import tomllib
+
+    from .depots import noms
+
+    if racine is None:
+        return []
+    try:
+        return noms(tomllib.loads((Path(racine) / "config.toml").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return []
+
+
 class DialogueHoraire(tk.Toplevel):
     CREATION = True  # fenêtre de création : reste une fenêtre à part (avec « Fermer »)
 
-    def __init__(self, parent, planning: pl.Planning, employes: list[pt.Employe], mois: str, apres):
+    def __init__(self, parent, planning: pl.Planning, employes: list[pt.Employe], mois: str, apres, racine=None):
         super().__init__(parent)
         self.planning, self.employes, self.apres = planning, employes, apres
         jours = pl.jours_du_mois(mois)
@@ -141,6 +179,13 @@ class DialogueHoraire(tk.Toplevel):
                                            (t("Pause (min)"), self.pause, 5)):
             tk.Label(heures, text=libelle, background=CARTE).pack(side="left", padx=(8, 4))
             ttk.Entry(heures, textvariable=variable, width=largeur).pack(side="left")
+        # dépôt du quart : vide = dépôt principal de chaque employé (un employé peut travailler ailleurs ce jour-là)
+        lieu = tk.Frame(self, background=CARTE)
+        lieu.pack(anchor="w", pady=4)
+        tk.Label(lieu, text=t("Dépôt"), background=CARTE).pack(side="left", padx=(8, 4))
+        self.depot = tk.StringVar(value=t(DEPOT_PRINCIPAL))
+        ttk.Combobox(lieu, textvariable=self.depot, state="readonly", width=28,
+                     values=[t(DEPOT_PRINCIPAL)] + _noms_depots(racine)).pack(side="left")
         self.erreur = tk.Label(self, text="", background=CARTE, foreground=ROUGE)
         self.erreur.pack(anchor="w")
         bas = tk.Frame(self, background=CARTE)
@@ -161,8 +206,10 @@ class DialogueHoraire(tk.Toplevel):
                      if (du + timedelta(days=i)).weekday() in choisis]
             if not jours:
                 raise pl.ErreurPlanning("Aucun jour choisi.")
-            quart = None if repos else pl.Quart(self.debut.get(), self.fin.get(), int(self.pause.get() or 0))
+            depot = "" if self.depot.get() == t(DEPOT_PRINCIPAL) else self.depot.get()
             for e in self.employes:
+                quart = None if repos else pl.Quart(self.debut.get(), self.fin.get(), int(self.pause.get() or 0),
+                                                    "" if pl.depot_du_quart(None, e) == depot else depot)
                 self.planning.definir(e.id, jours, quart)
         except (pl.ErreurPlanning, ValueError) as exc:
             self.erreur.configure(text=t(str(exc)))

@@ -97,6 +97,19 @@ def mettre_a_jour(client, facture, correspondances, journal: Journal) -> list[st
         if not ids:
             messages.append(f"{r.numero_sage} : aucun article Clover relié (Articles > Correspondance) — stock et coût Clover non modifiés")
             continue
+        vivants, disparus = [], []
+        for id_clover in ids:  # article supprimé ou recréé dans Clover (404, constat du 2026-11-05 : C0000775)
+            try:
+                client.stock(id_clover)
+                vivants.append(id_clover)
+            except Exception as exc:  # noqa: BLE001
+                (disparus if "404" in str(exc) else vivants).append(id_clover)
+        if not vivants:
+            messages.append(f"{r.numero_sage} : l'article Clover relié ({', '.join(disparus)}) n'existe plus dans "
+                            "Clover (supprimé ou renommé) — reliez le nouvel article dans Articles > Correspondance ; "
+                            f"stock Clover non modifié (+{_q(r.quantite)} à ajouter)")
+            continue
+        ids = vivants
         try:
             for id_clover in ids:
                 client.regler_cout(id_clover, r.cout)

@@ -246,3 +246,30 @@ def stocks_par_depot(base, numeros: list[str]) -> dict[str, dict[str, Decimal]]:
 
 def depots_sage(base) -> list[str]:
     return [r["d"] for r in base.requete("SELECT TRIM(sGrpCode) d FROM tinvloc WHERE bActive = 1 ORDER BY lId")]
+
+
+def ecrire_pdf(racine: Path, config_toml: dict, t: Transfert) -> Path:
+    """Bon de transfert (modèle des documents de stock, demande du propriétaire du 2026-11-05) : départ et arrivée
+    (point de vente + dépôt Sage), quantité transférée, colonnes « Qté reçue » et « Observation » à remplir à
+    l'arrivée, signatures de l'expéditeur et du receveur. PDF dans donnees/transferts/."""
+    import re
+
+    from .pdf_documents import document_stock, quantite
+    from .points_vente import points_de_vente
+
+    points = {p.code: p for p in points_de_vente(config_toml)}
+
+    def bloc(code: str) -> list[str]:
+        p = points.get(code)
+        return [p.nom, f"Dépôt Sage : {p.depot_sage}"] if p else [code or "—"]
+
+    colonnes = [("N° article", 28, "L"), ("Article", 0, "L"), ("Qté transférée", 26, "R"), ("Qté reçue", 22, "R"),
+                ("Observation", 46, "L")]
+    lignes = [[l.numero, l.description, quantite(l.quantite), "", ""] for l in t.lignes]
+    dossier = Path(racine) / "donnees" / "transferts"
+    chemin = dossier / (re.sub(r'[\/:*?"<>|]+', "-", f"{t.numero} Bon de transfert") + ".pdf")
+    return document_stock(
+        chemin, racine, "Bon de transfert", t.numero, t.jour, ("Départ", bloc(t.de)), ("Arrivée", bloc(t.vers)),
+        colonnes, lignes, [f"{len(lignes)} ligne(s) — quantité totale : {quantite(t.total_quantite)}"],
+        signatures=("Expédié par", "Reçu par"), etat=t.etat, remarque=t.note,
+        note="À l'arrivée : comptez chaque article, notez la quantité reçue et tout écart dans « Observation ».")

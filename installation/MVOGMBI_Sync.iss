@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "2.17.0"
+#define Version "2.24.0"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -54,6 +54,10 @@ en.Documents=Project documents (French)
 fr.Pointage=Pointage des employés
 en.Pointage=Employee time clock
 fr.ServeurWeb=Serveur de l'application web
+fr.TacheServeurWeb=Démarrer le serveur de l'application web en arrière-plan (à chaque ouverture de session)
+en.TacheServeurWeb=Start the web application server in the background (at each sign-in)
+fr.DemarrageServeur=Démarrage du serveur de l'application web…
+en.DemarrageServeur=Starting the web application server…
 en.ServeurWeb=Web application server
 fr.ClientWeb=Client MVOGMBI_Sync (application web)
 en.ClientWeb=MVOGMBI_Sync client (web application)
@@ -99,6 +103,7 @@ Name: "{app}\donnees"
 Name: "{group}\MVOGMBI_Sync"; Filename: "{app}\MVOGMBI_Sync.exe"; WorkingDir: "{app}"; AppUserModelID: "ConceptInformatique.MVOGMBI_Sync"
 Name: "{group}\{cm:Pointage}"; Filename: "{app}\MVOGMBI_Sync.exe"; Parameters: "pointage"; WorkingDir: "{app}"
 Name: "{group}\{cm:ServeurWeb}"; Filename: "{app}\MVOGMBI_Sync_Serveur.exe"; WorkingDir: "{app}"
+Name: "{userstartup}\MVOGMBI_Sync Serveur web"; Filename: "{app}\MVOGMBI_Sync_Serveur.exe"; WorkingDir: "{app}"; Tasks: serveurweb
 Name: "{group}\{cm:ClientWeb}"; Filename: "{app}\client\MVOGMBI_Sync_Client.exe"; WorkingDir: "{app}\client"
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\Manuel_MVOGMBI_Sync.pdf"; Languages: fr
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\User_Manual_MVOGMBI_Sync.pdf"; Languages: en
@@ -107,12 +112,18 @@ Name: "{group}\{cm:Documents}"; Filename: "{app}\documentation"
 Name: "{group}\{cm:JournalTraitement}"; Filename: "{app}\donnees\journal_automatique.log"
 Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"
 
+[Tasks]
+; Serveur de l'application web en arrière-plan (demande du propriétaire du 2026-11-05) : sans fenêtre, démarré à la
+; fin de l'installation et à chaque ouverture de session (dossier Démarrage de la personne)
+Name: "serveurweb"; Description: "{cm:TacheServeurWeb}"
+
 [Run]
 ; Langue de l'installation enregistrée dans config.toml ([general] langue = fr | en)
 Filename: "{app}\MVOGMBI_Sync_console.exe"; Parameters: "langue {code:LangueApplication}"; WorkingDir: "{app}"; StatusMsg: "{cm:ReglageLangue}"; Flags: runhidden waituntilterminated
 ; Dernière page : case « Créer un raccourci sur le Bureau » (le raccourci est créé par CreerRaccourciBureau)
 Filename: "{cmd}"; Parameters: "/c exit 0"; Description: "{cm:TacheBureau}"; Flags: runhidden postinstall skipifsilent; AfterInstall: CreerRaccourciBureau
 Filename: "{app}\MVOGMBI_Sync.exe"; Description: "{cm:OuvrirApplication}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\MVOGMBI_Sync_Serveur.exe"; WorkingDir: "{app}"; StatusMsg: "{cm:DemarrageServeur}"; Tasks: serveurweb; Flags: nowait runhidden
 
 [UninstallDelete]
 Type: files; Name: "{userdesktop}\MVOGMBI_Sync.lnk"
@@ -120,6 +131,8 @@ Type: files; Name: "{userdesktop}\MVOGMBI_Sync.lnk"
 [UninstallRun]
 ; Retire la tâche planifiée de 1 h (les données et la configuration restent dans le dossier).
 Filename: "{app}\MVOGMBI_Sync_console.exe"; Parameters: "planifier --retirer"; Flags: runhidden; RunOnceId: "RetirerTache"
+; Serveur web arrêté avant la désinstallation
+Filename: "{sys}\taskkill.exe"; Parameters: "/IM MVOGMBI_Sync_Serveur.exe /F"; Flags: runhidden; RunOnceId: "ArreterServeurWeb"
 
 [Code]
 { Page « Langue de l'application » : liste déroulante des langues acceptées par l'application. }
@@ -155,6 +168,16 @@ begin
     Result := 'en'
   else
     Result := 'fr';
+end;
+
+{ Serveur web en marche : arrêté avant la copie des fichiers (sinon MVOGMBI_Sync_Serveur.exe ne se remplace pas),
+  redémarré à la fin par [Run]. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM MVOGMBI_Sync_Serveur.exe /F', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Result := '';
 end;
 
 procedure CreerRaccourciBureau;

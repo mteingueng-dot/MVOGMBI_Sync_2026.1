@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import json
 import subprocess
 import tempfile
 import threading
@@ -36,6 +37,12 @@ SW_HIDE = 0
 
 TITRE_MOT_DE_PASSE = "Sage 50 - Password"
 TITRE_RESUME = "Sage 50 - Import Summary"
+# Sage_SA_import refuse une entreprise PARTAGÉE (« You cannot use this utility to import transactions into a shared
+# company. Stop sharing this company or use the Import Transactions Wizard instead. ») : aucune facture ne peut
+# être importée (ventes de la nuit, factures fournisseurs, retours) tant que le partage est actif.
+ENTREPRISE_PARTAGEE = ("Sage refuse l'outil d'import parce que le fichier d'entreprise est PARTAGÉ (partage en "
+                       "ligne de Sage 50). Dans Sage, arrêtez le partage de cette entreprise (ou importez avec "
+                       "l'assistant « Importer des transactions » de Sage), puis recommencez.")
 
 
 def _texte(hwnd) -> str:
@@ -164,10 +171,59 @@ class ResultatSage:
     connexion_annulee: bool = False
 
 
+FICHIER_PARTAGEES = "entreprises_partagees.json"
+
+
+def _partagees() -> Path:
+    from .__main__ import RACINE
+
+    return Path(RACINE) / "donnees" / FICHIER_PARTAGEES
+
+
+def est_partagee(fichier_sai: Path) -> bool:
+    try:
+        return str(Path(fichier_sai)).lower() in json.loads(_partagees().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+
+
+def noter_partagee(fichier_sai: Path) -> None:
+    try:
+        connues = json.loads(_partagees().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        connues = []
+    cle = str(Path(fichier_sai)).lower()
+    if cle not in connues:
+        _partagees().parent.mkdir(parents=True, exist_ok=True)
+        _partagees().write_text(json.dumps(connues + [cle], ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str | None,
              pendant_connexion: Callable[[], bool] | None = None,
              pendant_resume: Callable[[str], None] | None = None,
              delai: int = 1800, discret: bool = True) -> ResultatSage:
+    """Import d'un .IMP : outil d'import de Sage, sinon (entreprise PARTAGÉE, refusée par l'outil — demande du
+    propriétaire du 2026-11-05 : « il faut importer avec l'entreprise partagée ») l'assistant d'importation de
+    Sage (`robot_import_assistant`). Une entreprise reconnue partagée passe ensuite tout de suite par l'assistant
+    (`donnees/entreprises_partagees.json`). Une simple lecture (`pendant_connexion`) reste à l'outil d'import."""
+    if pendant_connexion is None and est_partagee(fichier_sai):
+        from .robot_import_assistant import importer_par_assistant
+
+        return importer_par_assistant(Path(fichier_imp), Path(fichier_sai), pendant_resume, delai)
+    resultat = executer_outil(exe, fichier_imp, fichier_sai, mot_de_passe, pendant_connexion, pendant_resume,
+                              delai, discret)
+    if pendant_connexion is None and ENTREPRISE_PARTAGEE in resultat.erreurs:
+        from .robot_import_assistant import importer_par_assistant
+
+        noter_partagee(fichier_sai)
+        return importer_par_assistant(Path(fichier_imp), Path(fichier_sai), pendant_resume, delai)
+    return resultat
+
+
+def executer_outil(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str | None,
+                   pendant_connexion: Callable[[], bool] | None = None,
+                   pendant_resume: Callable[[str], None] | None = None,
+                   delai: int = 1800, discret: bool = True) -> ResultatSage:
     """Lance l'outil d'import et répond à ses fenêtres jusqu'à sa fermeture.
 
     pendant_connexion : appelée quand la fenêtre de mot de passe s'affiche (la base est alors lisible) ;
@@ -224,6 +280,8 @@ def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str 
                     resultat.erreurs.append(f"{titre} : {message}" if message else titre)
                     if "password" in message.lower() or "mot de passe" in message.lower():
                         resultat.erreurs.append("Mot de passe Sage refusé : vérifiez-le dans la configuration.")
+                    if "shared company" in message.lower():  # constat du 2026-11-05 sur SERVDCSAGE
+                        resultat.erreurs.append(ENTREPRISE_PARTAGEE)
                     # « Import Error … Do you wish to continue? » (Oui / Non) : on ne continue jamais
                     cliquer(hwnd, ("cancel", "annuler", "non", "no", "ok"), IDCANCEL)
             time.sleep(0.1)

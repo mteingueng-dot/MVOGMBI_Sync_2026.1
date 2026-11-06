@@ -51,6 +51,83 @@ def _lire_nouvelles(ctx: Contexte, journal) -> list[str]:
     return [f"{len(lues)} facture(s) lue(s)."] + [f"{f.fichier} : {f.etat}" for f in lues]
 
 
+PAGES_MAX = 15  # pages photographiées d'une même facture
+
+
+def pdf_des_photos(photos: list[bytes]) -> bytes:
+    """Photos des pages d'une facture -> un PDF (sens de la photo corrigé, 2 000 px au plus de côté)."""
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    pages = []
+    for contenu in photos:
+        image = ImageOps.exif_transpose(Image.open(BytesIO(contenu))).convert("RGB")
+        image.thumbnail((2000, 2000))
+        pages.append(image)
+    sortie = BytesIO()
+    pages[0].save(sortie, "PDF", resolution=200, save_all=True, append_images=pages[1:])
+    return sortie.getvalue()
+
+
+def photo_facture(ctx: Contexte) -> Reponse:
+    """« 📷 Photographier une facture » (demande du propriétaire du 2026-11-05 : « filmer les factures depuis notre
+    téléphone et charger dans la liste ») : page faite pour le téléphone ; chaque photo est une page (gardée sur le
+    serveur, jamais dans la page) ; « ✔ Terminer la facture » réunit les pages en un PDF dans le dossier des factures
+    (« AAAA-MM-JJ_photo_HHMMSS.pdf ») puis la lecture (OCR de Windows) l'ajoute à la liste."""
+    from datetime import datetime
+
+    from .. import fournisseurs as fo
+    from . import taches
+
+    cle = ("photos_facture", ctx.session.jeton)
+    pages = ctx.app.memoire.setdefault(cle, [])
+    message = ""
+    if ctx.req.methode == "POST":
+        action = ctx.req.champ("action")
+        if action == "Recommencer":
+            pages.clear()
+        elif action in ("Ajouter la page", "Terminer la facture") and "photo" in ctx.req.fichiers:
+            nom, contenu = ctx.req.fichiers["photo"]
+            if contenu:
+                try:
+                    pdf_des_photos([contenu])  # image lisible ?
+                    if len(pages) >= PAGES_MAX:
+                        raise ValueError(f"{PAGES_MAX} pages au plus.")
+                    pages.append(contenu)
+                except Exception as exc:  # noqa: BLE001 — format non lu (HEIC sans conversion, fichier abîmé)
+                    message = _message(erreur=f"Photo illisible ({nom}) : {exc}. Prenez la photo avec l'appareil "
+                                              "photo du téléphone (JPEG).")
+        if action == "Terminer la facture" and not message:
+            if not pages:
+                message = _message(erreur="Prenez d'abord la photo de la facture.")
+            else:
+                dossier = fo.Registre(ctx.racine).dossier
+                dossier.mkdir(parents=True, exist_ok=True)
+                cible = dossier / f"{datetime.now():%Y-%m-%d}_photo_{datetime.now():%H%M%S}.pdf"
+                cible.write_bytes(pdf_des_photos(pages))
+                n = len(pages)
+                pages.clear()
+                return taches.lancer(ctx, f"Lecture de la facture photographiée ({n} page(s))",
+                                     lambda j: _lire_nouvelles(ctx, j), "/factures-fournisseurs")
+        elif action == "Ajouter la page" and not message:
+            message = _message(f"Page {len(pages)} gardée. Photographiez la page suivante, ou « Terminer la facture ».")
+    corps = (message + "<div class='carte photo-facture'><h2>📷 Photographier une facture</h2>"
+             f"<p class='note'>Pages déjà prises : <strong>{len(pages)}</strong>. Posez la facture à plat, bien "
+             "éclairée, toute la page dans la photo.</p>"
+             f"<form method='post' enctype='multipart/form-data'>{csrf(ctx)}"
+             "<label class='bouton-photo'>📷 Prendre la photo de la page "
+             f"{len(pages) + 1}<input type='file' name='photo' accept='image/*' capture='environment' required></label>"
+             "<div class='barre-onglet'><button name='action' value='Ajouter la page'>➕ Ajouter la page (il y en a "
+             "d'autres)</button><button class='accent' name='action' value='Terminer la facture'>✔ Terminer la "
+             "facture</button></div></form>"
+             f"<form method='post' class='barre-onglet'>{csrf(ctx)}<button class='second' name='action' "
+             "value='Terminer la facture' formnovalidate>✔ Terminer avec les pages prises</button><button "
+             "class='danger' name='action' value='Recommencer' formnovalidate>✖ Recommencer</button><a "
+             "class='ouvrir' href='/factures-fournisseurs'>◀ Factures fournisseurs</a></form></div>")
+    return Reponse(corps=page(ctx, "Photographier une facture", corps))
+
+
 def _relire_sage(ctx: Contexte, journal) -> list[str]:
     from ..__main__ import lire_sage
     from ..articles_sage import ecrire_copie
@@ -78,11 +155,20 @@ def _relire_sage(ctx: Contexte, journal) -> list[str]:
 
 def _importer(ctx: Contexte, factures, clover: bool):
     def travail(journal):
+        from .. import fournisseurs as fo
         from ..import_achats import importer_achats
 
         journal("Contrôles, import dans Sage, vérification…")
         with ctx.app.ecriture:
-            resultats = importer_achats(ctx.racine, ctx.config, factures, clover=clover)
+            # factures prises dans le registre qui sera enregistré : leur état « Importée » est gardé (défaut du
+            # 2026-11-05 : importées dans Sage, elles restaient « Prête à importer » dans la liste web)
+            registre = fo.Registre(ctx.racine)
+            noms = {f.fichier for f in factures}
+            choisies = [f for f in registre.factures if f.fichier in noms]
+            try:
+                resultats = importer_achats(ctx.racine, ctx.config, choisies, clover=clover)
+            finally:
+                registre.enregistrer()
         return [f"{fichier} : {texte}" for fichier, texte in resultats.items()]
     return travail
 
@@ -151,6 +237,20 @@ def factures(ctx: Contexte) -> Reponse:
                     return [f"{len(copies)} pièce(s) jointe(s) copiée(s)."] + _lire_nouvelles(ctx, journal)
 
                 return taches.lancer(ctx, "Factures reçues par courriel", lire, retour)
+        elif action == "Importer les factures cochées":  # demande du propriétaire du 2026-11-05
+            if rang is not None:
+                _enregistrer(ctx, rang, ligne)
+            toutes_f = fo.Registre(ctx.racine).factures
+            rangs = {int(x) for x in ctx.req.champs("coche") if x.isdigit() and int(x) < len(toutes_f)}
+            choisies = [toutes_f[x] for x in sorted(rangs)]
+            pretes = [x for x in choisies if x.etat == fo.PRETE]
+            if not choisies:
+                message = _message(erreur="Cochez les factures à importer (case de la 1re colonne).")
+            elif not pretes:
+                message = _message(erreur="Aucune facture cochée n'est « Prête à importer ».")
+            else:
+                return taches.lancer(ctx, f"Import de {len(pretes)} facture(s) fournisseurs cochée(s)",
+                                     _importer(ctx, pretes, clover), retour, sage=True)
         elif action == "Importer toutes les factures prêtes":
             if rang is not None:
                 _enregistrer(ctx, rang, ligne)
@@ -178,6 +278,27 @@ def factures(ctx: Contexte) -> Reponse:
                                    + ("écartée (fichier rangé dans « ecartees »)." if action == "Écarter" else
                                       "supprimée de la liste (fichier rangé dans « supprimees »)."))
                 rang = ligne = None
+            elif action in ("Bon de réception", "Facture avec prix"):  # impressions (2026-11-05)
+                from ..impression_fournisseur import bon_reception, facture_complete
+
+                _enregistrer(ctx, rang, ligne)
+                f = fo.Registre(ctx.racine).factures[rang]
+                chemin = (bon_reception if action == "Bon de réception" else facture_complete)(ctx.racine, f)
+                return Reponse(corps=chemin.read_bytes(), type="application/pdf",
+                               entetes={"Content-Disposition": f"inline; filename=\"{chemin.name}\""})
+            elif action == "Refaire la mise à jour Clover":
+                f = fo.Registre(ctx.racine).factures[rang]
+                if f.etat != fo.IMPORTEE:
+                    message = _message(erreur="La facture n'est pas encore importée dans Sage.")
+                else:
+                    def refaire(journal, f=f):
+                        from ..import_achats import mettre_a_jour_clover
+
+                        journal("Stock et coût Clover des lignes pas encore faites…")
+                        return [f"{x} : {t}" for x, t in mettre_a_jour_clover(ctx.racine, ctx.config, [f],
+                                                                             {f.fichier: ""}).items()]
+
+                    return taches.lancer(ctx, f"Clover de la facture {f.numero}", refaire, retour)
             else:
                 try:
                     ligne, texte = _enregistrer(ctx, rang, ligne, action)
@@ -194,13 +315,17 @@ def factures(ctx: Contexte) -> Reponse:
     registre = fo.Registre(ctx.racine)
     noms, articles = _listes(ctx.racine)
     lien = f"filtre={e(filtre)}"
+    cocher_pretes = bool(ctx.req.query.get("cocher"))
     lignes, classes = [], []
     for n, f in sorted(enumerate(registre.factures), key=lambda x: (x[1].date_facture or "", x[0]), reverse=True):
         if filtre != "Toutes" and f.etat != filtre:
             continue
-        lignes.append([f"<a href='?{lien}&amp;i={n}'>{e(f.fichier)}</a>" + (" ◀" if n == rang else ""),
+        coche = ("<input type='checkbox' name='coche' value='{n}' form='barre-factures' aria-label='Cocher'"
+                 + (" checked" if f.etat == fo.PRETE and cocher_pretes else "") + ">").format(n=n)
+        lignes.append([coche, f"<a href='?{lien}&amp;i={n}'>{e(f.fichier)}</a>" + (" ◀" if n == rang else ""),
                        e(f.fournisseur_sage or f"({f.fournisseur_lu or '?'})"), e(f.numero), e(f.date_facture),
-                       argent(f.total) if f.total is not None else "", e(f.etat)])
+                       argent(f.total) if f.total is not None else "", e(f.depot or "Emplacement par défaut"),
+                       e(f.etat)])
         classes.append(COULEURS.get(f.etat, "termine"))
     compte = {x: sum(1 for f in registre.factures if f.etat == x) for x in fo.ETATS}
     resume = (f"{len(registre.factures)} facture(s) — à saisir : {compte[fo.A_SAISIR]}, à vérifier : "
@@ -208,30 +333,43 @@ def factures(ctx: Contexte) -> Reponse:
               + ("" if noms else "   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et "
                                  "articles Sage »"))
     options = "".join(f"<option{' selected' if x == filtre else ''}>{e(x)}</option>" for x in ["Toutes"] + fo.ETATS)
-    barre = (f"<form method='post' enctype='multipart/form-data' class='barre-onglet'>{csrf(ctx)}"
+    barre = (f"<form method='post' enctype='multipart/form-data' class='barre-onglet' id='barre-factures'>{csrf(ctx)}"
              f"<input type='hidden' name='filtre' value='{e(filtre)}'>"
              + (f"<input type='hidden' name='i' value='{rang}'>" if rang is not None else "")
              + "<input type='file' name='facture' accept='.pdf,image/*' capture='environment'><button name='action' "
-               "value='Ajouter des factures'>➕ Ajouter des factures…</button><button class='second' name='action' "
+               "value='Ajouter des factures'>➕ Ajouter des factures…</button><a class='ouvrir plein' "
+               "href='/photo-facture'>📷 Photographier une facture</a><button class='second' name='action' "
                "value='Lire le courriel'>📧 Lire le courriel</button><button class='second' name='action' "
                "value='Actualiser'>⟳ Actualiser</button><button class='second' name='action' value='Fournisseurs et "
                f"articles Sage'>📒 Fournisseurs et articles Sage</button><a class='ouvrir' href='/dossier-factures'>📂 "
                "Dossier des factures</a><label class='a-droite'><input type='checkbox' "
                f"name='clover' value='1'{' checked' if clover else ''}> Mettre aussi à jour Clover</label><button "
-               "class='accent' name='action' value='Importer toutes les factures prêtes'>📤 Importer toutes les "
-               "factures prêtes</button></form>"
+               "class='second' name='action' value='Importer les factures cochées'>☑ Importer les factures cochées"
+               "</button><button class='accent' name='action' value='Importer toutes les factures prêtes'>📤 Importer "
+               "toutes les factures prêtes</button></form>"
              f"<form method='get' class='barre-onglet'><div><label>Afficher :</label><select name='filtre'>{options}"
-             "</select></div><button class='second'>Afficher</button></form>")
+             "</select></div><button class='second'>Afficher</button>"
+             + ("<a class='ouvrir' href='?" + lien + "'>☐ Tout décocher</a>" if cocher_pretes else
+                "<a class='ouvrir' href='?" + lien + "&amp;cocher=1'>☑ Cocher les factures prêtes</a>") + "</form>")
     corps = ("<p class='sous-titre'>🧾 Factures fournisseurs — lecture des factures, articles Sage et import dans Sage"
              "</p>" + message + barre + f"<p class='note'>{e(resume)}</p>"
-             + tableau_section(Section("Factures", ["Fichier", "Fournisseur Sage", "N°", "Date", "Total", "État"],
-                                       lignes, classes=classes, html=set(range(6))))
+             + "<div class='zone-liste-factures'>"
+             + tableau_section(Section("Factures", ["", "Fichier", "Fournisseur Sage", "N°", "Date", "Total", "Dépôt",
+                                                   "État"], lignes, classes=classes, html=set(range(8)))) + "</div>"
              + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p>")
     if rang is not None and rang < len(registre.factures):
         corps += _detail(ctx, registre.factures[rang], rang, ligne, filtre, noms, articles, clover)
     else:
         corps += _detail_vide()
     return Reponse(corps=page(ctx, "Factures fournisseurs", corps))
+
+
+def _options_depots(ctx: Contexte, actuel: str) -> str:
+    from ..depots import est_defaut, noms
+
+    choisi = "" if est_defaut(actuel) else actuel
+    return "".join(f"<option{' selected' if (n == choisi or (not choisi and est_defaut(n))) else ''}>{e(n)}</option>"
+                   for n in noms(ctx.config))
 
 
 def _detail_vide() -> str:
@@ -242,7 +380,7 @@ def _detail_vide() -> str:
         return f"<div><label>{e(libelle)}</label><input size='{taille}' disabled></div>"
 
     return ("<div class='carte'><div class='barre-onglet'>" + champ("Fournisseur Sage", 30) + champ("N° de facture")
-            + champ("Date", 11) + "<button class='accent' disabled>Enregistrer la facture</button><button "
+            + champ("Date", 11) + champ("Dépôt", 18) + "<button class='accent' disabled>Enregistrer la facture</button><button "
             "class='danger' disabled>🗑 Écarter</button></div><div class='barre-onglet'>" + champ("Sous-total", 10)
             + champ("TPS", 10) + champ("TVQ", 10) + champ("Total", 10) + "<button disabled>📤 Importer cette facture"
             "</button></div>"
@@ -286,6 +424,10 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
         f = r.factures[rang]
         f.fournisseur_sage = ctx.req.champ("fournisseur").strip()
         f.numero, f.date_facture = ctx.req.champ("numero").strip(), ctx.req.champ("date").strip()
+        if "depot" in ctx.req.form:  # dépôt qui reçoit la marchandise (transfert après l'import)
+            from ..depots import est_defaut
+
+            f.depot = "" if est_defaut(ctx.req.champ("depot")) else ctx.req.champ("depot").strip()
         f.sous_total = _decimal(ctx.req.champ("sous_total")) if ctx.req.champ("sous_total").strip() else None
         f.tps, f.tvq = _decimal(ctx.req.champ("tps")), _decimal(ctx.req.champ("tvq"))
         f.total = _decimal(ctx.req.champ("total")) if ctx.req.champ("total").strip() else None
@@ -364,7 +506,8 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
             f"<div class='ligne'><div><label>Fournisseur Sage</label><input name='fournisseur' list='fournisseurs' "
             f"value='{e(f.fournisseur_sage)}' size='34'>{liste_f}</div><div><label>N° de facture</label><input "
             f"name='numero' value='{e(f.numero)}' size='12'></div><div><label>Date</label><input type='date' name='date' "
-            f"value='{e(f.date_facture)}'></div><div class='a-droite boutons'><button class='danger' name='action' "
+            f"value='{e(f.date_facture)}'></div><div><label>Dépôt</label><select name='depot'>{_options_depots(ctx, f.depot)}"
+            "</select></div><div class='a-droite boutons'><button class='danger' name='action' "
             f"value='Supprimer'>✖ Supprimer</button><a class='ouvrir' href='/facture-fichier?i={rang}' "
             "target='_blank'>👁 Voir la facture</a><button class='danger' name='action' value='Écarter'>🗑 Écarter"
             f"</button></div></div><p class='note'>{e(lu)}</p><div class='ligne'>"
@@ -373,7 +516,13 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
                                             ("tvq", "TVQ", v(f.tvq)), ("total", "Total", v(f.total))))
             + "<div class='a-droite boutons'><button class='accent' name='action' value='Enregistrer la facture'>💾 "
               "Enregistrer la facture</button><button name='action' value='Importer cette facture'>📤 Importer cette "
-              f"facture</button></div></div>{controle}")
+              "facture</button>"
+            + ("<button class='second' name='action' value='Refaire la mise à jour Clover'>🔁 Refaire la mise à jour "
+               "Clover</button>" if f.etat == "Importée" else "")
+            + "<button class='second' name='action' value='Bon de réception' formtarget='_blank'>🖨 Bon de réception"
+              "</button><button class='second' name='action' value='Facture avec prix' formtarget='_blank'>🖨 Facture "
+              "(avec prix)</button>"
+            + f"</div></div>{controle}")
     rangees, classes = [], []
     for k, l in enumerate(f.lignes):
         quantite, prix_sage = l.en_sage()
@@ -464,6 +613,8 @@ def fichier(ctx: Contexte) -> Reponse:
 FONCTIONS = [
     Fonction("/factures-fournisseurs", "Factures fournisseurs", "fournisseurs", factures, "🧾", "Fournisseur",
              menu=False, page_entiere=True),
+    Fonction("/photo-facture", "Factures fournisseurs", "fournisseurs", photo_facture, "📷", "Fournisseur",
+             menu=False),
     Fonction("/facture-fournisseur", "Factures fournisseurs", "fournisseurs", facture, "🧾", "Fournisseur", menu=False,
              page_entiere=True),
     Fonction("/facture-fichier", "Factures fournisseurs", "fournisseurs", fichier, "🧾", "Fournisseur", menu=False,

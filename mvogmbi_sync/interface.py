@@ -1356,6 +1356,13 @@ class Application(tk.Tk):
         self._champ(fichier, 6, t("Encaisser à partir des ventes du"), "enc.depart",
                     str(self.config_toml.get("encaissements", {}).get("date_depart", date.today().isoformat())),
                     calendrier=True, aide=t("AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés."))
+        from .depots import sans_clover
+        from .rapprochement import compte_banque
+
+        self._champ(fichier, 10, t("Compte Sage du compte BNC"), "enc.compte_bnc", compte_banque(self.config_toml, "bnc"),
+                    aide=t("Compte de banque Sage du compte de la Banque Nationale (rapprochement des relevés BNC)."))
+        self._champ(fichier, 8, t("Dépôts sans Clover"), "sage.depots", "; ".join(sans_clover(self.config_toml)),
+                    aide=t("Emplacements Sage sans caisse Clover (entrepôt, réserve), séparés par « ; ». Les dépôts des points de vente viennent de la carte « Points de vente » (page Clover)."))
         comptes = self._carte(f, 2, t("Utilisateurs Sage"), "2")
         self._champ(comptes, 0, t("Utilisateur Sage (lecture)"), "sage.utilisateur", b.get("utilisateur", "mvogmbi_sync"),
                     aide=t("Utilisateur avec « Droits d'accès aux produits tiers : Consultation seule » "
@@ -1378,6 +1385,110 @@ class Application(tk.Tk):
                     calendrier=True, aide=t("Date de la première paie de l'année : les paies suivantes (tous les 14 "
                                             "jours) et leurs périodes se calculent (« Paie > Calendrier de paie »)."))
         self._champ(paie, 2, t("Jours entre la fin de la période et la paie"), "paie.delai", str(calendrier.delai))
+        self._carte_comptes_bancaires(f)
+
+    def _carte_comptes_bancaires(self, f) -> None:
+        """Comptes bancaires du rapprochement (demande du propriétaire du 2026-11-05 : « ajouter la possibilité
+        d'ajouter un compte bancaire ») : Desjardins et BNC d'office ; ajouter / retirer écrit tout de suite
+        config.toml ([[comptes_bancaires]])."""
+        zone = self._carte(f, 4, t("Comptes bancaires (rapprochement)"), "4",
+                           t("Chaque compte a ses relevés (Comptabilité > Rapprochement) et son compte de banque dans "
+                             "Sage. Un relevé chargé va d'office dans le bon compte : la banque est reconnue d'après "
+                             "le PDF, puis le n° du compte à la banque quand elle en a plusieurs."))
+        from .page_rapports import tableau_simple
+
+        cadre = ttk.Frame(zone, style="Carte.TFrame")
+        cadre.grid(row=0, column=0, columnspan=3, sticky="we")
+        self.tableau_comptes = tableau_simple(cadre, hauteur=4)
+        barre = ttk.Frame(zone, style="Carte.TFrame")
+        barre.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        Bouton(barre, "➕  " + t("Ajouter un compte bancaire…"), self.ajouter_compte_bancaire, "secondaire",
+               fond=CARTE, petit=True).pack(side="left")
+        Bouton(barre, "🗑  " + t("Retirer le compte choisi"), self.retirer_compte_bancaire, "danger", fond=CARTE,
+               petit=True).pack(side="left", padx=8)
+        self._afficher_comptes_bancaires()
+
+    def _afficher_comptes_bancaires(self) -> None:
+        from .page_rapports import remplir
+        from .rapprochement import comptes_bancaires
+
+        self._comptes_affiches = comptes_bancaires(self.config_toml)
+        formats = {"desjardins": "Desjardins", "bnc": "Banque Nationale (BNC)"}
+        remplir(self.tableau_comptes, ["Compte", "Banque (relevé)", "Compte Sage", "N° à la banque", "Dossier"],
+                [[c.nom, formats.get(c.format, c.format), c.compte_sage, c.numero or "—", f"releves_{c.code}"]
+                 for c in self._comptes_affiches], {"Compte": 220}, decroissant=False)
+
+    def _ecrire_comptes_bancaires(self, modifier) -> None:
+        chemin = self.racine / "config.toml"
+        config = lire_config(chemin)
+        modifier(config)
+        ecrire_config(chemin, config)
+        self.config_toml["comptes_bancaires"] = config.get("comptes_bancaires", [])
+        self._afficher_comptes_bancaires()
+
+    def ajouter_compte_bancaire(self) -> None:
+        from .rapprochement import comptes_bancaires
+
+        boite = tk.Toplevel(self)
+        boite.title(t("Ajouter un compte bancaire"))
+        boite.configure(background=CARTE, padx=16, pady=12)
+        boite.transient(self)
+        boite.grab_set()
+        valeurs = {k: tk.StringVar() for k in ("nom", "compte", "numero")}
+        fmt = tk.StringVar(value="Desjardins")
+        for rang, (libelle, champ) in enumerate(((t("Nom"), valeurs["nom"]), (t("Compte Sage"), valeurs["compte"]),
+                                                 (t("N° à la banque (facultatif)"), valeurs["numero"]))):
+            tk.Label(boite, text=libelle, background=CARTE).grid(row=rang, column=0, sticky="w", pady=3)
+            ttk.Entry(boite, textvariable=champ, width=28).grid(row=rang, column=1, sticky="we", pady=3)
+        tk.Label(boite, text=t("Banque (relevé)"), background=CARTE).grid(row=3, column=0, sticky="w", pady=3)
+        ttk.Combobox(boite, textvariable=fmt, values=["Desjardins", "Banque Nationale (BNC)"], state="readonly",
+                     width=26).grid(row=3, column=1, sticky="we", pady=3)
+        erreur = tk.Label(boite, text="", background=CARTE, foreground=ROUGE)
+        erreur.grid(row=4, column=0, columnspan=2, sticky="w")
+
+        def valider():
+            nom, compte = valeurs["nom"].get().strip(), valeurs["compte"].get().strip()
+            existants = comptes_bancaires(self.config_toml)
+            if not nom or not compte.isdigit():
+                erreur.configure(text=t("Donnez un nom et un n° de compte Sage (chiffres)."))
+                return
+            if compte in {c.compte_sage for c in existants}:
+                erreur.configure(text=t("Le compte Sage {c} est déjà celui d'un autre compte bancaire.", c=compte))
+                return
+            base = "".join(x for x in nom.lower() if x.isalnum())[:16] or "compte"
+            code, n = base, 2
+            while code in {c.code for c in existants}:
+                code, n = f"{base}{n}", n + 1
+
+            def ajouter(c):
+                c.setdefault("comptes_bancaires", []).append(
+                    {"code": code, "nom": nom, "format": "bnc" if "BNC" in fmt.get() else "desjardins",
+                     "compte_sage": compte, "numero": valeurs["numero"].get().strip(), "actif": True})
+            self._ecrire_comptes_bancaires(ajouter)
+            boite.destroy()
+
+        bas = tk.Frame(boite, background=CARTE)
+        bas.grid(row=5, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        Bouton(bas, "✔  " + t("Ajouter"), valider, fond=CARTE, petit=True).pack(side="right")
+        Bouton(bas, "✖  " + t("Annuler"), boite.destroy, "secondaire", fond=CARTE, petit=True).pack(side="right",
+                                                                                                    padx=6)
+
+    def retirer_compte_bancaire(self) -> None:
+        choix = self.tableau_comptes.selection()
+        if not choix:
+            messagebox.showinfo(TITRE, t("Choisissez un compte dans la liste."))
+            return
+        compte = self._comptes_affiches[int(choix[0])]
+        ajoutes = {str(c.get("code")) for c in self.config_toml.get("comptes_bancaires", []) or []}
+        if compte.code not in ajoutes:
+            messagebox.showinfo(TITRE, t("Desjardins et BNC sont des comptes d'office : changez leur compte Sage dans "
+                                         "la carte « Fichier d'entreprise »."))
+            return
+        if not messagebox.askyesno(TITRE, t("Retirer le compte bancaire « {n} » ? Ses relevés restent dans "
+                                            "donnees/releves_{c}.", n=compte.nom, c=compte.code)):
+            return
+        self._ecrire_comptes_bancaires(lambda c: c.__setitem__("comptes_bancaires", [
+            x for x in c.get("comptes_bancaires", []) or [] if str(x.get("code")) != compte.code]))
 
     def _onglet_courriel(self) -> None:
         c = self.config_toml.get("courriel", {})
@@ -1672,6 +1783,11 @@ class Application(tk.Tk):
         c.setdefault("sage_import", {}).update(fichier_entreprise=fichier)
         for cle, defaut in (("version", "12001"), ("pays", "1"), ("position_numero", 3)):
             c["sage_import"].setdefault(cle, defaut)
+        if str(v.get("enc.compte_bnc", "")).strip():  # compte de la Banque Nationale (rapprochement BNC)
+            c.setdefault("rapprochement", {})["compte_bnc"] = str(v["enc.compte_bnc"]).strip()
+        if "sage.depots" in v:  # dépôts sans Clover (2026-11-05)
+            c.setdefault("sage", {})["depots_sans_clover"] = "; ".join(
+                x.strip() for x in str(v["sage.depots"]).split(";") if x.strip())
         if "pointage.wifi" in v:  # carte « Wi-Fi du magasin (pointage) »
             from . import pointage_wifi
 

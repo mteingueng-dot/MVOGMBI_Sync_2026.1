@@ -181,7 +181,9 @@ def test_client_des_postes(site, tmp_path, monkeypatch):
     assert client.normaliser(" http://serveur:9000/ ") == "http://serveur:9000"
     assert client.normaliser("https://serveur") == "https://serveur"
     for nom in ("marchemvogmbi.com", " www.MarcheMvogmbi.com/ ", "http://marchemvogmbi.com"):
-        assert client.adresse_serveur(nom) == "http://app.marchemvogmbi.com:8765"
+        assert client.adresse_serveur(nom) == "https://app.marchemvogmbi.com"
+    assert client.candidats("https://app.marchemvogmbi.com/")[0] == "https://app.marchemvogmbi.com"
+    assert "http://app.marchemvogmbi.com:8765" in client.candidats("app.marchemvogmbi.com")
     assert client.adresse_serveur("100.69.84.52") == "http://100.69.84.52:8765"
     for mauvaise in ("", "ftp://x", "http://x/page"):
         with pytest.raises(ValueError):
@@ -402,7 +404,7 @@ def test_vague_comptabilite(site, tmp_path):
     req = urllib.request.Request(base + "/rapprochement", data=corps,
                                  headers={"Content-Type": f"multipart/form-data; boundary={limite}"})
     with patron.open(req) as r:
-        assert "relevé de compte Desjardins en PDF" in r.read().decode("utf-8")
+        assert "relevé de compte (Desjardins ou BNC) en PDF" in r.read().decode("utf-8")
 
 
 def test_documents_saisis(site, tmp_path):
@@ -743,7 +745,7 @@ def test_serveur_de_l_application(tmp_path, monkeypatch):
     (tmp_path / "MVOGMBI_Sync_Client").mkdir()
     (tmp_path / "MVOGMBI_Sync_Client" / "serveur.json").write_bytes(serveur_appli.fichier_client(c))
     assert client.adresse_serveur("exemple.com") == "http://exemple.com:9000"
-    assert client.adresse_serveur("app.marchemvogmbi.com") == "http://app.marchemvogmbi.com:8765"  # départ gardé
+    assert client.adresse_serveur("app.marchemvogmbi.com") == "https://app.marchemvogmbi.com"  # départ gardé
 
 
 def test_pointage_wifi_du_magasin(monkeypatch):
@@ -888,3 +890,45 @@ def test_mot_de_passe_web(site, tmp_path):
         assert False
     except ErreurUtilisateur:
         pass
+
+
+def test_client_ouvre_directement_l_application_web(tmp_path, monkeypatch):
+    """Le client ouvre l'application web tout de suite, même serveur injoignable ; la fenêtre de réglage seulement
+    avec « --reglages »."""
+    import sys
+
+    from mvogmbi_sync.web import client
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    ouvertes, fenetres = [], []
+    monkeypatch.setattr(client, "ouvrir", ouvertes.append)
+    monkeypatch.setattr(client, "fenetre_reglage", lambda a, m: fenetres.append(a))
+    monkeypatch.setattr(client, "verifier", lambda a, delai=5: "Le serveur ne répond pas.")
+    monkeypatch.setattr(client, "adresse_installee", lambda: "https://app.marchemvogmbi.com")
+    monkeypatch.setattr(sys, "argv", ["MVOGMBI_Sync_Client.exe"])
+    client.principal()
+    assert ouvertes == ["https://app.marchemvogmbi.com"] and not fenetres
+    monkeypatch.setattr(sys, "argv", ["MVOGMBI_Sync_Client.exe", "--reglages"])
+    client.principal()
+    assert fenetres == ["https://app.marchemvogmbi.com"]
+
+
+def test_photographier_une_facture(site):
+    """Page du téléphone : bouton de l'appareil photo ; deux photos (pages) donnent un PDF de deux pages."""
+    from io import BytesIO
+
+    from PIL import Image
+    from pypdf import PdfReader
+
+    from mvogmbi_sync.web.pages_fournisseurs import pdf_des_photos
+
+    base, _, _ = site
+    nav = connecter(base, "Patron", "secret123")
+    statut, page, _ = ouvrir(nav, base + "/photo-facture")
+    assert statut == 200 and "capture='environment'" in page and "Terminer la facture" in page
+    photos = []
+    for couleur in ("white", "gray"):
+        tampon = BytesIO()
+        Image.new("RGB", (800, 1100), couleur).save(tampon, "JPEG")
+        photos.append(tampon.getvalue())
+    assert len(PdfReader(BytesIO(pdf_des_photos(photos))).pages) == 2

@@ -287,3 +287,114 @@ def tableau(chemin: Path, racine: Path | None, titre: str, entetes: list[str], l
     chemin = chemin_libre(chemin)
     pdf.output(str(chemin))
     return chemin
+
+
+# --------------------------------------------------------------------------------------------- bons sans prix
+def bon_sans_prix(chemin: Path, racine: Path | None, type_document: str, numero: str, jour: str, tiers_titre: str,
+                  tiers: list[str], infos: list[str], lignes: list[dict], colonne_quantite: str = "Quantité",
+                  colonnes_vides: tuple[str, ...] = ("Observation",), signatures: tuple[str, ...] = (),
+                  etat: str = "", remarque: str = "", note: str = "") -> Path:
+    """Bon de préparation, de livraison, de réception ou de retour (demande du propriétaire du 2026-11-05 : « des
+    modèles d'impression pour chaque type de document en vente et achat ; le bon de livraison est en vente et le
+    bon de réception en achat ») : SANS PRIX, article et quantité, colonnes vides à remplir à la main
+    (observation, quantité contrôlée…), lignes de signature. `lignes` : [{"numero", "description", "quantite"}]."""
+    pdf = ModelePDF(f"{type_document} {numero}", racine=racine)
+    pdf.add_page()
+    pdf.cadre_titre(type_document, numero, jour, etat)
+    pdf.blocs((tiers_titre, tiers), ("Informations", infos))
+    largeur = pdf.w - pdf.l_margin - pdf.r_margin
+    vides = [(c, 46 if c.lower().startswith(("observ", "motif")) else 24, "L") for c in colonnes_vides]
+    colonnes = [("N° article", 30, "L"), ("Article", 0, "L"), (colonne_quantite, 24, "R")] + vides
+    reste = largeur - sum(l for _t, l, _a in colonnes)
+    colonnes = [(t, l or reste, a) for t, l, a in colonnes]
+    pdf.entetes(colonnes)
+    total = Decimal(0)
+    for rang, l in enumerate(lignes):
+        q = Decimal(str(l.get("quantite") or 0))
+        total += q
+        pdf.ligne_tableau(colonnes, [l.get("numero") or "—", l.get("description") or "", quantite(q)]
+                          + [""] * len(vides), rang, 9)
+    pdf.ln(3)
+    pdf.police_(9, True, VERT_FONCE)
+    pdf.cell(0, 5, pdf.ecrire(f"{len(lignes)} ligne(s) — quantité totale : {quantite(total)}"),
+             new_x="LMARGIN", new_y="NEXT")
+    if note:
+        pdf.police_(8.5, False, GRIS)
+        pdf.multi_cell(0, 4.4, pdf.ecrire(note))
+    if remarque:
+        pdf.ln(3)
+        pdf.police_(8.5, True, VERT_FONCE)
+        pdf.cell(0, 5, "Remarque", new_x="LMARGIN", new_y="NEXT")
+        pdf.police_(9)
+        pdf.multi_cell(0, 4.6, pdf.ecrire(remarque))
+    if signatures:
+        pdf.ln(12)
+        pdf.police_(9.5, True, VERT_FONCE)
+        part = largeur / len(signatures)
+        for s in signatures:
+            pdf.cell(part, 6, pdf.ecrire(f"{s} : ______________________"))
+        pdf.ln(9)
+        for _s in signatures:
+            pdf.cell(part, 6, pdf.ecrire("Date : ____________________"))
+        pdf.ln(6)
+    chemin = chemin_libre(chemin)
+    pdf.output(str(chemin))
+    return chemin
+
+
+# --------------------------------------------------------------------------------------------- documents de stock
+def _notes_et_signatures(pdf: ModelePDF, note: str, remarque: str, signatures: tuple[str, ...]) -> None:
+    largeur = pdf.w - pdf.l_margin - pdf.r_margin
+    if note:
+        pdf.police_(8.5, False, GRIS)
+        pdf.multi_cell(0, 4.4, pdf.ecrire(note))
+    if remarque:
+        pdf.ln(3)
+        pdf.police_(8.5, True, VERT_FONCE)
+        pdf.cell(0, 5, "Remarque", new_x="LMARGIN", new_y="NEXT")
+        pdf.police_(9)
+        pdf.multi_cell(0, 4.6, pdf.ecrire(remarque))
+    if signatures:
+        if pdf.get_y() + 30 > pdf.page_break_trigger:
+            pdf.add_page()
+        pdf.ln(12)
+        pdf.police_(9.5, True, VERT_FONCE)
+        part = largeur / len(signatures)
+        for s in signatures:
+            pdf.cell(part, 6, pdf.ecrire(f"{s} : ______________________"))
+        pdf.ln(9)
+        for _s in signatures:
+            pdf.cell(part, 6, pdf.ecrire("Date : ____________________"))
+        pdf.ln(6)
+
+
+def document_stock(chemin: Path, racine: Path | None, type_document: str, numero: str, jour: str,
+                   gauche: tuple[str, list[str]], droite: tuple[str, list[str]],
+                   colonnes: list[tuple[str, float, str]], lignes: list[list[str]], resume: list[str] = (),
+                   totaux: list[tuple[str, str]] = (), final: tuple[str, str] | None = None,
+                   signatures: tuple[str, ...] = (), etat: str = "", remarque: str = "", note: str = "") -> Path:
+    """Mouvement d'entrée, mouvement de sortie, bon de transfert, écart d'inventaire (demande du propriétaire du
+    2026-11-05 : « il y a aussi les modèles pour les documents de stocks »). `colonnes` : (titre, largeur en mm
+    (0 = le reste), alignement) ; `lignes` : valeurs déjà mises en forme ; `resume` : lignes en gras sous le tableau ;
+    `totaux` / `final` : cadre des totaux à droite (valeurs)."""
+    pdf = ModelePDF(f"{type_document} {numero}", racine=racine)
+    pdf.add_page()
+    pdf.cadre_titre(type_document, numero, jour, etat)
+    pdf.blocs(gauche, droite)
+    largeur = pdf.w - pdf.l_margin - pdf.r_margin
+    reste = largeur - sum(l for _t, l, _a in colonnes)
+    colonnes = [(t, l or reste, a) for t, l, a in colonnes]
+    pdf.entetes(colonnes)
+    for rang, valeurs in enumerate(lignes):
+        pdf.ligne_tableau(colonnes, [str(v) for v in valeurs], rang, 9)
+    pdf.ln(3)
+    for texte in resume:
+        pdf.police_(9, True, VERT_FONCE)
+        pdf.cell(0, 5, pdf.ecrire(texte), new_x="LMARGIN", new_y="NEXT")
+    if final:
+        pdf.totaux(list(totaux), final)
+        pdf.ln(2)
+    _notes_et_signatures(pdf, note, remarque, signatures)
+    chemin = chemin_libre(chemin)
+    pdf.output(str(chemin))
+    return chemin

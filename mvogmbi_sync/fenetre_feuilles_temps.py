@@ -47,6 +47,15 @@ class FenetreFeuilles(FenetreOutil):
                              petit=True))
         barre.ajouter(Bouton(barre, "✎  " + t("Pointages de l'employé…"), self.detail, "secondaire", fond=CARTE,
                              petit=True))
+        from .design import filtre_depots
+
+        groupe = barre.ajouter(barre.groupe(), 10)
+        tk.Label(groupe, text=t("Dépôt"), background=CARTE).pack(side="left")
+        self.choix_depot, self.depot = filtre_depots(groupe, self.racine, self.afficher)
+        self.choix_depot.pack(side="left", padx=4)
+        barre.ajouter(Bouton(barre, "📋  " + t("Suivi des périodes…"), lambda: dans_application(
+            self, FenetreSuiviPeriodes(self.nametowidget("."), self.racine, self.aller_a)),
+                             "secondaire", fond=CARTE, petit=True))
         barre.ajouter(Bouton(barre, "👥  " + t("Employés et NIP…"), lambda: dans_application(
             self, FenetreEmployes(self.nametowidget("."), self.racine, self.afficher)),
                              "secondaire", fond=CARTE, petit=True))
@@ -60,6 +69,10 @@ class FenetreFeuilles(FenetreOutil):
         barre.ajouter(bouton_exporter(barre, self.tableau, lambda: self.libelle.cget("text")))
         self.afficher()
 
+    def aller_a(self, debut: date) -> None:
+        self.debut = debut
+        self.afficher()
+
     def changer(self, sens: int) -> None:
         self.debut += timedelta(days=sens * pt.JOURS_PERIODE)
         self.afficher()
@@ -68,8 +81,13 @@ class FenetreFeuilles(FenetreOutil):
         from .page_rapports import remplir
 
         self.registre = pt.Registre(self.racine)
+        from .depots import garde
+        from .design import depots_choisis
+
         permis = {e.id for e in employes_visibles(self, self.registre.employes)}  # selon le login
-        self.feuilles = [f for f in pt.feuilles(self.registre, self.debut) if f.employe.id in permis]
+        filtre = depots_choisis(self.depot) if hasattr(self, "depot") else None  # dépôt principal de l'employé
+        self.feuilles = [f for f in pt.feuilles(self.registre, self.debut)
+                         if f.employe.id in permis and garde(f.employe.depot, filtre)]
         fin = self.debut + timedelta(days=pt.JOURS_PERIODE - 1)
         self.libelle.configure(text=t("Période de paie du {d} au {f}", d=f"{self.debut:%Y-%m-%d}", f=f"{fin:%Y-%m-%d}"))
         jours = [self.debut + timedelta(days=i) for i in range(pt.JOURS_PERIODE)]
@@ -126,6 +144,65 @@ class FenetreFeuilles(FenetreOutil):
         if f:
             dans_application(self, FenetreDetail(self.nametowidget("."), self.registre, f.employe, self.debut,
                                                  self.auteur, self.afficher))
+
+
+ENTETES_SUIVI = ["Du", "Au", "État", "Employés", "Heures", "À approuver", "Approuvées", "Envoyées à Sage",
+                 "Anomalies"]
+COULEURS_SUIVI = {pt.PERIODE_A_APPROUVER: "anomalie", pt.PERIODE_APPROUVEE: "approuvee",
+                  pt.PERIODE_ENVOYEE: "approuvee", pt.EN_COURS: "corrigee"}
+
+
+def lignes_suivi(suivi: list) -> list[list]:
+    return [[p.debut.isoformat(), p.fin.isoformat(), p.etat, str(p.employes), _h(p.heures) or "0",
+             ", ".join(p.a_approuver), str(p.approuvees), str(p.envoyees), ", ".join(p.anomalies)] for p in suivi]
+
+
+class FenetreSuiviPeriodes(FenetreOutil):
+    """Paie > Feuilles de temps > « Suivi des périodes… » : chaque période de paie de 14 jours (la plus récente
+    d'abord) et son état d'approbation ; double-clic = la feuille de la période."""
+
+    def __init__(self, parent, racine: Path, ouvrir=None):
+        from .page_rapports import tableau_simple
+
+        super().__init__(parent)
+        self.racine, self.ouvrir = Path(racine), ouvrir
+        self.title(t("Suivi des périodes de paie"))
+        self.configure(background=CARTE, padx=14, pady=10)
+        self.transient(parent)
+        self.geometry("1150x520")
+        barre = Rangee(self)
+        barre.pack(fill="x")
+        barre.ajouter(Bouton(barre, "🔄  " + t("Actualiser"), self.afficher, fond=CARTE, petit=True), 10)
+        self.etat = tk.Label(self, text="", background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left",
+                             wraplength=1100)
+        self.etat.pack(fill="x", pady=(6, 0))
+        self.tableau = tableau_simple(self, hauteur=14)
+        for cle, couleur in COULEURS.items():
+            self.tableau.tag_configure(cle, background=couleur)
+        self.tableau.bind("<Double-1>", lambda _e: self._ouvrir())
+        barre.ajouter(bouton_exporter(barre, self.tableau, lambda: t("Suivi des périodes de paie")))
+        self.afficher()
+
+    def afficher(self) -> None:
+        from .page_rapports import remplir
+
+        registre = pt.Registre(self.racine)
+        permis = {e.id for e in employes_visibles(self, registre.employes)}
+        self.suivi = pt.suivi_periodes(registre, reference(self.racine), permis=permis)
+        remplir(self.tableau, ENTETES_SUIVI, lignes_suivi(self.suivi), {"À approuver": 300, "Anomalies": 220},
+                lambda i: (COULEURS_SUIVI[self.suivi[i].etat],) if self.suivi[i].etat in COULEURS_SUIVI else (),
+                decroissant=False)
+        attente = sum(1 for p in self.suivi if p.etat == pt.PERIODE_A_APPROUVER)
+        self.etat.configure(text=t("Chaque période de paie de 2 semaines se valide par l'approbation des feuilles de "
+                                   "temps. {n} période(s) terminée(s) à approuver. Rose : à approuver ; vert : "
+                                   "approuvée ; jaune : en cours. Double-clic : ouvrir la période.", n=attente),
+                            foreground=ROUGE if attente else TEXTE_DOUX)
+
+    def _ouvrir(self) -> None:
+        choix = self.tableau.selection()
+        if choix and self.ouvrir:
+            self.ouvrir(self.suivi[int(choix[0])].debut)
+            self.destroy()
 
 
 class FenetreDetail(FenetreOutil):
@@ -275,6 +352,7 @@ class FenetreEmployes(FenetreOutil):
                                 ("🔗  " + t("Lier aux employés Sage…"), self.lier_sage),
                                 ("✉  " + t("Courriel…"), self.courriel),
                                 ("🏠  " + t("Adresse…"), self.adresse),
+                                ("🏬  " + t("Dépôt…"), self.depot),
                                 ("⏻  " + t("Activer / désactiver"), self.basculer)):
             barre.ajouter(Bouton(barre, texte, commande, "secondaire", fond=CARTE, petit=True))
         self.etat = tk.Label(self, text=t("Le NIP (4 à 6 chiffres) n'est jamais gardé : seule son empreinte l'est. "
@@ -290,11 +368,15 @@ class FenetreEmployes(FenetreOutil):
 
         self.registre = pt.Registre(self.racine)
         self.liste = sorted(self.registre.employes, key=lambda e: (not e.actif, e.nom.casefold()))
-        remplir(self.tableau, ["Employé", "NIP", "Actif", "Employé Clover", "Employé Sage", "Courriel",
+        from .planning import depot_du_quart
+
+        remplir(self.tableau, ["Employé", "Dépôt", "NIP", "Actif", "Employé Clover", "Employé Sage", "Courriel",
                                "Compte de l'application"],
-                [[e.nom, t("Défini") if e.nip else t("À définir"), t("Oui") if e.actif else t("Non"),
-                  t("Oui") if e.clover else "", e.numero_sage, e.courriel, e.compte] for e in self.liste],
-                {"Employé": 200, "NIP": 80, "Actif": 55, "Employé Clover": 95, "Employé Sage": 180, "Courriel": 200},
+                [[e.nom, depot_du_quart(None, e), t("Défini") if e.nip else t("À définir"),
+                  t("Oui") if e.actif else t("Non"), t("Oui") if e.clover else "", e.numero_sage, e.courriel, e.compte]
+                 for e in self.liste],
+                {"Employé": 200, "Dépôt": 150, "NIP": 80, "Actif": 55, "Employé Clover": 95, "Employé Sage": 180,
+                 "Courriel": 200},
                 decroissant=False)
 
     def _choisi(self):
@@ -424,6 +506,40 @@ class FenetreEmployes(FenetreOutil):
             return
         e.courriel = adresse
         self._fin()
+
+    def depot(self) -> None:
+        """Dépôt principal de l'employé (demande du propriétaire du 2026-11-05) : il y est planifié et y pointe ; un
+        quart peut le placer ailleurs (« Planning mensuel »)."""
+        import tomllib
+
+        from .depots import est_defaut, noms
+
+        e = self._choisi()
+        if not e:
+            return
+        try:
+            choix = noms(tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            choix = []
+        boite = tk.Toplevel(self)
+        boite.title(t("Dépôt de {n}", n=e.nom))
+        boite.configure(background=CARTE, padx=16, pady=12)
+        boite.transient(self)
+        boite.grab_set()
+        tk.Label(boite, text=t("Dépôt principal de {n} :", n=e.nom), background=CARTE).pack(anchor="w")
+        valeur = tk.StringVar(value=e.depot or (choix[0] if choix else ""))
+        ttk.Combobox(boite, textvariable=valeur, values=choix, state="readonly", width=34).pack(fill="x", pady=6)
+
+        def valider():
+            e.depot = "" if est_defaut(valeur.get()) else valeur.get().strip()
+            boite.destroy()
+            self._fin()
+
+        bas = tk.Frame(boite, background=CARTE)
+        bas.pack(fill="x", pady=(8, 0))
+        Bouton(bas, "✔  " + t("Enregistrer"), valider, fond=CARTE, petit=True).pack(side="right")
+        Bouton(bas, "✖  " + t("Annuler"), boite.destroy, "secondaire", fond=CARTE, petit=True).pack(side="right",
+                                                                                                    padx=6)
 
     def lier_sage(self) -> None:
         LiensSage(self, self.racine, self._apres_liens)

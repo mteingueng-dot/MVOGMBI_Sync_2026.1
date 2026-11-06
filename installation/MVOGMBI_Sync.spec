@@ -32,7 +32,7 @@ exe_cli = EXE(PYZ(a_cli.pure), a_cli.scripts, [], exclude_binaries=True, name="M
               console=True, icon=SPECPATH + "\\MVOGMBI_Sync.ico", version=SPECPATH + "\\version_info.txt")
 
 exe_srv = EXE(PYZ(a_srv.pure), a_srv.scripts, [], exclude_binaries=True, name="MVOGMBI_Sync_Serveur",
-              console=True, icon=SPECPATH + "\\MVOGMBI_Sync.ico", version=SPECPATH + "\\version_info.txt")
+              console=False, icon=SPECPATH + "\\MVOGMBI_Sync.ico", version=SPECPATH + "\\version_info.txt")
 
 COLLECT(exe_gui, a_gui.binaries, a_gui.datas, exe_cli, a_cli.binaries, a_cli.datas,
         exe_srv, a_srv.binaries, a_srv.datas,
