@@ -105,6 +105,9 @@ def ecrire_excel(chemin: Path, titre: str, entetes: list[str], lignes: list[list
 
 EDGE = [Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
         Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")]
+# Edge avec une mise à jour en attente rend une page vide sans erreur (constat du 2026-11-06) : Chrome en secours
+CHROME = [Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+          Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe")]
 
 
 def ecrire_pdf(chemin: Path, titre: str, entetes: list[str], lignes: list[list[str]], images=None,
@@ -168,10 +171,13 @@ def pdf_depuis_html(page: str, chemin: Path, delai: int = 120) -> None:
         # chaque échec noté dans donnees/journal_pdf.log, puis la création de secours sans Edge (fpdf2)
         essais = (["--headless"], ["--headless=old"],
                   ["--headless", "--no-sandbox", "--disable-extensions", "--no-first-run", "--disable-sync"])
-        for rang, options in enumerate(essais if edge else ()):
+        chrome = next((c for c in CHROME if c.exists()), None)
+        lancements = [(edge, o) for o in essais] if edge else []
+        lancements += [(chrome, ["--headless"])] if chrome else []
+        for rang, (navigateur, options) in enumerate(lancements):
             try:
                 with _ProgrammeExterne():
-                    r = subprocess.run([str(edge), *options, "--disable-gpu", "--no-pdf-header-footer",
+                    r = subprocess.run([str(navigateur), *options, "--disable-gpu", "--no-pdf-header-footer",
                                         f"--user-data-dir={Path(dossier) / f'profil{rang}'}", f"--print-to-pdf={pdf}",
                                         source.as_uri()], timeout=delai, capture_output=True,
                                        stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -183,7 +189,7 @@ def pdf_depuis_html(page: str, chemin: Path, delai: int = 120) -> None:
                 raison = f"Edge n'a pas pu être lancé : {exc}"
             if pdf.exists() and pdf.stat().st_size > 0:
                 break
-            _noter_pdf(f"essai {rang + 1} {' '.join(options)} : {raison}")
+            _noter_pdf(f"essai {rang + 1} {navigateur.stem} {' '.join(options)} : {raison}")
         if not (pdf.exists() and pdf.stat().st_size > 0):
             try:
                 pdf_secours(page, pdf)

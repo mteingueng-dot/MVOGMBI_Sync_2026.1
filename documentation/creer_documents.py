@@ -1,6 +1,6 @@
 """Documents du projet en PDF à partir de leurs sources Markdown (lisibles aussi sur GitHub) : architecture,
 documentation fonctionnelle, plan et rapport de tests, diagramme de projet, workflows d'utilisation, processus
-métier (BPM), règles d'affaires. Même conversion que le document d'architecture (diagrammes Mermaid dessinés par Microsoft Edge).
+métier (BPM), règles d'affaires, guide de l'administrateur. Même conversion que le document d'architecture (diagrammes Mermaid dessinés par Microsoft Edge).
 Aucun de ces documents ne contient de donnée réelle : ils sont publiés.
 
     python documentation/creer_documents.py [nom…]
@@ -17,6 +17,7 @@ from creer_architecture import creer  # noqa: E402
 
 DOCUMENTS = [  # (source, PDF, titre)
     (ICI.parent / "ARCHITECTURE.md", "Architecture_MVOGMBI_Sync.pdf", "Architecture MVOGMBI_Sync"),
+    (ICI / "GUIDE_ADMINISTRATEUR.md", "Guide_administrateur_MVOGMBI_Sync.pdf", "Guide de l'administrateur MVOGMBI_Sync"),
     (ICI / "DOCUMENTATION_FONCTIONNELLE.md", "Documentation_fonctionnelle_MVOGMBI_Sync.pdf",
      "Documentation fonctionnelle MVOGMBI_Sync"),
     (ICI / "PLAN_DE_TEST.md", "Plan_de_test_MVOGMBI_Sync.pdf", "Plan et rapport de tests MVOGMBI_Sync"),

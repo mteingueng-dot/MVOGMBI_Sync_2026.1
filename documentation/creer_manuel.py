@@ -146,8 +146,11 @@ ol.etapes > li { counter-increment: e; position: relative; padding-left: 34px; m
 ol.etapes > li::before { content: counter(e); position: absolute; left: 0; top: 1px; width: 22px; height: 22px;
                          border-radius: 50%; background: var(--vert); color: #fff; font-weight: 600; font-size: 9pt;
                          display: flex; align-items: center; justify-content: center; }
-figure { margin: 12px 0 16px; page-break-inside: avoid; }
-figure img { width: 100%; border: 1px solid var(--bord); border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+figure { margin: 10px 0 12px; page-break-inside: avoid; text-align: center; }
+figure img { max-width: 100%; max-height: 108mm; width: auto; border: 1px solid var(--bord); border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+li:nth-last-child(2), tr:nth-last-child(2) { break-after: avoid; page-break-after: avoid; }
+li:last-child:not(:first-child), tr:last-child { break-before: avoid; page-break-before: avoid; }
+p, li { orphans: 2; widows: 2; }
 figcaption { font-size: 9pt; color: var(--doux); text-align: center; margin-top: 5px; font-style: italic; }
 .note { background: #fff8e1; border-left: 4px solid var(--jaune); padding: 8px 12px; border-radius: 4px; margin: 10px 0;
         page-break-inside: avoid; }
@@ -712,13 +715,12 @@ def fabriquer(langue: str = "fr") -> Path:
             f"{x("Manuel d'utilisation", 'User manual')} — MVOGMBI_Sync {VERSION}</title><style>{STYLE}</style>"
             f"</head><body>{contenu()}</body></html>")
     sortie_html.write_text(page, encoding="utf-8")
-    edge = next((p for p in EDGE if p.exists()), None)
-    if not edge:
-        print("Microsoft Edge introuvable : seul le HTML est produit.")
+    from creer_architecture import NAVIGATEURS, imprimer_pdf  # Chrome en secours d'Edge
+    if not any(p.exists() for p in NAVIGATEURS):
+        print("Microsoft Edge et Chrome introuvables : seul le HTML est produit.")
         return sortie_html
-    subprocess.run([str(edge), "--headless", "--disable-gpu", "--no-pdf-header-footer",
-                    f"--print-to-pdf={sortie_pdf}", sortie_html.as_uri()], check=True, timeout=180,
-                   capture_output=True)
+    if not imprimer_pdf(sortie_html.as_uri(), sortie_pdf):
+        raise RuntimeError("PDF du manuel non créé (Edge, Chrome).")
     return sortie_pdf
 
 

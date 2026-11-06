@@ -21,6 +21,41 @@ ICI = Path(__file__).resolve().parent
 SOURCE = ICI.parent / "ARCHITECTURE.md"
 EDGE = [Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
         Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")]
+# Chrome en secours : Edge avec une mise à jour en attente rend une page vide sans erreur en mode sans fenêtre
+# (constat du 2026-11-06)
+NAVIGATEURS = EDGE + [Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+                      Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe")]
+
+
+def _lancer(navigateur: Path, arguments: list[str]) -> bytes:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profil:
+        r = subprocess.run([str(navigateur), "--headless", "--disable-gpu", f"--user-data-dir={profil}", *arguments],
+                           timeout=180, capture_output=True, stdin=subprocess.DEVNULL)
+    return r.stdout
+
+
+def page_dessinee(uri: str, budget: int = 30000) -> str:
+    """DOM de la page après ses scripts, par le premier navigateur qui rend quelque chose."""
+    for nav in (p for p in NAVIGATEURS if p.exists()):
+        sortie = _lancer(nav, [f"--virtual-time-budget={budget}", "--dump-dom", uri]).decode("utf-8")
+        if sortie.strip():
+            return sortie
+    raise RuntimeError("Aucun navigateur (Edge, Chrome) n'a rendu la page.")
+
+
+def imprimer_pdf(uri: str, pdf: Path) -> bool:
+    """Page -> PDF (fichier provisoire puis remplacement) ; False si aucun navigateur ne l'a écrit."""
+    provisoire = pdf.with_name(pdf.stem + "_nouveau.pdf")
+    for nav in (p for p in NAVIGATEURS if p.exists()):
+        provisoire.unlink(missing_ok=True)
+        _lancer(nav, ["--no-pdf-header-footer", f"--print-to-pdf={provisoire}", uri])
+        if provisoire.exists() and provisoire.stat().st_size:
+            try:
+                provisoire.replace(pdf)
+            except PermissionError:
+                raise SystemExit(f"{pdf.name} est ouvert dans un autre programme : fermez-le, puis relancez.")
+            return True
+    return False
 MERMAID = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs"
 
 e = html.escape
@@ -110,13 +145,24 @@ h3 { font-size: 11.5pt; margin: 14px 0 4px; page-break-after: avoid; }
 hr { display: none; }
 code { font-family: Consolas, monospace; font-size: 9pt; background: #f1f5f2; padding: 0 3px; border-radius: 3px; }
 pre code { display: block; padding: 8px; white-space: pre-wrap; }
-table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9pt; page-break-inside: avoid; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9pt; }
+li:nth-last-child(2), tr:nth-last-child(2) { break-after: avoid; page-break-after: avoid; }
+li:last-child:not(:first-child), tr:last-child { break-before: avoid; page-break-before: avoid; }
+p, li { orphans: 2; widows: 2; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+p:has(+ table), p:has(+ ul), p:has(+ ol), p:has(+ .diagramme), p:has(+ pre) { break-after: avoid; page-break-after: avoid; }
+h2 + h3 { break-before: avoid; }
 th { background: var(--vert); color: #fff; text-align: left; padding: 5px 7px; font-weight: 600; }
 td { padding: 5px 7px; border-bottom: 1px solid var(--bord); vertical-align: top; }
 tr:nth-child(even) td { background: #f4f8f5; }
-.diagramme { border: 1px solid var(--bord); border-radius: 6px; padding: 8px; margin: 10px 0 14px; text-align: center;
+.diagramme { border: 1px solid var(--bord); border-radius: 6px; padding: 4px; margin: 10px 0 14px; text-align: center;
              page-break-inside: avoid; }
-.diagramme svg { max-width: 100% !important; max-height: 215mm; height: auto; }
+.diagramme svg { max-width: none !important; }
+@page paysage { size: Letter landscape; margin: 8mm 8mm; }
+section.tenir { break-inside: avoid; page-break-inside: avoid; }
+section.paysage { page: paysage; }
+section.paysage .diagramme { margin-top: 4px; }
 pre.mermaid { background: none; font-family: inherit; }
 """
 
@@ -130,45 +176,78 @@ def creer(sortie: Path | None = None, source: Path = SOURCE, titre: str = "Archi
 <style>{STYLE}</style></head><body><div class="bandeau"></div>{corps}
 <script type="module">
 import mermaid from "{MERMAID}";
-mermaid.initialize({{ startOnLoad: false, theme: "base", flowchart: {{ htmlLabels: false, useMaxWidth: true }},
+mermaid.initialize({{ startOnLoad: false, theme: "base", flowchart: {{ htmlLabels: false, useMaxWidth: false, nodeSpacing: 28, rankSpacing: 32, padding: 6,
+               diagramPadding: 4 }},
+  gantt: {{ leftPadding: 175, fontSize: 12, sectionFontSize: 12, barHeight: 20, barGap: 5, topPadding: 45,
+            useMaxWidth: false }},
+  sequence: {{ useMaxWidth: false, wrap: true, width: 140, actorMargin: 30, messageMargin: 28, boxMargin: 6 }}, state: {{ useMaxWidth: false }}, mindmap: {{ useMaxWidth: false }},
   themeVariables: {{ primaryColor: "#e8f3ec", primaryBorderColor: "#1f7a3a", primaryTextColor: "#1d2b22",
                      lineColor: "#5b6b61", secondaryColor: "#fff8e1", tertiaryColor: "#f7faf8",
                      fontFamily: "Segoe UI, Arial, sans-serif", fontSize: "13px" }} }});
+// Taille de chaque diagramme : le texte doit rester lisible. On essaie le sens d'origine et l'autre sens (LR <-> TB)
+// d'un organigramme, sur une page en hauteur ou en largeur, et on garde la plus grande échelle (page en hauteur et
+// sens d'origine préférés à écart faible).
+const PLACE = {{ portrait: [712, 840], paysage: [985, 650] }};
+function variantes(t) {{
+  const m = t.match(/^(\\s*(?:flowchart|graph)\\s+)(LR|RL|TB|TD|BT)\\b/);
+  if (!m) return [t];
+  return [t, t.replace(m[0], m[1] + (/LR|RL/.test(m[2]) ? "TB" : "LR"))];
+}}
 let n = 0;
-for (const pre of document.querySelectorAll("pre.mermaid")) {{  // un à la fois : les mesures restent justes
-  const {{ svg }} = await mermaid.render("diagramme" + (++n), pre.textContent);
-  pre.outerHTML = svg;
+for (const pre of [...document.querySelectorAll("pre.mermaid")]) {{  // un à la fois : les mesures restent justes
+  let choix = null;
+  const essais = variantes(pre.textContent);
+  for (let k = 0; k < essais.length; k++) {{
+    const {{ svg }} = await mermaid.render("diagramme" + (++n), essais[k]);
+    const vb = svg.match(/viewBox="\\s*([-\\d.e]+)[ ,]+([-\\d.e]+)[ ,]+([\\d.e]+)[ ,]+([\\d.e]+)/);
+    const w = vb ? parseFloat(vb[3]) : 700, h = vb ? parseFloat(vb[4]) : 400;
+    const echelles = {{}};
+    for (const sens of ["portrait", "paysage"]) {{
+      const [lw, lh] = PLACE[sens];
+      echelles[sens] = Math.min(1.15, lw / w, lh / h);
+    }}
+    // page en largeur seulement si le diagramme serait trop petit sur une page en hauteur
+    for (const sens of ["portrait", "paysage"]) {{
+      const echelle = echelles[sens];
+      const note = (sens === "paysage" ? (echelles.portrait < 0.75 ? echelle * 0.9 : 0) : echelle) * (k ? 0.9 : 1);
+      if (!choix || note > choix.note) choix = {{ svg, w, h, sens, echelle, note }};
+    }}
+  }}
+  const boite = pre.parentElement;
+  pre.outerHTML = choix.svg;
+  const el = boite.querySelector("svg");
+  el.removeAttribute("style");
+  boite.dataset.echelle = choix.echelle.toFixed(2) + " " + choix.sens + " " + choix.w.toFixed(0) + "x" + choix.h.toFixed(0);
+  el.setAttribute("width", (choix.w * choix.echelle).toFixed(0));
+  el.setAttribute("height", (choix.h * choix.echelle).toFixed(0));
+  {{  // le diagramme reste avec son titre (et sa phrase d'introduction) ; page en largeur au besoin
+    const section = document.createElement("section");
+    section.className = choix.sens === "paysage" ? "tenir paysage" : "tenir";
+    boite.before(section);
+    const titres = [];
+    let avant = section.previousElementSibling;
+    if (avant && avant.tagName === "P" && avant.textContent.length < 160) {{ titres.unshift(avant); avant = avant.previousElementSibling; }}
+    while (avant && /^H[2-4]$/.test(avant.tagName) && titres.length < 3) {{ titres.unshift(avant); avant = avant.previousElementSibling; }}
+    titres.forEach(t => section.append(t));
+    section.append(boite);
+  }}
 }}
 document.querySelector("script[type=module]").remove();
 </script></body></html>"""
     sortie_html = sortie.with_suffix(".html")
     sortie_html.write_text(page, encoding="utf-8")
-    edge = next((p for p in EDGE if p.exists()), None)
-    if not edge:
-        print("Microsoft Edge introuvable : seul le HTML est produit.")
+    if not any(p.exists() for p in NAVIGATEURS):
+        print("Microsoft Edge et Chrome introuvables : seul le HTML est produit.")
         return sortie_html
-    with tempfile.TemporaryDirectory() as profil:
-        base = [str(edge), "--headless", "--disable-gpu", f"--user-data-dir={profil}"]
-        # 1er passage : diagrammes dessinés puis figés dans la page (SVG)
-        dessin = subprocess.run(base + ["--virtual-time-budget=30000", "--dump-dom", sortie_html.as_uri()],
-                                check=True, timeout=180, capture_output=True)
-        page_figee = dessin.stdout.decode("utf-8")
-        if "<pre class=\"mermaid\"" in page_figee:
-            raise RuntimeError("Diagrammes non dessinés (Mermaid inaccessible ?)")
-        sortie_html.write_text("<!doctype html>" + page_figee, encoding="utf-8")
-        # 2e passage : impression dans un fichier à côté, puis remplacement (Edge échoue sans rien dire si le PDF
-        # est ouvert dans un lecteur)
-        provisoire = sortie.with_name(sortie.stem + "_nouveau.pdf")
-        provisoire.unlink(missing_ok=True)
-        subprocess.run(base + ["--no-pdf-header-footer", f"--print-to-pdf={provisoire}", sortie_html.as_uri()],
-                       check=True, timeout=180, capture_output=True)
-    if not provisoire.exists():
-        raise RuntimeError("PDF non créé par Edge.")
-    try:
-        provisoire.replace(sortie)
-    except PermissionError:
-        raise SystemExit(f"{sortie.name} est ouvert dans un autre programme : fermez-le, puis relancez. "
-                         f"Le nouveau document est dans {provisoire.name}.") from None
+    # 1er passage : diagrammes dessinés puis figés dans la page (SVG)
+    page_figee = page_dessinee(sortie_html.as_uri())
+    if "<pre class=\"mermaid\"" in page_figee:
+        raise RuntimeError("Diagrammes non dessinés (Mermaid inaccessible ?)")
+    sortie_html.write_text("<!doctype html>" + page_figee, encoding="utf-8")
+    # 2e passage : impression dans un fichier à côté, puis remplacement (le navigateur échoue sans rien dire si le
+    # PDF est ouvert dans un lecteur)
+    if not imprimer_pdf(sortie_html.as_uri(), sortie):
+        raise RuntimeError("PDF non créé (Edge, Chrome).")
     return sortie
 
 

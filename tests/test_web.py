@@ -329,7 +329,7 @@ def test_vague_etat(site, tmp_path):
     assert "Calendrier de paie" in page and f"{date.today().year}-01-12" in page
     statut, page, _ = ouvrir(patron, base + "/main-oeuvre")  # pas de jeton Clover ici : message, pas de coupure
     assert statut == 200 and "Clover ne répond pas" in page
-    for chemin in ("/main-oeuvre", "/documents-stock", "/livre-inventaire"):  # filtre « Dépôt » (2026-11-05)
+    for chemin in ("/main-oeuvre", "/documents-stock", "/livre-inventaire", "/articles"):  # filtre « Dépôt » (2026-11-05)
         from urllib.parse import quote
 
         statut, page, _ = ouvrir(patron, base + chemin + "?depot=" + quote("Emplacement par défaut"))

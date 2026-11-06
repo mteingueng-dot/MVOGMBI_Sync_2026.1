@@ -221,14 +221,14 @@ def _lecture_articles(racine: Path):
     from .analyse_articles import categories
     from .couts_sage import correspondance
 
-    def lecture(base, _d, _a):
+    def lecture(base, _d, _a, depots=None):
         liens: dict[str, int] = {}
         try:
             for numero in correspondance(racine).values():
                 liens[numero] = liens.get(numero, 0) + 1
         except Exception:  # correspondance absente : colonne vide
             pass
-        return ls.articles(base, categories(racine), {n: [f"{k} relié(s)"] for n, k in liens.items()})
+        return ls.articles(base, categories(racine), {n: [f"{k} relié(s)"] for n, k in liens.items()}, depots)
 
     return lecture
 
@@ -271,6 +271,7 @@ def ouvrir_liste(parent, racine: Path, genre: str):
         return ouvrir_documents(parent, racine, genre)
     if genre == "articles":
         return FenetreListe(parent, racine, "Liste des articles", LECTURES["articles"](racine), largeurs={"Description": 280},
+                            depots=True,
                             genre=genre, explication="Articles de Sage avec leur stock, CUMP, valeur, comptes et "
                                                      "lien Clover. Double-clic : fiche de l'article.")
     if genre == "livre":

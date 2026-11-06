@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke. 130 versions livrées en 12 jours, chacune avec son installateur.
+Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
 
 ---
 
@@ -11,6 +11,8 @@ gantt
     title MVOGMBI_Sync — réalisation
     dateFormat YYYY-MM-DD
     axisFormat %d %b
+    tickInterval 1week
+    weekday monday
     section Ventes vers Sage
     Connexion Clover, cumul des ventes          :done, a1, 2026-10-24, 1d
     Correspondance des articles                 :done, a2, 2026-10-24, 1d
@@ -50,8 +52,13 @@ gantt
     Pages identiques à Windows (2.1 à 2.14)     :done, w3, 2026-11-03, 2d
     Serveur SERVDCSAGE, Wi-Fi du pointage       :done, w4, 2026-11-04, 1d
     Pause automatique hors du Wi-Fi             :done, w5, 2026-11-04, 1d
+    section Serveur et sites
+    HTTPS, mot de passe web, client direct      :done, x1, 2026-11-05, 1d
+    Assistant d'importation (entreprise partagée) :done, x2, 2026-11-05, 1d
+    Dépôts, photos de factures, BNC, impressions :done, x3, 2026-11-05, 1d
+    Version 1.0.0, guide de l'administrateur    :done, x4, 2026-11-06, 1d
     section Suite
-    Mise en service sur SERVDCSAGE              :g4, 2026-11-05, 2d
+    Mise en service sur SERVDCSAGE              :g4, 2026-11-06, 2d
     Comptes RIA dans Sage, premières écritures  :g0, 2026-11-06, 2d
     Plusieurs points de vente réels             :g1, 2026-11-08, 5d
     Remises de retenues réelles                 :g2, 2026-11-15, 1d
@@ -134,6 +141,12 @@ mindmap
 | 4 nov. 2026 | Nouveau serveur SERVDCSAGE, serveur réglable, app.marchemvogmbi.com, pointage sur le Wi-Fi du magasin | 2.14.2 |
 | 4 nov. 2026 | Pause automatique d'un téléphone hors du Wi-Fi du magasin, documentation à jour | 2.15.0 |
 | 5 nov. 2026 | Comptes activés / désactivés, prix de vente Sage depuis Clover, HTTPS sans port, mot de passe web solide | 2.15.1 à 2.17.0 |
+| 5 nov. 2026 | Suivi des feuilles de temps, client ouvert directement, serveur web sans fenêtre | 2.17.1 à 2.18.0 |
+| 5 nov. 2026 | **Premier import dans le vrai fichier partagé** par l'assistant d'importation de Sage | 2.19.0 à 2.22.1 |
+| 5 nov. 2026 | Dépôts (plusieurs sites), photos de factures, même état Windows / web, relevés BNC, comptes bancaires, modèles d'impression | 2.20.0 à 2.24.2 |
+| 5 nov. 2026 | **Version 1.0.0** : numérotation remise à zéro | 1.0.0 |
+| 6 nov. 2026 | Documentation complète à jour et guide de l'administrateur | 1.0.1 |
+| 6 nov. 2026 | PDF de la documentation lisibles : diagrammes à la bonne taille, pages en largeur, titres gardés avec leurs diagrammes | 1.0.2 |
 
 ---
 

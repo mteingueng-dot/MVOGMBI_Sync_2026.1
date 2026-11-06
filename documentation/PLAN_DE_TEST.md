@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 281 tests
+## 3. Tests automatiques — 297 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -57,9 +57,11 @@ Règles :
 | Tests ajoutés aux fichiers existants depuis la 1.0.0 | divers | 4 |
 | Application web (connexion, droits, sécurité, pointage, Wi-Fi et pause automatique, paie, documents, exports, serveur de l'application, client) | test_web | 25 |
 | Autres tests ajoutés depuis la 1.0.11 | divers | 1 |
-| **Total** | 56 fichiers | **281** |
+| Dépôts (filtres, transferts après import, documents de stock, main-d'œuvre, rapports de gestion, suivi des ventes) | test_depots | 9 |
+| Ajouts des versions 2.17 à 2.24 (mot de passe web, feuilles de temps, relevés BNC, client, photo de facture, état partagé des factures) | test_web, test_paie_temps, test_rapprochement, test_page_fournisseurs | 5 |
+| **Total** | 57 fichiers | **295** |
 
-Résultat du 4 novembre 2026 : **280 réussis, 1 sauté** (export d'image sans écran disponible).
+Résultat du 5 novembre 2026 (version 1.0.0) : **292 réussis, 1 sauté** (export d'image sans écran disponible), 2 tests de fenêtres Tk lancés à part (ils réussissent seuls, voir la note).
 
 Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find a usable tk.tcl / init.tcl » ; Windows refuse un instant la lecture des fichiers de Tcl (antivirus). Le test passe à l'exécution suivante : ce n'est pas un défaut de l'application.
 
@@ -111,6 +113,10 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | S14 | Compte du plan comptable : créé, renommé, rendu inactif, supprimé | multi, mono pour l'inactif | Réussi |
 | S15 | Client et fournisseur avec compte de produits / de charges | multi-utilisateur | Réussi |
 | S16 | Article : renommé puis remis, service rendu inactif puis supprimé, suppression d'un article en stock | multi, mono pour l'inactif | Réussi ; suppression refusée par Sage (stock) |
+| S17 | Prix de vente régulier Sage depuis Clover : 0 → 2,49 → 0 | multi-utilisateur | Réussi (vérifié dans la base) |
+| S18 | Assistant d'importation : factures de vente (3) et facture d'achat, puis réimport | mono-utilisateur | Réussi ; réimport refusé « numéro existe déjà » |
+| S19 | Transferts après import (dépôt) : achat puis vente, stocks revenus au départ | Sage fermé | Réussi (environ 2 min 45 par transfert) |
+| S20 | Vrai fichier partagé (serveur) : 2 factures fournisseurs par l'assistant, stock et coût Clover | mono-utilisateur | Réussi le 5 novembre 2026 |
 
 ### 4.4 Profils et droits
 
@@ -139,10 +145,13 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | D1 | 43 états de compte RIA réels | Tous lus, soldes recontrôlés sans remarque | Réussi (114 opérations) |
 | D2 | Formulaires T4 et RL-1 téléchargés des sites officiels | Cases aux coordonnées connues | Réussi (fichiers identiques à ceux de l'application) |
 | D3 | PDF des documents et des tableaux dans l'application ouverte | Créés sans Edge, PDF ouvert = nouveau nom | Réussi |
+| D4 | Relevé BNC réel (50 mouvements) | Chaque solde revérifié, totaux débit / crédit retrouvés | Réussi |
+| D5 | Les 17 types de documents et les 4 documents de stock imprimés | Modèle de chaque type, sans prix là où il le faut | Réussi (contrôle visuel) |
+| D6 | Photo de facture envoyée au serveur | PDF, OCR, facture « À saisir (photo) » | Réussi (copie) |
 
 ---
 
-### 4.7 Application web (versions 1.1 à 2.14)
+### 4.7 Application web (versions 1.1 à 2.24)
 
 | Essai | Résultat |
 |---|---|
@@ -151,7 +160,9 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | Comparaison côte à côte : photo de chaque fenêtre Windows et de la page web à la même taille | dispositions alignées (2.14.0, 2.14.1) |
 | Sage absent du serveur | pages affichées, tableaux vides avec leurs colonnes, bandeau |
 | Jeton anti-falsification dans une adresse | jamais (formulaires séparés + filet du serveur) |
-| DNS `app.marchemvogmbi.com` | 100.99.52.28 (SERVDCSAGE) |
+| DNS `app.marchemvogmbi.com` | adresse Tailscale du serveur |
+| Rapidité : 64 pages du menu, 2e tour | 3,8 s (60 ms par page), au lieu de 62,8 s |
+| Même facture ouverte dans Windows et sur le web | état identique, jamais ramenée avant « Importée » |
 
 ## 5. Défauts trouvés et corrigés lors des campagnes
 
@@ -168,7 +179,18 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | PDF non créés dans l'application ouverte | Edge s'arrête sans rien écrire | PDF dessinés par l'application (fpdf2) |
 | Sage resté ouvert après « Compte inactif » | Question modale de Sage bloquait l'envoi des clics | Mono-utilisateur pour l'inactif, clics sans attente |
 | États RIA avec remarques | Lignes ACH, sous-totaux, total à 2 montants | Lecture revue (0 remarque sur 43 états) |
-| Bulletin non envoyé (« timed out ») | Serveur de courriel lent | 3 essais, délai plus long à chaque fois |
+| Bulletin non envoyé (« timed out ») | Port 465 réglé en « starttls » : le serveur attend SSL dès la connexion (constat du 2026-11-06) | Port 465 toujours en SSL ; 3 essais, délai plus long à chaque fois |
+| PDF de page (bulletin, rappel) faits par la création de secours | Edge avec une mise à jour en attente ne produit rien sans fenêtre | Chrome essayé après Edge |
+| Titre long du cadre (« FACTURE D'AVOIR FOURNISSEUR ») collé aux bords | Police fixe | Police réduite jusqu'à ce que le titre tienne |
+| Nuit du 2026-11-06 : ni courriel, ni archivage, ni journal après l'import de 221 factures | Import faux (`Registre` au lieu de `RegistrePaiements`) dans la lecture des avis Interac, hors de toute protection | Nom corrigé ; chaque étape de fin de nuit protégée ; test de tous les imports internes |
+| Encaissements : « La cellule Montant reçu ne s'est pas ouverte » (vrai fichier, 221 factures ouvertes) | Grille remplie lentement, clic trop tôt | Clic répété jusqu'à 20 s, photo de la fenêtre dans donnees/diagnostic_encaissements/ |
+| Import refusé sur le serveur | Entreprise partagée refusée par l'outil d'import | Assistant d'importation de Sage |
+| Assistant introuvable | Menu de Sage à une autre position sur le serveur | Menu repéré par son texte (OCR), photos de diagnostic |
+| Abandon après 20 s à l'ouverture de Sage | Écran « Lancement de Sage 50… » pris pour une erreur | Écrans de chargement écartés, 60 s |
+| Factures importées restées « Prête à importer » (web, nuit) | Registre non enregistré après l'import | Enregistré dans tous les cas |
+| Déconnexion juste après la connexion web | L'icône du site menait à la page de connexion, qui effaçait la session | Icône publique |
+| Ajustements du journal 14 pris pour des transferts | Type déduit du journal | Indicateur de transfert de Sage |
+| Pages web lentes (3 s) | Recherche de Sage refaite à chaque page | Échec retenu 45 s, base gardée prête |
 
 ---
 
@@ -186,7 +208,9 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 
 ## 7. Reste à tester
 
-- Mise en service sur SERVDCSAGE : lecture de Sage, import, traitement de nuit, serveur web, client des postes.
+- Mise en service complète sur SERVDCSAGE : traitement de nuit, HTTPS, client des postes (l'import par l'assistant et la mise à jour Clover y sont validés).
+- Transferts vers un dépôt sur le vrai fichier (dès qu'un deuxième dépôt sera créé dans Sage).
+- Relevés BNC de plusieurs mois et écritures saisies au compte 1060.
 - Pointage depuis le Wi-Fi du magasin (adresse publique du magasin à relever sur place) et pause automatique d'un téléphone qui sort du Wi-Fi.
 - Plusieurs points de vente réels (dès qu'un deuxième sera configuré).
 - Remises de retenues réelles (pas encore payées au 30 octobre 2026).

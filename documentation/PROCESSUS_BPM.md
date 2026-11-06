@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Processus métier (BPM)
 
-Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Notation : chaque couloir est un acteur ou un système ; ( ) = début ou fin, [ ] = activité, { } = décision, flèches = enchaînement. Les processus sont ceux en service.
 
@@ -217,4 +217,29 @@ flowchart TB
     A1 --> A2 --> B1
     B1 -- non --> A2
     B1 -- oui --> C1 --> B3 --> B4
+```
+
+
+---
+
+## 6. Réception chez un fournisseur dans un dépôt
+
+```mermaid
+flowchart TB
+    subgraph Magasin["Magasin / dépôt"]
+        A([Livraison reçue]) --> B["Photo ou PDF de la facture"]
+        L["Bon de réception signé<br/>joint à la facture"]
+    end
+    subgraph Bureau["Bureau (gérant, comptable)"]
+        C["Lignes, articles Sage, facteur<br/>dépôt de la facture"] --> D["Prête à importer"]
+        D --> E["Importer (cochées)"]
+    end
+    subgraph Application
+        F["Import dans Sage<br/>outil ou assistant"] --> G["Transfert vers le dépôt"]
+        G --> H["Stock et coût Clover"]
+        H --> I["Courriel de compte rendu"]
+    end
+    B --> C
+    E --> F
+    I --> L
 ```

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 
@@ -228,6 +228,49 @@ flowchart TD
     G --> K["Ancien serveur : retirer tâche<br/>et serveur web"]
 ```
 
+## 8 quater. Facture photographiée au téléphone
+
+```mermaid
+flowchart TD
+    A([Facture papier reçue]) --> B["Fournisseur > Factures fournisseurs<br/>📷 Photographier une facture"]
+    B --> C["Prendre la page en photo"]
+    C --> D{Autre page ?}
+    D -->|oui| E["➕ Ajouter la page"] --> C
+    D -->|non| F["✔ Terminer la facture"]
+    F --> G["Un PDF, lu par l'OCR de Windows"]
+    G --> H([Facture dans la liste, comme au workflow 3])
+```
+
+## 8 quinquies. Importer plusieurs factures fournisseurs dans leur dépôt
+
+```mermaid
+flowchart TD
+    A([Factures « Prête à importer »]) --> B["Choisir le Dépôt de chaque facture"]
+    B --> C["Cocher les factures<br/>(☑ Cocher les factures prêtes)"]
+    C --> D["☑ Importer les factures cochées"]
+    D --> E{Entreprise partagée ?}
+    E -->|non| F["Outil d'import"]
+    E -->|oui| G["Assistant d'importation de Sage"]
+    F & G --> H["Vérifiée dans Sage"]
+    H --> I["Transfert vers le dépôt"]
+    I --> J["Stock Clover du point de vente"]
+    J --> K["Courriel de compte rendu"]
+    K --> L([🖨 Bon de réception / Facture avec prix])
+```
+
+## 8 sexies. Rapprocher un compte BNC
+
+```mermaid
+flowchart TD
+    A([Relevé PDF BNC]) --> B["Comptabilité > Rapprochement bancaire<br/>Charger"]
+    B --> C["Banque reconnue : rangé dans le compte BNC"]
+    C --> D["Liste « Banque » : BNC"]
+    D --> E["Comparé au compte Sage 1060"]
+    E --> F["Confirmer les comptes des mouvements absents"]
+    F --> G([Saisir dans Sage])
+    H([Nouveau compte bancaire]) --> I["Administration > Sage 50<br/>4. Comptes bancaires : Ajouter"]
+```
+
 ## 8 ter. Pointer au magasin
 
 ```mermaid
@@ -242,6 +285,19 @@ flowchart TD
     H -->|oui| I[Pause automatique<br/>à l'heure du départ]
     I --> J{De retour sur le Wi-Fi ?}
     J -->|oui| K[Fin de pause automatique]
+```
+
+## 8 septies. Valider les feuilles de temps (gérant)
+
+```mermaid
+flowchart TD
+    A([Fin de la période de 14 jours]) --> B["Paie > Feuilles de temps<br/>📋 Suivi des périodes"]
+    B --> C["Double-clic sur la période « À approuver »"]
+    C --> D{Anomalies ?}
+    D -->|oui| E["Corriger les pointages<br/>(motif obligatoire)"] --> D
+    D -->|non| F["Approuver les feuilles sans anomalie"]
+    F --> G([Traitement de la paie])
+    H([Période non approuvée]) -.-> I["Rappel en rouge<br/>au courriel du matin"]
 ```
 
 ## 9. Droits d'un profil

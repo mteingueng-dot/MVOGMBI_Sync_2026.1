@@ -1,23 +1,24 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
 - facturation des ventes ;
 - encaissement des dépôts ;
 - factures et paiements fournisseurs ;
-- rapprochement bancaire Desjardins ;
+- rapprochement bancaire Desjardins et Banque Nationale ;
 - rapports et statistiques ;
 - gestion des articles, des stocks, des ventes et des achats comme dans Sage, avec la chaîne des documents (devis, commande, livraison, facture, retours) ;
 - comptabilité (caisse, dépenses, plan comptable, taxes, remises, budget) ;
 - agence RIA (états de compte, envois et versements, commissions) ;
 - paie (pointage, planning, feuilles de temps, chèques de paie dans Sage, bulletins) ;
+- plusieurs sites : dépôts (emplacements de Sage) avec ou sans Clover ;
 - utilisateurs, profils, droits par fonction et audit des actions.
 
 L'application est écrite en Python 3.13, a une interface tkinter et une application web identique, et tourne sur le serveur SERVDCSAGE, à côté de Sage 50 (version 2.14.2). Elle n'utilise aucun service d'IA ni d'API externe autre que Clover : c'est le choix du propriétaire.
 
-Ce document décrit les composants, les données, les intégrations et les principaux flux. Les règles d'affaires sont réunies dans `documentation/REGLES_AFFAIRES.md` (codes RG-…) ; le fichier `CLAUDE.md` garde le détail technique de chaque règle. Le manuel d'utilisation (`documentation/creer_manuel.py`) décrit l'usage au quotidien.
+Ce document décrit les composants, les données, les intégrations et les principaux flux. Les règles d'affaires sont réunies dans `documentation/REGLES_AFFAIRES.md` (codes RG-…) ; le fichier `CLAUDE.md` garde le détail technique de chaque règle. Le manuel d'utilisation (`documentation/creer_manuel.py`) décrit l'usage au quotidien ; le guide de l'administrateur (`documentation/GUIDE_ADMINISTRATEUR.md`) l'installation, la configuration, l'exploitation et le dépannage.
 
 ---
 
@@ -28,7 +29,7 @@ flowchart LR
     subgraph Externes["Sources externes"]
         CL["Clover<br/>API REST v3"]
         BX["Boîte courriel<br/>IMAP : avis Interac,<br/>factures, états RIA"]
-        DJ["Relevés Desjardins<br/>PDF AccèsD"]
+        DJ["Relevés Desjardins et BNC<br/>PDF"]
         FF["Factures fournisseurs<br/>PDF et photos"]
     end
     subgraph Poste["Poste Windows du marché"]
@@ -41,7 +42,7 @@ flowchart LR
     end
     subgraph Sage["Sage 50 CA"]
         MY[("Base MySQL locale<br/>port 13540, base simply")]
-        IMP["Sage_SA_import.exe<br/>fichiers .IMP"]
+        IMP["Sage_SA_import.exe<br/>ou Assistant d'importation<br/>fichiers .IMP"]
         FEN["Fenêtres de Sage<br/>Encaissements, Paiements, Journal,<br/>stock, fiches, plan comptable, paie"]
     end
     SMTP["Serveur SMTP<br/>compte rendu"]
@@ -87,7 +88,7 @@ Principes :
 | `MVOGMBI_Sync_Serveur.exe` (`installation/lanceur_serveur.py`, = commande `web`) | Serveur de l'application web (`mvogmbi_sync/web/`) sur SERVDCSAGE (le serveur de Sage), atteint par Tailscale ; tâche planifiée « MVOGMBI_Sync Web » posée par `installer_web.ps1`. |
 | `MVOGMBI_Sync_Client.exe` (`installation/lanceur_client.py`, `web/client.py`) | Client des postes (1.2.0), un seul fichier, bibliothèque standard seulement : garde l'adresse du serveur (`%APPDATA%\MVOGMBI_Sync_Client\client.json`), vérifie l'en-tête `Server: MVOGMBI_Sync`, ouvre l'application dans une fenêtre Edge en mode application (profil à part). Téléphones : navigateur. |
 | `serveur.json` (à côté de `MVOGMBI_Sync_Client.exe`) | Serveur où envoie le client : écrit par « Administration > Automatisation > Serveur de l'application » (`serveur_appli.fichier_client`), recopié d'office dans `{app}\client` ; noms reconnus `app.marchemvogmbi.com` (DNS -> adresse Tailscale du serveur). |
-| `python -m mvogmbi_sync <commande>` (`__main__.py`) | `facture`, `importer`, `auto`, `encaissements`, `correspondance`, `verifier-comptes`, `verifier-sage`, `rapport`, `planifier`, `langue`, `interface`. `inventaire`, `pointage`, `essai-pdf`, `web`. Commandes internes (l'application ouvre Sage elle-même) : `encaisser-bureau`, `payer-bureau`, `journal-bureau`, `depenses-bureau`, `inventaire-bureau`, `transfert-bureau`, `creer-articles-bureau`, `fiches-articles-bureau`, `tiers-bureau`, `comptes-bureau`, `paie-bureau`, `garder-sage`. |
+| `python -m mvogmbi_sync <commande>` (`__main__.py`) | `facture`, `importer`, `auto`, `encaissements`, `correspondance`, `verifier-comptes`, `verifier-sage`, `rapport`, `planifier`, `langue`, `interface`. `inventaire`, `pointage`, `essai-pdf`, `web`. Commandes internes (l'application ouvre Sage elle-même) : `encaisser-bureau`, `payer-bureau`, `journal-bureau`, `depenses-bureau`, `inventaire-bureau`, `transfert-bureau`, `creer-articles-bureau`, `fiches-articles-bureau`, `tiers-bureau`, `comptes-bureau`, `paie-bureau`, `prix-sage-bureau`, `import-assistant-bureau`, `garder-sage`. |
 
 ### 2.2 Modules
 
@@ -147,7 +148,9 @@ flowchart TB
 | | `transferts.py`, `robot_transferts.py`, `fenetre_transferts.py` | Transferts de marchandises entre points de vente : transfert entre les deux dépôts Sage, puis stock Clover des deux marchands. |
 | | `couts_clover.py`, `fenetre_couts.py`, `fenetre_cocher.py` | Coûts Clover remplacés par le coût moyen Sage (lignes cochées, sans valeur aberrante) ; comptes des articles Sage corrigés d'après la table catégorie -> comptes. |
 | | `paiements_fournisseurs.py` | Avis Interac → factures fournisseurs → paiements. |
-| | `rapprochement.py` | Relevé Desjardins ↔ écritures du compte 1055. |
+| | `rapprochement.py` | Relevés Desjardins (`lire_releve_desjardins`) et BNC (`lire_releve_bnc`, banque reconnue par `banque_du_texte`) ↔ écritures du compte Sage de la banque ; comptes bancaires (`CompteBancaire`, `comptes_bancaires` : Desjardins 1055, BNC 1060, puis `[[comptes_bancaires]]`), un registre de relevés par compte (`releves_<code>/`, `ranger_releve`). |
+| | `depots.py` | Dépôts : points de vente + « Emplacement par défaut » + `[sage] depots_sans_clover` ; filtres (`choisis`, `garde`) ; après l'import d'une facture, transfert « DP <n° de facture> » vers ou depuis son dépôt (`apres_import`). |
+| | `impression_fournisseur.py` | Bon de réception (sans prix, quantité ajoutée dans Clover) et facture complète d'une facture fournisseur. |
 | | `rapports.py` | Suivi des ventes et recherches dans l'historique Sage. |
 | | `statistiques_clover.py`, `couts_sage.py`, `previsions.py`, `peremption.py` | Statistiques Clover, bénéfices au CUMP Sage, prévisions, péremption. |
 | | `bons_commande.py`, `fenetre_bons_commande.py` | Fournisseur > Bons de commande : articles à commander, fournisseur et prix du dernier achat Sage, un bon PDF par fournisseur, comparaison avec la facture reçue. |
@@ -181,7 +184,8 @@ flowchart TB
 | | `automatique.py`, `courriel.py`, `planification.py` | Traitement de nuit, compte rendu, tâche planifiée ; envoi réessayé 3 fois, copie cachée au propriétaire des courriels personnels. |
 | Intégration | `api_clover.py`, `export_clover.py` | API REST Clover v3 (parallélisée) ; export Excel Clover. |
 | | `base_sage.py`, `articles_sage.py` | Lecture MySQL de Sage, même quand Sage est fermé (`lire_pendant_connexion`). |
-| | `import_sage.py`, `sage_auto.py` | Fichier `.IMP` `<SalInvoice>` ; pilotage de `Sage_SA_import.exe`. |
+| | `import_sage.py`, `sage_auto.py` | Fichier `.IMP` `<SalInvoice>` ; pilotage de `Sage_SA_import.exe` (`executer_outil`), puis de l'assistant si l'outil refuse l'entreprise partagée (`executer`, fichier noté dans `entreprises_partagees.json`). |
+| | `robot_import_assistant.py` | « Assistant d'importation des transactions » de Sage : menu Fichier > Importer/Exporter repéré par son texte (OCR de Windows), type de transaction, fichier, résumé lu ; Sage gardé ouvert pendant le résumé pour vérifier la facture (commande interne `import-assistant-bureau`). |
 | | `sage_bureau.py`, `robot_*.py` | Ouverture de Sage sur un bureau Windows séparé et saisie dans ses fenêtres par messages Windows. |
 | | `paiements_courriel.py`, `ocr_windows.py` | IMAP en lecture seule ; OCR intégré à Windows. |
 | | `coffre.py`, `utilisateurs.py` | Coffre-fort Windows ; comptes et profils, avec mots de passe hachés. |
@@ -192,6 +196,7 @@ flowchart TB
 | | `web/style_windows.py`, `web/export_web.py`, `web/a_cocher.py` | Allure des fenêtres Windows ; « ⬇ Exporter ▾ » de chaque tableau ; liste à cocher commune (`FenetreACocher`). |
 | | `web/pages_*.py`, `web/consultations*.py` | Une page par entrée du menu (76), mêmes calculs que les fenêtres ; `pages_dossiers.py` (contenu des dossiers du serveur, choix d'un fichier ou d'un dossier) ; `pages_fiches.py` (nouveau client / fournisseur, modifier ou supprimer un article dans Sage et Clover). |
 | | `web/graphiques_svg.py`, `web/taches.py`, `web/client.py` | Graphiques de `graphiques.py` en SVG ; travaux longs dans un fil (un seul dans Sage à la fois) ; client des postes. |
+| | `web/filtres.py` | Filtre à choix multiples sans script (dépôts : cases, « Tout sélectionner »). |
 
 ---
 
@@ -205,7 +210,7 @@ flowchart LR
             CORR["correspondance_articles.xlsx<br/>points_vente/&lt;code&gt;/ (autres points de vente)"]
             REGF["factures_fournisseurs.json<br/>+ dossier des PDF"]
             REGP["paiements_fournisseurs.json"]
-            REL["releves_desjardins/releves.json"]
+            REL["releves_desjardins/, releves_bnc/…<br/>un dossier par compte bancaire"]
             CACHE["cache_clover/AAAA-MM-JJ.json<br/>couts_sage.json"]
             USR["utilisateurs.json<br/>audit.jsonl"]
             RIA["ria.json<br/>etats_ria/etats.json"]
@@ -237,11 +242,11 @@ Tables Sage lues :
 | `tcustr`, `tcustrdt` | Factures et encaissements clients |
 | `tvendor`, `tventr`, `tventrdt` | Fournisseurs, factures et paiements |
 | `tinvent`, `tinvlot` | Articles, coûts et stock |
-| `tinvloc` | Dépôts (emplacements d'inventaire) |
+| `tinvloc`, `tinvbyln` | Dépôts (emplacements d'inventaire), stock et valeur par dépôt |
 | `tjentact`, `tjourent`, `taccount` | Écritures et comptes |
 | `ttaxauth` | Taxes |
 | `tpydet`, `tpydet1`, `tpydet2`, `tcomppy5`, `temp` | Paies (brut, gains, retenues), libellés, employés (jamais le NAS) |
-| `titrec`, `titrline` | Mouvements d'articles (ventes, achats, ajustements, transferts) |
+| `titrec`, `titrline` | Mouvements d'articles (ventes, achats, ajustements, transferts) ; `titrec.bTrfLoc` distingue un transfert d'un ajustement du journal 14, `titrline.lInvLocId` donne le dépôt de chaque ligne |
 
 ---
 
@@ -250,24 +255,30 @@ Tables Sage lues :
 ### 4.1 Traitement de nuit (`automatique.lancer`)
 
 ```mermaid
-flowchart TD
+flowchart LR
+  subgraph S1 ["Préparation et import"]
+    direction TB
     A(["Tâche planifiée Windows, ex. 1 h"]) --> B{"Verrou<br/>traitement.verrou<br/>de moins de 6 h ?"}
     B -- oui --> Z1["Exécution annulée,<br/>notée au journal"]
-    B -- non --> C["1. Lecture de Sage (une fois)<br/>factures de chaque point de vente,<br/>articles, comptes, clients, dépôts"]
-    C --> D["2. Pour chaque point de vente :<br/>correspondance de ses articles Clover"]
-    D --> E["3. Préparation des jours manquants<br/>lun.–jeu. : 1 facture par jour<br/>ven.–dim. : 1 facture"]
+    B -- non --> C["Étape 1 : Lecture de Sage (une fois)<br/>factures de chaque point de vente,<br/>articles, comptes, clients, dépôts"]
+    C --> D["Étape 2 : Pour chaque point de vente :<br/>correspondance de ses articles Clover"]
+    D --> E["Étape 3 : Préparation des jours manquants<br/>lun.–jeu. : 1 facture par jour<br/>ven.–dim. : 1 facture"]
     E --> F{"Jour bloqué ?<br/>article non relié,<br/>compte manquant"}
-    F -- oui --> G["Jour ou fin de semaine mis de côté,<br/>repris la nuit suivante"]
-    F -- non --> H["4. Import par lots<br/>.IMP → Sage_SA_import.exe"]
+    F -- oui --> G["Jour ou fin de semaine mis de côté,<br/>repris la nuit suivante ;<br/>les étapes suivantes continuent"]
+    F -- non --> H["Étape 4 : Import par lots<br/>.IMP → Sage_SA_import.exe"]
     H --> I["Vérification dans tcustr"]
-    I --> J["5. Encaissements<br/>ventes importées cette nuit seulement"]
-    J --> K["6. Paiements fournisseurs<br/>« Confirmé » seulement"]
-    G --> K
+  end
+  subgraph S2 ["Suite de la nuit"]
+    direction TB
+    J["Étape 5 : Encaissements<br/>ventes importées cette nuit seulement"]
+    J --> K["Étape 6 : Paiements fournisseurs<br/>« Confirmé » seulement"]
     K --> K2["Factures fournisseurs et avis Interac du courriel<br/>factures « Prête à importer » importées"]
     K2 --> K3["États RIA du courriel<br/>opérations saisies au journal<br/>si les comptes sont renseignés"]
     K3 --> L["Promotions, préchauffage du cache<br/>résumé du matin, tableau du gérant"]
     L --> L2["Sauvegarde des données"]
     L2 --> M["Journal<br/>+ courriel avec pièces jointes Excel"]
+  end
+  S1 --> S2
 ```
 
 ### 4.2 Facturation des ventes (Clover → Sage)
@@ -320,16 +331,25 @@ Les états de compte RIA (`ria_etats.py`) deviennent des opérations une seule f
 flowchart TD
     P0["Pièce jointe d'un courriel<br/>boîte IMAP, lecture seule,<br/>une seule fois"] --> P1
     P1["PDF ou photo déposé<br/>page 8"] --> P2{"PDF numérique ?"}
+    PH["Photos prises au téléphone<br/>/photo-facture, une par page"] --> PHP["un PDF"] --> P4
     P2 -- oui --> P3["pdfplumber<br/>+ modèle du fournisseur"]
     P2 -- non --> P4["OCR intégré à Windows"]
     P3 & P4 --> P5["Contrôle des totaux<br/>doublon : n° avec ou sans préfixe"]
     P5 --> P6["Articles Sage + facteur<br/>mémoire par fournisseur<br/>Qté Sage = Qté × Facteur"]
-    P6 --> P7["import_achats : PurInvoice<br/>→ Sage_SA_import.exe → vérification"]
-    P7 --> P8["Clover : stock + Qté Sage reçue<br/>coût = nouveau prix d'achat"]
+    P6 --> P7["import_achats : PurInvoice<br/>→ Sage_SA_import.exe<br/>(assistant si entreprise partagée)<br/>→ vérification"]
+    P7 --> P7b["Transfert DP vers le dépôt<br/>de la facture"]
+    P7b --> P8["Clover : stock + Qté Sage reçue<br/>coût = nouveau prix d'achat"]
+    P8 --> P9["Courriel de compte rendu<br/>bon de réception imprimable"]
     N1["Article absent<br/>« Créer l'article »"] --> N2["Sage : fiche de stock<br/>comptes de la catégorie"]
     N2 --> N3["Clover : article, catégorie,<br/>taxes, UGS = péremption"]
     N3 --> N4["Correspondance « Confirmé »"]
     N4 -.-> P6
+```
+
+Inventaire, transferts, coûts et comptes :
+
+```mermaid
+flowchart TD
     I1["Inventaire exporté<br/>Clover + Sage, un fichier"] --> I2["Quantités comptées<br/>colonne jaune"]
     I2 --> I3["Clover : stock = compté<br/>Sage : ajustement d'inventaire"]
     I3 --> I4["Rapport : coût de l'ajustement<br/>variation de la valeur Sage"]
@@ -339,12 +359,17 @@ flowchart TD
     K2 --> K3["Clover : coût = coût moyen Sage"]
     T1["Table catégorie -> comptes<br/>écart = CMV"] --> T2["Articles Sage à corriger<br/>lignes cochées"]
     T2 --> T3["Sage : comptes changés<br/>dans la fiche, vérifiés"]
+```
+
+Paiements des fournisseurs (après l'import de leurs factures) :
+
+```mermaid
+flowchart LR
     M1["Avis Interac<br/>boîte IMAP, lecture seule"] --> M2["Rapprochement proposé<br/>fournisseur, montant, n° cités"]
     M2 --> M3["Confirmé par le propriétaire<br/>page 9"]
     M3 --> M4["Répartition : plus ancienne d'abord,<br/>jamais plus que le solde"]
     M4 --> M5["Fenêtre Paiements de Sage<br/>une ligne par facture, un seul Traiter"]
     M5 --> M6["Vérification : baisse du solde"]
-    P7 -.-> M2
 ```
 
 ### 4.5 Rapprochement bancaire
@@ -352,7 +377,9 @@ flowchart TD
 ```mermaid
 flowchart TD
     R1["Relevé PDF Desjardins"] --> R2["Lecture par colonnes<br/>Frais, Retrait, Dépôt, Solde<br/>chaque solde revérifié"]
-    S1["Sage : tjentact + tjourent<br/>compte 1055"] --> R3
+    R1b["Relevé PDF BNC"] --> R2b["Lignes MM JJ description montant solde<br/>sens d'après la variation du solde<br/>contrôle des totaux débit / crédit"]
+    R2b --> R3
+    S1["Sage : tjentact + tjourent<br/>compte de la banque (1055, 1060…)"] --> R3
     R2 --> R3{"Même montant,<br/>date de −7 à +3 jours,<br/>ou somme de 2–3 écritures"}
     R3 -- trouvé --> R4["Rapproché"]
     R3 -- "Interac reçu ou guichet" --> R5["À encaisser sur les ventes<br/>voir 4.3"]
@@ -424,7 +451,7 @@ flowchart LR
 
 Mot de passe web à part (2.17.0) : `Utilisateur.sel_web` / `empreinte_web` (PBKDF2), `Registre.verifier_web` (mot de passe web s'il existe, sinon celui de l'application puis création obligatoire : `Session.creer_web`, toute page renvoie à `/mot-de-passe`), `probleme_mot_de_passe_web` (12 caractères, minuscule, majuscule, chiffre, caractère spécial, différent du mot de passe Windows).
 
-Sécurité : témoin de session HttpOnly + SameSite=Strict (Secure en HTTPS), 15 min d'inactivité, 12 h au plus ;
+Sécurité : témoin de session HttpOnly + SameSite=Strict (Secure en HTTPS), 5 min d'inactivité (la page passe d'elle-même à la connexion), 12 h au plus ;
 jeton anti-falsification sur chaque formulaire et refus des envois d'une autre origine ; politique de contenu sans
 script ni cadre ; 3 mots de passe faux = compte verrouillé (règle de l'application), 10 échecs en 10 min = adresse
 refusée 10 min ; pare-feu ouvert sur la carte Tailscale seulement ; audit de chaque page et action (fenêtre « Web »),
@@ -500,6 +527,14 @@ flowchart LR
 
 Pause automatique (version 2.15.0) : le téléphone qui a servi à pointer est suivi (`donnees/pointage_telephones.json`) tant que l'employé est au travail. Le serveur web contrôle chaque minute (`pointage_wifi.controler`) : 5 minutes de suite hors du Wi-Fi du magasin (réglage `[pointage] pause_hors_wifi_minutes`) = « Début de pause » à l'heure du départ (`Registre.pointer_auto`, auteur « Automatique ») ; retour sur le Wi-Fi = « Fin de pause ». Un départ arrête le suivi.
 
+#### Rapidité de l'application web (version 2.22.0)
+
+Une lecture de Sage qui échoue est retenue 45 s (`_ECHECS_LECTURE`) : les pages suivantes s'affichent tout de suite avec le bandeau « Sage ne répond pas ». Tant que quelqu'un a utilisé le site dans les 15 dernières minutes, un fil du serveur (`_garder_sage_pret`) garde la base ouverte (`SELECT 1` toutes les 45 s), jamais la nuit ni pendant un travail Sage. Feuille de style et logo sont gardés par le navigateur. Mesure sur une copie : 64 pages du menu en 3,8 s au 2e tour (60 ms par page) au lieu de 62,8 s.
+
+#### Même état dans Windows et sur le web (version 2.23.1)
+
+Le registre des factures fournisseurs retient ce qu'il a lu ; s'il a changé sur le disque entre-temps (autre plateforme), `enregistrer` fusionne : seules les factures modifiées ici remplacent celles du disque, et une facture « Importée » n'est jamais ramenée à un autre état. La page Windows relit le registre toutes les 3 s s'il a changé.
+
 ### 4.8 Plusieurs points de vente
 
 Chaque point de vente Clover (identifiant marchand et jeton) est un dépôt Sage, avec son client et ses factures. Le n° 1 garde ses réglages d'origine.
@@ -531,6 +566,30 @@ flowchart LR
     C2 --> B
 ```
 
+### 4.9 Dépôts (plusieurs sites)
+
+Un dépôt est un emplacement d'inventaire de Sage (`tinvloc`) : celui d'un point de vente Clover, l'« Emplacement par défaut », ou un dépôt sans Clover (`[sage] depots_sans_clover`). Le fichier `.IMP` n'a pas de champ d'emplacement : la facture entre dans l'emplacement par défaut, puis un transfert la place dans son dépôt.
+
+```mermaid
+flowchart LR
+    F["Facture<br/>vente, achat, retour<br/>dépôt choisi"] --> I["Import .IMP<br/>Emplacement par défaut"]
+    I --> V{"Facture présente<br/>dans Sage ?"}
+    V -- oui --> T["Transfert entre emplacements<br/>source DP n° de facture<br/>vente : dépôt → défaut<br/>achat : défaut → dépôt"]
+    T --> C{"Dépôt avec<br/>point de vente ?"}
+    C -- oui --> CL["Stock Clover<br/>du point de vente"]
+    C -- non --> FIN([Terminé])
+    T -. échec .-> R["Signalé « à refaire »<br/>la facture reste importée"]
+```
+
+| Où | Effet du dépôt |
+|---|---|
+| Factures fournisseurs, documents FV / FRC, retours, traitement de nuit | dépôt de la facture (`depots.apres_import`) |
+| Employés, planning, feuilles de temps | dépôt principal de l'employé (`Employe.depot`), dépôt du quart (`Quart.depot`) : une cédule par dépôt |
+| Documents de stock, livre d'inventaire, liste des articles | colonne et filtre Dépôt lus dans Sage (`titrline.lInvLocId`, `tinvbyln`) |
+| Main-d'œuvre, suivi des ventes, rapports de gestion | heures et ventes des dépôts / points de vente choisis |
+
+Filtres : Windows `design.filtre_depots` (liste à choix multiples), web `web/filtres.filtre_depots` (cases, « Tout sélectionner », sans script).
+
 ---
 
 ## 5. Pilotage de Sage
@@ -541,12 +600,15 @@ Sage 50 CA n'a pas d'API ouverte. L'application passe par trois voies :
 |---|---|---|---|
 | MySQL en lecture seule (`base_sage.py`) | Tout ce qui se lit | ouvert ; sinon base ouverte par l'outil d'import ; refusée : Sage ouvert par l'application (`garder-sage`) | — |
 | `Sage_SA_import.exe` (`sage_auto.py`) | Factures de vente `<SalInvoice>` et d'achat `<PurInvoice>` (retours compris) | fermé, **mono-utilisateur** (accès exclusif) | présence dans `tcustr` / `tventr` |
+| Assistant d'importation de Sage (`robot_import_assistant.py`) | Mêmes fichiers `.IMP`, quand l'outil refuse une **entreprise partagée** (« You cannot use this utility to import transactions into a shared company ») | ouvert par l'application en **mono-utilisateur** ; menu repéré par son texte (OCR de Windows) | résumé de Sage lu, facture retrouvée dans la base pendant le résumé |
 | Fenêtres de Sage (`sage_bureau.py` + `robot_*.py`) | Encaissements, paiements, journal général, dépenses, documents de stock, inventaire, transferts, articles, clients, fournisseurs, employés, paie | lancé par l'application sur un bureau Windows séparé, **multi-utilisateur** ; fonctionne session verrouillée | baisse des soldes, écriture présente, stock relu |
 
 Règles d'ouverture de Sage :
 
 - **Mono-utilisateur pour l'import, multi-utilisateur pour les saisies et la lecture** (règle du propriétaire). Le multi-utilisateur exige le service Windows « Sage 50 Gestionnaire de connexion de base de données ».
-- Le fichier réel est une **entreprise partagée** : Sage demande comment l'ouvrir ; `SessionSage._repondre_entreprise_partagee` répond selon la règle.
+- Le fichier réel est une **entreprise partagée** : Sage demande comment l'ouvrir ; `SessionSage._repondre_entreprise_partagee` répond selon la règle. Le partage n'est jamais arrêté (choix du propriétaire) : les imports passent par l'assistant d'importation.
+- L'écran « Lancement de Sage 50. Veuillez patienter… » n'est pas un message d'erreur : l'application attend jusqu'à 60 s avant de juger un message. Sage déjà ouvert sur un autre fichier dans la même session Windows : erreur tout de suite.
+- Diagnostic de l'assistant : photos de la fenêtre et des menus dans `donnees/diagnostic_assistant/`, citées dans le message d'erreur.
 - Sur le bureau séparé, une page du menu de gauche s'ouvre par le **cadre** de son libellé (`robot_articles.afficher_page`), une tâche par le cadre de son libellé (`cible_tache`) ; un clic sur le libellé seul est ignoré.
 - Sage refuse l'accès MySQL des applications tant que l'entreprise n'est pas ouverte par Sage ou par l'outil d'import : l'utilisateur `mvogmbi_sync` (« Accès par des tiers ») doit exister avec le même mot de passe dans chaque fichier d'entreprise.
 
@@ -596,7 +658,8 @@ sequenceDiagram
 | Comptes | `utilisateurs.json` : empreintes de mots de passe (PBKDF2), profils ; journal des connexions ; 3 mots de passe faux = compte verrouillé (le dernier administrateur n'est bloqué que 15 min). |
 | Audit | `audit.jsonl` : chaque action (bouton, menu, connexion), poste et utilisateur ; chaque ligne porte l'empreinte de la précédente, une modification est repérée. |
 | Droits | Par profil : fonctions du menu permises une à une (`fonctions_permises` : « Liste des articles » sans le reste de la rubrique), actions refusées dans les fenêtres (`fonctions_refusees` : traiter la paie, restaurer une sauvegarde…), « Supprimer des éléments » (tous les boutons Supprimer / 🗑 et la touche Suppr), « Exporter les données », points de vente permis. L'administrateur a tout. |
-| Verrouillage | Après `[general] verrouillage_minutes` (5 par défaut ; 0 = jamais) sans activité. La fenêtre est cachée et le mot de passe est redemandé. |
+| Verrouillage | Après `[general] verrouillage_minutes` (5 par défaut ; 0 = jamais) sans activité. La fenêtre est cachée et le mot de passe est redemandé. Web : déconnexion après `[web] inactivite_minutes` (5). |
+| Application web | Mot de passe web à part (12 caractères, minuscule, majuscule, chiffre, caractère spécial) ; HTTPS (certificat Let's Encrypt) ; serveur sur la carte Tailscale seulement ; un compte désactivé perd ses sessions. |
 | Sage | Utilisateur MySQL en consultation seule ; imports et saisies uniquement après contrôle des doublons. |
 | Banque | Relevés chargés à la main : aucune connexion à AccèsD. |
 | Courriel | IMAP en lecture seule ; SMTP pour le compte rendu ; documents personnels à un seul destinataire visible, copie cachée au propriétaire. |
@@ -614,14 +677,15 @@ flowchart TD
     PY --> INNO["Inno Setup<br/>MVOGMBI_Sync.iss"]
     INNO --> SETUP["dist/Installer_MVOGMBI_Sync_x.y.z.exe"]
     SETUP --> POSTE["Serveur SERVDCSAGE (avec Sage) :<br/>%LOCALAPPDATA%/Programs/MVOGMBI_Sync<br/>raccourcis, manuels, tâche planifiée,<br/>serveur web (installer_web.ps1)"]
-    POSTE -->|serveur.json| CLIENT["Postes : MVOGMBI_Sync_Client.exe"]
+    POSTE -->|serveur.json| CLIENT["Postes : Installer_MVOGMBI_Sync_Client_x.y.z.exe<br/>(sans droits d'administrateur)"]
 ```
 
-- `installation/fabriquer.cmd` enchaîne tout. Chaque livraison a son propre numéro de version : `aide.VERSION`, `version_info.txt` et `MVOGMBI_Sync.iss`.
+- `installation/fabriquer.cmd` enchaîne tout et produit deux installateurs : `Installer_MVOGMBI_Sync_x.y.z.exe` (serveur) et `Installer_MVOGMBI_Sync_Client_x.y.z.exe` (postes, avec `serveur.json` écrit d'après `config.toml`). Chaque livraison a son propre numéro de version : `aide.VERSION`, `version_info.txt`, `MVOGMBI_Sync.iss` et `MVOGMBI_Sync_Client.iss`. Numérotation remise à 1.0.0 le 5 novembre 2026 (après la 2.24.2) ; les anciens installateurs sont dans `dist/Archives`.
+- Le serveur web (`MVOGMBI_Sync_Serveur.exe`) tourne sans fenêtre, une seule copie à la fois (verrou nommé), démarré par le dossier Démarrage ; ses erreurs vont dans `donnees/journal_web.log`.
 - RACINE est le dossier de l'exe ; la variable `MVOGMBI_RACINE` en force un autre.
 - Mise en service sur un serveur : installer, reprendre `config.toml` et `donnees/` (« Reprendre une configuration existante… »), retaper les mots de passe (coffre-fort propre à chaque machine), régler « Serveur de l'application », lancer `installer_web.ps1` (il remet `[web] adresse` à l'adresse Tailscale de la machine) et la tâche planifiée ; sur l'ancien serveur, retirer la tâche et le serveur web.
-- Tests : `tests/`, 281 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
-- Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, de la documentation fonctionnelle, des règles d'affaires, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
+- Tests : `tests/`, 295 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
+- Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, du guide de l'administrateur, de la documentation fonctionnelle, des règles d'affaires, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
 
 ---
 
@@ -638,4 +702,7 @@ flowchart TD
 | 1re lecture, Sage fermé | outil d'import, puis base gardée 10 min | ~10 s, puis immédiat |
 | Listes Sage au démarrage | préchargement en arrière-plan (clients, fournisseurs, articles) | 0,1 à 0,4 s au clic |
 | Ventes par article sur 365 jours | résumés par jour sur disque | 0,3 s (4,6 s au 1er appel du jour) |
+| Page de l'application web | base gardée prête, échec de Sage retenu 45 s, style en cache | 60 ms (2e tour des 64 pages : 3,8 s) |
+| Import par l'assistant d'importation | Sage ouvert par l'application, menu repéré par son texte | 1 min 40 à 1 min 45 par fichier |
+| Transfert vers le dépôt après un import | fenêtre « Ajustements des Stocks & Transferts », Sage fermé | environ 2 min 45 |
 | Lecture des boîtes de courriel | en-têtes de tous les messages en une demande, messages déjà lus sautés | une demande au lieu d'une par message |

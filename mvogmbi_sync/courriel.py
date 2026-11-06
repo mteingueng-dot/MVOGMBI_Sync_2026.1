@@ -129,6 +129,10 @@ def _expedier(c: dict, message: EmailMessage) -> None:
 def _expedier_une_fois(c: dict, message: EmailMessage, delai: int) -> None:
     port = int(c.get("port", 587))
     securite = str(c.get("securite", "starttls")).lower()
+    if port == 465 and securite == "starttls":
+        # Le port 465 attend SSL dès la connexion : en starttls, le serveur ne répond pas et l'envoi échoue après le
+        # délai (« Connection unexpectedly closed: timed out », constat du 2026-11-06 avec mail.marchemvogmbi.com)
+        securite = "ssl"
     contexte = ssl.create_default_context()
     if securite == "ssl":
         serveur = smtplib.SMTP_SSL(c["serveur"], port, context=contexte, timeout=delai)

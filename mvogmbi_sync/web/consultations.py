@@ -247,8 +247,11 @@ def _articles(ctx, v):
     except Exception:  # noqa: BLE001 — correspondance absente : colonne vide
         pass
     cats = categories(ctx.racine)
-    entetes, lignes = sage(ctx, lambda b: ls.articles(b, cats, {n: [f"{k} relié(s)"] for n, k in liens.items()}),
-                           ("articles",))
+    from .filtres import depots_choisis
+
+    depots = depots_choisis(ctx)
+    entetes, lignes = sage(ctx, lambda b: ls.articles(b, cats, {n: [f"{k} relié(s)"] for n, k in liens.items()},
+                                                      depots), ("articles", tuple(depots or ())))
     return [Section("Articles de Sage", entetes, _cherche(lignes, v))]
 
 
@@ -651,7 +654,7 @@ CONSULTATIONS = [
     Consultation("/documents-achat", "Liste des documents d'achat", "fournisseurs", ("periode", "texte"),
                  _documents("achats"), "Factures, paiements et notes de crédit des fournisseurs dans Sage.", "🗂",
                  "Fournisseur"),
-    Consultation("/articles", "Liste des articles", "correspondance", ("texte",), _articles,
+    Consultation("/articles", "Liste des articles", "correspondance", ("depot", "texte"), _articles,
                  "Articles de Sage : stock, CUMP, valeur, comptes et lien Clover.", "📚", "Articles"),
     Consultation("/documents-stock", "Liste des documents de stock", "correspondance", ("periode", "depot", "texte"),
                  _documents("stock"), "Ajustements d'inventaire et transferts entre emplacements de Sage.", "🗂",

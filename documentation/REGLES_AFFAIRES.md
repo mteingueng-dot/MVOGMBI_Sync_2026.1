@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -38,6 +38,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-SAGE-05 | La connexion à la base est **relâchée** dès que la personne lance Sage ou qu'un import en a besoin (sinon « d'autres utilisateurs travaillent avec cette entreprise »). |
 | RG-SAGE-06 | Les **questions de Sage** reçoivent une réponse prudente : « Non » à une erreur d'import, « Oui » seulement aux confirmations connues (date antérieure, comptes de taxe associés, suppression demandée) ; toute autre question arrête l'opération. |
 | RG-SAGE-07 | Un compte saisi dans l'application (dépenses, RIA, catégories, fiches) **doit exister dans le plan comptable** de Sage et recevoir des écritures (ni en-tête, ni total, ni inactif). |
+| RG-SAGE-09 | **Entreprise partagée** : le partage n'est jamais arrêté ; quand l'outil d'import refuse l'entreprise partagée, l'import passe par l'**Assistant d'importation des transactions** de Sage (ouvert en mono-utilisateur par l'application) ; le fichier est retenu et passe ensuite directement par l'assistant. |
 | RG-SAGE-08 | Sage tient chaque compte dans son **sens normal** (débit positif pour actif et charge, crédit positif pour passif et produit) ; l'application lit les soldes sans changer le signe. |
 
 ---
@@ -100,6 +101,9 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-RAP-04 | Écart = écart d'ouverture + mouvements absents de Sage − écritures en circulation ; le but est « 0,00 non expliqué ». |
 | RG-RAP-05 | Un mouvement relié à une écriture d'avant le début de la période compte comme absent (il est déjà dans l'écart d'ouverture). |
 | RG-RAP-06 | **Dépôt salaire** (« PAYjjmmaaaa ») : relié aux paies de Sage du même montant jusqu'à 120 jours plus tôt, la même référence-date d'abord ; sinon « Paie absente de Sage » (à corriger dans la paie, jamais par une écriture de journal). |
+| RG-RAP-08 | **Banque reconnue à la lecture** : un relevé Desjardins ou Banque Nationale (BNC) est lu selon sa banque et rangé dans le compte bancaire de cette banque (et de son n° de compte quand la banque en a plusieurs) ; il est rapproché du compte Sage de ce compte (Desjardins 1055, BNC 1060 par défaut). |
+| RG-RAP-09 | **Relevé BNC** : le sens de chaque mouvement (débit / crédit) se déduit de la variation du solde imprimé ; les totaux « TRANSACTIONS DÉBIT / CRÉDIT » du relevé doivent être retrouvés ; la facturation détaillée est ignorée. |
+| RG-RAP-10 | **Comptes bancaires** : d'autres comptes s'ajoutent dans « Administration > Sage 50 » (banque, format du relevé, compte Sage, n° de compte) ; dans une écriture de journal, seul le compte de banque du mouvement est refusé comme contrepartie (un virement d'une banque à l'autre est permis). Encaissements, caisse et RIA restent sur Desjardins. |
 | RG-RAP-07 | Un mouvement absent de Sage devient une écriture de journal général seulement après **décision** de la personne (compte choisi) ; source « Relevé AAAA-MM-JJ », vérifiée par source + date + montant. |
 
 ---
@@ -121,6 +125,13 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-FRN-09 | Factures reçues par courriel : boîte lue **sans marquer les messages comme lus** ; pièces jointes des expéditeurs ou textes configurés ; jamais un avis Interac ; jamais deux fois le même fichier (empreinte). |
 | RG-FRN-10 | La nuit, les factures « Prête à importer » sont importées (réglable) ; les autres attendent la personne. |
 | RG-FRN-11 | Une facture importée est archivée par année (PDF, données, Excel). |
+| RG-FRN-12 | **Plusieurs factures cochées** s'importent en une fois ; seules les « Prête à importer » partent, les autres sont signalées. |
+| RG-FRN-13 | **Facture photographiée** : chaque photo est une page (15 au plus), sens corrigé ; « Terminer la facture » en fait un PDF lu par l'OCR de Windows et ajouté à la liste ; les photos restent sur le serveur, jamais dans la page. |
+| RG-FRN-14 | **Même état partout** : une facture importée ou archivée depuis le web l'est aussi dans Windows, et inversement ; une facture « Importée » n'est jamais ramenée à un autre état. |
+| RG-FRN-15 | Un **courriel de compte rendu** suit chaque import de factures fournisseurs fait à la demande (mêmes destinataires que la nuit). |
+| RG-FRN-16 | Un article Clover relié qui n'existe plus (supprimé ou recréé) est écarté de la mise à jour du stock avec un message ; la mise à jour Clover se **refait** sans ajouter deux fois une ligne déjà faite. |
+| RG-FRN-17 | **Impressions** : « Bon de réception » sans prix (quantité Sage, quantité ajoutée dans Clover, observation, signature) et « Facture (avec prix) » à joindre à la facture du fournisseur. |
+| RG-FRN-18 | Le **dépôt** de la facture reçoit la marchandise : import dans l'emplacement par défaut puis transfert vers le dépôt (voir RG-DEP-02) ; stock Clover du point de vente du dépôt, rien pour un dépôt sans Clover. |
 
 ### 7.2 Paiements fournisseurs
 
@@ -200,7 +211,9 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-STK-07 | **Inventaire tournant** : les catégories sont réparties sur le cycle (8 semaines par défaut) ; la semaine ISO donne les catégories à compter. |
 | RG-STK-08 | **Perte** : coût = CUMP Sage de l'article relié, sinon coût Clover, sinon inconnu (valeur 0, signalé) ; motif obligatoire ; sortie de stock Sage puis Clover, une seule fois ; une perte annulée sort du rapport. |
 | RG-STK-09 | **Taux de perte** = pertes au coût / ventes nettes Clover de la période. |
-| RG-STK-10 | **Livre d'inventaire** à une date = stock actuel − mouvements postérieurs, valorisé au CUMP actuel. |
+| RG-STK-10 | **Livre d'inventaire** à une date = stock actuel − mouvements postérieurs, valorisé au CUMP actuel ; pour des dépôts choisis : stock de ces dépôts moins leurs mouvements postérieurs, transferts compris. |
+| RG-STK-11 | **Type d'un mouvement de Sage** : dans le journal des ajustements, seul l'indicateur de transfert de Sage dit qu'il s'agit d'un transfert ; les autres sont des entrées / sorties d'un dépôt ; une écriture sans quantité (écart de coût après une vente) n'est pas un document. |
+| RG-STK-12 | **Documents de stock imprimés** : « Mouvement d'entrée » (Reçu par / Vérifié par), « Mouvement de sortie » (motif, Sorti par / Approuvé par), « Bon de transfert » (quantité reçue et observation à remplir, Expédié par / Reçu par), « Écart d'inventaire » (théorique, compté, écart, valeur, en plus / en moins / net, Compté par / Approuvé par) ; coût « CUMP » quand il est celui de Sage. |
 
 ---
 
@@ -213,6 +226,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-DOC-03 | Les commandes clients restent dans l'application (la fonction Commandes clients n'est pas activée dans Sage) ; « Facturer la commande » produit la facture. |
 | RG-DOC-04 | Facture de vente et facture de retour client importées dans Sage ; la facture de retour a des quantités et montants négatifs. |
 | RG-DOC-05 | Un document déjà dans Sage ou déjà facturé ne se modifie ni ne se supprime dans l'application ; supprimer une facture de l'application rouvre sa commande. |
+| RG-DOC-07 | **Un modèle d'impression par type** : les documents de préparation, de livraison, de retour client, de réception et de retour fournisseur s'impriment **sans prix** (colonnes à remplir, signatures) ; les autres avec prix et taxes, et leurs mentions (devis valable 30 jours…). Le bon de livraison est un document de vente, le bon de réception un document d'achat. |
 | RG-DOC-06 | Clients et fournisseurs se **créent** depuis l'application (fiche Sage remplie et vérifiée) ; un n° de taxe hors format n'est jamais forcé. |
 
 ---
@@ -245,6 +259,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-PAI-03 | **Présence** = arrivée … départ − pauses pointées (non payées), comptée au jour de l'arrivée ; un départ pendant une pause termine la pause. |
 | RG-PAI-04 | **Heures supplémentaires** au-delà de 40 heures par semaine (dimanche-samedi). |
 | RG-PAI-05 | **Paie aux 2 semaines** ; période de 14 jours à partir de la référence ; une paie n'est jamais dans le futur (période terminée, chèques datés d'aujourd'hui au plus tard). |
+| RG-PAI-06b | **Les feuilles de temps sont approuvées par le gérant seulement** (pas d'approbation par l'employé), aux deux semaines ; le « Suivi des périodes » montre les 12 dernières périodes et la période en cours ; une période terminée non approuvée est rappelée au courriel du matin. |
 | RG-PAI-06 | Une feuille avec anomalie (départ manquant, pause non terminée, pointage sans arrivée) **ne s'approuve pas** ; une feuille changée après approbation revient « À approuver ». |
 | RG-PAI-07 | **Le calcul de la paie est fait par Sage Paie** : l'application envoie les heures approuvées (normales, supplémentaires, fériés, congés payés) ; une paie n'est jamais envoyée deux fois pour le même employé et la même période. |
 | RG-PAI-08 | **Dépôt salaire Desjardins** : tous les chèques d'une paie portent le n° « PAYjjmmaaaa » de la date des chèques. |
@@ -255,6 +270,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-PAI-13 | **Relevé d'emploi** : heures assurables des 53 dernières semaines (présences pointées), rémunération assurable des 27 dernières paies ; l'employé peut ensuite être désactivé. |
 | RG-PAI-14 | **Coût de la main-d'œuvre** = heures × taux moyen × (1 + charges sociales), comparé aux ventes du jour ; aucun taux individuel gardé. |
 | RG-PAI-15 | Un employé créé dans l'application est créé **d'abord dans Clover**, puis relié ; Clover refuse → création dans l'application seulement si la personne accepte. |
+| RG-PAI-17 | **Une cédule par dépôt** : chaque employé a un dépôt principal ; un quart sans dépôt est au dépôt principal ; les heures d'un jour comptent au dépôt du quart du jour, sinon au dépôt principal. |
 | RG-PAI-16 | Un profil limité (employé) ne voit **que ses propres** heures, horaire, paies et feuillets. |
 
 ---
@@ -281,9 +297,19 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 |---|---|
 | RG-PDV-01 | **Chaque point de vente = un dépôt Sage, un client Sage, un préfixe de facture** ; mêmes comptes de produits ; dépôts bancaires dans le même compte. |
 | RG-PDV-02 | **Une facture par point de vente et par jour** (même règle de fin de semaine). |
-| RG-PDV-03 | Un dépôt autre que l'emplacement par défaut est bloqué à l'import tant que son format n'est pas validé. |
+| RG-PDV-03 | La facture d'un point de vente dont le dépôt n'est pas l'emplacement par défaut s'importe puis se transfère dans ce dépôt ; seul un dépôt absent de Sage bloque l'import. |
 | RG-PDV-04 | Espèces, Interac et dépôts manuels des relevés : point de vente n° 1 seulement. |
 | RG-PDV-05 | Un profil peut être limité à certains points de vente. |
+| RG-PDV-06 | Le **suivi des ventes** couvre tous les points de vente visibles (colonne et filtre Dépôt) ; les **rapports de gestion** des statistiques suivent le filtre « Point de vente » (caisse : tiroir du point de vente s'il est seul choisi). |
+
+### 15.1 Dépôts
+
+| Code | Règle |
+|---|---|
+| RG-DEP-01 | **Dépôts** = emplacements de Sage : ceux des points de vente, l'« Emplacement par défaut » et les dépôts sans Clover réglés dans « Administration > Sage 50 ». Le dépôt principal est l'emplacement par défaut. |
+| RG-DEP-02 | **Import puis transfert** : une facture s'importe dans l'emplacement par défaut puis un transfert « DP <n° de facture> » la place dans son dépôt (vente, facture de retour client, retour fournisseur : du dépôt vers le défaut ; achat : du défaut vers le dépôt ; quantité négative = autre sens) ; jamais refait ; un échec du transfert laisse la facture importée et le signale « à refaire ». |
+| RG-DEP-03 | Clover n'est touché que pour un dépôt qui a un point de vente. |
+| RG-DEP-04 | **Filtre Dépôt** : un, plusieurs ou tous les dépôts (« Tout sélectionner ») ; aucun dépôt choisi = tous. |
 
 ---
 
@@ -300,6 +326,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-SEC-05 | **Droits par fonction** : chaque entrée du menu est cochée ou non pour le profil ; une page non permise est absente du menu et refusée. |
 | RG-SEC-06 | **Droits par action** dans les fenêtres (supprimer, exporter, saisir dans Sage, changer les prix, modifier les articles, traiter la paie…) donnés séparément. |
 | RG-SEC-07 | Le profil Employé **n'exporte pas** par défaut. |
+| RG-SEC-04b | **Application web : déconnexion après 5 minutes sans activité** ; la page passe d'elle-même à la connexion. |
 | RG-SEC-08 | **Audit** : chaque bouton cliqué, entrée du menu, connexion et refus est noté (moment, poste, utilisateur, fenêtre, action) ; chaque ligne porte l'empreinte de la précédente : une ligne changée est repérée ; jamais de mot de passe ni de NAS. |
 | RG-SEC-09 | Une entrée du menu renommée garde le droit donné sous son ancien nom (exemple : l'ancienne entrée RIA de Comptabilité donne accès aux trois entrées RIA). |
 
@@ -356,6 +383,7 @@ Ordre des étapes :
 | RG-EXP-02 | En Excel, les montants sont des nombres ; codes et dates restent du texte. |
 | RG-EXP-03 | En-tête des documents : logo et coordonnées de l'entreprise lus dans Clover. |
 | RG-EXP-04 | Un PDF déjà ouvert dans le lecteur n'est pas écrasé : un nouveau nom est pris. |
+| RG-EXP-05 | Les documents imprimés portent l'en-tête de l'entreprise, le filet vert / rouge / jaune, « page n / total », et les signatures prévues par leur modèle. |
 
 ## 21. Application web et déploiement
 
@@ -368,4 +396,6 @@ Ordre des étapes :
 | RG-WEB-04b | **HTTPS sans port** : https://app.marchemvogmbi.com, port 443, certificat Let's Encrypt validé par le DNS chez WHC (`certificat_https.ps1`, win-acme) ; renouvelé tous les 60 jours, relu par le serveur sans redémarrage. |
 | RG-WEB-05 | Sage ne répond pas : les pages s'affichent quand même, tableaux vides avec leurs colonnes, et un bandeau le signale. |
 | RG-WEB-06 | Un seul travail dans Sage à la fois ; le jeton anti-falsification ne paraît jamais dans une adresse. |
+| RG-WEB-08 | **Le client des postes ouvre directement l'application web** (Edge en mode application), même si le serveur ne répond pas encore ; la fenêtre de réglage seulement par le raccourci « adresse du serveur ». Installateur du client sans droits d'administrateur. |
+| RG-WEB-09 | Le **serveur web** tourne sans fenêtre, une seule copie à la fois, démarré à l'ouverture de session. |
 | RG-WEB-07 | Changer de serveur : reprendre `config.toml` et `donnees/`, retaper les mots de passe (coffre-fort propre à chaque machine), régler le serveur, relancer `installer_web.ps1` et la tâche planifiée ; retirer tâche et serveur web de l'ancien serveur (jamais deux traitements de nuit). |

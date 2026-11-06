@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "2.24.2"
+#define Version "1.0.2"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -49,6 +49,8 @@ fr.Manuel=Manuel d'utilisation
 en.Manuel=User manual
 fr.Architecture=Document d'architecture
 en.Architecture=Architecture document (French)
+fr.GuideAdmin=Guide de l'administrateur
+en.GuideAdmin=Administrator guide (French)
 fr.Documents=Documents du projet
 en.Documents=Project documents (French)
 fr.Pointage=Pointage des employés
@@ -77,6 +79,7 @@ Source: "..\dist\MVOGMBI_Sync\*"; DestDir: "{app}"; Flags: recursesubdirs create
 Source: "..\documentation\Manuel_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\User_Manual_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Architecture_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Guide_administrateur_MVOGMBI_Sync.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; documents du projet (version 1.0.0) : documentation fonctionnelle, tests, projet, workflows, processus, présentation
 Source: "..\documentation\Documentation_fonctionnelle_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Plan_de_test_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
@@ -108,6 +111,7 @@ Name: "{group}\{cm:ClientWeb}"; Filename: "{app}\client\MVOGMBI_Sync_Client.exe"
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\Manuel_MVOGMBI_Sync.pdf"; Languages: fr
 Name: "{group}\{cm:Manuel}"; Filename: "{app}\User_Manual_MVOGMBI_Sync.pdf"; Languages: en
 Name: "{group}\{cm:Architecture}"; Filename: "{app}\Architecture_MVOGMBI_Sync.pdf"
+Name: "{group}\{cm:GuideAdmin}"; Filename: "{app}\Guide_administrateur_MVOGMBI_Sync.pdf"
 Name: "{group}\{cm:Documents}"; Filename: "{app}\documentation"
 Name: "{group}\{cm:JournalTraitement}"; Filename: "{app}\donnees\journal_automatique.log"
 Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"

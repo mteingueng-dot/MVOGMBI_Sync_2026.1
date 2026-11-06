@@ -17,6 +17,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes as wt
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -223,12 +224,24 @@ class FenetreEncaissements:
     def taper(self, x: int, y: int, texte: str, nom: str = "") -> None:
         """Clique dans la cellule (x, y) de la grille, tape `texte` caractère par caractère, puis un seul Tab."""
         position = (y << 16) | x
-        user32.PostMessageW(self.grille, WM_LBUTTONDOWN, 1, position)
-        user32.PostMessageW(self.grille, WM_LBUTTONUP, 0, position)
-        time.sleep(1.0)
-        editeur = self._editeur()
+        editeur = None
+        # constat du 2026-11-06 (vrai fichier, 221 factures ouvertes juste importées) : Sage remplit la grille
+        # bien plus lentement que dans la copie d'essai ; le premier clic tombait avant la fin et la cellule ne
+        # s'ouvrait pas. On reclique jusqu'à 8 fois (environ 20 s) avant d'abandonner.
+        for essai in range(8):
+            user32.PostMessageW(self.grille, WM_LBUTTONDOWN, 1, position)
+            user32.PostMessageW(self.grille, WM_LBUTTONUP, 0, position)
+            for _ in range(5):
+                time.sleep(0.5)
+                editeur = self._editeur()
+                if editeur:
+                    break
+            if editeur:
+                break
         if not editeur:
-            raise ErreurRobot(f"La cellule « {nom or self.colonne_montant} » ne s'est pas ouverte.")
+            chemin = self.photo_diagnostic("cellule")
+            raise ErreurRobot(f"La cellule « {nom or self.colonne_montant} » ne s'est pas ouverte"
+                              + (f" (photo de la fenêtre : {chemin})." if chemin else "."))
         # surtout pas WM_SETTEXT : Sage croirait la cellule non modifiée et y mettrait tout le montant dû
         for caractere in texte:
             user32.PostMessageW(editeur, WM_CHAR, ord(caractere), 0)
@@ -238,6 +251,20 @@ class FenetreEncaissements:
         user32.PostMessageW(editeur, WM_CHAR, 0x09, 1)
         user32.PostMessageW(editeur, WM_KEYUP, 0x09, 0xC0000001)
         time.sleep(0.8)
+
+    def photo_diagnostic(self, nom: str):
+        """Photo de la fenêtre dans donnees/diagnostic_encaissements/ (jamais bloquant)."""
+        try:
+            from datetime import datetime
+
+            from .export_tableau import RACINE_ENTETE
+            from .robot_import_assistant import photo
+
+            racine = Path(RACINE_ENTETE) if RACINE_ENTETE else Path.cwd()
+            return photo(self.h, racine / "donnees" / "diagnostic_encaissements"
+                         / f"{datetime.now():%Y%m%d_%H%M%S}_{nom}.png")
+        except Exception:
+            return None
 
     def traiter(self, resultat: ResultatEncaissement) -> bool:
         user32.PostMessageW(self.h, WM_COMMAND, self.id_traiter, user32.GetDlgItem(self.h, self.id_traiter))

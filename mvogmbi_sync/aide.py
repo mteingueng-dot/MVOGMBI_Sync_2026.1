@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "2.24.2"
+VERSION = "1.0.2"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -658,7 +658,7 @@ FAQ = {
         ("sous_titre", "Application web et serveur (versions 1.1.0 à 2.15.0)"),
         ("question", "Comment utiliser l'application depuis un autre poste ou un téléphone ?"),
         ("reponse", "Installez Tailscale sur l'appareil (même compte que le serveur), puis ouvrez MVOGMBI_Sync_Client et "
-                    "tapez « app.marchemvogmbi.com » (téléphone : http://app.marchemvogmbi.com:8765 dans le "
+                    "tapez « app.marchemvogmbi.com » (téléphone : https://app.marchemvogmbi.com dans le "
                     "navigateur). L'application web est identique à l'application Windows : mêmes menus, mêmes "
                     "boutons, mêmes droits. « Application complète (Bureau à distance) » ouvre l'application Windows "
                     "du serveur."),
@@ -675,6 +675,41 @@ FAQ = {
                     "Wi-Fi du magasin (« Administration > Automatisation > Wi-Fi du magasin »). Si vous avez pointé "
                     "depuis votre téléphone et qu'il quitte le Wi-Fi 5 minutes de suite, vous êtes mis en pause (à "
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi."),
+        ("sous_titre", "Nouveautés de la version 1.0.0 : dépôts, imports, banques, impressions"),
+        ("question", "Comment travailler avec plusieurs dépôts ?"),
+        ("reponse", "Chaque point de vente a son dépôt (emplacement de Sage) ; d'autres dépôts sans Clover (entrepôt, "
+                    "réserve) se déclarent dans « Administration > Sage 50 ». Choisissez le dépôt d'une facture "
+                    "fournisseur, d'un document ou d'un employé : la facture s'importe puis l'application la transfère "
+                    "dans son dépôt (Clover suit pour un dépôt qui a un point de vente). Le planning a une cédule par "
+                    "dépôt ; les documents de stock, le livre d'inventaire, la liste des articles, la main-d'œuvre et "
+                    "le suivi des ventes ont un filtre « Dépôt » (« Tout sélectionner » pour tous)."),
+        ("question", "Pourquoi les imports passent-ils par l'assistant d'importation de Sage ?"),
+        ("reponse", "L'entreprise est partagée : l'outil d'import de Sage la refuse. L'application ouvre alors Sage "
+                    "elle-même et passe par « Fichier > Importer/Exporter > Importer des transactions », sans arrêter "
+                    "le partage. Comptez environ 2 minutes par import. Sage doit être fermé pendant l'import."),
+        ("question", "Comment photographier une facture fournisseur avec mon téléphone ?"),
+        ("reponse", "Dans l'application web, « Fournisseur > Factures fournisseurs » > « 📷 Photographier une facture » : "
+                    "prenez la première page, « ➕ Ajouter la page » pour chaque page suivante, puis « ✔ Terminer la "
+                    "facture ». Les photos deviennent un PDF lu comme les autres factures et ajouté à la liste."),
+        ("question", "Comment importer plusieurs factures fournisseurs à la fois ?"),
+        ("reponse", "Cochez les factures dans la première colonne (« ☑ Cocher les factures prêtes » les coche toutes), "
+                    "puis « ☑ Importer les factures cochées ». Seules les factures « Prête à importer » partent ; un "
+                    "courriel de compte rendu suit. Une facture importée sur le web l'est aussi dans Windows."),
+        ("question", "Comment rapprocher un compte de la Banque Nationale ou ajouter un compte bancaire ?"),
+        ("reponse", "Chargez le relevé PDF dans « Comptabilité > Rapprochement bancaire » : la banque est reconnue et "
+                    "le relevé rangé dans son compte (BNC : compte Sage 1060 par défaut). Choisissez la banque dans la "
+                    "liste « Banque ». Un autre compte s'ajoute dans « Administration > Sage 50 », carte « Comptes "
+                    "bancaires »."),
+        ("question", "Quels documents peut-on imprimer ?"),
+        ("reponse", "Chaque type de document de vente et d'achat a son modèle : bon de livraison (vente) et bon de "
+                    "réception (achat) sans prix, avec signatures ; devis, factures, commandes avec prix et taxes. "
+                    "Une facture fournisseur s'imprime en « Bon de réception » ou « Facture (avec prix) ». Le stock a "
+                    "ses modèles : mouvement d'entrée, mouvement de sortie, bon de transfert et écart d'inventaire "
+                    "(écrit à chaque saisie d'inventaire)."),
+        ("question", "Qui approuve les feuilles de temps ?"),
+        ("reponse", "Le gérant seulement, aux deux semaines : « Paie > Feuilles de temps » > « 📋 Suivi des périodes » "
+                    "montre les périodes à approuver ; une période terminée non approuvée est rappelée dans le courriel "
+                    "du matin."),
         ("sous_titre", "Nouveautés des versions 1.0.4 à 1.0.10"),
         ("question", "Comment passer les états de compte RIA dans Sage ?"),
         ("reponse", "« Comptabilité > États de compte RIA » : importez les PDF (ou « Lire le courriel » ; la nuit, les "
@@ -1250,7 +1285,7 @@ FAQ = {
         ("sous_titre", "Web application and server (versions 1.1.0 to 2.15.0)"),
         ("question", "How do I use the application from another computer or a phone?"),
         ("reponse", "Install Tailscale on the device (same account as the server), then open MVOGMBI_Sync_Client and "
-                    "type “app.marchemvogmbi.com” (phone: http://app.marchemvogmbi.com:8765 in the browser). The web "
+                    "type “app.marchemvogmbi.com” (phone: https://app.marchemvogmbi.com in the browser). The web "
                     "application is identical to the Windows application: same menus, same buttons, same rights. "
                     "“Full application (Remote Desktop)” opens the server's Windows application."),
         ("question", "How do I install the application on another server?"),
@@ -1265,6 +1300,39 @@ FAQ = {
                     "addresses (“Administration > Automation > Store Wi-Fi”). If you clocked in from your phone and it "
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi."),
+        ("sous_titre", "What's new in version 1.0.0: locations, imports, banks, printing"),
+        ("question", "How do I work with several locations?"),
+        ("reponse", "Each point of sale has its location (a Sage location); other locations without Clover (warehouse, "
+                    "storeroom) are declared in “Administration > Sage 50”. Choose the location of a supplier "
+                    "invoice, a document or an employee: the invoice is imported, then the application transfers it to "
+                    "its location (Clover follows for a location that has a point of sale). The schedule has one roster "
+                    "per location; stock documents, the inventory ledger, the item list, labour and the sales follow-up "
+                    "have a “Location” filter (“Select all” for all)."),
+        ("question", "Why do imports go through the Sage import wizard?"),
+        ("reponse", "The company is shared: the Sage import tool refuses it. The application then opens Sage itself and "
+                    "uses “File > Import/Export > Import transactions”, without stopping the sharing. Allow about "
+                    "2 minutes per import. Sage must be closed during the import."),
+        ("question", "How do I photograph a supplier invoice with my phone?"),
+        ("reponse", "In the web application, “Supplier > Supplier invoices” > “📷 Photograph an invoice”: take the "
+                    "first page, “➕ Add the page” for each following page, then “✔ Finish the invoice”. The photos "
+                    "become a PDF read like the other invoices and added to the list."),
+        ("question", "How do I import several supplier invoices at once?"),
+        ("reponse", "Tick the invoices in the first column (“☑ Tick the ready invoices” ticks them all), then "
+                    "“☑ Import the ticked invoices”. Only “Ready to import” invoices are sent; a summary email "
+                    "follows. An invoice imported on the web is imported in Windows too."),
+        ("question", "How do I reconcile a National Bank account or add a bank account?"),
+        ("reponse", "Load the PDF statement in “Accounting > Bank reconciliation”: the bank is recognised and the "
+                    "statement filed under its account (BNC: Sage account 1060 by default). Choose the bank in the "
+                    "“Bank” list. Another account is added in “Administration > Sage 50”, “Bank accounts” card."),
+        ("question", "Which documents can be printed?"),
+        ("reponse", "Each type of sales and purchase document has its template: delivery slip (sales) and receiving "
+                    "slip (purchases) without prices, with signatures; quotes, invoices, orders with prices and taxes. "
+                    "A supplier invoice prints as a “Receiving slip” or an “Invoice (with prices)”. Stock has its own "
+                    "templates: stock entry, stock exit, transfer slip and inventory variance (written at each "
+                    "inventory entry)."),
+        ("question", "Who approves timesheets?"),
+        ("reponse", "The manager only, every two weeks: “Payroll > Timesheets” > “📋 Period follow-up” shows the "
+                    "periods to approve; a finished period not yet approved is recalled in the morning email."),
         ("sous_titre", "What's new in versions 1.0.4 to 1.0.10"),
         ("question", "How do I post RIA account statements to Sage?"),
         ("reponse", "“Accounting > RIA account statements”: import the PDFs (or “Read the email”; at night, statements "

@@ -114,7 +114,11 @@ class ModelePDF(FPDF):
         y = 10
         self.set_xy(x, y)
         self.set_fill_color(*VERT)
-        self.police_(13, True, (255, 255, 255))
+        taille = 13
+        self.police_(taille, True, (255, 255, 255))
+        while taille > 8 and self.get_string_width(self.ecrire(type_document.upper())) > largeur - 4:
+            taille -= 0.5  # titre long (« FACTURE D'AVOIR FOURNISSEUR ») : jamais collé aux bords du cadre
+            self.police_(taille, True, (255, 255, 255))
         self.cell(largeur, 9, self.ecrire(type_document.upper()), align="C", fill=True, new_x="LEFT", new_y="NEXT")
         self.set_draw_color(*VERT)
         lignes = [("N°", numero), ("Date", jour)] + ([("État", etat)] if etat else [])

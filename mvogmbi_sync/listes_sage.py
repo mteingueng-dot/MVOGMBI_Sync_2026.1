@@ -160,12 +160,23 @@ def documents_stock(base, du: date, au: date, depots: list[str] | None = None) -
 
 
 # --------------------------------------------------------------------------------------------- articles
-def articles(base, categories: dict[str, str] | None = None, liens: dict[str, list[str]] | None = None
-             ) -> tuple[list[str], list[list]]:
-    """Articles Sage : type, actif, catégorie, stock, CUMP, valeur, comptes, articles Clover reliés."""
+def articles(base, categories: dict[str, str] | None = None, liens: dict[str, list[str]] | None = None,
+             depots: list[str] | None = None) -> tuple[list[str], list[list]]:
+    """Articles Sage : type, actif, catégorie, stock, CUMP, valeur, comptes, articles Clover reliés. `depots`
+    (filtre « Dépôt », None = tous) : stock et valeur des emplacements choisis seulement (tinvbyln)."""
     from .rapports import nom_categorie
 
     categories, liens = categories or {}, liens or {}
+    choisis = {d.casefold() for d in depots or []}
+    par_depot: dict[str, tuple[Decimal, Decimal]] = {}
+    if choisis:
+        for l in base.requete(
+                "SELECT TRIM(i.sPartCode) n, c.sGrpCode e, SUM(y.dInStock) q, SUM(y.dCostStk) v FROM tinvbyln y "
+                "JOIN tinvent i ON i.lId = y.lInventId LEFT JOIN tinvloc c ON c.lId = y.lInvLocId "
+                "GROUP BY i.sPartCode, c.sGrpCode"):
+            if emplacement(l["e"]).casefold() in choisis:
+                q, v = par_depot.get(l["n"], (Decimal(0), Decimal(0)))
+                par_depot[l["n"]] = (q + Decimal(str(l["q"] or 0)), v + Decimal(str(l["v"] or 0)))
     comptes = {r["lId"]: r["sName"] or "" for r in base.requete("SELECT lId, sName FROM taccount")}
     lignes = []
     for l in base.requete(
@@ -174,6 +185,9 @@ def articles(base, categories: dict[str, str] | None = None, liens: dict[str, li
             "LEFT JOIN tinvbyln y ON y.lInventId = i.lId GROUP BY i.lId, i.sPartCode, i.sName, i.bService, "
             "i.bInactive, i.lAcNAsset, i.lAcNRev, i.lAcNExp"):
         quantite, valeur = _q(l["q"]), _d(l["v"])
+        if choisis:
+            q, v = par_depot.get(l["n"], (Decimal(0), Decimal(0)))
+            quantite, valeur = _q(q), _d(v)
         compte = l["ac"] or l["r"] or l["x"]  # un service n'a souvent qu'un compte de charges
         lignes.append([l["n"], reparer_texte(l["nom"] or ""), "Service" if l["s"] else "Stock",
                        "Inactif" if l["a"] else "Actif",

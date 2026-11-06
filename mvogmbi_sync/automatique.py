@@ -588,7 +588,7 @@ def recevoir_avis_paiement(racine: Path, config_toml: dict, cr: CompteRendu) -> 
     page « Paiements fournisseurs », à confirmer ; rien n'est payé sans confirmation."""
     from . import coffre
     from .paiements_courriel import lire_boite
-    from .paiements_fournisseurs import Registre
+    from .paiements_fournisseurs import RegistrePaiements as Registre
 
     b = config_toml.get("boite_paiements", {})
     if not (b.get("serveur") and b.get("utilisateur")) or not coffre.present(coffre.BOITE_PAIEMENTS):
@@ -805,15 +805,25 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
     finally:
         verrou.unlink(missing_ok=True)
     if not simulation:
-        recevoir_factures_fournisseurs(racine, config_toml, cr)
-        recevoir_avis_paiement(racine, config_toml, cr)
-        archiver_factures_deja_dans_sage(racine, config_toml, cr)
-        importer_factures_pretes(racine, config_toml, cr)
-        recevoir_etats_ria(racine, config_toml, cr)
-        prechauffer_statistiques(racine, cr)
-        preparer_resume(racine, config_toml, cr)
-        promotions_et_tableau(racine, config_toml, cr)
-        sauvegarder_donnees(racine, config_toml, cr)
+        # une étape en erreur n'arrête jamais les suivantes, ni le journal, ni le courriel (constat du 2026-11-06 :
+        # une erreur dans la lecture des avis Interac arrêtait tout : ni archivage, ni courriel, ni journal)
+        etapes = (
+            ("Factures fournisseurs du courriel", lambda: recevoir_factures_fournisseurs(racine, config_toml, cr)),
+            ("Avis de paiement Interac", lambda: recevoir_avis_paiement(racine, config_toml, cr)),
+            ("Archivage des factures déjà dans Sage", lambda: archiver_factures_deja_dans_sage(racine, config_toml, cr)),
+            ("Import des factures fournisseurs prêtes", lambda: importer_factures_pretes(racine, config_toml, cr)),
+            ("États RIA", lambda: recevoir_etats_ria(racine, config_toml, cr)),
+            ("Statistiques", lambda: prechauffer_statistiques(racine, cr)),
+            ("Résumé du matin", lambda: preparer_resume(racine, config_toml, cr)),
+            ("Promotions et tableau du gérant", lambda: promotions_et_tableau(racine, config_toml, cr)),
+            ("Sauvegarde des données", lambda: sauvegarder_donnees(racine, config_toml, cr)),
+        )
+        for nom, etape in etapes:
+            try:
+                etape()
+            except Exception as exc:
+                cr.note(f"{nom} : non fait ({exc}).")
+                print(f"{nom} : {traceback.format_exc()}", flush=True)
     ecrire_journal(racine, cr)
     if not simulation or config_toml.get("courriel", {}).get("envoyer_si_simulation", False):
         try:

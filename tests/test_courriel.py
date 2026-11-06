@@ -71,3 +71,44 @@ def test_courriel_du_bouton_encaisser():
     cr = CompteRendu(seulement_encaissements=True)
     cr.encaissements = ["Dépôt du 2026-10-27 : 1,000.00 $ au compte 1055 (Vente 2026-10-26)"]
     assert sujet_compte_rendu(cr) == "MVOGMBI_Sync : encaissements — 1 dépôt(s) encaissé(s)"
+
+
+def test_port_465_toujours_en_ssl(monkeypatch):
+    """Port 465 réglé en starttls (constat du 2026-11-06) : la connexion se fait en SSL, sinon l'envoi attend puis
+    échoue (« Connection unexpectedly closed: timed out »)."""
+    import smtplib
+    from email.message import EmailMessage
+
+    from mvogmbi_sync import courriel
+
+    utilises = []
+
+    class Faux:
+        def __init__(self, *a, **k):
+            utilises.append(type(self).__name__)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self, **k):
+            utilises.append("starttls")
+
+        def login(self, *a):
+            pass
+
+        def send_message(self, m):
+            utilises.append("envoyé")
+
+    class FauxSSL(Faux):
+        pass
+
+    monkeypatch.setattr(smtplib, "SMTP", Faux)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", FauxSSL)
+    courriel._expedier_une_fois({"serveur": "x", "port": 465, "securite": "starttls"}, EmailMessage(), 5)
+    assert utilises == ["FauxSSL", "envoyé"]
+    utilises.clear()
+    courriel._expedier_une_fois({"serveur": "x", "port": 587, "securite": "starttls"}, EmailMessage(), 5)
+    assert utilises == ["Faux", "starttls", "envoyé"]

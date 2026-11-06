@@ -1,8 +1,8 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 2.17.0 (5 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.2 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
-Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation.
+Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation ; l'installation, la configuration et le dépannage sont dans le guide de l'administrateur.
 
 ---
 
@@ -14,9 +14,10 @@ Le marché encaisse ses ventes avec **Clover** (caisse et terminal de paiement) 
 |---|---|
 | Passer les ventes de la caisse en comptabilité | Une facture de vente par jour (une seule pour la fin de semaine), une ligne par article, importée la nuit |
 | Encaisser les dépôts bancaires | Dépôts Clover, virements Interac et dépôts d'espèces appliqués sur les factures |
-| Traiter les factures des fournisseurs | Lecture des PDF (courriel ou dossier), correspondance des articles, import dans Sage (aussi la nuit), mise à jour du stock Clover |
+| Traiter les factures des fournisseurs | Lecture des PDF (courriel, dossier ou photo prise au téléphone), correspondance des articles, import dans Sage (aussi la nuit), mise à jour du stock Clover |
 | Payer les fournisseurs | Avis de virement Interac lus et rapprochés des factures, paiement saisi dans Sage |
-| Contrôler la banque | Relevés Desjardins rapprochés du compte de dépôt de Sage |
+| Contrôler la banque | Relevés Desjardins et Banque Nationale (BNC) rapprochés du compte Sage de chaque banque ; autres comptes bancaires ajoutés dans la configuration |
+| Travailler sur plusieurs sites | Dépôts (emplacements de Sage), avec ou sans Clover : factures, stock, employés, planning et états par dépôt |
 | Tenir l'agence RIA | États de compte RIA lus, envois et versements passés dans Sage, commissions reconnues |
 | Piloter le commerce | Statistiques comme Clover, bénéfices au coût moyen Sage, prévisions, articles 20/80, péremption, rapports de gestion |
 | Gérer comme dans Sage | Listes, fiches, chaîne des documents de vente et d'achat, documents de stock, plan comptable ; créations, modifications et suppressions dans Sage et dans Clover |
@@ -46,7 +47,8 @@ Règles d'accès :
 - Un profil peut être limité à certains **points de vente** ; le profil Employé ne voit que **ses** heures, paies et feuillets.
 - Les mêmes comptes, profils et droits servent dans l'application Windows et dans l'application web.
 - Application web : mot de passe à part, 12 caractères au moins avec minuscule, majuscule, chiffre et caractère spécial, créé à la 1re connexion web.
-- Mot de passe d'au moins 6 caractères, jamais gardé en clair ; **3 essais faux = compte verrouillé** ; écran verrouillé après 5 minutes sans activité.
+- Mot de passe d'au moins 6 caractères, jamais gardé en clair ; **3 essais faux = compte verrouillé** ; écran verrouillé après 5 minutes sans activité (application web : déconnexion après 5 minutes sans activité).
+- Un compte se **désactive** sans être supprimé (employé parti ou absent) ; ses sessions se ferment.
 - Chaque action est notée à l'**audit** (qui, quand, sur quel poste, dans quelle fenêtre).
 
 ---
@@ -63,9 +65,9 @@ Règles d'accès :
 | Fonction | Ce qu'elle fait |
 |---|---|
 | Clover | Identifiant marchand, jeton d'accès (gardé dans le coffre-fort Windows), points de vente |
-| Sage 50 | Fichier de l'entreprise, utilisateur de lecture, client des ventes, dépôts ; carte « Paie » (première paie de l'année, délai de paiement) |
+| Sage 50 | Fichier de l'entreprise, utilisateur de lecture, client des ventes, dépôts sans Clover (entrepôt, réserve…) ; carte « Paie » (première paie de l'année, délai de paiement) ; carte « Comptes bancaires (rapprochement) » (Desjardins, BNC et autres comptes : banque, format du relevé, compte Sage, n° de compte) |
 | Courriel | Envoi du compte rendu et copie cachée (Cci) ; boîte des avis de paiement et des factures ; boîte des états RIA |
-| Automatisation | Heure du traitement de nuit, date de départ, encaissements automatiques, « Lancer maintenant » ; carte « Serveur de l'application » (ordinateur, adresse Tailscale, adresse locale, nom tapé dans le client, port, fichier `serveur.json` du client) ; carte « Wi-Fi du magasin (pointage) » (nom du Wi-Fi, adresses du magasin, postes du magasin) |
+| Automatisation | Heure du traitement de nuit, date de départ, encaissements automatiques, « Lancer maintenant » ; carte « Serveur de l'application » (ordinateur, adresse Tailscale, adresse locale, nom tapé dans le client, port, certificat et clé HTTPS, fichier `serveur.json` du client) ; carte « Wi-Fi du magasin (pointage) » (nom du Wi-Fi, adresses du magasin, postes du magasin) |
 | Sauvegarde des données | Archive chaque nuit, conservation 14 jours / 8 semaines / 12 mois, restauration |
 | Journal des opérations | Ce qui a été fait, filtres par date, source et texte |
 | Audit des actions | Chaque bouton, entrée du menu et connexion ; lignes chaînées, une modification est repérée |
@@ -76,7 +78,7 @@ Règles d'accès :
 
 | Fonction | Règles principales |
 |---|---|
-| Liste des articles | Caractéristiques Clover et Sage côte à côte ; comptes, coût moyen (CUMP), stock. **Modifier** : description et inactif dans Sage, article Clover relié renommé. **Supprimer** : de Sage puis de Clover ; si Sage refuse (article encore en stock), l'article est rendu inactif et l'article Clover gardé |
+| Liste des articles | Caractéristiques Clover et Sage côte à côte ; comptes, coût moyen (CUMP), stock ; filtre **Dépôt** (stock et valeur des dépôts choisis). **Modifier** : description et inactif dans Sage, article Clover relié renommé. **Supprimer** : de Sage puis de Clover ; si Sage refuse (article encore en stock), l'article est rendu inactif et l'article Clover gardé |
 | Articles Clover | Catalogue Clover, date de péremption lue dans l'UGS, UGS qui ne sont pas des dates effacées sur confirmation |
 | Créer un article | **Stock** : créé dans Clover et dans Sage en une fois, prix de vente proposé = coût + 40 %, date de péremption obligatoire dans l'UGS. **Service** : créé dans **Sage seulement**, jamais dans Clover ; n° « S… », compte de charges obligatoire, compte de produits facultatif |
 | Étiquettes de prix | Feuilles Avery 5160 ou imprimante à tickets, code-barres Code 128, prix au poids |
@@ -89,11 +91,11 @@ Règles d'accès :
 
 | Fonction | Règles principales |
 |---|---|
-| Documents de stock | Entrée, sortie, ajustement, **toujours depuis un dépôt** rattaché à un point de vente ; passés dans Sage puis Clover ; un document passé s'annule par son inverse |
-| Transferts entre magasins | Sage d'abord (transfert entre emplacements), puis stocks Clover des deux points de vente |
+| Documents de stock | Entrée, sortie, ajustement, **toujours depuis un dépôt** ; passés dans Sage puis Clover ; un document passé s'annule par son inverse ; colonne et filtre **Dépôt** (lu dans Sage, « départ → arrivée » pour un transfert) ; imprimés « Mouvement d'entrée » / « Mouvement de sortie » |
+| Transferts entre magasins | Sage d'abord (transfert entre emplacements), puis stocks Clover des deux points de vente ; « Bon de transfert » imprimé (quantité reçue et signatures à remplir) |
 | Pertes et démarque | Motif obligatoire (périmé, abîmé, vol…), coût au CUMP, sortie de stock Sage puis Clover, taux de perte ; une perte s'ouvre, se modifie ou s'annule |
-| Inventaire / inventaire tournant | Fichier à remplir, quantités comptées saisies dans Clover et dans Sage ; catégories réparties sur 8 semaines |
-| Livre d'inventaire | Stock et valeur à une date, par catégorie |
+| Inventaire / inventaire tournant | Fichier à remplir, quantités comptées saisies dans Clover et dans Sage ; « Écart d'inventaire » imprimé (théorique, compté, écart, valeur) ; catégories réparties sur 8 semaines |
+| Livre d'inventaire | Stock et valeur à une date, par catégorie et par dépôt |
 
 ### 3.5 Vente
 
@@ -101,15 +103,15 @@ Règles d'accès :
 |---|---|
 | Ventes Clover → factures Sage | Voir 4.1 |
 | Clients | Liste et fiches lues dans Sage ; création de clients dans Sage (compte de produits, « mes n° d'articles ») |
-| Documents de vente | Chaîne **devis → commande → préparation / livraison → facture**, retour client → facture de retour ; « Transformer » reprend les lignes ; seules les factures touchent le stock, Sage puis Clover |
+| Documents de vente | Chaîne **devis → commande → préparation / livraison → facture**, retour client → facture de retour ; « Transformer » reprend les lignes ; seules les factures touchent le stock, Sage puis Clover ; un modèle d'impression par type (bon de préparation et **bon de livraison sans prix**, devis valable 30 jours…) ; la facture se passe dans le dépôt choisi |
 | Clients professionnels et relances | Factures échues, lettre de relance envoyée au seul client |
 
 ### 3.6 Fournisseur
 
 | Fonction | Règles principales |
 |---|---|
-| Factures fournisseurs | Lues dans les PDF (texte ou OCR Windows), totaux contrôlés ; Qté Sage = Qté × Facteur ; Prix Sage = Montant / Qté Sage ; n° de facture obligatoire ; doublons refusés ; les factures prêtes sont aussi importées la nuit |
-| Documents d'achat | Chaîne **demande de prix → bon de commande → réception → facture**, retour → facture de retour |
+| Factures fournisseurs | Lues dans les PDF (texte ou OCR Windows) ou **photographiées depuis le téléphone** (une photo par page, un PDF) ; totaux contrôlés ; Qté Sage = Qté × Facteur ; Prix Sage = Montant / Qté Sage ; n° de facture obligatoire ; doublons refusés ; **dépôt** de réception ; plusieurs factures **cochées** importées en une fois ; les factures prêtes sont aussi importées la nuit ; compte rendu par courriel après un import ; même état en temps réel dans Windows et sur le web ; « Bon de réception » (sans prix) et « Facture (avec prix) » imprimés ; « Refaire la mise à jour Clover » |
+| Documents d'achat | Chaîne **demande de prix → bon de commande → réception → facture**, retour → facture de retour ; **bon de réception sans prix** |
 | Bons de commande | Proposés d'après les ventes et le stock (couvrir 7 à 28 jours), un bon par fournisseur en unités du fournisseur, comparés à la facture reçue |
 | Retours fournisseurs | Facture d'achat négative importée, stock Clover diminué |
 | Factures archivées | PDF, détail et Excel classés par année |
@@ -120,7 +122,7 @@ Règles d'accès :
 |---|---|
 | Encaissements | Voir 4.2 |
 | Paiements fournisseurs | Avis Interac rapprochés, confirmés par le propriétaire, saisis dans Sage ; jamais plus que le solde dû |
-| Rapprochement bancaire | Relevé Desjardins comparé au compte de dépôt ; écart expliqué ligne par ligne |
+| Rapprochement bancaire | Relevé **Desjardins ou BNC** (banque reconnue à la lecture, rangé dans son compte) comparé au compte Sage de cette banque ; liste « Banque » ; écart expliqué ligne par ligne ; un virement entre deux comptes de banque est permis |
 | États de compte RIA | États RIA importés à la main ou par courriel, recontrôlés ligne par ligne ; « Traiter dans Sage » crée les opérations (voir 4.3) |
 | Comptes RIA | Comptes RIA, commissions et espèces ; chacun doit exister dans le plan comptable |
 | Contrôle de la caisse | Espèces attendues (fond + ventes en espèces − remboursements − remises) contre comptage par coupures ; alerte au-delà de 5 $ |
@@ -139,9 +141,9 @@ Règles d'accès :
 | Fonction | Règles principales |
 |---|---|
 | Pointage | Au magasin, par NIP de 4 à 6 chiffres ; arrivée, pause, départ ; 5 erreurs = blocage d'une minute |
-| Planning mensuel / Mon horaire | Quarts par employé ; chacun voit son horaire publié |
-| Feuilles de temps | Présence − pauses ; heures supplémentaires au-delà de 40 h par semaine ; une feuille changée revient « À approuver » |
-| Employés | Créés dans Clover et dans Sage Paie, courriel obligatoire pour le bulletin ; le NAS n'est jamais gardé |
+| Planning mensuel / Mon horaire | Quarts par employé ; **une cédule par dépôt** (filtre Dépôt, quart dans un autre dépôt marqué « @dépôt ») ; chacun voit son horaire publié |
+| Feuilles de temps | Présence − pauses ; heures supplémentaires au-delà de 40 h par semaine ; **approuvées par le gérant seulement** ; une feuille changée revient « À approuver » ; « Suivi des périodes » (en cours, à approuver, approuvée, envoyée à Sage) et rappel au courriel du matin ; filtre Dépôt |
+| Employés | Créés dans Clover et dans Sage Paie, courriel obligatoire pour le bulletin ; **dépôt principal** de chacun ; le NAS n'est jamais gardé |
 | Jours fériés et congés | Normes du travail du Québec : indemnité = 1/20 des 4 semaines précédentes, vacances 4 % / 6 % |
 | Calendrier de paie | Paies aux 14 jours à partir de la première paie de l'année (réglée dans Administration > Sage 50) |
 | Traitement de la paie | Heures **approuvées** de l'application → chèques de paie dans Sage, jamais pour une période à venir ; bulletins imprimés ou envoyés, un destinataire par bulletin |
@@ -151,9 +153,9 @@ Règles d'accès :
 
 ### 3.10 État
 
-Suivi des ventes facture par facture, recherche dans l'historique Sage (client, fournisseur, article, catégorie), statistiques comme Clover (aperçu, rapports, finances, articles, employés, clients, prévisions), produits inactifs, articles 20/80. Les filtres acceptent **plusieurs valeurs** (articles, catégories, employés…) et un ou plusieurs **points de vente**.
+Suivi des ventes facture par facture (**tous les points de vente**, colonne et filtre Dépôt), recherche dans l'historique Sage (client, fournisseur, article, catégorie), statistiques comme Clover (aperçu, rapports, finances, articles, employés, clients, prévisions), produits inactifs, articles 20/80. Les filtres acceptent **plusieurs valeurs** (articles, catégories, employés…) et un ou plusieurs **points de vente**.
 
-Section **« Gestion »** des statistiques : un rapport par fonction de gestion (pertes et démarque, contrôle de la caisse, petite caisse et dépenses, main-d'œuvre, promotions, retours fournisseurs, bons de commande). Pour la période choisie, chacun présente des **cartes d'indicateurs**, un **graphique d'évolution** (par jour jusqu'à 62 jours, sinon par mois), une **carte graphique de répartition** (par motif, compte, employé, fournisseur ou état) et le **rapport détaillé** exportable. Chaque tableau s'exporte (si le profil le permet) en Excel, CSV, PDF ou s'imprime avec l'en-tête de l'entreprise.
+Section **« Gestion »** des statistiques : un rapport par fonction de gestion (pertes et démarque, contrôle de la caisse, petite caisse et dépenses, main-d'œuvre, promotions, retours fournisseurs, bons de commande). Ils suivent le filtre « Point de vente » (pertes, promotions, retours, caisse et main-d'œuvre du point de vente choisi). Pour la période choisie, chacun présente des **cartes d'indicateurs**, un **graphique d'évolution** (par jour jusqu'à 62 jours, sinon par mois), une **carte graphique de répartition** (par motif, compte, employé, fournisseur ou état) et le **rapport détaillé** exportable. Chaque tableau s'exporte (si le profil le permet) en Excel, CSV, PDF ou s'imprime avec l'en-tête de l'entreprise.
 
 ---
 
@@ -188,13 +190,21 @@ Les règles complètes, codées par module, sont dans le document **Règles d'af
 
 ### 4.4 Sage
 
-- **Import** (factures de vente et d'achat) : Sage fermé, **mono-utilisateur**.
+- **Import** (factures de vente et d'achat) : Sage fermé, **mono-utilisateur**. L'entreprise est **partagée** : l'outil d'import la refuse, l'application passe alors par l'**Assistant d'importation des transactions** de Sage, sans arrêter le partage.
 - **Saisies** (encaissements, paiements, journal, stock, fiches, plan comptable, paie) : **multi-utilisateur**, la personne peut garder Sage ouvert. Exception : rendre un compte ou un article inactif, que Sage n'accepte qu'en mono-utilisateur.
 - Chaque écriture est **vérifiée dans la base de Sage** après coup.
 - Tout essai se fait d'abord sur une **copie** du fichier d'entreprise.
 - L'application ne modifie jamais les paramètres de Sage.
 
-### 4.5 Données et confidentialité
+### 4.5 Dépôts et sites
+
+1. Un **dépôt** est un emplacement d'inventaire de Sage : celui d'un point de vente Clover, l'« Emplacement par défaut » ou un dépôt sans Clover (entrepôt, réserve).
+2. Une facture (vente, achat, retour) s'importe dans l'emplacement par défaut, puis un **transfert** « DP <n° de facture> » la place dans son dépôt : vente et retour fournisseur = du dépôt vers le défaut, achat = du défaut vers le dépôt ; jamais refait. Si le transfert échoue, la facture reste importée et le transfert est signalé « à refaire ».
+3. Clover n'est mis à jour que pour un dépôt qui a un point de vente.
+4. Chaque employé a un dépôt principal ; un quart peut être dans un autre dépôt.
+5. Les états (documents de stock, livre d'inventaire, liste des articles, main-d'œuvre, suivi des ventes) se filtrent sur un ou plusieurs dépôts, ou « Tout sélectionner ».
+
+### 4.6 Données et confidentialité
 
 - Secrets (jeton Clover, mots de passe Sage et courriel) dans le coffre-fort de Windows uniquement.
 - Aucune intelligence artificielle ni service externe pour lire les factures : OCR intégré à Windows.
@@ -210,7 +220,7 @@ Chaque nuit, sans intervention :
 1. Factures fournisseurs et avis de paiement reçus par courriel lus ; factures « Prête à importer » importées dans Sage.
 2. États de compte RIA reçus lus ; opérations saisies dans Sage si les comptes sont renseignés.
 3. Ventes Clover lues pour chaque jour sans facture, du plus ancien au plus récent.
-4. Factures préparées, contrôlées, importées dans Sage par lots.
+4. Factures préparées, contrôlées, importées dans Sage par lots (par l'assistant d'importation si l'entreprise est partagée), puis transférées dans le dépôt de leur point de vente.
 5. Dépôts des ventes importées encaissés.
 6. Paiements fournisseurs confirmés saisis.
 7. Promotions appliquées, statistiques préchauffées, tableau du gérant écrit.
@@ -226,7 +236,9 @@ Chaque nuit, sans intervention :
 | Ventes, articles, stocks Clover, employés | Clover | caches par jour, catalogue |
 | Factures, encaissements, comptes, articles et stocks Sage | Sage | lectures gardées quelques minutes |
 | Correspondance Clover → Sage | Application (validée par le propriétaire) | `correspondance_articles.xlsx` |
-| Factures fournisseurs lues, bons de commande, documents | Application, puis Sage | registres JSON, PDF |
+| Factures fournisseurs lues, bons de commande, documents | Application, puis Sage | registres JSON, PDF, impressions |
+| Relevés bancaires | Banque (PDF chargé à la main) | un dossier par compte (`releves_<code>/`) |
+| Dépôts | Sage (emplacements) + réglage « dépôts sans Clover » | `config.toml` |
 | États et opérations RIA | RIA (états), application (opérations), puis Sage | `ria.json`, `etats_ria/` |
 | Pointages, feuilles de temps, planning, congés | Application | registres JSON (jamais effacés) |
 | Comptes, droits et audit | Application | `utilisateurs.json` (empreintes), `audit.jsonl` |
@@ -254,8 +266,12 @@ Chaque nuit, sans intervention :
 |---|---|
 | CUMP | Coût unitaire moyen pondéré du stock dans Sage |
 | Correspondance | Lien entre un article Clover et un numéro d'article Sage |
-| Dépôt (stock) | Emplacement d'inventaire Sage rattaché à un point de vente |
+| Assistant d'importation | Fonction de Sage « Fichier > Importer/Exporter > Importer des transactions », utilisée quand l'entreprise est partagée |
+| BNC | Banque Nationale du Canada ; relevés lus comme ceux de Desjardins |
+| Bon de réception / bon de livraison | Document sans prix : réception d'un achat / livraison d'une vente |
+| Dépôt (stock) | Emplacement d'inventaire Sage : d'un point de vente, par défaut, ou sans Clover |
 | Dépôt (banque) | Versement Clover sur le compte Desjardins |
+| Entreprise partagée | Fichier Sage ouvert par plusieurs postes ; l'outil d'import le refuse |
 | Facteur | Nombre d'unités Sage dans une unité du fournisseur |
 | FRC / FRT | Facture de retour client / fournisseur (quantités et montants négatifs) |
 | Lot Clover | Paiements par carte fermés chaque soir et déposés ensemble |
