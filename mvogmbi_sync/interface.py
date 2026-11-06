@@ -210,6 +210,11 @@ class Application(tk.Tk):
         self.chemin_config = racine / "config.toml"
         self.config_toml = lire_config(self.chemin_config)
         langues.depuis_config(self.config_toml)
+        if session is not None:  # Sage ouvert pour les saisies de la journée (règle du propriétaire du 2026-11-06)
+            from .__main__ import garder_sage_ouvert
+
+            threading.Thread(target=garder_sage_ouvert, args=(Path(racine),), daemon=True,
+                             name="sage-journee").start()
         self.file_messages: queue.Queue = queue.Queue()
         self.title(TITRE)
         largeur = min(1320, self.winfo_screenwidth() - 60)

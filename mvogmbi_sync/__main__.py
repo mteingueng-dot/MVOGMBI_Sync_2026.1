@@ -636,7 +636,7 @@ def _base_gardee(config_toml: dict, fichier, fonction):
 # le bureau caché (commande interne `garder-sage`, ~70 s) et le garde ouvert DUREE_GARDE secondes après la
 # dernière lecture ; `fermer_bases` le referme avant toute saisie, tout import ou toute ouverture de Sage.
 REFUS_AVANT_ABANDON = 5
-_SAGE_GARDE = {"fil": None, "dossier": None, "fichier": None, "pid": None}
+_SAGE_GARDE = {"fil": None, "dossier": None, "fichier": None, "pid": None, "permanent": False}
 ATTENTE_SAGE_GARDE = 420
 
 
@@ -655,13 +655,14 @@ _VERROU_GARDE = threading.Lock()  # une seule ouverture de Sage à la fois (deux
 OUVERTURE_SAGE = {"permise": True}
 
 
-def _sage_garde(config_toml: dict, fichier) -> None:
-    """Ouvre Sage sur le fichier (bureau caché) s'il ne l'est pas déjà par l'application ; lève une erreur sinon."""
+def _sage_garde(config_toml: dict, fichier, permanent: bool = False) -> None:
+    """Ouvre Sage sur le fichier (bureau caché) s'il ne l'est pas déjà par l'application ; lève une erreur sinon.
+    `permanent` : gardé ouvert jusqu'à la fermeture de l'application (saisies de la journée)."""
     with _VERROU_GARDE:
-        _ouvrir_sage_garde(config_toml, fichier)
+        _ouvrir_sage_garde(config_toml, fichier, permanent)
 
 
-def _ouvrir_sage_garde(config_toml: dict, fichier) -> None:
+def _ouvrir_sage_garde(config_toml: dict, fichier, permanent: bool = False) -> None:
     import json
     import tempfile
     import time
@@ -672,13 +673,13 @@ def _ouvrir_sage_garde(config_toml: dict, fichier) -> None:
     if fil is not None and fil.is_alive() and _SAGE_GARDE["fichier"] == str(fichier):
         _signal_garde("lecture")
         return
-    fermer_bases()  # un autre fichier, ou l'outil d'import : refermés d'abord
+    fermer_bases(sage=True)  # un autre fichier, ou l'outil d'import : refermés d'abord
     if sage_bureau.sage_ouvert():
         raise RuntimeError("Sage est ouvert sur un autre fichier d'entreprise : sa base ne peut pas être lue.")
     dossier = Path(tempfile.mkdtemp(prefix="mvogmbi_garde_"))
-    _SAGE_GARDE.update(dossier=str(dossier), fichier=str(fichier), pid=None)
+    _SAGE_GARDE.update(dossier=str(dossier), fichier=str(fichier), pid=None, permanent=permanent)
     commande = commande_moteur() + ["garder-sage", "--fichier", str(fichier), "--dossier", str(dossier),
-                                    "--duree", str(DUREE_GARDE)]
+                                    "--duree", str(10 ** 9 if permanent else DUREE_GARDE)]
     fil = threading.Thread(target=sage_bureau.executer_sur_bureau_cache,
                            args=(commande, RACINE, 24 * 3600, False), daemon=True, name="garde-sage")
     _SAGE_GARDE["fil"] = fil
@@ -697,15 +698,17 @@ def _ouvrir_sage_garde(config_toml: dict, fichier) -> None:
         _SAGE_GARDE["pid"] = etat["pid"]
         sage_bureau.PIDS_GARDES.add(int(etat["pid"]))
         return
-    fermer_bases()
+    fermer_bases(sage=True)
     raise RuntimeError("Lecture de Sage impossible : l'application n'a pas pu ouvrir Sage. "
                        + str(etat.get("erreur", "délai dépassé")))
 
 
-def _fermer_sage_garde() -> None:
+def _fermer_sage_garde(sage: bool = True) -> None:
     fil = _SAGE_GARDE["fil"]
     if fil is None or threading.current_thread() is fil:
         return
+    if _SAGE_GARDE.get("permanent") and not sage and fil.is_alive():
+        return  # Sage gardé pour les saisies de la journée : seuls l'import, la nuit et la sortie le referment
     if fil.is_alive():
         _signal_garde("arret")
         fil.join(timeout=120)
@@ -713,7 +716,49 @@ def _fermer_sage_garde() -> None:
 
     if _SAGE_GARDE["pid"]:
         sage_bureau.PIDS_GARDES.discard(int(_SAGE_GARDE["pid"]))
-    _SAGE_GARDE.update(fil=None, fichier=None, pid=None)
+    _SAGE_GARDE.update(fil=None, fichier=None, pid=None, permanent=False)
+
+
+def garder_sage_ouvert(racine: Path, lire_config=None, journal=None) -> None:
+    """Fil de l'application (fenêtre Windows ou serveur web) : Sage ouvert en multi-utilisateur sur le bureau caché
+    pendant la journée (règle du propriétaire du 2026-11-06), refermé la nuit (0 h - 6 h) et pendant le traitement
+    de nuit (donnees/traitement.verrou), jamais rouvert pendant un travail mono-utilisateur (import) ; un seul Sage
+    gardé pour tout le serveur (marque donnees/sage_garde.json). [sage] garder_ouvert = false : comme avant."""
+    import time as _temps
+    from datetime import datetime as _maintenant
+
+    from . import sage_bureau
+
+    def config():
+        if lire_config:
+            return lire_config()
+        chemin = Path(racine) / "config.toml"
+        return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
+
+    while True:
+        try:
+            c = config()
+            fichier = c.get("sage_import", {}).get("fichier_entreprise")
+            nuit = _maintenant.now().hour < 6 or (Path(racine) / "donnees" / "traitement.verrou").exists()
+            a_moi = _SAGE_GARDE.get("permanent") and _SAGE_GARDE["fil"] is not None and _SAGE_GARDE["fil"].is_alive()
+            if not c.get("sage", {}).get("garder_ouvert", True) or not fichier:
+                if a_moi:
+                    fermer_bases(sage=True)
+            elif nuit:
+                if a_moi:
+                    fermer_bases(sage=True)
+                    if journal:
+                        journal("Sage refermé pour la nuit.")
+            elif (not a_moi and not sage_bureau.sage_garde(meme_session=False) and not sage_bureau.mono_en_cours()
+                  and executable_import() and not sage_bureau.sage_ouvert_dans_cette_session()):
+                debut = _temps.time()
+                _sage_garde(c, fichier, permanent=True)
+                if journal:
+                    journal(f"Sage ouvert pour les saisies de la journée ({_temps.time() - debut:.0f} s).")
+        except Exception as exc:  # noqa: BLE001 — réessayé à la minute suivante
+            if journal:
+                journal(f"Sage gardé ouvert : {exc}")
+        _temps.sleep(60)
 
 
 def commande_garder_sage(args) -> None:
@@ -737,6 +782,9 @@ def commande_garder_sage(args) -> None:
             (dossier / "pret.json").write_text(json.dumps({"erreur": str(exc)}, ensure_ascii=False), encoding="utf-8")
             return
         (dossier / "pret.json").write_text(json.dumps({"pid": session.processus.pid}), encoding="utf-8")
+        from .sage_bureau import noter_sage_garde
+
+        noter_sage_garde(session.processus.pid, args.fichier, dossier)  # les saisies l'utilisent tel quel
         lecture = dossier / "lecture"
         debut = time.time()
         while not (dossier / "arret").exists():
@@ -745,6 +793,10 @@ def commande_garder_sage(args) -> None:
                 break
             time.sleep(1)
     finally:
+        if session.processus is not None and not getattr(session, "emprunte", False):
+            from .sage_bureau import oublier_sage_garde
+
+            oublier_sage_garde(session.processus.pid)
         session.fermer()
 
 
@@ -752,7 +804,7 @@ def _fermer_a_la_sortie() -> None:
     """Le fil de garde est un fil « daemon » : sans cela, la sortie du programme le coupe et laisse l'outil d'import
     ouvert sur l'entreprise (constat du 2026-10-29)."""
     try:
-        fermer_bases()
+        fermer_bases(sage=True)
     except Exception:
         pass
 
@@ -760,7 +812,7 @@ def _fermer_a_la_sortie() -> None:
 atexit.register(_fermer_a_la_sortie)
 
 
-def fermer_bases() -> None:
+def fermer_bases(sage: bool = False) -> None:
     """Ferme les connexions gardées : à faire AVANT d'ouvrir Sage, d'importer ou de refermer Sage. Sinon Sage voit
     un autre utilisateur dans l'entreprise et refuse le mode mono-utilisateur (« D'autres utilisateurs travaillent
     maintenant avec cette entreprise », constat du 2026-10-28). La base gardée ouverte par l'outil d'import est
@@ -778,7 +830,7 @@ def fermer_bases() -> None:
             except Exception:
                 pass
         _BASES.clear()
-    _fermer_sage_garde()
+    _fermer_sage_garde(sage)  # le Sage gardé pour la journée reste ouvert, sauf `sage`
     with _VERROU_BASES:
         for base in _BASES.values():
             try:

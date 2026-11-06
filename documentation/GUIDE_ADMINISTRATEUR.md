@@ -28,6 +28,8 @@ flowchart LR
     NUIT --> SMTP["Courriel<br/>compte rendu"]
 ```
 
+**Sage ouvert pour la journée (version 1.0.3).** Au démarrage, l'application ouvre Sage en multi-utilisateur, sans fenêtre visible, et le garde ouvert jusqu'à sa fermeture : les saisies (encaissements, transferts, documents de stock, articles, dépenses, paies) commencent tout de suite au lieu d'attendre 1,5 à 2 min. Il occupe un poste de la licence Sage. Chacun ouvre Sage dans **sa propre session** (Bureau à distance) : Windows refuse une 2e copie de Sage dans la session où tourne l'application. L'import et la nuit le referment comme avant. Pour revenir à l'ancien fonctionnement : `[sage] garder_ouvert = false` dans config.toml.
+
 **Règle d'or : tout est sur le même serveur.** Sage 50, MVOGMBI_Sync, son serveur web et le traitement de nuit doivent être sur la même machine : l'application ouvre elle-même les fenêtres de Sage pour y saisir les encaissements, paiements, transferts, etc. Les postes et les téléphones n'installent rien d'autre que le client (ou un navigateur) et Tailscale.
 
 | Élément | Où | Rôle |

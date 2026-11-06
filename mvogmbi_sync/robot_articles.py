@@ -406,13 +406,19 @@ def fenetre_principale_ouverte(fichier_sai) -> int:
 
     from .sage_bureau import _texte
 
+    from .sage_bureau import pids_gardes
+
     nom = Path(fichier_sai).name.upper()
     trouvee = []
+    gardes = pids_gardes()  # Sage gardé ouvert par l'application : pas « le Sage de la personne »
 
     @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
     def rappel(h, _):
         if user32.IsWindowVisible(h) and _texte(h).upper() == nom:
-            trouvee.append(h)
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(ctypes.c_void_p(h), ctypes.byref(pid))
+            if pid.value not in gardes:
+                trouvee.append(h)
         return True
 
     user32.EnumWindows(rappel, 0)

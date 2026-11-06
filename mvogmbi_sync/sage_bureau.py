@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -126,6 +128,117 @@ def _attendre(condition, delai: float, pas: float = 0.5):
 PIDS_GARDES: set[int] = set()
 
 
+# --------------------------------------------------------------------------------------------- Sage gardé ouvert
+# Règle du propriétaire du 2026-11-06 : Sage s'ouvre (multi-utilisateur, bureau caché) au démarrage de l'application
+# et se referme à sa fermeture ; les saisies de la journée l'utilisent tel quel (1,5 à 2,5 min gagnées chacune) ;
+# l'import (mono-utilisateur) et la nuit le referment d'abord, comme avant. Chacun travaille dans sa propre session
+# (Bureau à distance) : une 2e copie de Sage dans la session de l'application n'est jamais nécessaire.
+def _marque_sage_garde() -> Path:
+    from .__main__ import RACINE
+
+    return Path(RACINE) / "donnees" / "sage_garde.json"
+
+
+def _marque_mono() -> Path:
+    from .__main__ import RACINE
+
+    return Path(RACINE) / "donnees" / "sage_mono.verrou"
+
+
+def _vivant(pid: int) -> bool:
+    poignee = kernel32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not poignee:
+        return False
+    code = wt.DWORD()
+    vivant = kernel32.GetExitCodeProcess(poignee, ctypes.byref(code)) and code.value == 259  # STILL_ACTIVE
+    kernel32.CloseHandle(poignee)
+    return bool(vivant)
+
+
+def _session_windows(pid: int | None = None) -> int:
+    session = wt.DWORD()
+    kernel32.ProcessIdToSessionId(pid or kernel32.GetCurrentProcessId(), ctypes.byref(session))
+    return session.value
+
+
+def sage_garde(fichier=None, meme_session: bool = True) -> dict | None:
+    """Sage gardé ouvert par l'application (marque donnees/sage_garde.json), vivant ; `fichier` : seulement s'il est
+    ouvert sur ce fichier ; `meme_session` : seulement dans la session Windows de ce programme."""
+    try:
+        marque = json.loads(_marque_sage_garde().read_text(encoding="utf-8"))
+        pid = int(marque["pid"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not _vivant(pid):
+        return None
+    if fichier and Path(str(marque.get("fichier", ""))).name.upper() != Path(str(fichier)).name.upper():
+        return None
+    if meme_session and int(marque.get("session", -1)) != _session_windows():
+        return None
+    return marque
+
+
+def pids_gardes() -> set[int]:
+    """Sage ouverts par l'application (ce programme, ou la marque du Sage gardé) : jamais « le Sage de la personne »."""
+    garde = sage_garde(meme_session=False)
+    return PIDS_GARDES | ({int(garde["pid"])} if garde else set())
+
+
+def noter_sage_garde(pid: int, fichier, dossier) -> None:
+    try:
+        _marque_sage_garde().write_text(json.dumps({"pid": int(pid), "fichier": str(fichier), "dossier": str(dossier),
+                                                    "session": _session_windows(), "depuis": time.time()}),
+                                        encoding="utf-8")
+    except OSError:
+        pass
+
+
+def oublier_sage_garde(pid: int) -> None:
+    try:
+        marque = json.loads(_marque_sage_garde().read_text(encoding="utf-8"))
+        if int(marque.get("pid", 0)) == int(pid):
+            _marque_sage_garde().unlink()
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def liberer_sage_garde(delai: float = 180) -> bool:
+    """Referme le Sage gardé ouvert (import, mono-utilisateur, nuit) ; renvoie vrai s'il était ouvert."""
+    garde = sage_garde(meme_session=False)
+    if not garde:
+        return False
+    try:
+        (Path(garde["dossier"]) / "arret").write_text("1", encoding="utf-8")
+    except (OSError, KeyError):
+        pass
+    fin = time.time() + delai
+    while time.time() < fin and _vivant(int(garde["pid"])):
+        time.sleep(1)
+    time.sleep(2)  # l'entreprise finit d'être relâchée
+    return True
+
+
+def mono_en_cours() -> bool:
+    """Un travail mono-utilisateur (import, compte ou article rendu inactif) tient Sage : le Sage gardé attend."""
+    try:
+        return _vivant(int(_marque_mono().read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        return False
+
+
+class _Emprunt:
+    """Processus du Sage gardé ouvert, utilisé tel quel : jamais arrêté par la session qui l'emprunte."""
+
+    def __init__(self, pid: int):
+        self.pid = int(pid)
+
+    def poll(self):
+        return None if _vivant(self.pid) else 0
+
+    def kill(self) -> None:  # jamais : il appartient à l'application
+        pass
+
+
 def sage_ouvert() -> bool:
     """Sage 50 tourne-t-il ? Un processus arrêté de force peut rester listé (« zombie », 32 Ko) : il ne compte pas."""
     import csv
@@ -135,7 +248,7 @@ def sage_ouvert() -> bool:
     for ligne in csv.reader(sortie.splitlines()):
         if len(ligne) < 5 or not ligne[0].lower().startswith("sage50accounting"):
             continue
-        if ligne[1].isdigit() and int(ligne[1]) in PIDS_GARDES:
+        if ligne[1].isdigit() and int(ligne[1]) in pids_gardes():
             continue
         poignee = kernel32.OpenProcess(0x1000, False, int(ligne[1]))  # PROCESS_QUERY_LIMITED_INFORMATION
         if poignee:
@@ -162,7 +275,7 @@ def sage_ouvert_dans_cette_session() -> bool:
     import csv
 
     for ligne in csv.reader(sortie.splitlines()):
-        if len(ligne) >= 5 and ligne[0].lower().startswith("sage50accounting") and ligne[1].isdigit()                 and int(ligne[1]) not in PIDS_GARDES and int("".join(c for c in ligne[4] if c.isdigit()) or 0) > 1024:
+        if len(ligne) >= 5 and ligne[0].lower().startswith("sage50accounting") and ligne[1].isdigit()                 and int(ligne[1]) not in pids_gardes() and int("".join(c for c in ligne[4] if c.isdigit()) or 0) > 1024:
             return True
     return False
 
@@ -242,7 +355,16 @@ class SessionSage:
         (`mono=True`). Case « mono-utilisateur » de la connexion et question « entreprise partagée »."""
         from .__main__ import fermer_bases
 
+        self.emprunte = False
+        if not mono and self.emprunter(fichier_sai):
+            return
+        liberer_sage_garde()  # mono-utilisateur, ou Sage gardé hors de ce bureau : une seule copie par session
         fermer_bases()  # aucune connexion de l'application ouverte quand Sage ouvre l'entreprise
+        if mono:
+            try:
+                _marque_mono().write_text(str(os.getpid()), encoding="utf-8")
+            except OSError:
+                pass
         if sage_ouvert_dans_cette_session():
             raise ErreurSage("Sage 50 est déjà ouvert sur ce poste, sur un autre fichier que celui réglé dans "
                              "« Administration > Sage 50 » : ouvrez ce fichier dans Sage, ou fermez Sage, puis "
@@ -317,6 +439,38 @@ class SessionSage:
                              + ") — mot de passe de sysadmin refusé ou fichier utilisé par quelqu'un d'autre ?")
         self.journal(f"Sage ouvert sur {Path(fichier_sai).name}.")
         self.fermer_mise_a_jour(attente=15)
+
+    def emprunter(self, fichier_sai) -> bool:
+        """Sage gardé ouvert par l'application sur ce fichier et sur ce bureau : utilisé tel quel (rien à ouvrir)."""
+        garde = sage_garde(fichier_sai)
+        if not garde:
+            return False
+        self.processus = _Emprunt(int(garde["pid"]))
+        nom = Path(fichier_sai).name.upper()
+        self.principale = next((h for h in self.fenetres() if _texte(h).upper() == nom), None)
+        if not self.principale:  # sur un autre bureau : invisible d'ici
+            self.processus = None
+            return False
+        self.emprunte = True
+        self._avant = set(self.fenetres())
+        self.fermer_mise_a_jour()
+        self.journal(f"Sage déjà ouvert sur {Path(fichier_sai).name} : utilisé tel quel.")
+        return True
+
+    def _rendre(self) -> None:
+        """Fin d'un travail dans le Sage gardé : ses fenêtres de travail refermées, Sage laissé ouvert."""
+        for titre in ("Encaissements", "Paiements", "Journal général"):
+            fenetre = user32.FindWindowW("#32770", titre)
+            if fenetre:
+                user32.PostMessageW(fenetre, WM_CLOSE, 0, 0)
+                time.sleep(2)
+                self._confirmer_abandon()
+                time.sleep(1)
+        for h in [h for h in self.fenetres() if h != self.principale and h not in self._avant]:
+            user32.PostMessageW(h, WM_CLOSE, 0, 0)
+            time.sleep(1)
+            self._confirmer_abandon()
+        self.journal("Sage laissé ouvert pour les saisies suivantes.")
 
     def _repondre_entreprise_partagee(self, mono: bool) -> bool:
         """Entreprise partagée (le vrai fichier, constat du 2026-10-29) : Sage demande « Comment voulez-vous ouvrir
@@ -480,6 +634,20 @@ class SessionSage:
                     user32.PostMessageW(h, WM_COMMAND, user32.GetDlgCtrlID(oui), oui)
 
     def fermer(self, delai: int = 60) -> None:
+        if getattr(self, "emprunte", False):
+            if self.processus.poll() is None:
+                self._rendre()
+            return
+        try:
+            self._fermer(delai)
+        finally:
+            try:
+                if _marque_mono().read_text(encoding="utf-8").strip() == str(os.getpid()):
+                    _marque_mono().unlink()
+            except (OSError, ValueError):
+                pass
+
+    def _fermer(self, delai: int = 60) -> None:
         if not self.processus or self.processus.poll() is not None:
             return
         from .__main__ import fermer_bases

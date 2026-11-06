@@ -234,7 +234,11 @@ def executer_outil(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe
     from .__main__ import fermer_bases
 
     resultat = ResultatSage()
-    fermer_bases()  # l'import exige qu'aucune autre connexion ne tienne l'entreprise
+    if pendant_connexion is None:  # vrai import (pas une simple lecture) : le Sage gardé ouvert est refermé
+        from .sage_bureau import liberer_sage_garde
+
+        liberer_sage_garde()
+    fermer_bases(sage=pendant_connexion is None)  # l'import exige qu'aucune autre connexion ne tienne l'entreprise
     fermer_restes()
     commande = [str(exe), str(fichier_imp), str(fichier_sai)]
     processus = lancer_cache(commande) if discret else subprocess.Popen(commande)

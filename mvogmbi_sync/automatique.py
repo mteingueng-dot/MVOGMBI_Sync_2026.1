@@ -803,6 +803,13 @@ def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulati
         ecrire_journal(racine, cr)
         return cr
     verrou.write_text(f"{datetime.now():%Y-%m-%d %H:%M:%S}", encoding="utf-8")
+    if not simulation:  # la nuit et « Charger la période » : comme avant, Sage gardé pour la journée refermé
+        try:
+            from .sage_bureau import liberer_sage_garde
+
+            liberer_sage_garde()
+        except Exception:  # noqa: BLE001 — l'import le referme de toute façon
+            pass
     cr = CompteRendu(simulation=simulation)
     try:
         cr = executer_automatique(racine, config_toml, jusqua, simulation, depuis, point_vente)
