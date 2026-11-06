@@ -652,7 +652,7 @@ solde des factures choisies.</li>
 <li>Envoi reçu en espèces : débit espèces, crédit compte RIA ; versement payé en espèces : débit compte RIA, crédit
 espèces ; versement payé par virement Interac : rien à écrire, la banque l'a déjà.</li>
 <li>Surplus d'un dépôt d'espèces au-delà des ventes : part RIA à confirmer ; seules les commissions sont un revenu.</li>
-<li>Rien n'est écrit dans Sage tant que les comptes RIA ne sont pas renseignés (Comptabilité > Comptes RIA).</li>
+<li>Rien n'est écrit dans Sage tant que les comptes RIA ne sont pas renseignés (RIA > Comptes RIA).</li>
 </ul>
 <p>Toutes les règles, codées module par module, sont dans le document « Règles d'affaires » (menu Démarrer, Documents
 du projet).</p>""", """
@@ -676,7 +676,7 @@ of the chosen invoices.</li>
 <li>Send received in cash: debit cash, credit RIA account; payout paid in cash: debit RIA account, credit cash; payout
 paid by Interac transfer: nothing to post, the bank already has it.</li>
 <li>Surplus of a cash deposit beyond sales: RIA share to confirm; only commissions are revenue.</li>
-<li>Nothing is posted to Sage until the RIA accounts are set (Accounting > RIA accounts).</li>
+<li>Nothing is posted to Sage until the RIA accounts are set (RIA > RIA accounts).</li>
 </ul>
 <p>All the rules, coded module by module, are in the “Business rules” document (Start menu, Project documents; in
 French).</p>""") + blocs("Fichiers et sauvegarde"))

@@ -673,10 +673,14 @@ def _ouvrir_sage_garde(config_toml: dict, fichier, permanent: bool = False) -> N
     if fil is not None and fil.is_alive() and _SAGE_GARDE["fichier"] == str(fichier):
         _signal_garde("lecture")
         return
-    fermer_bases(sage=True)  # un autre fichier, ou l'outil d'import : refermés d'abord
-    if sage_bureau.sage_ouvert():
-        raise RuntimeError("Sage est ouvert sur un autre fichier d'entreprise : sa base ne peut pas être lue.")
     dossier = Path(tempfile.mkdtemp(prefix="mvogmbi_garde_"))
+    if permanent:  # dès maintenant : plus aucune lecture par l'outil d'import (il prendrait l'entreprise)
+        sage_bureau.noter_ouverture_garde(fichier, dossier)
+    fermer_bases(sage=True)  # un autre fichier, ou l'outil d'import : refermés d'abord
+    _attendre_fin_outil_import()
+    if sage_bureau.sage_ouvert():
+        sage_bureau.oublier_ouverture_garde()
+        raise RuntimeError("Sage est ouvert sur un autre fichier d'entreprise : sa base ne peut pas être lue.")
     _SAGE_GARDE.update(dossier=str(dossier), fichier=str(fichier), pid=None, permanent=permanent)
     commande = commande_moteur() + ["garder-sage", "--fichier", str(fichier), "--dossier", str(dossier),
                                     "--duree", str(10 ** 9 if permanent else DUREE_GARDE)]
@@ -697,10 +701,39 @@ def _ouvrir_sage_garde(config_toml: dict, fichier, permanent: bool = False) -> N
     if etat.get("pid"):
         _SAGE_GARDE["pid"] = etat["pid"]
         sage_bureau.PIDS_GARDES.add(int(etat["pid"]))
+        _ECHECS_LECTURE.pop(str(fichier), None)  # « Sage ne répond pas » d'avant l'ouverture : oublié
+        SURVEILLANCE_SAGE["reveil"].set()  # serveur web : la surveillance relit la base tout de suite
         return
+    sage_bureau.oublier_ouverture_garde()
     fermer_bases(sage=True)
     raise RuntimeError("Lecture de Sage impossible : l'application n'a pas pu ouvrir Sage. "
                        + str(etat.get("erreur", "délai dépassé")))
+
+
+def _attendre_fin_outil_import(delai: float = 60) -> None:
+    """L'outil d'import refermé (Sage_SA_import.exe) relâche l'entreprise : on attend qu'il soit parti."""
+    import subprocess as _sp
+    import time as _temps
+
+    fin = _temps.time() + delai
+    while _temps.time() < fin:
+        sortie = _sp.run(["tasklist", "/fo", "csv", "/nh", "/fi", "IMAGENAME eq Sage_SA_import.exe"],
+                         capture_output=True, text=True,
+                         creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0)).stdout
+        if "sage_sa_import" not in sortie.lower():
+            return
+        _temps.sleep(1)
+
+
+def sage_journee_en_cours() -> bool:
+    """Sage de la journée ouvert ou en train de s'ouvrir (ce programme ou un autre) : les lectures passent par sa
+    base, JAMAIS par l'outil d'import, qui prendrait l'entreprise pour lui seul."""
+    from . import sage_bureau
+
+    fil = _SAGE_GARDE["fil"]
+    if _SAGE_GARDE.get("permanent") and fil is not None and fil.is_alive():
+        return True
+    return bool(sage_bureau.garde_en_ouverture() or sage_bureau.sage_garde(meme_session=False))
 
 
 def _fermer_sage_garde(sage: bool = True) -> None:
@@ -735,6 +768,7 @@ def garder_sage_ouvert(racine: Path, lire_config=None, journal=None) -> None:
         chemin = Path(racine) / "config.toml"
         return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else {}
 
+    reessai = 0.0
     while True:
         try:
             c = config()
@@ -749,13 +783,18 @@ def garder_sage_ouvert(racine: Path, lire_config=None, journal=None) -> None:
                     fermer_bases(sage=True)
                     if journal:
                         journal("Sage refermé pour la nuit.")
-            elif (not a_moi and not sage_bureau.sage_garde(meme_session=False) and not sage_bureau.mono_en_cours()
+            elif (not a_moi and _temps.time() >= reessai and not sage_bureau.garde_en_ouverture()
+                  and not sage_bureau.sage_garde(meme_session=False) and not sage_bureau.mono_en_cours()
                   and executable_import() and not sage_bureau.sage_ouvert_dans_cette_session()):
                 debut = _temps.time()
-                _sage_garde(c, fichier, permanent=True)
+                try:
+                    _sage_garde(c, fichier, permanent=True)
+                except Exception:
+                    reessai = _temps.time() + 600  # pas un essai par minute : chaque essai prend l'entreprise
+                    raise
                 if journal:
                     journal(f"Sage ouvert pour les saisies de la journée ({_temps.time() - debut:.0f} s).")
-        except Exception as exc:  # noqa: BLE001 — réessayé à la minute suivante
+        except Exception as exc:  # noqa: BLE001 — réessayé plus tard
             if journal:
                 journal(f"Sage gardé ouvert : {exc}")
         _temps.sleep(60)
@@ -770,15 +809,33 @@ def commande_garder_sage(args) -> None:
     from . import coffre
     from .sage_bureau import SessionSage, executable_sage
 
+    from .sage_bureau import noter_ouverture_garde, oublier_ouverture_garde
+
     config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
     dossier = Path(args.dossier)
-    session = SessionSage(executable_sage(executable_import()), lambda *a: None)
+    permanent = args.duree >= 10 ** 8
+    journal_garde = Path(RACINE) / "donnees" / "journal_sage_garde.log"
+
+    def noter(message) -> None:
+        try:
+            with journal_garde.open("a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+        except OSError:
+            pass
+
+    if permanent:
+        noter_ouverture_garde(args.fichier, dossier)
+        noter("Ouverture de Sage pour les saisies de la journée.")
+    session = SessionSage(executable_sage(executable_import()), noter if permanent else (lambda *a: None))
     try:
         try:
             # multi-utilisateur : la personne peut ouvrir Sage en même temps (demande du propriétaire, 2026-10-29)
             session.ouvrir(args.fichier, str(config_toml.get("sage_import", {}).get("utilisateur", "sysadmin")),
                            coffre.lire(coffre.SAGE_IMPORT, ""), delai=240, mono=False)
         except Exception as exc:
+            if permanent:
+                noter(f"Échec : {exc}")
+                oublier_ouverture_garde()
             (dossier / "pret.json").write_text(json.dumps({"erreur": str(exc)}, ensure_ascii=False), encoding="utf-8")
             return
         (dossier / "pret.json").write_text(json.dumps({"pid": session.processus.pid}), encoding="utf-8")
@@ -919,6 +976,22 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True
         raise
 
 
+def _attendre_sage_journee(fichier, delai: float = 300) -> bool:
+    import time as _temps
+
+    from . import sage_bureau
+
+    fin = _temps.time() + delai
+    while _temps.time() < fin:
+        if sage_bureau.sage_garde(fichier, meme_session=False):
+            _temps.sleep(1)
+            return True
+        if not sage_journee_en_cours():
+            return False
+        _temps.sleep(2)
+    return False
+
+
 def _evenement():
     import threading
 
@@ -957,7 +1030,8 @@ def _lire_sage(config_toml: dict, fonction, fichier, ouvrir: bool, lire_pendant_
 
         # Sage fermé : base laissée par une session précédente, sans les accès des applications -> Sage ouvert
         # par l'application ; Sage ouvert par la personne : vrai refus
-        if sage_ouvert() or not fichier or not executable_import() or _SAGE_GARDE["fichier"] == str(fichier):
+        if (sage_ouvert() or not fichier or not executable_import() or _SAGE_GARDE["fichier"] == str(fichier)
+                or sage_journee_en_cours()):
             raise
         return par_sage_garde()
     except Exception as exc:
@@ -966,6 +1040,12 @@ def _lire_sage(config_toml: dict, fonction, fichier, ouvrir: bool, lire_pendant_
         if getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE:
             raise  # requête fautive : la base répond, inutile de l'ouvrir autrement
 
+        if sage_journee_en_cours():
+            # Sage de la journée : sa base est la seule ; l'outil d'import prendrait l'entreprise (constat du
+            # 2026-11-06 sur SERVDCSAGE). Une lecture demandée attend qu'il soit prêt ; une lecture automatique non.
+            if ouvrir and _attendre_sage_journee(fichier):
+                return lecture()
+            raise RuntimeError("Sage s'ouvre pour les saisies de la journée : réessayez dans un instant.") from exc
         if not sage_ouvert() and fichier and executable_import():
             # Sage fermé : base ouverte par l'outil d'import ; refusée -> Sage ouvert par l'application
             if _GARDE.get("refuse"):

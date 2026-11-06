@@ -2452,7 +2452,6 @@ EN: dict[str, str] = {
     'Comptes RIA': 'RIA accounts',
     'Saisie : « RIA > Opérations RIA » puis « Saisir dans Sage ».': 'Entry: “RIA > RIA transactions”, then “Enter in Sage”.',
     'RIA': 'RIA',
-    "Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit sans les marquer comme lus et les ajoute à « Comptabilité > États de compte RIA ». Même serveur que la boîte des avis de paiement, sauf indication.": 'Address where RIA sends account statements (AgentBalanceReport): the application reads them without marking them as read and adds them to “Accounting > RIA account statements”. Same server as the payment notice mailbox unless stated.',
     "Serveur de l'application": 'Application server',
     "Où l'application est déployée : changez ces réglages pour l'installer sur un autre serveur.": 'Where the application is deployed: change these settings to install it on another server.',
     "Nom de l'ordinateur": 'Computer name',

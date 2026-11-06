@@ -48,6 +48,33 @@ def ajouter_menus(html: str, query: dict[str, str]) -> str:
     return "".join(sortie)
 
 
+LONGUEUR_CELLULE = 45  # caractères : au-delà, la cellule est coupée (« … ») et son texte complet vient au survol
+_CELLULE = re.compile(r"<td((?: [^>]*)?)>(.*?)</td>", re.S)
+_BALISE = re.compile(r"<[^>]+>")
+_CHAMP = re.compile(r"<(?:input|select|textarea|button|form|table|details)\b", re.I)
+
+
+def couper_textes_longs(html: str) -> str:
+    """Constat du propriétaire du 2026-11-06 (page Rapprochement, « ajuste cette fenêtre et tous les autres ») :
+    une seule description très longue (ou le « Contrôle » d'un relevé) élargissait sa colonne sur des milliers de
+    points (cellules sur une ligne, comme Windows) : montants et état sortaient de la zone. Comme les listes de
+    Windows, le texte est coupé à la largeur de la colonne (« … ») et lu en entier au survol (title)."""
+    if "<td" not in html:
+        return html
+    from html import unescape
+
+    def remplacer(m: re.Match) -> str:
+        attributs, contenu = m.group(1), m.group(2)
+        if _CHAMP.search(contenu) or "title=" in attributs:
+            return m.group(0)
+        texte = " ".join(unescape(_BALISE.sub(" ", contenu)).split())
+        if len(texte) <= LONGUEUR_CELLULE:
+            return m.group(0)
+        return f"<td{attributs} title='{e(texte)}'><div class='coupe'>{contenu}</div></td>"
+
+    return _CELLULE.sub(remplacer, html)
+
+
 class _Lecteur(HTMLParser):
     """Tableaux de la page : titre (dernier <h2> ou <h1> avant le tableau), en-têtes, lignes en texte."""
 
@@ -167,4 +194,6 @@ details.exporter > div { position: absolute; right: 0; background: var(--carte);
 details.exporter a { display: block; padding: 7px 12px; text-decoration: none; color: var(--texte); font-size: 13px; }
 details.exporter a:hover { background: var(--menu-survol); }
 .defile { clear: both; }
+td > div.coupe { max-width: 34em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td > div.coupe > label.cellule, td > div.coupe > a { display: inline; }
 """

@@ -653,7 +653,7 @@ def _page_courriel(ctx: Contexte, message: str) -> str:
                           "Facultatif : adresses ou domaines de RIA séparés par des virgules.")
                  + _ligne("Lire les états à partir du", _entree("ria_depuis", r.get("depuis", ""), "date", 12)),
                  "Adresse où RIA envoie les états de compte (AgentBalanceReport) : l'application les lit sans les "
-                 "marquer comme lus et les ajoute à « Comptabilité > États de compte RIA ».")
+                 "marquer comme lus et les ajoute à « RIA > États de compte RIA ».")
              + ENREGISTRER_CONFIG + "</form>")
     return corps
 

@@ -33,3 +33,39 @@ def test_marque_du_sage_garde(monkeypatch, tmp_path):
     assert os.getpid() in sb.pids_gardes()                              # jamais pris pour le Sage de la personne
     sb.oublier_sage_garde(os.getpid())
     assert sb.sage_garde() is None
+
+
+def test_sage_de_la_journee_en_ouverture(monkeypatch, tmp_path):
+    """Constat du 2026-11-06 sur SERVDCSAGE : pendant l'ouverture, ce Sage était pris pour celui d'une personne et
+    l'outil d'import relancé par les lectures prenait l'entreprise."""
+    import os
+    import subprocess
+    import sys
+    import time
+
+    from mvogmbi_sync import sage_bureau as sb
+
+    monkeypatch.setattr(sb, "_marque_sage_garde", lambda: tmp_path / "sage_garde.json")
+    monkeypatch.setitem(m._SAGE_GARDE, "fil", None)
+    assert not m.sage_journee_en_cours()
+    sb.noter_ouverture_garde(r"C:\Sage\ESSAI.SAI", tmp_path)            # ce programme ouvre Sage
+    assert sb.garde_en_ouverture() and sb.sage_garde() is None and m.sage_journee_en_cours()
+    debut = time.time()
+    sb.attendre_fin_ouverture(delai=30)                                # jamais d'attente de soi-même
+    assert time.time() - debut < 1
+    autre = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:   # ouvert par un autre programme : on attend qu'il ait fini (marque retirée)
+        marque = sb._lire_marque()
+        marque["ouverture"] = autre.pid
+        (tmp_path / "sage_garde.json").write_text(__import__("json").dumps(marque), encoding="utf-8")
+        assert sb.oublier_ouverture_garde() is None and sb.garde_en_ouverture()   # pas la sienne : gardée
+        debut = time.time()
+        sb.attendre_fin_ouverture(delai=2)
+        assert time.time() - debut >= 1.5
+    finally:
+        autre.kill()
+        autre.wait()
+    assert sb.garde_en_ouverture() is None                             # programme parti : plus en ouverture
+    sb.noter_ouverture_garde(r"C:\Sage\ESSAI.SAI", tmp_path)
+    sb.oublier_ouverture_garde()
+    assert sb._lire_marque() is None and os.getpid() not in sb.pids_gardes()

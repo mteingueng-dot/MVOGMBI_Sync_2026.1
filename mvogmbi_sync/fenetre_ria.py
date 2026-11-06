@@ -29,7 +29,7 @@ def _config(racine: Path) -> dict:
 
 
 def regler_comptes(parent, racine: Path) -> bool:
-    """Comptes RIA, commissions et espèces (menu « Comptabilité > Comptes RIA » ou bouton « Comptes… ») ; True si enregistrés."""
+    """Comptes RIA, commissions et espèces (menu « RIA > Comptes RIA » ou bouton « Comptes… ») ; True si enregistrés."""
     titre = t("Comptes RIA")
     registre = ria.Registre(racine)
     for cle, libelle in ria.COMPTES.items():

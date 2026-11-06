@@ -172,7 +172,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-RIA-06 | **Commission** : le dépôt égal à la commission payée de l'état (dans les 12 jours) est marqué « Commission » d'office. |
 | RG-RIA-07 | Chaque ligne d'état devient une opération **une seule fois** (clé : agence, date, référence, activité) ; sous-totaux et totaux ignorés ; une ligne répétée sur plusieurs pages n'est comptée qu'une fois. |
 | RG-RIA-08 | Chaque état est **recontrôlé** : solde courant recalculé ligne par ligne, totaux des débits et crédits contre le résumé ; un écart est noté en remarque. |
-| RG-RIA-09 | Rien n'est saisi dans Sage tant que les **comptes RIA, commissions et espèces** ne sont pas renseignés (Comptabilité > Comptes RIA). |
+| RG-RIA-09 | Rien n'est saisi dans Sage tant que les **comptes RIA, commissions et espèces** ne sont pas renseignés (RIA > Comptes RIA). |
 | RG-RIA-10 | Les états reçus par courriel sont lus la nuit, puis traités dans Sage si les comptes sont renseignés. |
 
 ---

@@ -15,7 +15,7 @@ flowchart TD
     C --> D["Administration > Sage 50<br/>fichier d'entreprise, utilisateur mvogmbi_sync"]
     D --> E["Articles > Correspondance<br/>confirmer les liens Clover → Sage"]
     E --> F["Administration > Courriel<br/>compte rendu, boîte des avis"]
-    F --> F2["Comptabilité > Comptes RIA<br/>comptes RIA, commissions, espèces"]
+    F --> F2["RIA > Comptes RIA<br/>comptes RIA, commissions, espèces"]
     F2 --> G["Administration > Automatisation<br/>heure de nuit, date de départ"]
     G --> G2["Administration > Automatisation<br/>serveur de l'application, Wi-Fi du magasin"]
     G2 --> H["Administration > Utilisateurs<br/>comptes et fonctions permises"]
@@ -134,12 +134,12 @@ flowchart TD
 flowchart TD
     A([État de compte RIA PDF]) --> B{"Reçu par courriel ?"}
     B -- oui --> C["Lu la nuit<br/>ou « Lire le courriel »"]
-    B -- non --> D["Comptabilité > États de compte RIA<br/>Importer des états…"]
+    B -- non --> D["RIA > États de compte RIA<br/>Importer des états…"]
     C --> E["Contrôle : solde recalculé ligne par ligne"]
     D --> E
     E --> F["Traiter dans Sage"]
     F --> G{"Comptes RIA renseignés ?"}
-    G -- non --> H["Comptabilité > Comptes RIA"] --> F
+    G -- non --> H["RIA > Comptes RIA"] --> F
     G -- oui --> I["Envois : espèces → RIA<br/>Versements en espèces : RIA → espèces<br/>Versements Interac : laissés à la banque"]
     I --> J["RIA > Opérations RIA<br/>Saisir dans Sage"]
     J --> K([Écritures vérifiées dans Sage])

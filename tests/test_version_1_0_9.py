@@ -163,8 +163,9 @@ def test_ancienne_entree_ria_donne_les_nouvelles(tmp_path):
     assert _renommees(["RIA (transferts d'argent)", "tableau"]) == sorted(
         ["Opérations RIA", "États de compte RIA", "Comptes RIA", "tableau"])
     titres = {g: [e[1] for e in entrees if isinstance(e, tuple)] for g, _, entrees in MENU_GROUPES if g}
-    assert titres["RIA"] == ["Opérations RIA"]
-    assert {"États de compte RIA", "Comptes RIA"} <= set(titres["Comptabilité"])
+    # demande du propriétaire du 2026-11-06 : états de compte et comptes RIA dans la rubrique RIA
+    assert titres["RIA"] == ["Opérations RIA", "États de compte RIA", "Comptes RIA"]
+    assert not {"États de compte RIA", "Comptes RIA"} & set(titres["Comptabilité"])
     assert not any("RIA (transferts" in t for t in titres["Comptabilité"])
     r = Registre(tmp_path)
     r.ajouter("Patron", "Administrateur", "secret123")

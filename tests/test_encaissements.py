@@ -112,3 +112,19 @@ def test_depot_deja_au_compte_par_une_autre_ecriture():
     marquer_deja_en_banque([deja, libre, applique, autre], mouvements)
     assert deja.etat == DEJA_EN_BANQUE and deja.lignes[0].etat == DEJA_EN_BANQUE and "2026-01-07" in deja.remarque
     assert libre.etat == A_SAISIR and autre.etat == A_SAISIR and applique.etat == APPLIQUE
+
+
+def test_colonne_montant_recu_selon_la_taille_de_la_grille():
+    """Constat du 2026-11-06 : grille de 791 points sur la copie d'essai, ~640 sur le serveur (x fixe 692 hors grille)."""
+    from mvogmbi_sync.robot_encaissements import FenetreEncaissements
+
+    class Fausse(FenetreEncaissements):
+        def __init__(self, taille):
+            self.taille, self.ligne_y0 = taille, 40
+
+        def _taille_grille(self):
+            return self.taille
+
+    essai, serveur = Fausse((774, 160)), Fausse((641, 96))
+    assert 631 <= essai.x_montant() <= 774 and essai.lignes_visibles() == 8
+    assert 540 <= serveur.x_montant() <= 623 and serveur.lignes_visibles() == 4

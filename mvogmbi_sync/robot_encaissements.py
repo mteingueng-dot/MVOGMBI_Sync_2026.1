@@ -4,7 +4,9 @@ Sage n'importe pas d'encaissement : le robot remplit la fenêtre comme une perso
 Méthode mise au point sur la copie d'essai (2026-10-26) :
 - en-tête : listes standard (client 25, « Payé par » 49 = « Comptant » (choix du propriétaire), « Dépôt » 51) et date (SimplyDate 31, WM_SETTEXT) ;
 - grille (CA_ContainerChild32) : une ligne par facture en souffrance du client, triée par date puis par n° interne
-  (ordre identique à la base : tcustr/tcustrdt) ; 16 points par ligne, 1re ligne à y=40, « Montant reçu » à x=692 ;
+  (ordre identique à la base : tcustr/tcustrdt) ; 16 points par ligne, 1re ligne à y=40, « Montant reçu » = dernière
+  colonne, à 90 % de la largeur réelle de la grille (692 sur la copie d'essai, ~575 sur le serveur) ; lignes visibles
+  lues sur sa hauteur ; la cellule ouverte doit être dans la dernière colonne, sinon rien n'est tapé ;
 - surtout pas de Tab pour se déplacer : Sage remplit d'office le « Montant reçu » de chaque cellule traversée.
   On fait défiler la grille (WM_VSCROLL), on clique dans la bonne cellule, on tape le montant, puis un seul Tab ;
 - contrôle avant « Traiter » : le montant total affiché (étiquette 100) doit égaler le dépôt, sinon on abandonne ;
@@ -201,11 +203,30 @@ class FenetreEncaissements:
                 return c
         return None
 
+    def _taille_grille(self) -> tuple[int, int]:
+        r = wt.RECT()
+        user32.GetClientRect(self.grille, ctypes.byref(r))
+        return r.right, r.bottom
+
     def x_montant(self) -> int:
-        return X_MONTANT_RECU
+        """« Montant reçu » = dernière colonne. Constat du 2026-11-06 : la grille n'a pas la même taille partout
+        (copie d'essai 791 points, colonne 631-791 ; vrai fichier sur le serveur ~640 points, colonne 540-623) :
+        x fixe à 692 tombait hors de la grille sur le serveur. Position en proportion de la largeur réelle."""
+        largeur = self._taille_grille()[0]
+        return int(largeur * 0.90) if largeur > 100 else X_MONTANT_RECU
 
     def lignes_visibles(self) -> int:
-        return LIGNES_VISIBLES
+        """Lignes entières visibles (y = centre de la ligne) : 8 sur la copie d'essai, 4 sur le serveur."""
+        hauteur = self._taille_grille()[1]
+        return max(1, (hauteur - self.ligne_y0 + HAUTEUR_LIGNE // 2) // HAUTEUR_LIGNE) if hauteur > 0 else LIGNES_VISIBLES
+
+    def _editeur_dans_la_colonne(self, editeur) -> bool:
+        """La cellule ouverte est bien dans la dernière colonne (jamais de montant tapé dans une autre)."""
+        grille, cellule = wt.RECT(), wt.RECT()
+        user32.GetWindowRect(self.grille, ctypes.byref(grille))
+        user32.GetWindowRect(editeur, ctypes.byref(cellule))
+        largeur = grille.right - grille.left
+        return largeur <= 0 or cellule.right - grille.left > largeur * 0.75
 
     def saisir_ligne(self, ligne: int, montant: Decimal) -> None:
         """Tape `montant` dans la colonne du montant de la ligne `ligne` (0 = première facture de la grille)."""
@@ -241,6 +262,12 @@ class FenetreEncaissements:
         if not editeur:
             chemin = self.photo_diagnostic("cellule")
             raise ErreurRobot(f"La cellule « {nom or self.colonne_montant} » ne s'est pas ouverte"
+                              + (f" (photo de la fenêtre : {chemin})." if chemin else "."))
+        if not self._editeur_dans_la_colonne(editeur):
+            user32.PostMessageW(editeur, WM_KEYDOWN, 0x1B, 1)  # Échap : rien n'est tapé
+            user32.PostMessageW(editeur, WM_KEYUP, 0x1B, 0xC0000001)
+            chemin = self.photo_diagnostic("colonne")
+            raise ErreurRobot(f"La cellule ouverte n'est pas dans la colonne « {nom or self.colonne_montant} »"
                               + (f" (photo de la fenêtre : {chemin})." if chemin else "."))
         # surtout pas WM_SETTEXT : Sage croirait la cellule non modifiée et y mettrait tout le montant dû
         for caractere in texte:

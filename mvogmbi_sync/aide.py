@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.3"
+VERSION = "1.0.6"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -551,7 +551,7 @@ FAQ = {
         ("sous_titre", 'Nouveautés : paie, caisse, stocks, ventes et sécurité'),
         ("question", 'Comment gérer RIA dans Sage ?'),
         ("reponse", "« RIA > Opérations RIA » réunit les mouvements RIA des relevés, les surplus de dépôts d'espèces et "
-                    "les paiements en espèces. Une fois les comptes renseignés (« Comptabilité > Comptes RIA » : le compte RIA du bilan et "
+                    "les paiements en espèces. Une fois les comptes renseignés (« RIA > Comptes RIA » : le compte RIA du bilan et "
                     "le compte de commissions, à créer dans Sage), « Saisir dans Sage » passe les écritures. Les entrées "
                     "et sorties de RIA s'annulent ; seules les commissions, marquées avec « Commission », sont un revenu."),
         ("question", "Un dépôt d'espèces dépasse les ventes en espèces : que faire ?"),
@@ -712,7 +712,7 @@ FAQ = {
                     "du matin."),
         ("sous_titre", "Nouveautés des versions 1.0.4 à 1.0.10"),
         ("question", "Comment passer les états de compte RIA dans Sage ?"),
-        ("reponse", "« Comptabilité > États de compte RIA » : importez les PDF (ou « Lire le courriel » ; la nuit, les "
+        ("reponse", "« RIA > États de compte RIA » : importez les PDF (ou « Lire le courriel » ; la nuit, les "
                     "états reçus sont lus seuls). Chaque état est recontrôlé ligne par ligne. « Traiter dans Sage » crée "
                     "une opération par envoi (espèces reçues pour RIA) et par versement payé en espèces ; un versement "
                     "payé par virement Interac est laissé à la banque. Les écritures passent ensuite par « RIA > "
@@ -1186,7 +1186,7 @@ FAQ = {
         ("sous_titre", "What's new: payroll, cash, stock, sales and security"),
         ("question", 'How do I manage RIA in Sage?'),
         ("reponse", '“RIA > RIA transactions” gathers RIA statement transactions, cash deposit surpluses and cash payments. '
-                    'Once the accounts are entered (“Accounting > RIA accounts”: the RIA balance sheet account and the commission '
+                    'Once the accounts are entered (“RIA > RIA accounts”: the RIA balance sheet account and the commission '
                     'account, to be created in Sage), “Enter in Sage” posts the entries. RIA money in and out cancels '
                     'out; only commissions, marked with “Commission”, are revenue.'),
         ("question", 'A cash deposit exceeds cash sales: what should I do?'),
@@ -1335,11 +1335,11 @@ FAQ = {
                     "periods to approve; a finished period not yet approved is recalled in the morning email."),
         ("sous_titre", "What's new in versions 1.0.4 to 1.0.10"),
         ("question", "How do I post RIA account statements to Sage?"),
-        ("reponse", "“Accounting > RIA account statements”: import the PDFs (or “Read the email”; at night, statements "
+        ("reponse", "“RIA > RIA account statements”: import the PDFs (or “Read the email”; at night, statements "
                     "received are read automatically). Each statement is rechecked line by line. “Process in Sage” "
                     "creates one transaction per send (cash received for RIA) and per payout paid in cash; a payout "
                     "paid by Interac transfer is left to the bank. Entries are then posted from “RIA > RIA "
-                    "transactions” > “Enter in Sage”, once the accounts are set (“Accounting > RIA accounts”)."),
+                    "transactions” > “Enter in Sage”, once the accounts are set (“RIA > RIA accounts”)."),
         ("question", "How do I modify or delete an item in Sage and Clover?"),
         ("reponse", "“Items > Item list”, choose the item. “Modify”: description and “Item inactive” in Sage, and the "
                     "linked Clover item renamed if the box is checked. “Delete”: the item is deleted from Sage then "

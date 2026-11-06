@@ -245,6 +245,7 @@ class Application:
                                 utilisateur=u.nom)
                     return export_web.fichier(self.racine, reponse.corps, req.query["exporter"],
                                               req.query.get("format", "xlsx"))
+                reponse.corps = export_web.couper_textes_longs(reponse.corps)
                 if reg.peut_exporter(u):
                     reponse.corps = export_web.ajouter_menus(reponse.corps, req.query)
             return reponse
@@ -451,14 +452,16 @@ def _garder_sage_pret(app) -> None:
             continue
         try:
             from ..__main__ import _ECHECS_LECTURE, base_partagee, lire_sage
-            from ..sage_bureau import sage_ouvert
+            from ..sage_bureau import garde_en_ouverture, sage_garde, sage_ouvert
             from .taches import VERROU_SAGE
 
             fichier = (app.config.get("sage_base", {}).get("fichier_entreprise")
                        or app.config.get("sage_import", {}).get("fichier_entreprise"))
             if not fichier or VERROU_SAGE.locked():  # import ou saisie dans Sage en cours : on ne touche à rien
                 continue
-            if sage_ouvert():  # Sage tourne (personne, import) : simple lecture, jamais l'outil d'import
+            if garde_en_ouverture():  # Sage de la journée en train de s'ouvrir : surtout pas l'outil d'import
+                continue
+            if sage_ouvert() or sage_garde(meme_session=False):  # Sage tourne (personne, import) : simple lecture, jamais l'outil d'import
                 base_partagee(app.config, fichier).requete("SELECT 1")
                 _ECHECS_LECTURE.pop(str(fichier), None)
                 SURVEILLANCE_SAGE["pret"][str(fichier)] = True

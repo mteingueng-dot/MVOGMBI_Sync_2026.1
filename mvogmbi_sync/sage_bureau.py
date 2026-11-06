@@ -161,6 +161,93 @@ def _session_windows(pid: int | None = None) -> int:
     return session.value
 
 
+def _lire_marque() -> dict | None:
+    try:
+        marque = json.loads(_marque_sage_garde().read_text(encoding="utf-8"))
+        return marque if isinstance(marque, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def garde_en_ouverture() -> dict | None:
+    """Sage de la journée en train de s'ouvrir (marque « ouverture » = programme qui l'ouvre, encore vivant).
+    Constat du 2026-11-06 sur SERVDCSAGE : pendant ces 2 à 3 minutes, ce Sage était pris pour celui d'une personne
+    (« Fermez Sage sur le serveur ») et l'outil d'import relancé par les lectures prenait l'entreprise (« Un autre
+    utilisateur utilise actuellement cette entreprise sur cet ordinateur »)."""
+    marque = _lire_marque()
+    if not marque or marque.get("pid") or not marque.get("ouverture"):
+        return None
+    try:
+        return marque if _vivant(int(marque["ouverture"])) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def noter_ouverture_garde(fichier, dossier) -> None:
+    try:
+        _marque_sage_garde().write_text(json.dumps({"ouverture": os.getpid(), "fichier": str(fichier),
+                                                    "dossier": str(dossier), "session": _session_windows(),
+                                                    "depuis": time.time()}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def oublier_ouverture_garde() -> None:
+    """Retire la marque d'ouverture écrite par ce programme (ouverture ratée)."""
+    marque = _lire_marque()
+    if marque and not marque.get("pid") and int(marque.get("ouverture") or 0) == os.getpid():
+        try:
+            _marque_sage_garde().unlink()
+        except OSError:
+            pass
+
+
+def attendre_fin_ouverture(delai: float = 900, journal=None) -> None:
+    """Attend que le Sage de la journée ait fini de s'ouvrir (prêt ou abandonné) — sauf si c'est ce programme qui
+    l'ouvre (il s'attendrait lui-même)."""
+    marque = garde_en_ouverture()
+    if not marque or int(marque.get("ouverture") or 0) == os.getpid():
+        return
+    if journal:
+        journal("Sage est en train de s'ouvrir pour la journée : attente de la fin de l'ouverture…")
+    fin = time.time() + delai
+    while time.time() < fin:  # la marque passe du programme qui demande Sage à celui qui l'ouvre : on suit
+        marque = garde_en_ouverture()
+        if not marque or int(marque.get("ouverture") or 0) == os.getpid():
+            return
+        time.sleep(2)
+
+
+class _PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [("dwSize", wt.DWORD), ("cntUsage", wt.DWORD), ("th32ProcessID", wt.DWORD),
+                ("th32DefaultHeapID", ctypes.c_void_p), ("th32ModuleID", wt.DWORD), ("cntThreads", wt.DWORD),
+                ("th32ParentProcessID", wt.DWORD), ("pcPriClassBase", ctypes.c_long), ("dwFlags", wt.DWORD),
+                ("szExeFile", ctypes.c_wchar * 260)]
+
+
+def _sages_lances_par(parent: int) -> set[int]:
+    """Sage50Accounting.exe dont le parent est `parent` (le programme qui ouvre le Sage de la journée)."""
+    if kernel32 is None:
+        return set()
+    creer = kernel32.CreateToolhelp32Snapshot
+    creer.restype = wt.HANDLE
+    instantane = creer(2, 0)  # TH32CS_SNAPPROCESS
+    if not instantane or instantane == ctypes.c_void_p(-1).value:
+        return set()
+    trouves = set()
+    try:
+        entree = _PROCESSENTRY32W()
+        entree.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+        ok = kernel32.Process32FirstW(instantane, ctypes.byref(entree))
+        while ok:
+            if entree.th32ParentProcessID == parent and entree.szExeFile.lower() == "sage50accounting.exe":
+                trouves.add(int(entree.th32ProcessID))
+            ok = kernel32.Process32NextW(instantane, ctypes.byref(entree))
+    finally:
+        kernel32.CloseHandle(instantane)
+    return trouves
+
+
 def sage_garde(fichier=None, meme_session: bool = True) -> dict | None:
     """Sage gardé ouvert par l'application (marque donnees/sage_garde.json), vivant ; `fichier` : seulement s'il est
     ouvert sur ce fichier ; `meme_session` : seulement dans la session Windows de ce programme."""
@@ -181,7 +268,11 @@ def sage_garde(fichier=None, meme_session: bool = True) -> dict | None:
 def pids_gardes() -> set[int]:
     """Sage ouverts par l'application (ce programme, ou la marque du Sage gardé) : jamais « le Sage de la personne »."""
     garde = sage_garde(meme_session=False)
-    return PIDS_GARDES | ({int(garde["pid"])} if garde else set())
+    pids = PIDS_GARDES | ({int(garde["pid"])} if garde else set())
+    ouverture = garde_en_ouverture()
+    if ouverture:  # Sage de la journée en train de s'ouvrir : déjà celui de l'application
+        pids = pids | _sages_lances_par(int(ouverture["ouverture"]))
+    return pids
 
 
 def noter_sage_garde(pid: int, fichier, dossier) -> None:
@@ -204,6 +295,7 @@ def oublier_sage_garde(pid: int) -> None:
 
 def liberer_sage_garde(delai: float = 180) -> bool:
     """Referme le Sage gardé ouvert (import, mono-utilisateur, nuit) ; renvoie vrai s'il était ouvert."""
+    attendre_fin_ouverture()  # en train de s'ouvrir : on le laisse finir, puis on le referme
     garde = sage_garde(meme_session=False)
     if not garde:
         return False
@@ -356,6 +448,7 @@ class SessionSage:
         from .__main__ import fermer_bases
 
         self.emprunte = False
+        attendre_fin_ouverture(journal=self.journal)  # Sage de la journée en train de s'ouvrir : on l'attend
         if not mono and self.emprunter(fichier_sai):
             return
         liberer_sage_garde()  # mono-utilisateur, ou Sage gardé hors de ce bureau : une seule copie par session
