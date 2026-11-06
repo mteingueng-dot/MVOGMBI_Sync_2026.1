@@ -82,17 +82,24 @@ def main_oeuvre(ventes_par_jour: dict[date, Decimal], heures: dict[date, Decimal
     return lignes
 
 
-def heures_par_jour_tous(racine: Path, debut: date, fin: date) -> tuple[dict, dict]:
-    """(heures pointées, heures planifiées) de tous les employés, par jour."""
+def heures_par_jour_tous(racine: Path, debut: date, fin: date, depots: list[str] | None = None) -> tuple[dict, dict]:
+    """(heures pointées, heures planifiées) de tous les employés, par jour. `depots` (filtre « Dépôt », None = tous) :
+    heures du jour comptées au dépôt du quart planifié ce jour-là, sinon au dépôt principal de l'employé
+    (planning.depot_du_quart)."""
     from . import paie_temps as pt
-    from .planning import Planning
+    from .depots import garde
+    from .planning import Planning, depot_du_quart
 
     registre, planning = pt.Registre(racine), Planning(racine)
+
+    def compte(e, jour) -> bool:
+        return depots is None or garde(depot_du_quart(planning.quart(f"{jour:%Y-%m}", e.id, jour), e), depots)
+
     pointees: dict[date, Decimal] = {}
     for e in registre.employes:
         liste, _ = pt.presences(registre.valides(e.id))
         for p in liste:
-            if debut <= p.jour <= fin:
+            if debut <= p.jour <= fin and compte(e, p.jour):
                 pointees[p.jour] = pointees.get(p.jour, ZERO) + p.heures
     planifiees: dict[date, Decimal] = {}
     jour = debut
@@ -100,7 +107,7 @@ def heures_par_jour_tous(racine: Path, debut: date, fin: date) -> tuple[dict, di
         total = ZERO
         for e in registre.employes:
             q = planning.quart(f"{jour:%Y-%m}", e.id, jour)
-            if q:
+            if q and (depots is None or garde(depot_du_quart(q, e), depots)):
                 total += q.heures
         if total:
             planifiees[jour] = total

@@ -291,6 +291,12 @@ class FenetreMainOeuvre(FenetreOutil):
         tk.Label(g, text=t("au"), background=CARTE).pack(side="left")
         self.au = tk.StringVar(value=(date.today() + timedelta(days=13)).isoformat())
         ChampDate(g, self.au, fond=CARTE).pack(side="left", padx=4)
+        from .design import filtre_depots
+
+        g = barre.ajouter(barre.groupe(), 10)
+        tk.Label(g, text=t("Dépôt :"), background=CARTE).pack(side="left", padx=(0, 4))
+        choix, self.variable_depots = filtre_depots(g, self.racine, au_choix=lambda *_: self.afficher())
+        choix.pack(side="left")
         barre.ajouter(Bouton(barre, "🔍  " + t("Afficher"), self.afficher, fond=CARTE, petit=True), 10)
         self.etat = tk.Label(self, text="", background=CARTE, foreground=TEXTE_DOUX, anchor="w", justify="left",
                              wraplength=960)
@@ -308,8 +314,13 @@ class FenetreMainOeuvre(FenetreOutil):
         except ValueError:
             self.etat.configure(text="✘ " + t("Date au format AAAA-MM-JJ."), foreground=ROUGE)
             return
+        from .depots import points_vente_des
+        from .design import depots_choisis
+
         config = _config(self.racine)
         taux, charges = bu.taux_et_charges(config)
+        depots = depots_choisis(self.variable_depots)
+        codes = points_vente_des(config, depots)
 
         def travail():
             from .__main__ import charger_config
@@ -323,10 +334,12 @@ class FenetreMainOeuvre(FenetreOutil):
             ventes: dict = {}
             if debut <= hier:  # ventes de tous les points de vente visibles (les employés passent de l'un à l'autre)
                 for pv in visibles(self, config):
+                    if codes is not None and pv.code not in codes:
+                        continue  # filtre « Dépôt » : ventes des points de vente de ces dépôts
                     for jour, v in ventes_par_jour(lire(client(self.racine, pv), debut, hier,
                                                         cache_clover(self.racine, pv))).items():
                         ventes[jour] = ventes.get(jour, Decimal(0)) + v
-            pointees, planifiees = bu.heures_par_jour_tous(self.racine, debut, fin)
+            pointees, planifiees = bu.heures_par_jour_tous(self.racine, debut, fin, depots)
             return bu.main_oeuvre(ventes, pointees, planifiees, debut, fin, taux, charges)
 
         def termine(lignes):

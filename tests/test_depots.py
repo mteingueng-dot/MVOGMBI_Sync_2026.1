@@ -95,3 +95,56 @@ TRANSACTIONS DÉBIT 2 1 116,60 CRÉDIT 1 205,00
     assert r.controles() == []
     assert rp.compte_banque({}, "bnc") == "1060" and rp.compte_entier({}, "bnc") == 10600000
     assert rp.banques_reglees({}) == ["desjardins", "bnc"]
+
+
+def test_documents_de_stock_par_depot():
+    """Dépôt lu dans Sage (titrline.lInvLocId) ; journal 14 sans bTrfLoc = ajustement ; écarts de coût écartés."""
+    from datetime import date
+
+    from mvogmbi_sync import listes_sage as ls
+
+    class Base:
+        def requete(self, sql, params=()):
+            j = date(2026, 11, 5)
+            return [
+                {"id": 1, "d": j, "j": 14, "t": 1, "s": "TR-0001", "q": -2, "m": -4, "e": "Primary location for all"},
+                {"id": 1, "d": j, "j": 14, "t": 1, "s": "TR-0001", "q": 2, "m": 4, "e": "Dépôt 2"},
+                {"id": 2, "d": j, "j": 14, "t": 0, "s": "DS-0001", "q": 1, "m": 2, "e": "Dépôt 2"},
+                {"id": 3, "d": j, "j": 12, "t": 0, "s": "DS-0002", "q": -1, "m": -2, "e": "Primary location for all"},
+                {"id": 4, "d": j, "j": 14, "t": 0, "s": "Vente 2026-11-04", "q": 0, "m": 0.03, "e": ""},
+            ]
+
+    entetes, lignes = ls.documents_stock(Base(), date(2026, 11, 1), date(2026, 11, 5))
+    assert entetes[3] == "Dépôt"
+    par_source = {l[2]: l for l in lignes}
+    assert set(par_source) == {"TR-0001", "DS-0001", "DS-0002"}
+    assert par_source["TR-0001"][1] == "Transfert entre emplacements"
+    assert par_source["TR-0001"][3] == "Emplacement par défaut → Dépôt 2"
+    assert par_source["DS-0001"][1] == "Ajustement d'inventaire" and par_source["DS-0001"][3] == "Dépôt 2"
+    _, filtres = ls.documents_stock(Base(), date(2026, 11, 1), date(2026, 11, 5), ["Dépôt 2"])
+    assert {l[2] for l in filtres} == {"TR-0001", "DS-0001"}
+
+
+def test_main_oeuvre_par_depot(tmp_path):
+    from datetime import date, datetime
+    from decimal import Decimal
+
+    from mvogmbi_sync import budget as bu, paie_temps as pt
+    from mvogmbi_sync.planning import Planning, Quart
+
+    reg = pt.Registre(tmp_path)
+    a = reg.ajouter("Alice")
+    b = reg.ajouter("Bruno")
+    b.depot = "Dépôt 2"
+    reg.enregistrer()
+    jour = date(2026, 11, 3)
+    plan = Planning(tmp_path)
+    plan.definir(a.id, [jour], Quart("08:00", "12:00"))
+    plan.definir(b.id, [jour], Quart("08:00", "10:00"))
+    plan.enregistrer()
+    _, planifiees = bu.heures_par_jour_tous(tmp_path, jour, jour)
+    assert planifiees[jour] == Decimal(6)
+    _, depot2 = bu.heures_par_jour_tous(tmp_path, jour, jour, ["Dépôt 2"])
+    assert depot2[jour] == Decimal(2)
+    _, defaut = bu.heures_par_jour_tous(tmp_path, jour, jour, ["Emplacement par défaut"])
+    assert defaut[jour] == Decimal(4)

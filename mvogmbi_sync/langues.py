@@ -675,6 +675,7 @@ EN: dict[str, str] = {
     "Choisissez d'abord une facture dans la liste.": "First choose an invoice in the list.",
     "Choisissez d'abord un transfert dans la liste.": "First choose a transfer in the list.",
     "Bon de transfert": "Transfer slip",
+    "Dépôt :": "Location:",
     "Le PDF n'a pas pu être créé : {e}": "The PDF could not be created: {e}",
     "Cliquez sur « Actualiser » : historique des traitements, Sage et relevés.": "Click “Refresh”: run history, Sage and statements.",
     "Dossier des archives": "Archive folder",

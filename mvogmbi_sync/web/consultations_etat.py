@@ -143,20 +143,27 @@ def _main_oeuvre(ctx, v):
     from ..previsions import ventes_par_jour
     from ..statistiques_clover import lire
 
+    from ..depots import points_vente_des
+    from .filtres import depots_choisis
+
     debut, fin = v["du"], v["au"]
     taux, charges = bu.taux_et_charges(ctx.config)
     hier = min(fin, date.today())
+    depots = depots_choisis(ctx)
+    codes = points_vente_des(ctx.config, depots)
 
     def ventes_clover():
         ventes: dict = {}
         for pv in permis(ctx.config, ctx.reg.points_vente_permis(ctx.u)):
+            if codes is not None and pv.code not in codes:
+                continue  # filtre « Dépôt »
             for jour, montant in ventes_par_jour(lire(client(ctx.racine, pv), debut, hier,
                                                       cache_clover(ctx.racine, pv))).items():
                 ventes[jour] = ventes.get(jour, Decimal(0)) + montant
         return ventes
 
-    ventes = _garde(ctx, ("ventes_jour", debut, hier), ventes_clover) if debut <= hier else {}
-    pointees, planifiees = bu.heures_par_jour_tous(ctx.racine, debut, fin)
+    ventes = _garde(ctx, ("ventes_jour", debut, hier, tuple(codes or ())), ventes_clover) if debut <= hier else {}
+    pointees, planifiees = bu.heures_par_jour_tous(ctx.racine, debut, fin, depots)
     lignes = bu.main_oeuvre(ventes, pointees, planifiees, debut, fin, taux, charges)
     total_v = sum((l[1] for l in lignes), Decimal(0))
     total_c = sum((l[4] for l in lignes), Decimal(0))
@@ -211,7 +218,7 @@ ANNEES = [str(date.today().year + i) for i in range(-1, 5)]  # comme FenetreCale
 CONSULTATIONS_ETAT = [
     Consultation("/calendrier-paie", "Calendrier de paie", "rapprochement", (), _calendrier, "", "📆", "Paie",
                  sans_sage=True, choix={"annee": ("Année", ANNEES)}, defauts={"annee": str(date.today().year)}),
-    Consultation("/main-oeuvre", "Coût de la main-d'œuvre", "rapprochement", ("periode",), _main_oeuvre, "", "👷",
+    Consultation("/main-oeuvre", "Coût de la main-d'œuvre", "rapprochement", ("periode", "depot"), _main_oeuvre, "", "👷",
                  "Paie", sans_sage=True, defauts={"du": date.today() - timedelta(days=28),
                                                   "au": date.today() + timedelta(days=13)}, bouton="🔍 Afficher"),
 ]

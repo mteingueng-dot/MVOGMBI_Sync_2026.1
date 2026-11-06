@@ -127,17 +127,18 @@ def lire_document(base, cote: str, numero: str, tiers: str) -> tuple[list[tuple[
 
 def lire_document_stock(base, source: str, jour: str) -> tuple[list[tuple[str, str]], list]:
     lignes = base.requete(
-        "SELECT r.nJournal j, r.sComment c, TRIM(i.sPartCode) n, TRIM(i.sName) nom, x.dQty q, x.dPrice p, x.dAmt a "
-        "FROM titrec r JOIN titrline x ON x.lITRecId = r.lId JOIN tinvent i ON i.lId = x.lInventId "
+        "SELECT r.nJournal j, r.bTrfLoc t, r.sComment c, TRIM(i.sPartCode) n, TRIM(i.sName) nom, x.dQty q, x.dPrice p, x.dAmt a, "
+        "TRIM(e.sGrpCode) e FROM titrec r JOIN titrline x ON x.lITRecId = r.lId JOIN tinvent i ON i.lId = x.lInventId "
+        "LEFT JOIN tinvloc e ON e.lId = x.lInvLocId "
         "WHERE r.nJournal IN (12, 14) AND TRIM(r.sSource1) = %s AND r.dtJournal = %s AND x.bVarLine = 0",
         (source, jour))
     infos = [(t("Source"), source), (t("Date"), jour)]
     if lignes:
-        infos += [(t("Type"), t("Ajustement d'inventaire") if lignes[0]["j"] == 12 else t("Transfert entre emplacements")),
+        infos += [(t("Type"), t("Transfert entre emplacements") if lignes[0]["t"] else t("Ajustement d'inventaire")),
                   (t("Remarque"), lignes[0]["c"] or "")]
-    sections = [("Lignes", ["N° Sage", "Article", "Quantité", "Prix", "Montant"],
-                 [[l["n"], reparer_texte(l["nom"] or ""), Decimal(str(l["q"] or 0)).normalize(), _d(l["p"]),
-                   _d(l["a"])] for l in lignes])]
+    sections = [("Lignes", ["N° Sage", "Article", "Dépôt", "Quantité", "Prix", "Montant"],
+                 [[l["n"], reparer_texte(l["nom"] or ""), nom_emplacement(reparer_texte(l["e"] or "")),
+                   Decimal(str(l["q"] or 0)).normalize(), _d(l["p"]), _d(l["a"])] for l in lignes])]
     return [(k, v) for k, v in infos if str(v).strip()], sections
 
 

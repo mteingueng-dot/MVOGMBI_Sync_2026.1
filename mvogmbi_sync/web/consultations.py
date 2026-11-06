@@ -224,7 +224,11 @@ def _documents(cote):
 
         du, au = v["du"], v["au"]
         if cote == "stock":
-            entetes, lignes = sage(ctx, lambda b: ls.documents_stock(b, du, au), ("docstock", du, au))
+            from .filtres import depots_choisis
+
+            depots = depots_choisis(ctx)
+            entetes, lignes = sage(ctx, lambda b: ls.documents_stock(b, du, au, depots),
+                                   ("docstock", du, au, tuple(depots or ())))
         else:
             entetes, lignes = sage(ctx, lambda b: ls.documents(b, cote, du, au), ("docs", cote, du, au))
         return [Section(f"Du {du} au {au}", entetes, _cherche(lignes, v))]
@@ -252,9 +256,13 @@ def _livre(ctx, v):
     from .. import listes_sage as ls
     from ..analyse_articles import categories
 
-    au = v["au"]
-    entetes, lignes = sage(ctx, lambda b: ls.livre_inventaire(b, au, categories(ctx.racine))[:2], ("livre", au))
-    return [Section(f"Stock et valeur au {au}", entetes, _cherche(lignes, v),
+    from .filtres import depots_choisis
+
+    au, depots = v["au"], depots_choisis(ctx)
+    entetes, lignes = sage(ctx, lambda b: ls.livre_inventaire(b, au, categories(ctx.racine), depots)[:2],
+                           ("livre", au, tuple(depots or ())))
+    titre = f"Stock et valeur au {au}" + (f" — {', '.join(depots)}" if depots else "")
+    return [Section(titre, entetes, _cherche(lignes, v),
                     "Quantité à la date (stock actuel moins les mouvements postérieurs), valeur au CUMP actuel.")]
 
 
@@ -416,6 +424,10 @@ def _formulaire(ctx: Contexte, c: Consultation, v: dict) -> str:
     for nom, (libelle, valeurs) in c.choix.items():
         options = "".join(f"<option{' selected' if str(v.get(nom)) == str(x) else ''}>{e(x)}</option>" for x in valeurs)
         champs.append(f"<div><label>{e(libelle)}</label><select name='{nom}'>{options}</select></div>")
+    if "depot" in f:  # filtre « Dépôt » (tous ou certains), comme design.filtre_depots
+        from .filtres import filtre_depots
+
+        champs.append(filtre_depots(ctx))
     if "categorie" in f:
         champs.append(f"<div><label>Catégorie</label><input name='categorie' value='{e(v.get('categorie', ''))}' "
                       "size='16'></div>")
@@ -549,9 +561,15 @@ def _liste_comme_windows(ctx: Contexte, c: Consultation, sections: list, v: dict
         from ..fenetre_chaine import ENTETES_ACHAT, ENTETES_STOCK, ENTETES_VENTE
 
         entetes = ENTETES_STOCK if cote == "stock" else ENTETES_ACHAT if cote == "achat" else ENTETES_VENTE
+        application = _rangees_application(ctx, cote, v)
         if cote == "stock":
-            rangees = [(l[:3] + [""] + l[3:] + ["Dans Sage"], r) for l, r in rangees]
-        rangees += [(l, ("app",) + ref) for l, ref in _rangees_application(ctx, cote, v)]
+            from .filtres import depots_choisis
+
+            rangees = [(l + ["Dans Sage"], r) for l, r in rangees]  # dépôt lu dans Sage (titrline.lInvLocId)
+            choisis = {d.casefold() for d in depots_choisis(ctx) or []}
+            if choisis:
+                application = [x for x in application if str(x[0][3]).casefold() in choisis]
+        rangees += [(l, ("app",) + ref) for l, ref in application]
         texte = str(v.get("texte", "")).strip().casefold()
         rangees = [x for x in rangees if not texte or x[1][0] == "sage" or any(texte in str(c).casefold() for c in x[0])]
         rangees.sort(key=lambda x: str(x[0][0]), reverse=True)
@@ -635,10 +653,10 @@ CONSULTATIONS = [
                  "Fournisseur"),
     Consultation("/articles", "Liste des articles", "correspondance", ("texte",), _articles,
                  "Articles de Sage : stock, CUMP, valeur, comptes et lien Clover.", "📚", "Articles"),
-    Consultation("/documents-stock", "Liste des documents de stock", "correspondance", ("periode", "texte"),
+    Consultation("/documents-stock", "Liste des documents de stock", "correspondance", ("periode", "depot", "texte"),
                  _documents("stock"), "Ajustements d'inventaire et transferts entre emplacements de Sage.", "🗂",
                  "Stock"),
-    Consultation("/livre-inventaire", "Livre d'inventaire", "correspondance", ("au", "texte"), _livre, "", "📒",
+    Consultation("/livre-inventaire", "Livre d'inventaire", "correspondance", ("au", "depot", "texte"), _livre, "", "📒",
                  "Stock"),
     Consultation("/age-comptes", "Âge des comptes", "rapprochement", ("cote", "vue"), _age, "", "⏳", "Comptabilité"),
     Consultation("/taxes", "Déclaration TPS/TVQ", "rapprochement", ("periode",), _taxes, "", "🧮", "Comptabilité", bouton="🔍 Calculer",

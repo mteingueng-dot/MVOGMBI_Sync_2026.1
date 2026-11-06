@@ -61,11 +61,14 @@ class FenetreListe(FenetreOutil):
     """Liste lue dans Sage : `lecture(base, du, au)` -> (en-têtes, lignes) ; période facultative ; recherche."""
 
     def __init__(self, parent, racine: Path, titre: str, lecture, periode: bool = False, explication: str = "",
-                 largeurs: dict | None = None, genre: str = ""):
+                 largeurs: dict | None = None, genre: str = "", depots: bool = False):
+        """`depots` : filtre « Dépôt » (tous ou certains) ; `lecture(base, du, au, depots)` reçoit alors la liste
+        des dépôts choisis (None = tous)."""
         from .page_rapports import tableau_simple
 
         super().__init__(parent)
         self.racine, self.lecture, self.largeurs, self.genre = Path(racine), lecture, largeurs or {}, genre
+        self.avec_depots, self.variable_depots = depots, None
         self.entetes, self.lignes, self.visibles = [], [], []
         self.title(t(titre))
         self.configure(background=CARTE, padx=14, pady=10)
@@ -83,6 +86,13 @@ class FenetreListe(FenetreOutil):
             ChampDate(g, self.du, fond=CARTE).pack(side="left")
             tk.Label(g, text=t("au"), background=CARTE).pack(side="left", padx=4)
             ChampDate(g, self.au, fond=CARTE).pack(side="left")
+        if depots:
+            from .design import filtre_depots
+
+            g = barre.ajouter(barre.groupe(), 10)
+            tk.Label(g, text=t("Dépôt :"), background=CARTE).pack(side="left", padx=(0, 4))
+            choix, self.variable_depots = filtre_depots(g, self.racine, au_choix=lambda *_: self.charger())
+            choix.pack(side="left")
         g = barre.ajouter(barre.groupe(), 10)
         tk.Label(g, text=t("Rechercher :"), background=CARTE).pack(side="left", padx=(0, 4))
         self.texte = tk.StringVar()
@@ -117,8 +127,16 @@ class FenetreListe(FenetreOutil):
             self.entetes, self.lignes = resultat[0], resultat[1]
             self.afficher()
 
-        lire_sage_dans_un_fil(self, self.racine, lambda base: self.lecture(base, du, au), fin, self.etat,
-                              cle=f"liste:{self.genre}:{du}:{au}" if self.genre else "", forcer=forcer)
+        depots = self.depots_choisis()
+        lecture = (lambda base: self.lecture(base, du, au, depots)) if self.avec_depots else (
+            lambda base: self.lecture(base, du, au))
+        lire_sage_dans_un_fil(self, self.racine, lecture, fin, self.etat,
+                              cle=f"liste:{self.genre}:{du}:{au}:{depots}" if self.genre else "", forcer=forcer)
+
+    def depots_choisis(self) -> list[str] | None:
+        from .design import depots_choisis
+
+        return depots_choisis(self.variable_depots) if self.variable_depots is not None else None
 
     def afficher(self) -> None:
         from .page_rapports import remplir
@@ -259,8 +277,9 @@ def ouvrir_liste(parent, racine: Path, genre: str):
         from .analyse_articles import categories
 
         fenetre = FenetreListe(parent, racine, "Livre d'inventaire",
-                               lambda b, _d, a: ls.livre_inventaire(b, a or date.today(), categories(racine))[:2],
-                               periode=True, largeurs={"Article": 280, "Catégorie": 160}, genre=genre,
+                               lambda b, _d, a, depots: ls.livre_inventaire(b, a or date.today(), categories(racine),
+                                                                            depots)[:2],
+                               periode=True, largeurs={"Article": 280, "Catégorie": 160}, genre=genre, depots=True,
                                explication="Quantité à la date « au » (stock actuel moins les mouvements postérieurs) "
                                            "et valeur au CUMP actuel, par catégorie.")
         fenetre.du.set("")

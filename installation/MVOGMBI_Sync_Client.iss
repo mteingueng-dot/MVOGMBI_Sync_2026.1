@@ -5,7 +5,7 @@
 ; Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync_Client"
-#define Version "2.24.0"
+#define Version "2.24.1"
 #define Editeur "Concept Informatique inc."
 
 [Setup]

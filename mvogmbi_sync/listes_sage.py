@@ -107,17 +107,56 @@ def commandes_sage(base) -> tuple[list[str], list[list]]:
 TYPES_STOCK = {12: "Ajustement d'inventaire", 14: "Transfert entre emplacements"}
 
 
-def documents_stock(base, du: date, au: date) -> tuple[list[str], list[list]]:
-    """Ajustements (journal 12) et transferts (journal 14) de Sage : un document par saisie."""
+EMPLACEMENT_DEFAUT = "Emplacement par défaut"
+EMPLACEMENTS_ANGLAIS = {"primary location for all", "primary location", "default location", ""}
+
+
+def emplacement(nom) -> str:
+    """Nom d'un emplacement (dépôt) de Sage, accents réparés ; « Primary location for all » = « Emplacement par
+    défaut » (comme fiches.nom_emplacement)."""
+    texte = " ".join(reparer_texte(str(nom or "")).split())
+    return EMPLACEMENT_DEFAUT if texte.casefold() in EMPLACEMENTS_ANGLAIS else texte
+
+
+def documents_stock(base, du: date, au: date, depots: list[str] | None = None) -> tuple[list[str], list[list]]:
+    """Ajustements (journal 12) et transferts (journal 14) de Sage : un document par saisie, avec son dépôt
+    (titrline.lInvLocId : un ajustement = ses emplacements ; un transfert = « départ → arrivée », quantité négative
+    au départ ; constat du 2026-11-05 : Sage range aussi dans le journal 14 les entrées et sorties d'un emplacement
+    autre que celui par défaut, seul titrec.bTrfLoc dit si c'est un transfert). Les écritures sans quantité (écarts
+    de coût que Sage passe après une vente) sont écartées. `depots` : seulement les documents qui touchent un de ces dépôts (None = tous)."""
     lignes = base.requete(
-        "SELECT r.lId id, r.dtJournal d, r.nJournal j, TRIM(r.sSource1) s, COUNT(l.nLineNum) n, SUM(l.dQty) q, "
-        "SUM(l.dAmt) m FROM titrec r JOIN titrline l ON l.lITRecId = r.lId WHERE r.nJournal IN (12, 14) "
-        "AND l.bVarLine = 0 AND r.bReversed = 0 AND r.bReversal = 0 AND r.dtJournal >= %s AND r.dtJournal <= %s "
-        "GROUP BY r.lId, r.dtJournal, r.nJournal, r.sSource1", (du.isoformat(), au.isoformat()))
-    resultat = [[_jour(l["d"]), TYPES_STOCK.get(l["j"], f"Journal {l['j']}"), l["s"] or "", int(l["n"] or 0),
-                 _q(l["q"]) if l["j"] == 12 else None, _d(l["m"]) if l["j"] == 12 else None] for l in lignes]
+        "SELECT r.lId id, r.dtJournal d, r.nJournal j, r.bTrfLoc t, TRIM(r.sSource1) s, l.dQty q, l.dAmt m, "
+        "c.sGrpCode e "
+        "FROM titrec r JOIN titrline l ON l.lITRecId = r.lId LEFT JOIN tinvloc c ON c.lId = l.lInvLocId "
+        "WHERE r.nJournal IN (12, 14) AND l.bVarLine = 0 AND r.bReversed = 0 AND r.bReversal = 0 "
+        "AND r.dtJournal >= %s AND r.dtJournal <= %s", (du.isoformat(), au.isoformat()))
+    docs: dict = {}
+    for l in lignes:
+        d = docs.setdefault(l["id"], {"d": l["d"], "j": 14 if l["t"] else 12, "s": l["s"] or "", "n": 0, "q": Decimal(0),
+                                      "m": Decimal(0), "abs": Decimal(0), "de": [], "vers": [], "tous": []})
+        q = Decimal(str(l["q"] or 0))
+        d["n"] += 1
+        d["q"] += q
+        d["m"] += Decimal(str(l["m"] or 0))
+        d["abs"] += abs(q)
+        nom = emplacement(l["e"])
+        for cle in ("tous",) + (("de",) if q < 0 else ("vers",) if q > 0 else ()):
+            if nom not in d[cle]:
+                d[cle].append(nom)
+    resultat = []
+    for d in docs.values():
+        if not d["abs"]:
+            continue  # écart de coût sans quantité
+        if depots and not any(x.casefold() in {y.casefold() for y in depots} for x in d["tous"]):
+            continue
+        if d["j"] == 14:
+            depot = f"{', '.join(d['de']) or '?'} → {', '.join(d['vers']) or '?'}"
+        else:
+            depot = ", ".join(d["tous"])
+        resultat.append([_jour(d["d"]), TYPES_STOCK.get(d["j"], f"Journal {d['j']}"), d["s"], depot, d["n"],
+                         _q(d["q"]) if d["j"] == 12 else None, _d(d["m"]) if d["j"] == 12 else None])
     resultat.sort(key=lambda l: (l[0], l[2]), reverse=True)
-    return ["Date", "Type", "Source", "Lignes", "Quantité (+ entrée / − sortie)", "Montant"], resultat
+    return ["Date", "Type", "Source", "Dépôt", "Lignes", "Quantité (+ entrée / − sortie)", "Montant"], resultat
 
 
 # --------------------------------------------------------------------------------------------- articles
@@ -148,23 +187,46 @@ def articles(base, categories: dict[str, str] | None = None, liens: dict[str, li
             "Compte d'actif", "Compte de produits", "Compte de charges / CMV", "Articles Clover"], lignes
 
 
-def livre_inventaire(base, au: date, categories: dict[str, str] | None = None) -> tuple[list[str], list[list], dict]:
+def stock_par_emplacement(base) -> dict[str, dict[str, Decimal]]:
+    """N° Sage -> {emplacement : stock actuel} (tinvbyln, une ligne par article et par emplacement)."""
+    resultat: dict[str, dict[str, Decimal]] = defaultdict(dict)
+    for l in base.requete(
+            "SELECT TRIM(i.sPartCode) n, c.sGrpCode e, SUM(y.dInStock) q FROM tinvbyln y JOIN tinvent i ON "
+            "i.lId = y.lInventId LEFT JOIN tinvloc c ON c.lId = y.lInvLocId GROUP BY i.sPartCode, c.sGrpCode"):
+        nom = emplacement(l["e"])
+        resultat[l["n"]][nom] = resultat[l["n"]].get(nom, Decimal(0)) + Decimal(str(l["q"] or 0))
+    return resultat
+
+
+def livre_inventaire(base, au: date, categories: dict[str, str] | None = None,
+                     depots: list[str] | None = None) -> tuple[list[str], list[list], dict]:
     """Quantité à la date (stock actuel moins les entrées et plus les sorties postérieures) et valeur au CUMP actuel,
-    par article puis total de chaque catégorie ; articles de stock actifs ou ayant du stock."""
+    par article puis total de chaque catégorie ; articles de stock actifs ou ayant du stock. `depots` (demande du
+    propriétaire du 2026-11-05 : états de tous les dépôts ou d'un dépôt) : stock de ces emplacements seulement
+    (tinvbyln), mouvements postérieurs de ces emplacements (titrline.lInvLocId, transferts compris) ; None = tous."""
     from .analyse_articles import lire_articles
 
     actuels = lire_articles(base, categories or {})
+    choisis = {d.casefold() for d in depots or []}
+    par_emplacement = stock_par_emplacement(base) if choisis else {}
     apres = defaultdict(Decimal)
     for l in base.requete(
-            "SELECT TRIM(i.sPartCode) n, r.nJournal j, SUM(l.dQty) q FROM titrline l JOIN titrec r ON r.lId = "
-            "l.lITRecId JOIN tinvent i ON i.lId = l.lInventId WHERE r.nJournal IN (7, 8, 12, 17) AND l.bVarLine = 0 "
-            "AND r.bReversed = 0 AND r.bReversal = 0 AND r.dtJournal > %s GROUP BY i.sPartCode, r.nJournal",
-            (au.isoformat(),)):
+            "SELECT TRIM(i.sPartCode) n, r.nJournal j, r.bTrfLoc t, c.sGrpCode e, SUM(l.dQty) q FROM titrline l "
+            "JOIN titrec r "
+            "ON r.lId = l.lITRecId JOIN tinvent i ON i.lId = l.lInventId LEFT JOIN tinvloc c ON c.lId = l.lInvLocId "
+            "WHERE r.nJournal IN (7, 8, 12, 14, 17) AND l.bVarLine = 0 AND r.bReversed = 0 AND r.bReversal = 0 "
+            "AND r.dtJournal > %s GROUP BY i.sPartCode, r.nJournal, r.bTrfLoc, c.sGrpCode", (au.isoformat(),)):
+        if choisis and emplacement(l["e"]).casefold() not in choisis:
+            continue
+        if l["t"] and not choisis:
+            continue  # transferts : sans effet sur le stock de tous les dépôts (journal 14 sans bTrfLoc = ajustement)
         q = Decimal(str(l["q"] or 0))
-        apres[l["n"]] += q if l["j"] in (7, 12) else -q   # entrées après la date : à retirer du stock actuel
+        apres[l["n"]] += q if l["j"] in (7, 12, 14) else -q   # entrées après la date : à retirer du stock actuel
     par_categorie: dict[str, list] = defaultdict(list)
     for a in actuels.values():
-        quantite = (a.quantite - apres.get(a.numero, Decimal(0))).quantize(Decimal("0.001")).normalize()
+        actuel = a.quantite if not choisis else sum(
+            (q for e, q in par_emplacement.get(a.numero, {}).items() if e.casefold() in choisis), Decimal(0))
+        quantite = (actuel - apres.get(a.numero, Decimal(0))).quantize(Decimal("0.001")).normalize()
         if quantite == 0:
             continue
         cump = a.cump

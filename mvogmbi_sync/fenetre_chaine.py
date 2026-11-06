@@ -83,7 +83,8 @@ class FenetreDocumentsChaine(FenetreListe):
         self.cote = cote
         self.refs, self.refs_visibles = [], []
         super().__init__(parent, racine, titre, lecture, periode=True, explication=explication, largeurs=largeurs,
-                         genre=f"documents_{cote}" if cote != "stock" else "documents_stock")
+                         genre=f"documents_{cote}" if cote != "stock" else "documents_stock",
+                         depots=cote == "stock")
         if cote == "stock":
             self.barre.ajouter(Bouton(self.barre, "⬆  " + t("Passer dans Sage et Clover"), self.passer, "accent",
                                       fond=CARTE, petit=True))
@@ -146,14 +147,18 @@ class FenetreDocumentsChaine(FenetreListe):
 
         entetes = self._entetes()
         sage = [list(l) for l in self.lignes]
-        if self.cote == "stock":  # colonne Dépôt (non lue dans Sage) et État
-            sage = [l[:3] + [""] + l[3:] + [t("Dans Sage")] for l in sage]
+        if self.cote == "stock":  # colonne État (le dépôt est lu dans Sage : titrline.lInvLocId)
+            sage = [l + [t("Dans Sage")] for l in sage]
         else:  # facture importée depuis l'application : sa chaîne (commande, livraison) dans « Pièce »
             registre = dc.Registre(self.racine)
             for l in sage:
                 if l[2] and any(d.numero == l[2] for d in registre.documents):
                     l[3] = " → ".join(registre.chaine(l[2])) or l[3]
-        tout = [(l, ("sage", None)) for l in sage] + self._rangees_application()
+        application = self._rangees_application()
+        choisis = {d.casefold() for d in self.depots_choisis() or []}
+        if choisis:  # filtre « Dépôt » : les lignes de Sage sont déjà filtrées à la lecture
+            application = [x for x in application if str(x[0][3]).casefold() in choisis]
+        tout = [(l, ("sage", None)) for l in sage] + application
         tout.sort(key=lambda x: str(x[0][0]), reverse=True)
         texte = self.texte.get().strip().casefold()
         visibles = [x for x in tout if not texte or any(texte in str(v).casefold() for v in x[0])]
@@ -456,7 +461,7 @@ def ouvrir_documents(parent, racine: Path, genre: str):
             "« Transformer » -> Facture : la facture est prête à importer (Factures fournisseurs).",
             {"Fournisseur": 220, "Facture": 130, "Pièce": 200})
     return FenetreDocumentsChaine(
-        parent, racine, "Liste des documents de stock", lambda b, d, a: ls.documents_stock(b, d, a), "stock",
+        parent, racine, "Liste des documents de stock", lambda b, d, a, depots=None: ls.documents_stock(b, d, a, depots), "stock",
         "Ajustements et transferts de Sage, et documents de stock de l'application (en bleu). Modifier ou supprimer "
         "un document déjà passé le défait dans Sage ET Clover par un document inverse.",
         {"Source": 160, "Dépôt": 180, "Type": 220})
