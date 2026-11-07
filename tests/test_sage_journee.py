@@ -157,3 +157,66 @@ def test_le_serveur_web_n_ouvre_jamais_sage(monkeypatch, tmp_path):
         m.garder_sage_ouvert(tmp_path, lire_config=lambda: {"sage_import": {"fichier_entreprise": "X.SAI"}},
                              ouvrir=False)
     assert ouvertures == []
+
+
+def test_reponses_aux_questions_de_sage_a_la_fermeture(monkeypatch):
+    """Constat du 2026-11-06 : « Sage 50 - Confirmation » restée ouverte, Sage refusait de se fermer."""
+    from pathlib import Path
+
+    from mvogmbi_sync import sage_bureau as sb
+
+    clics = []
+    fenetres = {1: ("Sage 50 - Confirmation", ["Voulez-vous sauvegarder vos données ?"], {"oui": 11, "non": 12}),
+                2: ("Sage 50", ["Voulez-vous vraiment quitter Sage ?"], {"oui": 21, "non": 22}),
+                3: ("Sage 50", ["Une question inconnue"], {"ok": 31})}
+    s = sb.SessionSage(Path("Sage50Accounting.exe"), lambda *_: None)
+    s.principale = 99
+    monkeypatch.setattr(s, "fenetres", lambda: [99, 1, 2, 3])
+    monkeypatch.setattr(s, "decrire", lambda h: fenetres[h])
+    monkeypatch.setattr(sb.user32, "PostMessageW", lambda h, *_: clics.append(h))
+    notes = s.repondre_confirmations()
+    assert clics == [12, 21]                               # sauvegarde -> Non ; quitter -> Oui ; inconnue : rien
+    assert "aucune réponse automatique" in notes[2] and "Une question inconnue" in notes[2]
+
+
+def test_entreprise_fermee_pour_inactivite(monkeypatch):
+    """Textes réels lus sur SERVDCSAGE le 2026-11-06 (Sage n° 1644 qui ne se refermait pas)."""
+    from pathlib import Path
+
+    from mvogmbi_sync import sage_bureau as sb
+
+    clics = []
+    fenetres = {1: ("Sage 50 - Confirmation", ["Cette entreprise a été fermée suite à une période d'inactivité. "
+                                               "Voulez-vous la réouvrir?"], {"oui": 11, "non": 12}),
+                2: ("Sage 50", ["Sage 50 n'a pu traiter cette transaction vu qu'un autre utilisateur traitait aussi "
+                                "une transaction utilisant le même enregistrement. Attendez quelques instants et "
+                                "essayez de nouveau."], {"ok": 21})}
+    s = sb.SessionSage(Path("Sage50Accounting.exe"), lambda *_: None)
+    s.principale = 99
+    monkeypatch.setattr(s, "fenetres", lambda: [99, 1, 2])
+    monkeypatch.setattr(s, "decrire", lambda h: fenetres[h])
+    monkeypatch.setattr(sb.user32, "PostMessageW", lambda h, *_: clics.append(h))
+    s.repondre_confirmations()
+    assert clics == [12, 21]                               # ne pas rouvrir ; avertissement : OK
+    monkeypatch.setattr(s, "_messages", lambda: [fenetres[1][1][0]])
+    assert sb.inactivite_signalee(s)
+
+
+def test_aucun_outil_d_import_quand_un_sage_tourne(monkeypatch, tmp_path):
+    """Constat du 2026-11-06 sur SERVDCSAGE (1.0.12) : pendant que la saisie lançait son Sage sur le bureau caché,
+    la surveillance du serveur web a rouvert la base par l'outil d'import, qui a pris l'entreprise."""
+    import json
+    import os
+    import time
+
+    from mvogmbi_sync import sage_bureau as sb
+
+    monkeypatch.setattr(sb, "_marque_lancement", lambda: tmp_path / "sage_lancement.json")
+    monkeypatch.setattr(sb, "_processus", lambda: {})
+    assert not sb.sage_tourne()
+    (tmp_path / "sage_lancement.json").write_text(json.dumps({"pid": os.getpid(), "depuis": time.time()}), "utf-8")
+    assert sb.sage_tourne()                                # Sage annoncé, pas encore lancé
+    (tmp_path / "sage_lancement.json").unlink()
+    monkeypatch.setattr(sb, "_processus", lambda: {os.getpid(): (1, "sage50accounting.exe")})
+    monkeypatch.setattr(sb, "sages_du_bureau_cache", lambda: {os.getpid(): 1})
+    assert sb.sage_tourne() and not sb.sage_ouvert()       # Sage de l'application : il tourne, sans être « à une personne »

@@ -300,6 +300,9 @@ def attendre_orphelins(delai: float = 240, journal=None) -> None:
     fin = time.time() + delai
     while time.time() < fin and sages_orphelins():
         time.sleep(2)
+    if sages_orphelins():
+        raise ErreurSage("Un Sage resté ouvert sans l'application ne se referme pas : Sage attend sans doute une "
+                         "réponse à une question (voir donnees/journal_sage_garde.log). Rien n'a été saisi.")
 
 
 def sage_garde(fichier=None, meme_session: bool = True) -> dict | None:
@@ -386,6 +389,17 @@ def mono_en_cours() -> bool:
         return False
 
 
+INACTIVITE = "fermée suite à une période d'inactivité"
+
+
+def inactivite_signalee(session) -> bool:
+    """Sage a fermé l'entreprise après une période d'inactivité et demande s'il faut la rouvrir."""
+    try:
+        return any(INACTIVITE in m.lower() for m in session._messages())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class _Emprunt:
     """Processus du Sage gardé ouvert, utilisé tel quel : jamais arrêté par la session qui l'emprunte."""
 
@@ -397,6 +411,25 @@ class _Emprunt:
 
     def kill(self) -> None:  # jamais : il appartient à l'application
         pass
+
+
+def _marque_lancement() -> Path:
+    from .__main__ import RACINE
+
+    return Path(RACINE) / "donnees" / "sage_lancement.json"
+
+
+def sage_tourne() -> bool:
+    """Un Sage, quel qu'il soit (personne, application, en train de se lancer), tourne sur la machine : l'outil
+    d'import ne doit alors jamais ouvrir la base (il prendrait l'entreprise : « Un autre utilisateur utilise
+    actuellement cette entreprise sur cet ordinateur », constat du 2026-11-06 sur SERVDCSAGE, 1.0.12)."""
+    try:
+        marque = json.loads(_marque_lancement().read_text(encoding="utf-8"))
+        if _vivant(int(marque["pid"])) and time.time() - float(marque["depuis"]) < 300:
+            return True
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return any(nom == "sage50accounting.exe" and _vivant(p) for p, (_pere, nom) in _processus().items())
 
 
 def sage_ouvert() -> bool:
@@ -502,8 +535,9 @@ class SessionSage:
         """Texte des fenêtres de message de Sage ouvertes (avertissements, erreurs)."""
         textes = []
         for h in self.fenetres():
-            texte = " ".join(_texte(e) for e in _descendants(h) if self._classe(e) in ("Static", "SimplyStat")
-                             and user32.IsWindowVisible(e) and _texte(e).strip())
+            texte = " ".join((self._contenu(e) or _texte(e)).strip() for e in _descendants(h)
+                             if ("static" in self._classe(e).lower() or self._classe(e) == "SimplyStat")
+                             and user32.IsWindowVisible(e) and (self._contenu(e) or _texte(e)).strip())
             if texte:
                 textes.append(texte)
         return textes
@@ -521,7 +555,18 @@ class SessionSage:
         if not mono and self.emprunter(fichier_sai):
             return
         liberer_sage_garde()  # mono-utilisateur, ou Sage gardé hors de ce bureau : une seule copie par session
+        try:  # annoncé avant de relâcher la base : la surveillance du serveur web ne relance pas l'outil d'import
+            _marque_lancement().write_text(json.dumps({"pid": os.getpid(), "depuis": time.time()}), encoding="utf-8")
+            if mono:  # annoncé AVANT : les autres programmes ferment leurs connexions (Sage les refuserait)
+                _marque_mono().write_text(str(os.getpid()), encoding="utf-8")
+        except OSError:
+            pass
+        if mono:
+            time.sleep(3)  # le serveur web ferme ses connexions (contrôle chaque seconde)
         fermer_bases()  # aucune connexion de l'application ouverte quand Sage ouvre l'entreprise
+        from .__main__ import _attendre_fin_outil_import
+
+        _attendre_fin_outil_import()
         if mono:
             try:
                 _marque_mono().write_text(str(os.getpid()), encoding="utf-8")
@@ -796,6 +841,56 @@ class SessionSage:
         return self.ouvrir_tache("Entreprise", "Journal général")
 
     # ------------------------------------------------------------ fermeture
+    def decrire(self, h) -> tuple[str, list[str], dict[str, int]]:
+        """Titre, textes et boutons d'une fenêtre de Sage (contrôles Windows et WinForms, lus par WM_GETTEXT)."""
+        textes, boutons = [], {}
+        for e in _descendants(h):
+            if not user32.IsWindowVisible(e):
+                continue
+            texte = (self._contenu(e) or _texte(e)).strip()
+            if "button" in self._classe(e).lower():
+                if texte:
+                    boutons[texte.replace("&", "").strip().lower()] = e
+            elif texte:
+                textes.append(texte)
+        return _texte(h), textes, boutons
+
+    def repondre_confirmations(self) -> list[str]:
+        """Questions de Sage pendant sa fermeture (constat du 2026-11-06 sur SERVDCSAGE : « Sage 50 - Confirmation »
+        restée ouverte, Sage refusait de se fermer) : sauvegarde proposée -> « Non » (l'application fait ses propres
+        sauvegardes) ; confirmation de fermeture -> « Oui » ; toute autre question : rien n'est cliqué, le texte est
+        rendu pour le journal."""
+        notes = []
+        for h in self.fenetres():
+            if h == self.principale:
+                continue
+            titre, textes, boutons = self.decrire(h)
+            if _est_mise_a_jour(titre) or not (textes or boutons):
+                continue
+            question = " ".join(textes).lower()
+            choix = None
+            if "un autre utilisateur utilise actuellement cette entreprise" in question:
+                choix = next((k for k in boutons if k in ("ok",)), None)  # ouverture refusée : Sage se ferme seul
+            elif INACTIVITE in question or "closed due to inactivity" in question:
+                # entreprise fermée par Sage après une période d'inactivité (constat du 2026-11-06 sur SERVDCSAGE) :
+                # ne pas la rouvrir, Sage peut alors se fermer
+                choix = next((k for k in boutons if k in ("non", "no")), None)
+            elif "un autre utilisateur traitait aussi une transaction" in question:
+                choix = next((k for k in boutons if k in ("ok",)), None)  # simple avertissement : OK
+            elif any(m in question for m in ("sauvegard", "backup", "back up")):
+                choix = next((k for k in boutons if k in ("non", "no")), None)
+            elif any(m in question for m in ("quitter", "fermer", "exit", "close", "voulez-vous vraiment",
+                                              "do you really")):
+                choix = next((k for k in boutons if k in ("oui", "yes", "ok")), None)
+            note = f"Fenêtre « {titre} » : « {' / '.join(textes)[:300]} » ; boutons {list(boutons)}"
+            if choix:
+                user32.PostMessageW(boutons[choix], BM_CLICK, 0, 0)
+                note += f" ; réponse « {choix} »"
+            else:
+                note += " ; aucune réponse automatique"
+            notes.append(note)
+        return notes
+
     def _confirmer_abandon(self) -> None:
         """Fenêtre fermée avec une saisie non traitée : Sage demande s'il faut la supprimer -> Oui (rien n'est saisi)."""
         for h in self.fenetres():
@@ -834,11 +929,20 @@ class SessionSage:
         if self.principale:
             user32.PostMessageW(self.principale, WM_CLOSE, 0, 0)
         fin = time.time() + delai
+        vues: set[str] = set()
         while time.time() < fin:  # Sage peut proposer une mise à jour en se fermant (constat du 2026-10-29)
             if _attendre(lambda: self.processus.poll() is not None, 5):
                 self.journal("Sage refermé.")
                 return
             self.fermer_mise_a_jour()
+            for note in self.repondre_confirmations():
+                if note not in vues:
+                    vues.add(note)
+                    self.journal(note)
         restantes = [_texte(h) for h in self.fenetres()]
+        if isinstance(self.processus, _Emprunt):  # Sage d'une autre origine : jamais arrêté de force
+            self.journal(f"Sage n° {self.processus.pid} ne se referme pas (fenêtres : {restantes} ; "
+                         f"messages : {self._messages()}) ; il n'est pas arrêté de force.")
+            return
         self.processus.kill()
         self.journal(f"Sage ne se refermait pas (fenêtres : {restantes} ; messages : {self._messages()}) : arrêté.")

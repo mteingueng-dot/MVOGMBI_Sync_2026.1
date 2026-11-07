@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 309 tests
+## 3. Tests automatiques — 312 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -63,7 +63,10 @@ Règles :
 | Version 1.0.8 : le Sage d'une personne passe d'abord | test_sage_journee | 1 |
 | Version 1.0.9 : Sage orphelin, pause de l'installateur | test_sage_journee | 2 |
 | Version 1.0.10 : le serveur web n'ouvre jamais Sage | test_sage_journee | 1 |
-| **Total** | 60 fichiers | **309** |
+| Version 1.0.11 : réponses aux questions de Sage à la fermeture | test_sage_journee | 1 |
+| Version 1.0.12 : entreprise fermée pour inactivité, avertissement d'enregistrement occupé | test_sage_journee | 1 |
+| Version 1.0.14 : aucun outil d'import quand un Sage tourne | test_sage_journee | 1 |
+| **Total** | 60 fichiers | **312** |
 
 Résultat du 6 novembre 2026 (version 1.0.7) : **305 réussis**, y compris les 2 tests de fenêtres Tk ; compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
 
@@ -127,6 +130,7 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | S22 | Course reproduite : lectures toutes les 5 s et saisie lancée pendant l'ouverture du Sage de la journée | multi-utilisateur | Réussi : outil d'import jamais lancé, Sage jamais pris pour celui d'une personne, saisie qui attend puis emprunte Sage (fenêtre Encaissements en 7 s) |
 | S24 | Sage de la journée rendu orphelin (gardien arrêté comme par l'installateur, Sage jamais touché) | multi-utilisateur | Réussi : reconnu orphelin, jamais pris pour le Sage d'une personne, refermé proprement en 12 s |
 | S25 | Application Windows arrêtée brutalement pendant que son Sage est ouvert | multi-utilisateur | Réussi : Sage refermé proprement 10 s après, aucun orphelin |
+| S26 | **Vrai fichier (serveur)** : encaissement d'un dépôt réel (2026-01-06, 1 020,36 $ sur « Vente 2026-01-05 ») lancé à distance dans la session de l'administrateur | multi-utilisateur | **Enregistré** (solde 1 102,81 -> 82,45 $) ; question de Sage après « Traiter » mal comprise : corrigé en 1.0.13 |
 | S23 | Fenêtre Encaissements : cellule « Montant reçu » avec la grille normale (791 points) et réduite à la taille du serveur (641 × 96) | multi-utilisateur | Réussi : x = 696 puis 559, bonne colonne, rien de traité |
 
 ### 4.4 Profils et droits
@@ -211,6 +215,9 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | Page Rapprochement : Entrée, Sortie, État hors de la zone | Une description très longue élargissait la colonne | Textes longs coupés, texte complet au survol (1.0.6) |
 | « Cette entreprise partagée est déjà ouverte » quand le propriétaire ouvre Sage sur le serveur (vrai fichier) | Sage n'ouvre l'entreprise qu'une fois par ordinateur ; le Sage de la journée la tenait dans la même session | Le Sage d'une personne passe d'abord : Sage de la journée refermé en quelques secondes, rouvert 5 min après (1.0.8) |
 | Après l'installation de la 1.0.8 : « Fermez Sage » à l'encaissement, Sage impossible à ouvrir (vrai fichier) | L'installation a coupé le gardien pendant la fermeture de Sage ; marque effacée avant la fermeture ; Sage seul sur le bureau caché | Sage du bureau caché toujours celui de l'application, orphelin refermé proprement, installateur qui referme Sage d'abord (1.0.9) |
+| Sage resté seul (vrai fichier) qui ne se referme pas ; encaissement : 0 sur 43 | Fenêtre « Sage 50 - Confirmation » sans réponse (texte WinForms non lu) ; deux programmes refermaient le même Sage ; l'encaissement lançait quand même un 2e Sage | Textes WinForms lus (WM_GETTEXT), sauvegarde -> Non, fermeture -> Oui, un seul programme à la fois, saisie arrêtée avec un message clair (1.0.11) |
+| Encaissement réel dit « NON encaissé » alors qu'il est dans Sage | Question de Sage après l'enregistrement, texte illisible (GetWindowText) | Texte lu par WM_GETTEXT, photo, la base fait foi (1.0.13) |
+| « Un autre utilisateur utilise actuellement cette entreprise » au lancement d'une saisie (vrai fichier) | La surveillance du web relançait l'outil d'import pendant le lancement de Sage (Sage du bureau caché non compté depuis 1.0.9) | `sage_tourne` : aucun outil d'import tant qu'un Sage tourne ou se lance (1.0.14) |
 | `/aide` sans « ?page= » : aucune réponse | Paramètre lu sans valeur par défaut, et la page d'erreur plantait aussi | Valeur par défaut, page d'erreur de secours (1.0.7) |
 | Avertissement « invalid escape sequence » (lanceur du serveur web) | « \M » dans un nom de verrou | Chaîne brute (1.0.7) |
 

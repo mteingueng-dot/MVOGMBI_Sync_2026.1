@@ -26,7 +26,7 @@ from decimal import Decimal
 user32 = ctypes.windll.user32 if hasattr(ctypes, "windll") else None
 
 WM_LBUTTONDOWN, WM_LBUTTONUP, WM_CHAR, WM_KEYDOWN, WM_KEYUP = 0x0201, 0x0202, 0x0102, 0x0100, 0x0101
-WM_COMMAND, WM_SETTEXT, WM_VSCROLL, WM_CLOSE = 0x0111, 0x000C, 0x0115, 0x0010
+WM_COMMAND, WM_SETTEXT, WM_VSCROLL, WM_CLOSE, WM_GETTEXT = 0x0111, 0x000C, 0x0115, 0x0010, 0x000D
 CB_SETCURSEL, CB_GETCURSEL, CB_GETCOUNT, CB_GETLBTEXT, CB_GETLBTEXTLEN = 0x014E, 0x0147, 0x0146, 0x0148, 0x0149
 CBN_SELCHANGE, EN_CHANGE, EN_KILLFOCUS = 1, 0x0300, 0x0200
 SB_LINEDOWN, SB_TOP, SB_VERT = 1, 6, 1
@@ -86,6 +86,12 @@ def _lire_montant(texte: str) -> Decimal:
     return Decimal(nettoye or "0")
 
 
+def _attendre_fermeture(h, delai: float) -> None:
+    fin = time.time() + delai
+    while time.time() < fin and user32.IsWindow(h) and user32.IsWindowVisible(h):
+        time.sleep(0.5)
+
+
 class SCROLLINFO(ctypes.Structure):
     _fields_ = [("cbSize", wt.UINT), ("fMask", wt.UINT), ("nMin", ctypes.c_int), ("nMax", ctypes.c_int),
                 ("nPage", wt.UINT), ("nPos", ctypes.c_int), ("nTrackPos", ctypes.c_int)]
@@ -125,7 +131,18 @@ class FenetreEncaissements:
 
     @staticmethod
     def message(dialogue) -> str:
-        return " ".join(_texte(c) for c in _enfants(dialogue) if _classe(c) == "Static" and _texte(c))
+        """Texte d'une question de Sage : tous les contrôles sauf les boutons, lus par WM_GETTEXT (constat du
+        2026-11-06 sur SERVDCSAGE : texte vide avec GetWindowText, la question restait inconnue)."""
+        textes = []
+        for c in _enfants(dialogue):
+            if "button" in _classe(c).lower():
+                continue
+            tampon = ctypes.create_unicode_buffer(1024)
+            user32.SendMessageW(c, WM_GETTEXT, 1024, tampon)
+            texte = (tampon.value or _texte(c)).strip()
+            if texte:
+                textes.append(texte)
+        return " ".join(textes)
 
     @staticmethod
     def repondre(dialogue, libelles: tuple[str, ...]) -> bool:
@@ -295,12 +312,19 @@ class FenetreEncaissements:
 
     def traiter(self, resultat: ResultatEncaissement) -> bool:
         user32.PostMessageW(self.h, WM_COMMAND, self.id_traiter, user32.GetDlgItem(self.h, self.id_traiter))
+        attentes = 0
         for _ in range(5):
             dialogues = self.attendre_dialogues(4)
             if not dialogues:
                 return True
             for d in dialogues:
                 texte = self.message(d)
+                if texte.strip().startswith("Traitement") and attentes < 60:
+                    # fenêtre de progression « Traitement... » de Sage (photo du 2026-11-06 sur le vrai fichier,
+                    # Sage 2027) : jamais touchée, on attend qu'elle disparaisse
+                    attentes += 1
+                    _attendre_fermeture(d, 120)
+                    break
                 if QUESTION_DATE_ANTERIEURE in texte:
                     self.repondre(d, ("oui",))
                     resultat.messages.append("Date antérieure à la session de Sage : confirmée.")
@@ -308,7 +332,19 @@ class FenetreEncaissements:
                     user32.PostMessageW(d, WM_CLOSE, 0, 0)
                     resultat.messages.append(f"Conseil de Sage noté : {texte[8:].strip()}")
                 else:
-                    resultat.messages.append(f"Sage : {texte}")
+                    try:  # question inconnue : photo gardée pour la reconnaître ensuite
+                        from datetime import datetime
+
+                        from .export_tableau import RACINE_ENTETE
+                        from .robot_import_assistant import photo
+
+                        racine = Path(RACINE_ENTETE) if RACINE_ENTETE else Path.cwd()
+                        chemin = photo(d, racine / "donnees" / "diagnostic_encaissements"
+                                       / f"{datetime.now():%Y%m%d_%H%M%S}_question.png")
+                    except Exception:  # noqa: BLE001
+                        chemin = None
+                    resultat.messages.append(f"Sage : « {texte or '(texte illisible)'} »"
+                                             + (f" (photo : {chemin})" if chemin else ""))
                     self.repondre(d, ("non", "annuler", "ok"))
                     return False
             time.sleep(1.5)
@@ -388,6 +424,12 @@ def appliquer(config_toml: dict, depots, client: str, compte: str, mode: str = "
         if resultat.traite and depot.etat != APPLIQUE:
             resultat.messages.append(f"Après « Traiter », état dans Sage : {depot.etat}.")
             resultat.traite = False
+        elif not resultat.traite and depot.etat == APPLIQUE and any(m.startswith("Sage : ") for m in resultat.messages):
+            # la base fait foi (constat du 2026-11-06 sur le vrai fichier : question de Sage APRÈS l'enregistrement,
+            # le dépôt était bien encaissé)
+            resultat.traite = True
+            resultat.messages.append("Encaissement bien enregistré dans Sage (solde vérifié dans la base) ; la "
+                                     "question est venue après l'enregistrement.")
         journal(f"{depot.date} : {depot.origine or 'dépôt'} {depot.montant} $ -> "
                 f"{'encaissé' if resultat.traite else 'NON encaissé'} " + " ".join(resultat.messages))
         resultats.append(resultat)

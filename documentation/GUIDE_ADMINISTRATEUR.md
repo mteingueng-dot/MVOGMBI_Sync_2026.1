@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -376,6 +376,7 @@ Tous dans `donnees/` (raccourci « Journal du traitement automatique » au menu 
 | Page web « Sage ne répond pas » | Sage / base indisponible | tableaux vides affichés ; réessayer après 45 s ; vérifier le service de Sage |
 | « Sage s'ouvre pour les saisies de la journée : réessayez dans un instant » | Sage de la journée en cours d'ouverture (2 à 3 min après un démarrage) | attendre ; les saisies lancées attendent d'elles-mêmes |
 | Après une mise à jour : « Fermez Sage » à l'encaissement et Sage impossible à ouvrir, alors que personne n'a Sage ouvert | (corrigé en 1.0.9) l'installation avait coupé le programme qui gardait Sage : Sage resté seul sur le bureau de l'application | installer la 1.0.9 : ce Sage est refermé proprement dans la minute (lignes « Sage resté ouvert sans l'application » dans `journal_web.log` et `journal_sage_garde.log`) ; les mises à jour suivantes referment Sage d'abord |
+| Encaissement : « Un Sage resté ouvert sans l'application ne se referme pas » | Sage resté seul attend une réponse à une question (par exemple « Sage 50 - Confirmation ») | `journal_sage_garde.log` donne le texte de la question et les boutons ; une proposition de sauvegarde reçoit « Non », une confirmation de fermeture « Oui » (1.0.11), « Cette entreprise a été fermée suite à une période d'inactivité. Voulez-vous la réouvrir ? » « Non » et l'avertissement « un autre utilisateur traitait aussi une transaction » « OK » (1.0.12) ; une autre question n'est jamais répondue d'office : redémarrer le serveur ferme ce Sage, puis signaler le texte de la question |
 | « Cette entreprise partagée est déjà ouverte » en ouvrant Sage sur le serveur | le Sage de la journée tenait l'entreprise (Sage ne l'ouvre qu'une fois par ordinateur) | depuis 1.0.8 il se referme en quelques secondes : OK, attendre 30 s, rouvrir le fichier |
 | « Fermez Sage sur le serveur : l'application l'ouvre elle-même » alors que personne n'a ouvert Sage | (corrigé en 1.0.5) le Sage de la journée en ouverture était pris pour celui d'une personne | mettre à jour ; sinon, vérifier qu'aucun Sage n'est ouvert dans la session Windows de l'application |
 | « Un autre utilisateur utilise actuellement cette entreprise sur cet ordinateur » (journal_sage_garde.log) | entreprise prise par l'outil d'import ou par un autre Sage de la même machine | depuis 1.0.5 l'outil n'est plus utilisé pendant la journée ; sinon fermer le Sage resté ouvert, l'application réessaie 10 min plus tard |

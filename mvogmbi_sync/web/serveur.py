@@ -431,6 +431,21 @@ def _suivre_telephones(app) -> None:
             app.noter(f"suivi des téléphones : {traceback.format_exc(limit=2)}")
 
 
+def _surveiller_mono() -> None:
+    """Chaque seconde : un travail mono-utilisateur (import) annoncé -> connexions du serveur web à la base fermées
+    tout de suite (Sage refuse l'entreprise s'il reste une connexion)."""
+    from ..__main__ import fermer_connexions
+    from ..sage_bureau import mono_en_cours
+
+    while True:
+        try:
+            if mono_en_cours():
+                fermer_connexions()
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(1)
+
+
 def _garder_sage_pret(app) -> None:
     """Tant que quelqu'un utilise le site (15 min), une petite lecture toutes les 45 s garde la base de Sage ouverte
     (connexion de l'application et base ouverte par l'outil d'import si Sage est fermé) : les pages lisent Sage tout
@@ -456,7 +471,7 @@ def _garder_sage_pret(app) -> None:
             continue
         try:
             from ..__main__ import _ECHECS_LECTURE, base_partagee, lire_sage
-            from ..sage_bureau import garde_en_ouverture, sage_garde, sage_ouvert
+            from ..sage_bureau import garde_en_ouverture, sage_tourne
             from .taches import VERROU_SAGE
 
             fichier = (app.config.get("sage_base", {}).get("fichier_entreprise")
@@ -465,7 +480,14 @@ def _garder_sage_pret(app) -> None:
                 continue
             if garde_en_ouverture():  # Sage de la journée en train de s'ouvrir : surtout pas l'outil d'import
                 continue
-            if sage_ouvert() or sage_garde(meme_session=False):  # Sage tourne (personne, import) : simple lecture, jamais l'outil d'import
+            from ..sage_bureau import mono_en_cours
+
+            if mono_en_cours():  # import (mono-utilisateur) : aucune connexion, Sage refuserait l'entreprise
+                from ..__main__ import fermer_connexions
+
+                fermer_connexions()  # constat du 2026-11-06 sur SERVDCSAGE : facture fournisseur refusée
+                continue
+            if sage_tourne():  # Sage tourne (personne, import) : simple lecture, jamais l'outil d'import
                 base_partagee(app.config, fichier).requete("SELECT 1")
                 _ECHECS_LECTURE.pop(str(fichier), None)
                 SURVEILLANCE_SAGE["pret"][str(fichier)] = True
@@ -531,6 +553,7 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     serveur.app.noter(f"démarrage {schema}://{hote}:{port_reel}/")  # type: ignore[attr-defined]
     threading.Thread(target=_suivre_telephones, args=(serveur.app,), daemon=True).start()
     threading.Thread(target=_garder_sage_pret, args=(serveur.app,), daemon=True, name="sage-pret").start()
+    threading.Thread(target=_surveiller_mono, daemon=True, name="sage-mono").start()
     threading.Thread(target=_preparer_pages, args=(serveur.app,), daemon=True, name="pages-pretes").start()
     from ..__main__ import garder_sage_ouvert  # Sage lié à l'application Windows (2026-11-06) : ici, seulement
     # la fermeture d'un Sage resté seul sur le bureau caché

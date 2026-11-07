@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -44,6 +44,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-SAGE-10c | Tant que le Sage de la journée est ouvert **ou en train de s'ouvrir**, aucune lecture ne passe par l'outil d'import (il prendrait l'entreprise pour lui seul). Une saisie ou un import lancé pendant l'ouverture **attend** qu'elle soit finie. |
 | RG-SAGE-10e | **Le Sage d'une personne passe d'abord** : Sage n'ouvre une entreprise partagée qu'une fois par ordinateur ; dès qu'une personne lance Sage sur le serveur (n'importe quelle session), le Sage de la journée se referme en quelques secondes et ne se rouvre que 5 minutes après la fermeture du dernier Sage d'une personne. |
 | RG-SAGE-10f | Un **Sage resté seul** sur le bureau de l'application (programme qui le gardait arrêté) est reconnu et **refermé proprement**, jamais arrêté de force ; une mise à jour de l'application referme d'abord le Sage de la journée. |
+| RG-SAGE-10g | À la fermeture d'un Sage de l'application, une **proposition de sauvegarde** reçoit « Non » (l'application fait ses propres sauvegardes), une **confirmation de fermeture** « Oui », la question « Cette entreprise a été fermée suite à une période d'inactivité. Voulez-vous la réouvrir ? » « Non » et l'avertissement « … un autre utilisateur traitait aussi une transaction … » « OK » ; Sage ferme l'entreprise après une période d'inactivité : le Sage gardé ouvert est alors refermé, puis rouvert neuf au besoin ; toute autre question n'est jamais répondue d'office, son texte est noté. Un Sage d'une autre origine n'est jamais arrêté de force. |
 | RG-SAGE-10d | Une ouverture du Sage de la journée qui échoue est **réessayée 10 minutes plus tard**, jamais à chaque minute ; la raison est notée. |
 | RG-SAGE-08 | Sage tient chaque compte dans son **sens normal** (débit positif pour actif et charge, crédit positif pour passif et produit) ; l'application lit les soldes sans changer le signe. |
 

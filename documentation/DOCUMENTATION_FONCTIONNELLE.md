@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Le détail de chaque règle, avec son code, est dans le document des règles d'affaires ; le fonctionnement interne est dans le document d'architecture ; le mode d'emploi pas à pas est dans le manuel d'utilisation ; l'installation, la configuration et le dépannage sont dans le guide de l'administrateur.
 

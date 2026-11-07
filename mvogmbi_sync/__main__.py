@@ -130,6 +130,29 @@ def commande_encaisser_bureau(args: argparse.Namespace) -> None:
     sys.exit(1 if bilan["erreur"] or bilan["a_verifier"] else 0)
 
 
+def commande_importer_factures_fournisseurs(args: argparse.Namespace) -> None:
+    """Importe dans Sage (puis Clover) les factures fournisseurs « Prête à importer », comme le bouton « Importer
+    toutes les factures prêtes » ; `--numero` : seulement ces numéros de facture (demande du propriétaire du
+    2026-11-06 : vérifier les fournisseurs directement sur le serveur)."""
+    from .fournisseurs import PRETE, Registre
+    from .import_achats import importer_achats
+
+    config_toml = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
+    registre = Registre(RACINE)
+    pretes = [f for f in registre.factures if f.etat == PRETE and (not args.numero or f.numero in args.numero)]
+    if not pretes:
+        print("Aucune facture « Prête à importer »" + (f" parmi {', '.join(args.numero)}." if args.numero else "."))
+        return
+    print(f"{len(pretes)} facture(s) à importer : " + ", ".join(f"{f.numero} ({f.fournisseur_sage})" for f in pretes))
+    try:
+        resultats = importer_achats(RACINE, config_toml, pretes, journal=print, clover=not args.sans_clover)
+    finally:
+        registre.enregistrer()  # état « Importée » / « Déjà dans Sage » gardé
+    for fichier, texte in resultats.items():
+        print(f"  {fichier} : {texte}")
+    sys.exit(0 if all(t.startswith(("importée", "déjà")) for t in resultats.values()) else 1)
+
+
 def commande_payer_bureau(args: argparse.Namespace) -> None:
     """Commande interne, lancée sur le bureau caché : saisit dans Sage les paiements fournisseurs confirmés."""
     import json
@@ -507,7 +530,7 @@ def _garder_base_ouverte(fichier: Path, exe: Path) -> None:
 
     from .sage_auto import executer
 
-    from .sage_bureau import sage_ouvert
+    from .sage_bureau import sage_tourne
 
     debut = time.time()
 
@@ -517,7 +540,7 @@ def _garder_base_ouverte(fichier: Path, exe: Path) -> None:
             _GARDE["arret"].wait(1)
             if time.time() - controle >= 2:
                 controle = time.time()
-                if sage_ouvert():  # la personne lance Sage : la base est relâchée tout de suite
+                if sage_tourne():  # Sage se lance (personne ou application) : la base est relâchée tout de suite
                     break
                 try:  # un autre programme (traitement de nuit, import) demande la base
                     if SIGNAL_LIBERER.stat().st_mtime > debut:
@@ -758,7 +781,31 @@ def _fermer_orphelins(pids, journal=None):
     seuls sur le bureau caché ; renvoie le fil qui s'en occupe."""
     from . import sage_bureau
 
+    verrou = Path(RACINE) / "donnees" / "sage_orphelin.verrou"
+    try:  # un seul programme à la fois (fenêtre Windows et serveur web) referme un même Sage
+        autre = int(verrou.read_text(encoding="utf-8").strip())
+        if autre != os.getpid() and sage_bureau._vivant(autre):
+            vide = threading.Thread(target=lambda: None)
+            vide.start()
+            return vide
+    except (OSError, ValueError):
+        pass
+
+    try:
+        verrou.write_text(str(os.getpid()), encoding="utf-8")
+    except OSError:
+        pass
+
     def travail():
+        try:
+            _fermer_tous(pids)
+        finally:
+            try:
+                verrou.unlink()
+            except OSError:
+                pass
+
+    def _fermer_tous(pids):
         for pid in sorted(pids):
             if journal:
                 journal(f"Sage resté ouvert sans l'application (n° {pid}) : fermeture.")
@@ -948,14 +995,22 @@ def commande_garder_sage(args) -> None:
         from .sage_bureau import _vivant
 
         appli = os.getppid()  # l'application qui a demandé Sage : partie (fermée, arrêtée) -> Sage refermé
+        from .sage_bureau import emprunt_en_cours, inactivite_signalee
+
+        controle = time.time()
         while not (dossier / "arret").exists():
             if permanent and not _vivant(appli):
                 break
+            if time.time() - controle > 30:  # Sage a fermé l'entreprise pour inactivité : Sage refermé, rouvert neuf
+                controle = time.time()
+                if not emprunt_en_cours() and inactivite_signalee(session):
+                    if permanent:
+                        noter("Entreprise fermée par Sage après une période d'inactivité : Sage refermé.")
+                    break
             derniere = lecture.stat().st_mtime if lecture.exists() else debut
             if time.time() - max(derniere, debut) > args.duree:
                 break
             time.sleep(1)
-        from .sage_bureau import emprunt_en_cours
 
         fin = time.time() + 1800  # une saisie l'utilise encore (web) : Sage refermé quand elle a fini
         while emprunt_en_cours() and time.time() < fin:
@@ -979,6 +1034,18 @@ def _fermer_a_la_sortie() -> None:
 
 
 atexit.register(_fermer_a_la_sortie)
+
+
+def fermer_connexions() -> None:
+    """Connexions directes de ce programme à la base de Sage fermées (sans toucher à Sage ni aux autres)."""
+    SURVEILLANCE_SAGE["pret"].clear()
+    with _VERROU_BASES:
+        for base in _BASES.values():
+            try:
+                base.connexion.close()
+            except Exception:
+                pass
+        _BASES.clear()
 
 
 def fermer_bases(sage: bool = False) -> None:
@@ -1056,6 +1123,10 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True
         # serveur web : seule la surveillance de fond ouvre la base (outil d'import, 10 à 26 s) ; une page ne fait
         # qu'une lecture sur la base déjà ouverte, sinon répond tout de suite « Sage ne répond pas » et réveille la
         # surveillance (demande du propriétaire du 2026-11-06 : « je veux que le processus soit instantané »)
+        from .sage_bureau import mono_en_cours
+
+        if mono_en_cours():  # import en cours : aucune connexion à la base
+            raise RuntimeError("Sage ne répond pas pour l'instant (import en cours dans Sage).")
         if echec or not SURVEILLANCE_SAGE["pret"].get(str(fichier)):
             SURVEILLANCE_SAGE["reveil"].set()
             raise RuntimeError(f"Sage ne répond pas pour l'instant ({echec[1] if echec else 'connexion en cours'}).")
@@ -1138,16 +1209,16 @@ def _lire_sage(config_toml: dict, fonction, fichier, ouvrir: bool, lire_pendant_
     except _ErreurLecture:
         raise
     except PermissionError:
-        from .sage_bureau import sage_ouvert
+        from .sage_bureau import sage_tourne
 
         # Sage fermé : base laissée par une session précédente, sans les accès des applications -> Sage ouvert
         # par l'application ; Sage ouvert par la personne : vrai refus
-        if (sage_ouvert() or not fichier or not executable_import() or _SAGE_GARDE["fichier"] == str(fichier)
+        if (sage_tourne() or not fichier or not executable_import() or _SAGE_GARDE["fichier"] == str(fichier)
                 or sage_journee_en_cours()):
             raise
         return par_sage_garde()
     except Exception as exc:
-        from .sage_bureau import sage_ouvert
+        from .sage_bureau import sage_tourne
 
         if getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE:
             raise  # requête fautive : la base répond, inutile de l'ouvrir autrement
@@ -1158,7 +1229,7 @@ def _lire_sage(config_toml: dict, fonction, fichier, ouvrir: bool, lire_pendant_
             if ouvrir and _attendre_sage_journee(fichier):
                 return lecture()
             raise RuntimeError("Sage s'ouvre pour les saisies de la journée : réessayez dans un instant.") from exc
-        if not sage_ouvert() and fichier and executable_import():
+        if not sage_tourne() and fichier and executable_import():  # aucun Sage : outil d'import permis
             # Sage fermé : base ouverte par l'outil d'import ; refusée -> Sage ouvert par l'application
             if _GARDE.get("refuse"):
                 return par_sage_garde()
@@ -1783,6 +1854,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--factures", help="Fichier JSON : seules ces factures (ventes importées pendant la nuit)")
     p.add_argument("--config", default=str(RACINE / "config.toml"))
     p.set_defaults(fonction=commande_encaisser_bureau)
+
+    p = sous.add_parser("importer-factures-fournisseurs",
+                        help="Importer dans Sage (puis Clover) les factures fournisseurs « Prête à importer »")
+    p.add_argument("--numero", action="append", help="Seulement ce numéro de facture (répétable)")
+    p.add_argument("--sans-clover", dest="sans_clover", action="store_true", help="Sage seulement")
+    p.add_argument("--config", default=str(RACINE / "config.toml"))
+    p.set_defaults(fonction=commande_importer_factures_fournisseurs)
 
     p = sous.add_parser("payer-bureau", help="(interne) Saisir les paiements fournisseurs confirmés sur le bureau caché")
     p.add_argument("--resultat", required=True, help="Fichier JSON du bilan")

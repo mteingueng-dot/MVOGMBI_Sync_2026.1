@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.10 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -678,6 +678,7 @@ flowchart TD
 - Tant que ce Sage est ouvert ou s'ouvre (`sage_journee_en_cours`), aucune lecture ne passe par l'outil d'import : il prendrait l'entreprise pour lui seul et Sage refuserait de s'ouvrir (« Un autre utilisateur utilise actuellement cette entreprise sur cet ordinateur », constat du 6 novembre 2026 sur SERVDCSAGE, version 1.0.4). Une lecture demandée attend qu'il soit prêt ; une lecture automatique répond « Sage s'ouvre pour les saisies de la journée ».
 - Une saisie lancée pendant l'ouverture attend la fin de l'ouverture (`attendre_fin_ouverture`), puis emprunte ce Sage. Un import attend aussi la fin de l'ouverture, puis le libère (`liberer_sage_garde`, fichier « arret »).
 - **Sage orphelin** (version 1.0.9) : tout Sage dont une fenêtre est sur le bureau séparé est celui de l'application (`sages_du_bureau_cache`, `EnumDesktopWindows`) ; s'il n'a plus de programme parent (`sages_orphelins` : gardien coupé, par exemple par une installation), il est refermé proprement sur ce bureau (`fermer-sage-orphelin` : fenêtre fermée, mise à jour remise à plus tard, jamais arrêté de force) avant toute nouvelle ouverture. L'installateur lance `liberer-sage` avant d'arrêter les programmes (pause `donnees/sage_pause.txt` pour les programmes déjà lancés) ; le gardien referme Sage avant d'effacer sa marque.
+- **Inactivité** (version 1.0.12) : Sage ferme l'entreprise après une période d'inactivité et demande s'il faut la rouvrir ; le gardien le voit (contrôle toutes les 30 s, `inactivite_signalee`), referme Sage (réponse « Non ») et l'application en rouvre un neuf au besoin.
 - Échec de l'ouverture : nouvel essai 10 minutes plus tard. Chaque étape est notée dans `donnees/journal_sage_garde.log`.
 - `donnees/sage_mono.verrou` marque un travail mono-utilisateur en cours (import, compte ou article rendu inactif) : le Sage de la journée attend.
 
