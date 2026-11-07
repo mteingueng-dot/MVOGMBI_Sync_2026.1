@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.18 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -281,7 +281,8 @@ flowchart LR
 
 ### 6.4 Délais
 
-- Application Windows : écran verrouillé après 5 min sans activité (`[general] verrouillage_minutes`) ; les traitements en cours continuent.
+- Application Windows : écran verrouillé après 5 min sans activité (`[general] verrouillage_minutes`) ; les traitements en cours continuent et, au déverrouillage, tout revient tel quel (fenêtres à part comprises).
+- Application web : après la déconnexion pour inactivité, la reconnexion ramène à la page où l'on était ; un travail lancé (encaissement, import…) continue sur le serveur et se retrouve sur sa page.
 - Application web : déconnexion après 5 min sans activité (`[web] inactivite_minutes`), 12 h au plus par session ; 10 échecs de connexion en 10 min = adresse refusée 10 min.
 
 ---

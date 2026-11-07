@@ -127,6 +127,39 @@ def redirection(chemin: str) -> Reponse:
     return Reponse(303, "", entetes={"Location": chemin})
 
 
+PAS_DE_RETOUR = ("/connexion", "/deconnexion", "/mot-de-passe", "/favicon.ico", "/logo.png", "/style.css")
+
+
+def adresse_de(req: Requete) -> str:
+    """Adresse de la page demandée (chemin + paramètres), jamais le jeton anti-falsification."""
+    from urllib.parse import urlencode
+
+    paires = []
+    for cle, valeur in req.query.items():
+        if cle in ("csrf", "exporter", "format"):
+            continue
+        for v in (req.listes.get(cle) or [valeur]):
+            paires.append((cle, v))
+    return req.chemin + (f"?{urlencode(paires)}" if paires else "")
+
+
+def retour_sur(adresse: str) -> str:
+    """Page où revenir après la connexion : une adresse du site seulement (jamais un autre site), sinon l'accueil."""
+    if (not adresse or not adresse.startswith("/") or adresse.startswith("//") or "\\" in adresse
+            or any(c in adresse for c in "\r\n") or adresse.split("?")[0] in PAS_DE_RETOUR or "csrf=" in adresse):
+        return "/"
+    return adresse
+
+
+def vers_connexion(req: Requete) -> Reponse:
+    """Session fermée (inactivité) : connexion, puis retour à la page où la personne était (demande du propriétaire
+    du 2026-11-06 : « la reconnexion continuera au niveau où il est rendu ») ; les travaux en cours continuent."""
+    from urllib.parse import quote
+
+    adresse = retour_sur(adresse_de(req)) if req.methode == "GET" else "/"
+    return redirection("/connexion" + (f"?retour={quote(adresse, safe='')}" if adresse != "/" else ""))
+
+
 def lire_config(racine: Path) -> dict:
     chemin = Path(racine) / "config.toml"
     try:
@@ -207,7 +240,7 @@ class Application:
             return redirection("/connexion")
         session = self.sessions.lire(req.jeton)
         if session is None:
-            return redirection("/connexion")
+            return vers_connexion(req)
         reg = Registre(self.racine)
         u = reg.trouver(session.nom)
         if u is None or not u.actif or reg.bloque(u):

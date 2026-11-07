@@ -930,6 +930,16 @@ class Application(tk.Tk):
 
         if self._verrou is not None or self.session is None:
             return
+        # fenêtres à part (fiches, saisies) cachées aussi, sans être fermées : au déverrouillage, tout revient tel quel
+        # (demande du propriétaire du 2026-11-06 : le traitement en cours continue, on reprend où l'on en était)
+        self._cachees_au_verrou = []
+        for fenetre in self.winfo_children():
+            try:
+                if isinstance(fenetre, tk.Toplevel) and fenetre.winfo_viewable():
+                    fenetre.withdraw()
+                    self._cachees_au_verrou.append(fenetre)
+            except tk.TclError:
+                pass
         self.withdraw()  # rien n'est visible tant que le mot de passe n'est pas redonné ; les traitements continuent
         self._verrou = Verrou(self, self.racine, self.session, TITRE, self._deverrouiller, self.se_deconnecter)
 
@@ -939,6 +949,14 @@ class Application(tk.Tk):
             self._verrou = None
         self.deiconify()
         self.lift()
+        for fenetre in getattr(self, "_cachees_au_verrou", []):
+            try:
+                if fenetre.winfo_exists():
+                    fenetre.deiconify()
+                    fenetre.lift()
+            except tk.TclError:
+                pass
+        self._cachees_au_verrou = []
         self._derniere_activite = time.time()
 
     def se_deconnecter(self) -> None:

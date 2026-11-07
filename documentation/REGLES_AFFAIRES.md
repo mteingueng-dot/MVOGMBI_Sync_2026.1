@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.18 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -332,9 +332,10 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-SEC-02b | **Mot de passe web à part** : l'application web a son propre mot de passe, d'au moins **12 caractères avec une minuscule, une majuscule, un chiffre et un caractère spécial**, différent de celui de l'application Windows ; à la 1re connexion web (avec le mot de passe Windows), il est créé avant toute autre page ; ensuite seul lui ouvre l'application web ; l'administrateur peut le définir ou l'effacer (colonne « Mot de passe web » d'« Administration > Utilisateurs »). |
 | RG-SEC-02 | Mot de passe gardé sous forme d'empreinte salée, jamais en clair. |
 | RG-SEC-03 | **3 mots de passe faux de suite = compte verrouillé** ; l'administrateur le rouvre avec un nouveau mot de passe ; le dernier administrateur n'est que bloqué 15 minutes. |
-| RG-SEC-04 | **Verrouillage après 5 minutes sans activité** ; les traitements en cours continuent. |
+| RG-SEC-04 | **Verrouillage après 5 minutes sans activité** ; **le traitement en cours continue** et, au déverrouillage, tout revient **où l'on en était** (fenêtre principale et fenêtres à part cachées puis remontrées, rien n'est fermé ; demande du propriétaire du 6 novembre 2026). |
 | RG-SEC-05 | **Droits par fonction** : chaque entrée du menu est cochée ou non pour le profil ; une page non permise est absente du menu et refusée. |
 | RG-SEC-06 | **Droits par action** dans les fenêtres (supprimer, exporter, saisir dans Sage, changer les prix, modifier les articles, traiter la paie…) donnés séparément. |
+| RG-SEC-04c | **Application web : la reconnexion reprend à la page où l'on était** (adresse de retour gardée par la page qui expire et par la redirection vers la connexion ; seulement une adresse du site) ; les travaux en cours (« Encaisser dans Sage »…) continuent sur le serveur et se retrouvent après la reconnexion. |
 | RG-SEC-07 | Le profil Employé **n'exporte pas** par défaut. |
 | RG-SEC-04b | **Application web : déconnexion après 5 minutes sans activité** ; la page passe d'elle-même à la connexion. |
 | RG-SEC-08 | **Audit** : chaque bouton cliqué, entrée du menu, connexion et refus est noté (moment, poste, utilisateur, fenêtre, action) ; chaque ligne porte l'empreinte de la précédente : une ligne changée est repérée ; jamais de mot de passe ni de NAS. |

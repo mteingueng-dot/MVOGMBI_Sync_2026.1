@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.17"
+VERSION = "1.0.18"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -518,7 +518,9 @@ FAQ = {
         ("question", "L'application se verrouille toute seule."),
         ("reponse", "Après 5 minutes sans souris ni clavier, la fenêtre se cache : votre mot de passe la rouvre "
                     "(« Déverrouiller »), ou « Changer d'utilisateur » ramène à la connexion. Les traitements en cours "
-                    "continuent. Délai réglable dans config.toml : [general] verrouillage_minutes (0 = jamais)."),
+                    "continuent et, une fois déverrouillée, l'application revient exactement où vous en étiez (fenêtres "
+                    "ouvertes comprises). Sur le site web, après la déconnexion pour inactivité, la reconnexion vous "
+                    "ramène à la même page. Délai réglable dans config.toml : [general] verrouillage_minutes (0 = jamais)."),
         ("question", "Le traitement de nuit a-t-il besoin d'une connexion ?"),
         ("reponse", "Non : la tâche planifiée travaille sans ouvrir de session dans l'application. La connexion protège "
                     "les pages de l'application ; les mots de passe ne sont jamais gardés, seulement une empreinte "
@@ -1184,7 +1186,9 @@ FAQ = {
                     "password."),
         ("question", "The application locks itself."),
         ("reponse", "After 5 minutes without mouse or keyboard, the window hides: your password reopens it "
-                    "(“Unlock”), or “Switch user” goes back to sign-in. Running jobs continue. Delay set in "
+                    "(“Unlock”), or “Switch user” goes back to sign-in. Running jobs continue and, once unlocked, "
+                    "the application is exactly where you left it (open windows included). On the website, after "
+                    "the inactivity sign-out, signing in again takes you back to the same page. Delay set in "
                     "config.toml: [general] verrouillage_minutes (0 = never)."),
         ("question", "Does the nightly run need a sign-in?"),
         ("reponse", "No: the scheduled task works without signing in to the application. Signing in protects the "

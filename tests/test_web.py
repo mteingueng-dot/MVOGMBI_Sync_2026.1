@@ -945,3 +945,22 @@ def test_aide_sans_parametre_et_page_d_erreur(site):
     patron = connecter(base, "Patron", "secret123")
     statut, page, _ = ouvrir(patron, base + "/aide")
     assert statut == 200 and "Aide" in page
+
+
+def test_reconnexion_revient_a_la_page(site):
+    """Demande du propriétaire du 2026-11-06 : après la fermeture de la session pour inactivité, la reconnexion
+    reprend à la page où la personne était (les travaux en cours continuent sur le serveur)."""
+    base, _srv, _awa = site
+    connecter(base, "Patron", "secret123")                 # mot de passe web créé
+    nav, _ = navigateur()
+    statut, _, entetes = ouvrir(nav, base + "/encaissements?du=2026-01-01&au=2026-01-11")
+    assert statut == 303 and entetes["Location"] == "/connexion?retour=%2Fencaissements%3Fdu%3D2026-01-01%26au%3D2026-01-11"
+    _, page, _ = ouvrir(nav, base + entetes["Location"])
+    assert "name='retour' value='/encaissements?du=2026-01-01&amp;au=2026-01-11'" in page
+    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": mdp_web("secret123"),
+                                                           "retour": "/encaissements?du=2026-01-01&au=2026-01-11"})
+    assert statut == 303 and entetes["Location"] == "/encaissements?du=2026-01-01&au=2026-01-11"
+    nav2, _ = navigateur()
+    statut, _, entetes = ouvrir(nav2, base + "/connexion", {"nom": "Patron", "mot_de_passe": mdp_web("secret123"),
+                                                            "retour": "//autre-site.example/"})
+    assert statut == 303 and entetes["Location"] == "/"   # jamais vers un autre site

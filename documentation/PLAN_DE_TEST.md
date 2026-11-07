@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.14 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.18 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -34,7 +34,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 312 tests
+## 3. Tests automatiques — 313 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -66,7 +66,8 @@ Règles :
 | Version 1.0.11 : réponses aux questions de Sage à la fermeture | test_sage_journee | 1 |
 | Version 1.0.12 : entreprise fermée pour inactivité, avertissement d'enregistrement occupé | test_sage_journee | 1 |
 | Version 1.0.14 : aucun outil d'import quand un Sage tourne | test_sage_journee | 1 |
-| **Total** | 60 fichiers | **312** |
+| Version 1.0.18 : reconnexion web à la même page, adresse de retour sûre | test_web | 1 |
+| **Total** | 60 fichiers | **313** |
 
 Résultat du 6 novembre 2026 (version 1.0.7) : **305 réussis**, y compris les 2 tests de fenêtres Tk ; compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
 

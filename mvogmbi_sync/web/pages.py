@@ -158,8 +158,14 @@ def _expiration(ctx: Contexte | None, corps: str) -> str:
     session = getattr(ctx, "session", None) if ctx is not None else None
     if session is None or "http-equiv='refresh'" in corps:
         return ""
+    from urllib.parse import quote
+
+    from .serveur import adresse_de, retour_sur
+
     delai = int(ctx.app.sessions.inactivite) + 5
-    return f"<meta http-equiv='refresh' content='{delai};url=/connexion?expire=1'>"
+    adresse = retour_sur(adresse_de(ctx.req)) if getattr(ctx, "req", None) is not None else "/"
+    retour = f"&amp;retour={quote(adresse, safe='')}" if adresse != "/" else ""
+    return f"<meta http-equiv='refresh' content='{delai};url=/connexion?expire=1{retour}'>"
 
 
 def _document(titre: str, corps: str, ctx: Contexte | None = None, menu: str = "") -> str:
@@ -285,9 +291,12 @@ def heures(v) -> str:
 def connexion(app, req) -> Reponse:
     from ..utilisateurs import Registre
 
+    from .serveur import retour_sur
+
     message = ""
+    retour = retour_sur(req.champ("retour") or req.query.get("retour", ""))  # page où la personne était
     if req.methode == "GET" and req.jeton and app.sessions.lire(req.jeton) is not None:
-        return Reponse(303, "", entetes={"Location": "/"})  # déjà connecté : la session n'est jamais effacée ici
+        return Reponse(303, "", entetes={"Location": retour})  # déjà connecté : la session n'est jamais effacée ici
     if req.methode == "POST":
         reg = Registre(app.racine)
         if app.adresse_bloquee(req.adresse):
@@ -300,7 +309,7 @@ def connexion(app, req) -> Reponse:
             if u is not None:
                 s = app.sessions.creer(u.nom)
                 s.creer_web = not u.empreinte_web  # 1re connexion web : son mot de passe web se crée tout de suite
-                return Reponse(303, "", entetes={"Location": "/mot-de-passe" if s.creer_web else "/",
+                return Reponse(303, "", entetes={"Location": "/mot-de-passe" if s.creer_web else retour,
                                                  "Set-Cookie": temoin_session(s.jeton, app.https)})
             app.echec(req.adresse)
             trouve = reg.trouver(req.champ("nom"))
@@ -309,7 +318,8 @@ def connexion(app, req) -> Reponse:
     corps = (f"<div class='boite'><h1>Connexion</h1>"
              + (f"<p class='erreur'>{e(message)}</p>" if message else "")
              + "<form method='post' action='/connexion'>"
-               "<label for='nom'>Nom d'utilisateur</label><input id='nom' name='nom' autocomplete='username' required>"
+             + (f"<input type='hidden' name='retour' value='{e(retour)}'>" if retour != "/" else "")
+             + "<label for='nom'>Nom d'utilisateur</label><input id='nom' name='nom' autocomplete='username' required>"
                "<label for='mdp'>Mot de passe</label><input id='mdp' name='mot_de_passe' type='password' "
                "autocomplete='current-password' required><button type='submit'>Se connecter</button></form>"
                "</div>")  # sans message d'expiration ni note (demande du propriétaire du 2026-11-05)
