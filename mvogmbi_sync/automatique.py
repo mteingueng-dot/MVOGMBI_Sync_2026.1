@@ -792,7 +792,28 @@ def sauvegarder_donnees(racine: Path, config_toml: dict, cr: CompteRendu) -> Non
 
 def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,
            depuis: date | None = None, point_vente: str | None = None) -> CompteRendu:
-    """Point d'entrée de la tâche planifiée : n'échoue jamais sans journal ni alerte."""
+    """Point d'entrée de la tâche planifiée : n'échoue jamais sans journal ni alerte. Noté au récapitulatif des
+    traitements : « Traitement automatique » (nuit) ou « Charger la période » / « Simulation » (lancé par une
+    personne, depuis l'application ou le web)."""
+    from .traitements import origine_courante, suivre
+
+    origine = origine_courante("Nuit")
+    nom = ("Traitement automatique" if origine == "Nuit" else
+           "Simulation (sans import)" if simulation else "Charger la période (ventes Clover → factures Sage)")
+    periode = " → ".join(str(x) for x in (depuis, jusqua) if x)
+    with suivre(nom, racine, origine, detail=periode) as etat:
+        cr = _lancer(racine, config_toml, jusqua, simulation, depuis, point_vente)
+        morceaux = [f"{len(cr.importees)} facture(s) importée(s)", f"{len(cr.problemes)} problème(s)"]
+        etat["detail"] = " ; ".join(x for x in [periode] + morceaux if x)
+        if cr.erreur:
+            etat["resultat"] = "Échec : " + cr.erreur.splitlines()[0][:200]
+        elif cr.problemes:
+            etat["resultat"] = f"Terminé avec {len(cr.problemes)} problème(s)"
+        return cr
+
+
+def _lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,
+            depuis: date | None = None, point_vente: str | None = None) -> CompteRendu:
     from .courriel import envoyer_compte_rendu
 
     verrou = racine / "donnees" / "traitement.verrou"

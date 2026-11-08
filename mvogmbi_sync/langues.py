@@ -2895,3 +2895,93 @@ for _fr, _en in {
 # décisions dans le courriel du matin (2026-11-08)
 EN.setdefault("Décisions proposées (4 dernières semaines, Statistiques Clover > Synthèse et décisions) :",
               "Proposed decisions (last 4 weeks, Clover statistics > Summary and decisions):")
+
+# éléments concernés par les décisions (2026-11-08)
+for _fr, _en in {
+    "Concerné": "Concerned", "Détail": "Detail", "{n} élément(s)": "{n} item(s)", "… et {n} autre(s)": "… and {n} more",
+    "Liste complète : {o}": "Full list: {o}", "Concernés : {n} et {r} autre(s).": "Concerned: {n} and {r} more.",
+    "Concernés : {n}.": "Concerned: {n}.",
+    "{t} : écart {e} ({p}) ; {a} contre {b}": "{t}: gap {e} ({p}); {a} vs {b}",
+    "{q} — {d} ; payé {m} sur {b}": "{q} — {d}; paid {m} of {b}",
+    "{q} — {d} : {m} au lieu de {b}": "{q} — {d}: {m} instead of {b}",
+    "{c} ; ventes {v} ({q} vendus) ; bénéfice {b} ; marge {m}": "{c}; sales {v} ({q} sold); profit {b}; margin {m}",
+    "{n} commande(s) ensemble ; lift {l} ; {c}": "{n} order(s) together; lift {l}; {c}",
+    "{j} : prix {a} → {b} ; ventes par jour {c} → {d}": "{j}: price {a} → {b}; sales per day {c} → {d}",
+    "Taux de rabais {t} ; {c} commande(s) ; ventes {v}": "Discount rate {t}; {c} order(s); sales {v}",
+    "{p} des ventes ; {c} commande(s)": "{p} of sales; {c} order(s)",
+    "Dernier achat {d} (il y a {j} jours) ; {c} commande(s) ; {v}": "Last purchase {d} ({j} days ago); {c} order(s); {v}",
+    "{p} des commandes avec un client ; {c} commande(s)": "{p} of orders with a customer; {c} order(s)",
+    "Dernier achat {d} ; {c} commande(s), {v} dans la période de comparaison":
+        "Last purchase {d}; {c} order(s), {v} in the comparison period",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# récapitulatif des traitements (2026-11-08)
+for _fr, _en in {
+    "Récapitulatif des traitements": "Processing summary", "Toutes les opérations": "All operations",
+    "{n} traitement(s)": "{n} processing run(s)",
+    "dernier traitement automatique : {d} ({r})": "last automatic processing: {d} ({r})",
+    "Début": "Start", "Fin": "End", "Durée": "Duration", "Traitement": "Processing", "Origine": "Origin",
+    "Lancé par": "Started by", "Résultat": "Result", "Terminé": "Done", "Nuit": "Night",
+    "Automatique": "Automatic", "Traitement automatique": "Automatic processing",
+    "Charger la période (ventes Clover → factures Sage)": "Load the period (Clover sales → Sage invoices)",
+    "Simulation (sans import)": "Simulation (no import)", "Import dans Sage": "Import into Sage",
+    "Encaissements dans Sage": "Receipts in Sage", "Paiements fournisseurs dans Sage": "Supplier payments in Sage",
+    "Écritures du journal général dans Sage": "General journal entries in Sage",
+    "Dépenses dans Sage": "Expenses in Sage", "Transfert entre dépôts dans Sage": "Transfer between locations in Sage",
+    "Inventaire / document de stock dans Sage": "Inventory / stock document in Sage",
+    "Articles créés ou comptes corrigés dans Sage": "Items created or accounts corrected in Sage",
+    "Articles modifiés ou supprimés dans Sage": "Items changed or deleted in Sage",
+    "Prix de vente changés dans Sage": "Selling prices changed in Sage",
+    "Clients / fournisseurs créés dans Sage": "Customers / vendors created in Sage",
+    "Plan comptable modifié dans Sage": "Chart of accounts changed in Sage", "Paie traitée dans Sage": "Payroll processed in Sage",
+    "Travail dans Sage": "Work in Sage",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# opérations journalières (2026-11-08)
+for _fr, _en in {
+    "Opérations journalières": "Daily operations", "Opérations par jour": "Operations by day",
+    "Détail des opérations": "Operation details", "Par jour": "By day", "Traitées par l'application":
+        "Processed by the application", "Saisies dans Sage": "Entered in Sage", "Toutes": "All",
+    "Aujourd'hui": "Today", "Hier": "Yesterday", "Cette semaine": "This week", "Semaine dernière": "Last week",
+    "Ce mois": "This month", "Mois dernier": "Last month", "Cette année": "This year", "Personnalisée": "Custom",
+    "Période": "Period", "Appliquer": "Apply", "Vente": "Sale", "Achat": "Purchase", "Encaissement": "Receipt",
+    "Paiement fournisseur": "Supplier payment", "Ventes": "Sales", "Achats": "Purchases",
+    "Encaissements": "Receipts", "Paiements fournisseurs": "Supplier payments", "Référence": "Reference",
+    "Facture": "Invoice", "Client / fournisseur": "Customer / vendor", "Montant": "Amount", "Traité le": "Processed on",
+    "Par": "By", "Jour": "Day", "Opérations": "Operations",
+    "Lecture de Sage à l'ouverture de l'onglet…": "Reading Sage when the tab opens…",
+    "Lecture des ventes, achats, encaissements et paiements dans Sage…":
+        "Reading sales, purchases, receipts and payments in Sage…",
+    "{n} opération(s) affichée(s) ; {a} traitée(s) par l'application, {s} saisie(s) directement dans Sage.":
+        "{n} operation(s) shown; {a} processed by the application, {s} entered directly in Sage.",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# rabais Direction et administrateurs (2026-11-08)
+for _fr, _en in {
+    "Rabais Direction et administrateurs": "Management and administrator discounts",
+    "Rabais Direction et compte administrateur": "Management discount and administrator account",
+    "Rabais Direction": "Management discount", "Compte administrateur": "Administrator account",
+    "Rabais mis à part": "Discounts set aside", "Rabais des administrateurs": "Administrator discounts",
+    "Part de tous les rabais": "Share of all discounts",
+    "Rabais Direction et administrateurs par jour": "Management and administrator discounts by day",
+    "Rabais par employé": "Discounts by employee", "Rabais mis à part par type": "Discounts set aside by type",
+    "Plus forts rabais mis à part": "Largest discounts set aside", "Ventes brutes": "Gross sales",
+    "Rabais %": "Discount %", "Taux de rabais % (hors Direction et administrateurs)":
+        "Discount rate % (excluding management and administrators)",
+    "Rabais nommés « Direction » dans Clover et commandes enregistrées par un compte administrateur (rôle ADMIN ou "
+    "propriétaire) : suivis ici, à part des rabais du personnel (anomalies, taux de rabais des employés, décisions).":
+        "Discounts named “Direction” in Clover and orders entered by an administrator account (ADMIN role or owner): "
+        "tracked here, apart from staff discounts (anomalies, employee discount rates, decisions).",
+    "{v} de rabais mis à part sur {n} commande(s), soit {p} % de tous les rabais de la période.":
+        "{v} of discounts set aside on {n} order(s), i.e. {p}% of all discounts in the period.",
+    "Aucun rabais Direction ni rabais d'un compte administrateur dans la période.":
+        "No management or administrator-account discount in the period.",
+    "Les rabais « Direction » et ceux des comptes administrateurs sont dans l'état « Rabais Direction et "
+    "administrateurs » ({n} commande(s)).":
+        "“Direction” discounts and those of administrator accounts are in the “Management and administrator "
+        "discounts” report ({n} order(s)).",
+}.items():
+    EN.setdefault(_fr, _en)

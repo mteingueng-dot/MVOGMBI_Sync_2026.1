@@ -10,13 +10,13 @@ FUSEAU = ZoneInfo("America/Toronto")
 
 
 def _commande(ident, jour: date, articles: list[tuple[str, str, int]], client=None, employe="E1", heure=11,
-              rabais=None):
+              rabais=None, nom_rabais="Rabais"):
     moment = int(datetime(jour.year, jour.month, jour.day, heure, 0, tzinfo=FUSEAU).timestamp() * 1000)
     lignes = []
     for nom, item, prix in articles:
         l = {"name": nom, "price": prix, "item": {"id": item}}
         if rabais:
-            l["discounts"] = {"elements": [{"name": "Rabais", "percentage": rabais}]}
+            l["discounts"] = {"elements": [{"name": nom_rabais, "percentage": rabais}]}
         lignes.append(l)
     return {"id": ident, "title": ident, "createdTime": moment, "employee": {"id": employe}, "device": {"id": "D1"},
             "customers": {"elements": [{"id": client}] if client else []},
@@ -48,6 +48,7 @@ def _periode():
             n += 1
             cmds.append(_commande(f"B{n}", j, [("Riz", "R", 1000)], employe="E2", heure=15))
     cmds.append(_commande("X1", DU + timedelta(days=3), [("Sel", "S", 2000)], rabais=100))
+    cmds.append(_commande("DIR1", DU + timedelta(days=5), [("Sel", "S", 3000)], rabais=100, nom_rabais="Direction"))
     cmds.append(_commande("C2a", DU + timedelta(days=10), [("Riz", "R", 1000)], client="C2"))
     return _donnees(cmds)
 
@@ -198,11 +199,28 @@ def test_constats_en_couleur_et_decisions():
     assert an.etat_carte("Variation", D("-5")) == "alerte" and an.etat_carte("Variation", D("2")) == "bon"
     assert an.etat_carte("Ventes nettes", D("10")) is None
     syn = t["a_synthese"]
-    assert syn.entetes == ["Priorité", "Décision à prendre", "Pourquoi", "Où regarder"]
-    priorites = [l[0] for l in syn.lignes]
+    assert syn.entetes == ["Priorité", "Décision à prendre", "Concerné", "Détail", "Où regarder"]
+    priorites = [l[0] for l in syn.lignes if l[0]]
     assert priorites == sorted(priorites) and priorites[0].startswith("1")
     assert any(l[1] == "Contrôler les rabais de 50 % et plus avec les employés concernés" for l in syn.lignes)
     assert an.niveau_constat(syn.note.splitlines()[1])[0] == "alerte"  # la décision la plus urgente en premier
+
+
+def test_elements_concernes_par_les_decisions():
+    """« Je veux avoir la liste des articles concernés dans les décisions » : chaque décision est suivie de ses
+    éléments (articles, clients, employés, commandes) ; une commande ouvre sa facture Clover."""
+    from mvogmbi_sync.web.pages_statistiques import _tableau_detaille
+
+    syn = _toutes()["a_synthese"]
+    assert len(syn.ids_commandes) == len(syn.lignes)
+    rang = next(i for i, l in enumerate(syn.lignes) if l[1].startswith("Contrôler les rabais"))
+    assert syn.lignes[rang][2].endswith("élément(s)")
+    suivante = syn.lignes[rang + 1]
+    assert suivante[0] == "" and suivante[2] == "X1" and syn.ids_commandes[rang + 1] == "X1"
+    assert "/facture-clover?id=X1" in _tableau_detaille(syn)
+    decision = next(d for d in syn.decisions if d[1].startswith("Contrôler les rabais"))
+    assert decision[5][0][0] == "X1" and "X1" in an.resume_concernes(decision[5])
+    assert all(len(d) == 6 for d in syn.decisions)
 
 
 def test_facture_clover_et_lien_des_anomalies():
@@ -253,3 +271,25 @@ def test_decisions_du_courriel_du_matin(tmp_path):
     assert decisions and decisions[0][0].startswith("1")
     r = rm.ResumeMatin(hier, decisions=decisions)
     assert "Décisions proposées" in rm.html(r) and any("1 — Haute" in l for l in rm.texte(r))
+
+
+def test_rabais_direction_et_administrateurs_a_part():
+    """« Mets les rabais Direction et compte administrateur dans un autre état » : ni anomalie, ni taux de rabais
+    des employés, ni décision ; listés dans leur état avec le lien vers la facture."""
+    d = _periode()
+    d.commandes.append(_commande("ADM1", DU + timedelta(days=6), [("Riz", "R", 1000)], employe="E3", rabais=50))
+    d.employes["E3"] = "Patronne"
+    d.administrateurs = {"Patronne"}
+    r = an.calculer("a_rabais_direction", d, _avant(), {}, DU, AU, DU2, AU2)
+    motifs = {l[2]: l[0] for l in r.lignes}
+    assert motifs == {"DIR1": "Rabais Direction", "ADM1": "Compte administrateur"}
+    assert r.ids_commandes == [{"ADM1": "ADM1", "DIR1": "DIR1"}[l[2]] for l in r.lignes]
+    cartes = {c[0]: c[2] for c in r.cartes}
+    assert cartes["Rabais Direction"] == D("30.00") and cartes["Rabais des administrateurs"] == D("5.00")
+    ano = an.calculer("a_anomalies", d, _avant(), {}, DU, AU, DU2, AU2)
+    assert {l[2] for l in ano.lignes if l[0] == "Rabais de 50 % ou plus"} == {"X1"}
+    emp = an.calculer("a_employes", d, _avant(), {}, DU, AU, DU2, AU2)
+    patronne = next(l for l in emp.lignes if l[0] == "Patronne")
+    assert patronne[7] == 0 and patronne[15] == D("5.00")
+    syn = an.calculer("a_synthese", d, _avant(), {}, DU, AU, DU2, AU2)
+    assert not any("Patronne" in str(l) for l in syn.lignes if l[1] == "Encadrer les rabais accordés")

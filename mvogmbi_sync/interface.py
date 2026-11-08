@@ -114,6 +114,7 @@ MENU_GROUPES = [
                    ("🏛", "Retenues à la source", RAPPROCHEMENT, "ouvrir_comptabilite", "Retenues à la source"),
                    ("📬", "Suivi des remises", RAPPROCHEMENT, "ouvrir_comptabilite", "Suivi des remises")]),
     ("État", "📊", [("📈", "Suivi des ventes", RAPPORTS, "ouvrir_rapports", "Suivi des ventes"),
+                    ("🗓", "Opérations journalières", RAPPORTS, "ouvrir_rapports", "Opérations journalières"),
                     ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
                     ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover"),
                     ("💤", "Produits inactifs", RAPPORTS, "ouvrir_rapports", "Produits inactifs"),
@@ -122,7 +123,8 @@ MENU_GROUPES = [
 ]
 # libellés du menu (sans n° de page) ; la page « Tableau de bord » est la facturation des ventes Clover
 LIBELLES_MENU = {TABLEAU: "Ventes Clover → factures Sage"}
-TITRES_ONGLETS_RAPPORTS = ("Suivi des ventes", "Recherche dans l'historique", "Statistiques Clover",
+TITRES_ONGLETS_RAPPORTS = ("Suivi des ventes", "Opérations journalières", "Recherche dans l'historique",
+                           "Statistiques Clover",
                            "Produits inactifs", "Articles 20/80", "Factures fournisseurs archivées")
 # pages ouvertes seulement par des entrées de fenêtre ou d'onglet : leur groupe
 GROUPE_DES_PAGES_SANS_LIGNE = {RAPPORTS: "État"}
@@ -2064,6 +2066,7 @@ class Application(tk.Tk):
 
         def traitement():
             from .__main__ import commande_moteur, fermer_bases
+            from .traitements import env_enfant
 
             fermer_bases()  # base gardée par cette fenêtre relâchée : le traitement importe dans Sage
             commande = commande_moteur() + ["auto", "--point-de-vente", code]
@@ -2075,7 +2078,8 @@ class Application(tk.Tk):
                 commande += ["--jusqua", jusqua.isoformat()]
             processus = subprocess.Popen(commande, cwd=self.racine, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                          text=True, encoding="utf-8", errors="replace",
-                                         env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"},
+                                         env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
+                                              **env_enfant("Application")},
                                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             for ligne in processus.stdout:
                 self.file_messages.put((zone, ligne.rstrip()))

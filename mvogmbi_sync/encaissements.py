@@ -561,6 +561,11 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, facture
                          f"({', '.join(l.facture for l in d.lignes)})")
                 (bilan["encaisses"] if r.traite else bilan["a_verifier"]).append(
                     texte + ("" if r.traite else " — NON encaissé : " + " ".join(r.messages)))
+                if r.traite:  # tableau « Opérations journalières » : traité le, par
+                    from .operations_journalieres import ENCAISSEMENT, noter as noter_operation
+
+                    noter_operation(racine, ENCAISSEMENT, r.date, f"{d.origine or 'Dépôt'} du {r.date}",
+                                    ",".join(sorted({l.facture for l in d.lignes})), pdv.client_sage, r.montant)
     except Exception as exc:
         bilan["erreur"] = str(exc)
         journal(f"Erreur : {exc}")

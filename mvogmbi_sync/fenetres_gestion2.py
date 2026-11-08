@@ -326,6 +326,16 @@ class FenetreFinEmploi(FenetreOutil):
 
 
 # --------------------------------------------------------------------------------------------- journal
+VUES_JOURNAL = ("Récapitulatif des traitements", "Toutes les opérations")
+
+
+def resume_traitements(liste) -> str:
+    """« ; dernier traitement automatique : 2026-11-08 02:10 (Terminé) » : repère du dernier passage de nuit."""
+    nuit = next((x for x in liste if x.origine == "Nuit"), None)
+    return (" ; " + t("dernier traitement automatique : {d} ({r})", d=nuit.debut[:16], r=t(nuit.resultat))
+            if nuit else "")
+
+
 class FenetreJournalOperations(FenetreOutil):
     def __init__(self, parent, racine: Path):
         from . import journal_operations as jo
@@ -345,12 +355,26 @@ class FenetreJournalOperations(FenetreOutil):
         tk.Label(g, text=t("au"), background=CARTE).pack(side="left")
         self.au = tk.StringVar(value=date.today().isoformat())
         ChampDate(g, self.au, fond=CARTE).pack(side="left", padx=4)
+        from . import traitements as tr
+
+        self.tr = tr
         self.ops = jo.lire(self.racine)
+        self.traitements = tr.lire(self.racine)
+        # « Récapitulatif des traitements » (par défaut) : un traitement par ligne, avec début, fin et durée
+        # (demande du propriétaire du 2026-11-08) ; « Toutes les opérations » : journaux et registres réunis
+        g = barre.ajouter(barre.groupe(), 10)
+        tk.Label(g, text=t("Afficher"), background=CARTE).pack(side="left", padx=(0, 4))
+        self.vue = tk.StringVar(value=t(VUES_JOURNAL[0]))
+        liste_vue = ttk.Combobox(g, textvariable=self.vue, values=[t(v) for v in VUES_JOURNAL], state="readonly",
+                                 width=30)
+        liste_vue.pack(side="left")
+        liste_vue.bind("<<ComboboxSelected>>", lambda _e: (self._sources(), self.afficher()))
         g = barre.ajouter(barre.groupe(), 10)
         tk.Label(g, text=t("Source"), background=CARTE).pack(side="left", padx=(0, 4))
         self.source = tk.StringVar(value=t("Toutes"))
-        ttk.Combobox(g, textvariable=self.source, values=[t("Toutes")] + sorted({o.source for o in self.ops}),
-                     state="readonly", width=26).pack(side="left")
+        self.liste_source = ttk.Combobox(g, textvariable=self.source, state="readonly", width=34)
+        self.liste_source.pack(side="left")
+        self._sources()
         g = barre.ajouter(barre.groupe(), 10)
         tk.Label(g, text=t("Recherche"), background=CARTE).pack(side="left", padx=(0, 4))
         self.texte = tk.StringVar()
@@ -362,10 +386,26 @@ class FenetreJournalOperations(FenetreOutil):
         barre.ajouter(bouton_exporter(barre, self.tableau, lambda: t("Journal des opérations")))
         self.afficher()
 
+    def _recap(self) -> bool:
+        return self.vue.get() == t(VUES_JOURNAL[0])
+
+    def _sources(self) -> None:
+        noms = sorted({x.nom for x in self.traitements}) if self._recap() else sorted({o.source for o in self.ops})
+        self.liste_source.configure(values=[t("Toutes")] + noms)
+        if self.source.get() not in noms:
+            self.source.set(t("Toutes"))
+
     def afficher(self) -> None:
         from .page_rapports import remplir
 
         source = "" if self.source.get() == t("Toutes") else self.source.get()
+        if self._recap():
+            liste = self.tr.filtrer(self.traitements, self.du.get().strip(), self.au.get().strip(), source,
+                                    self.texte.get())
+            remplir(self.tableau, self.tr.ENTETES, [x.ligne() for x in liste[:5000]],
+                    {"Traitement": 260, "Résultat": 220, "Détail": 420})
+            self.etat.configure(text=t("{n} traitement(s)", n=len(liste)) + resume_traitements(self.traitements))
+            return
         ops = self.jo.filtrer(self.ops, self.du.get().strip(), self.au.get().strip(), source, self.texte.get())
         remplir(self.tableau, ["Date", "Source", "Personne", "Détail"],
                 [[o.quand, o.source, o.personne, o.detail] for o in ops[:5000]], {"Source": 200, "Détail": 640})

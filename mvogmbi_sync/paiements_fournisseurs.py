@@ -258,6 +258,11 @@ def payer_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
                      f"(virement {p.avis.reference})")
             (bilan["payes"] if r.traite else bilan["a_verifier"]).append(
                 texte + ("" if r.traite else " — NON saisi : " + " ".join(r.messages)))
+            if r.traite:  # tableau « Opérations journalières » : traité le, par
+                from .operations_journalieres import PAIEMENT, noter as noter_operation
+
+                noter_operation(racine, PAIEMENT, p.avis.date_virement, f"Virement {p.avis.reference}",
+                                ",".join(f for f, _m, _s in p.lignes()), p.fournisseur_sage, p.avis.montant)
     except Exception as exc:
         bilan["erreur"] = str(exc)
         journal(f"Erreur : {exc}")

@@ -388,8 +388,16 @@ def _audit(ctx, v):
 
 
 def _journal(ctx, v):
-    from .. import journal_operations as jo
+    from .. import journal_operations as jo, traitements as tr
 
+    if v.get("affichage", "Récapitulatif des traitements") == "Récapitulatif des traitements":
+        tous = tr.lire(ctx.racine)
+        source = v.get("source", "") if v.get("source", "") in {x.nom for x in tous} else ""
+        liste = tr.filtrer(tous, str(v["du"]), str(v["au"]), source, v.get("texte", ""))
+        nuit = next((x for x in tous if x.origine == "Nuit"), None)
+        return [Section("Récapitulatif des traitements", tr.ENTETES, [x.ligne() for x in liste],
+                        f"{len(liste)} traitement(s)" + (f" ; dernier traitement automatique : {nuit.debut[:16]} "
+                                                          f"({nuit.resultat})" if nuit else ""))]
     ops = jo.filtrer(jo.lire(ctx.racine), str(v["du"]), str(v["au"]), v.get("source", ""), v.get("texte", ""))
     return [Section("Journal des opérations", ["Moment", "Source", "Personne", "Détail"],
                     [[o.quand, o.source, o.personne, o.detail] for o in ops])]
@@ -442,9 +450,12 @@ def _formulaire(ctx: Contexte, c: Consultation, v: dict) -> str:
                       "stock</label></div>")
     if "source" in f:  # FenetreJournalOperations : liste des sources (Toutes + celles du journal)
         try:
-            from .. import journal_operations as jo
+            from .. import journal_operations as jo, traitements as tr
 
-            sources = sorted({o.source for o in jo.lire(ctx.racine)})
+            if v.get("affichage", "Récapitulatif des traitements") == "Récapitulatif des traitements":
+                sources = sorted({x.nom for x in tr.lire(ctx.racine)})
+            else:
+                sources = sorted({o.source for o in jo.lire(ctx.racine)})
         except Exception:  # noqa: BLE001
             sources = []
         options = "<option value=''>Toutes</option>" + "".join(
@@ -680,8 +691,10 @@ CONSULTATIONS = [
                  "Chaque page, bouton et connexion, avec la personne et le poste.", "🛡", "Administration",
                  sans_sage=True, defauts={"du": date.today() - timedelta(days=7)}),
     Consultation("/journal-operations", "Journal des opérations", "utilisateurs", ("periode", "source", "texte"),
-                 _journal, "Journaux et registres de l'application réunis.", "🧭", "Administration", sans_sage=True,
-                 defauts={"du": date.today() - timedelta(days=30)}, bouton="🔍 Afficher"),
+                 _journal, "Récapitulatif de tous les traitements (début, fin, durée, résultat) et journaux de "
+                 "l'application réunis.", "🧭", "Administration", sans_sage=True,
+                 defauts={"du": date.today() - timedelta(days=30)}, bouton="🔍 Afficher",
+                 choix={"affichage": ("Afficher", ("Récapitulatif des traitements", "Toutes les opérations"))}),
 ]
 
 from .consultations_etat import CONSULTATIONS_ETAT  # noqa: E402 — 3e vague (État, paie, budget)

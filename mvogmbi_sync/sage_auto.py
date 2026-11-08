@@ -206,7 +206,23 @@ def executer(exe: Path, fichier_imp: Path, fichier_sai: Path, mot_de_passe: str 
     """Import d'un .IMP : outil d'import de Sage, sinon (entreprise PARTAGÉE, refusée par l'outil — demande du
     propriétaire du 2026-11-05 : « il faut importer avec l'entreprise partagée ») l'assistant d'importation de
     Sage (`robot_import_assistant`). Une entreprise reconnue partagée passe ensuite tout de suite par l'assistant
-    (`donnees/entreprises_partagees.json`). Une simple lecture (`pendant_connexion`) reste à l'outil d'import."""
+    (`donnees/entreprises_partagees.json`). Une simple lecture (`pendant_connexion`) reste à l'outil d'import.
+    Chaque import est noté au récapitulatif des traitements (traitements.py)."""
+    if pendant_connexion is not None:  # simple lecture de la base : pas un traitement
+        return _executer(exe, fichier_imp, fichier_sai, mot_de_passe, pendant_connexion, pendant_resume, delai,
+                         discret)
+    from .traitements import origine_courante, suivre
+
+    with suivre("Import dans Sage", origine=origine_courante(), detail=Path(fichier_imp).name) as etat:
+        resultat = _executer(exe, fichier_imp, fichier_sai, mot_de_passe, pendant_connexion, pendant_resume, delai,
+                             discret)
+        if resultat.erreurs:
+            etat["resultat"] = "Erreur : " + " ; ".join(str(x) for x in resultat.erreurs)[:200]
+        return resultat
+
+
+def _executer(exe, fichier_imp, fichier_sai, mot_de_passe, pendant_connexion, pendant_resume, delai,
+              discret) -> ResultatSage:
     if pendant_connexion is None and est_partagee(fichier_sai):
         from .robot_import_assistant import importer_par_assistant
 

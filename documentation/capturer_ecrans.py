@@ -154,7 +154,7 @@ def main(origine: Path, langue: str = "fr") -> None:
     page(i.FAQ, "12_faq")
     page(i.UTILISATEURS, "13_utilisateurs")
     page(i.RAPPORTS, "14_rapports", lambda: app.page_rapports.actualiser(), delai=30000)
-    page(i.RAPPORTS, "15_statistiques", lambda: app.page_rapports.onglets.select(3), delai=30000)
+    page(i.RAPPORTS, "15_statistiques", lambda: app.page_rapports.onglets.select(app.page_rapports.cadre_statistiques), delai=30000)
 
     def etat(cle, section):
         """Un état des statistiques Clover (les ventes sont déjà lues par la capture précédente)."""

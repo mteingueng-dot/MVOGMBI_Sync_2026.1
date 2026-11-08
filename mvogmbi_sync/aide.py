@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.24"
+VERSION = "1.0.25"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -695,6 +695,28 @@ FAQ = {
                     "rassemble les décisions proposées, de la plus urgente à la moins urgente, avec la raison et "
                     "l'endroit où vérifier ; le tableau des décisions s'exporte pour une réunion. Sur le téléphone, le "
                     "menu des états devient une ligne d'onglets qui défile et le rapport s'affiche sur une colonne."),
+        ("question", "Comment savoir quand une vente, un achat, un encaissement ou un paiement a été traité ?"),
+        ("reponse", "État > Opérations journalières : une ligne par opération inscrite dans Sage (ventes, achats, "
+                    "encaissements, paiements fournisseurs) avec sa date, sa référence, le client ou le fournisseur, "
+                    "le montant et « Traité le » / « Par » / « Origine » quand c'est l'application qui l'a faite (vide "
+                    "= saisie directement dans Sage). Filtres : période (aujourd'hui, hier, semaine, mois, année ou du … "
+                    "au …) avec ◀ ▶ pour passer à la période précédente ou suivante, types d'opération, « Traitées par "
+                    "l'application / Saisies dans Sage », recherche, et vue « Par jour » (totaux de chaque journée). "
+                    "Administration > Journal des opérations > « Récapitulatif des traitements » donne en plus chaque "
+                    "traitement (nuit, imports, saisies dans Sage, travaux du web) avec son début, sa fin, sa durée et "
+                    "son résultat."),
+        ("question", "Où sont les rabais « Direction » et ceux des administrateurs ?"),
+        ("reponse", "Statistiques Clover > Rapports > « Rabais Direction et administrateurs » : les rabais nommés "
+                    "« Direction » dans Clover et toutes les commandes enregistrées par un compte administrateur de "
+                    "Clover (rôle ADMIN ou propriétaire), avec le type, l'employé, le rabais et le lien vers la facture. "
+                    "Ils ne comptent plus dans les anomalies (rabais de 50 % ou plus), ni dans le taux de rabais des "
+                    "employés, ni dans la décision « Encadrer les rabais accordés »."),
+        ("question", "Quels articles sont concernés par une décision ?"),
+        ("reponse", "Dans « Synthèse et décisions », chaque décision est suivie de la liste de ce qu'elle concerne : "
+                    "articles (locomotives, poids morts, hausses de prix, paires à grouper), catégories et articles en "
+                    "baisse, employés, clients à relancer ou perdus, commandes à fort rabais ou à prix inhabituel (un "
+                    "clic sur le n° ouvre la facture Clover). Les 5 premiers sont aussi cités dans le bandeau coloré "
+                    "et dans le courriel du matin ; au-delà de 50, la liste complète est dans l'analyse indiquée."),
         ("question", "Les décisions arrivent-elles aussi par courriel ?"),
         ("reponse", "Oui : le courriel du matin (traitement de nuit) contient les 8 premières décisions de « Synthèse "
                     "et décisions », calculées sur les 4 dernières semaines comparées aux 4 d'avant, en couleur selon "
@@ -1423,6 +1445,27 @@ FAQ = {
                     "from most to least urgent, with the reason and where to check; the decisions table can be "
                     "exported for a meeting. On the phone, the report menu becomes a scrolling row of tabs and the "
                     "report shows in one column."),
+        ("question", "How do I know when a sale, purchase, receipt or payment was processed?"),
+        ("reponse", "Reports > Daily operations: one row per operation recorded in Sage (sales, purchases, receipts, "
+                    "supplier payments) with its date, reference, customer or vendor, amount and “Processed on” / "
+                    "“By” / “Origin” when the application did it (empty = entered directly in Sage). Filters: period "
+                    "(today, yesterday, week, month, year or from … to …) with ◀ ▶ to move to the previous or next "
+                    "period, operation types, “Processed by the application / Entered in Sage”, search, and the “By "
+                    "day” view (totals of each day). Administration > Operations log > “Processing summary” also lists "
+                    "each processing run (night, imports, entries in Sage, web jobs) with its start, end, duration and "
+                    "result."),
+        ("question", "Where are the “Direction” and administrator discounts?"),
+        ("reponse", "Clover statistics > Reports > “Management and administrator discounts”: discounts named "
+                    "“Direction” in Clover and every order entered by a Clover administrator account (ADMIN role or "
+                    "owner), with the type, employee, discount and the link to the invoice. They no longer count in "
+                    "the anomalies (discounts of 50% or more), in employee discount rates or in the “Supervise the "
+                    "discounts granted” decision."),
+        ("question", "Which items does a decision concern?"),
+        ("reponse", "In “Summary and decisions”, each decision is followed by the list of what it concerns: items "
+                    "(low-margin best sellers, dead weight, price increases, pairs to group), falling categories and "
+                    "items, employees, customers to win back, orders with a big discount or an unusual price (click "
+                    "the number to open the Clover invoice). The first 5 also appear in the colored band and in the "
+                    "morning email; beyond 50, the full list is in the analysis shown."),
         ("question", "Do the decisions also arrive by email?"),
         ("reponse", "Yes: the morning email (night processing) lists the first 8 decisions of “Summary and "
                     "decisions”, calculated over the last 4 weeks compared with the 4 before, colored by priority. The "

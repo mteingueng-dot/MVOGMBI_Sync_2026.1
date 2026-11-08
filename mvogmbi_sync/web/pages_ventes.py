@@ -30,6 +30,7 @@ def _code_points(ctx: Contexte, choix: str) -> str:
 def _auto(ctx: Contexte, code: str, simulation: bool, depuis: date | None, jusqua: date | None):
     def travail(journal):
         from ..__main__ import commande_moteur, fermer_bases
+        from ..traitements import env_enfant
 
         fermer_bases()  # base gardée relâchée : le traitement importe dans Sage
         commande = commande_moteur() + ["auto", "--point-de-vente", code]
@@ -41,7 +42,8 @@ def _auto(ctx: Contexte, code: str, simulation: bool, depuis: date | None, jusqu
             commande += ["--jusqua", jusqua.isoformat()]
         processus = subprocess.Popen(commande, cwd=ctx.racine, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace",
-                                     env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"},
+                                     env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
+                                              **env_enfant("Web")},
                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         for ligne in processus.stdout:
             journal(ligne.rstrip())
@@ -62,9 +64,9 @@ def tableau_ventes(ctx: Contexte) -> Reponse:
         if action != "Simulation" and not action_permise(ctx, LANCER):
             message = _message(erreur=f"Votre profil n'a pas le droit « {LANCER} ».")
         elif action == "Simulation":
-            return taches.lancer(ctx, "Simulation (sans import)", _auto(ctx, code, True, None, None), "/ventes-sage")
+            return taches.lancer(ctx, "Simulation (sans import)", _auto(ctx, code, True, None, None), "/ventes-sage", noter=False)
         elif action == "Lancer":
-            return taches.lancer(ctx, "Traitement des ventes", _auto(ctx, code, False, None, None), "/ventes-sage",
+            return taches.lancer(ctx, "Traitement des ventes", _auto(ctx, code, False, None, None), "/ventes-sage", noter=False,
                                  sage=True)
         elif action == "Charger la période":
             try:
@@ -74,7 +76,7 @@ def tableau_ventes(ctx: Contexte) -> Reponse:
             except ValueError:
                 message = _message(erreur="Vérifiez les dates : du ≤ au, au plus tard hier.")
             else:
-                return taches.lancer(ctx, f"Ventes du {du} au {au}", _auto(ctx, code, False, du, au), "/ventes-sage",
+                return taches.lancer(ctx, f"Ventes du {du} au {au}", _auto(ctx, code, False, du, au), "/ventes-sage", noter=False,
                                      sage=True)
     if ctx.req.query.get("excel"):  # « 📗 Excel » : le fichier de correspondance
         chemin = ctx.racine / "donnees" / "correspondance_articles.xlsx"

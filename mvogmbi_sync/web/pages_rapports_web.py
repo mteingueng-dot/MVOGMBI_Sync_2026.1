@@ -13,7 +13,8 @@ from .consultations import Section, sage, tableau_section
 from .pages import Contexte, Fonction, argent, page
 from .serveur import Reponse, echapper as e
 
-ONGLETS = [("Suivi des ventes", "/suivi-ventes"), ("Recherche dans l'historique", "/historique"),
+ONGLETS = [("Suivi des ventes", "/suivi-ventes"), ("Opérations journalières", "/operations-journalieres"),
+           ("Recherche dans l'historique", "/historique"),
            ("Factures fournisseurs archivées", "/archives-fournisseurs"), ("Statistiques Clover", "/statistiques"),
            ("Produits inactifs", "/inactifs"), ("Articles 20/80", "/pareto")]  # ordre des onglets de PageRapports
 # fenêtres Windows à onglets : (libellé de l'onglet, adresse web, entrée du menu qui donne le droit, page)
@@ -154,6 +155,76 @@ def suivi_ventes(ctx: Contexte) -> Reponse:
                         traduire(l.encaissement), traduire(l.rapprochement), l.depot] for l in lignes],
                       classes=[couleur(l) for l in lignes])
     corps = entete + f"<p class='note'>{e(etat)}</p>" + tableau_section(section, limite=5000)
+    return Reponse(corps=page(ctx, "Rapports", corps))
+
+
+# --------------------------------------------------------------------------------------------- opérations journalières
+def operations_journalieres(ctx: Contexte) -> Reponse:
+    """Comme l'onglet Windows (onglet_operations.py) : ventes, achats, encaissements et paiements fournisseurs de
+    Sage avec le moment où l'application les a traités ; période ◀ ▶, types, traitement, détail ou par jour."""
+    from urllib.parse import urlencode
+
+    from .. import operations_journalieres as oj, rapports
+    from .consultations import lire_ou_vide
+
+    q = ctx.req.query
+    periode = q.get("periode") or "Cette semaine"
+    try:
+        du, au = date.fromisoformat(q.get("du", "")), date.fromisoformat(q.get("au", ""))
+    except ValueError:
+        du = au = None
+    # une période choisie dans la liste (différente de la précédente) remplace les dates ; sinon les dates tapées
+    if periode in oj.PERIODES[:-1] and (du is None or q.get("periode_avant", periode) != periode):
+        du, au = oj.bornes(periode)
+    elif du is None or au is None:
+        du, au = oj.bornes("Cette semaine")
+    elif q.get("periode_avant") == periode and periode in oj.PERIODES[:-1] and (du, au) != oj.bornes(periode):
+        periode = "Personnalisée"  # dates changées à la main
+    genres = [g for g in ctx.req.valeurs("type") if g in oj.TYPES] or list(oj.TYPES)
+    vue = q.get("vue") if q.get("vue") in oj.VUES else oj.VUES[0]
+    etat = q.get("etat") if q.get("etat") in oj.ETATS else oj.ETATS[0]
+    texte = q.get("recherche", "")
+
+    def adresse(d1, d2) -> str:
+        return "?" + urlencode([("periode", "Personnalisée"), ("periode_avant", "Personnalisée"), ("du", d1),
+                                ("au", d2), ("vue", vue), ("etat", etat),
+                                ("recherche", texte)] + [("type", g) for g in genres])
+
+    avant, apres = oj.decaler(du, au, -1), oj.decaler(du, au, 1)
+    cases = "".join(f"<label><input type='checkbox' name='type' value='{e(g)}'{' checked' if g in genres else ''}> "
+                    f"{e('Paiements fournisseurs' if g == oj.PAIEMENT else g + 's')}</label>" for g in oj.TYPES)
+    formulaire = _formulaire(
+        "<button name='actualiser' value='1'>🔄 Actualiser</button>"
+        + f"<input type='hidden' name='periode_avant' value='{e(periode)}'>"
+        + _choix("periode", "Période", oj.PERIODES, periode if periode in oj.PERIODES else "Personnalisée")
+        + f"<div class='navigation-periode'><a href='{e(adresse(*avant))}' title='Période précédente'>◀</a>"
+          f"<a href='{e(adresse(*apres))}' title='Période suivante'>▶</a></div>"
+        + f"<div><label>Du</label><input type='date' name='du' value='{du}'></div>"
+          f"<div><label>au</label><input type='date' name='au' value='{au}'></div>"
+        + f"<div><label>Types</label><div>{cases}</div></div>"
+        + _choix("vue", "Afficher", oj.VUES, vue) + _choix("etat", "Traitement", oj.ETATS, etat)
+        + _recherche(texte))
+    entete = onglets("Opérations journalières", ctx) + formulaire
+    gardee = ctx.app.memoire.get("historique_sage")  # même lecture que la recherche dans l'historique (10 min)
+    if gardee and time.time() - gardee[0] < 600 and not q.get("actualiser"):
+        h = gardee[1]
+    else:
+        h = lire_ou_vide(ctx, rapports.historique)
+        if "Sage" not in ctx.absents:
+            ctx.app.memoire["historique_sage"] = (time.time(), h)
+    ops = oj.filtrer(oj.lire(ctx.racine, h), du, au, genres, etat, texte)
+    totaux = cartes([(f"{'Paiements fournisseurs' if g == oj.PAIEMENT else g + 's'} ({n})", argent(m))
+                     for g, n, m in oj.totaux(ops) if g in genres])
+    app = sum(1 for o in ops if o.traite_le)
+    note = (f"{len(ops)} opération(s) du {du} au {au} ; {app} traitée(s) par l'application, {len(ops) - app} saisie(s) "
+            "directement dans Sage. « Traité le » : moment où l'application a fait l'opération.")
+    classes = {oj.VENTE: "op-vente", oj.ACHAT: "op-achat", oj.ENCAISSEMENT: "op-encaissement", oj.PAIEMENT: "op-paiement"}
+    if vue == oj.VUES[1]:
+        section = Section(f"Opérations par jour — {du} → {au}", oj.ENTETES_JOURS, oj.par_jour(ops))
+    else:
+        section = Section(f"Opérations journalières — {du} → {au}", oj.ENTETES, [o.ligne() for o in ops],
+                          classes=[classes[o.genre] for o in ops])
+    corps = entete + f"<p class='note'>{e(note)}</p>" + totaux + tableau_section(section, limite=5000)
     return Reponse(corps=page(ctx, "Rapports", corps))
 
 
@@ -325,6 +396,10 @@ tr.classe-A td { background: #dff3e4 !important; } tr.classe-B td { background: 
 tr.classe-C td { background: #f3f4f3 !important; }
 tr.ligne-anomalie td { background: #fde2e4 !important; } tr.ligne-approuvee td { background: #e3f1e7 !important; }
 tr.ligne-corrigee td { background: #fff4d6 !important; }
+tr.op-vente td { background: #e8f5ec !important; } tr.op-achat td { background: #fff4d6 !important; }
+tr.op-encaissement td { background: #eaf2fb !important; } tr.op-paiement td { background: #fde2e4 !important; }
+.navigation-periode { display: flex; gap: 4px; align-items: end; }
+.navigation-periode a { padding: 3px 9px; border: 1px solid #c9d6cd; border-radius: 4px; text-decoration: none; }
 tr.etat-applique td { background: #e6f4ea !important; } tr.etat-a-saisir td { background: #fff4d6 !important; }
 tr.etat-ecart td { background: #fde2e4 !important; } tr.etat-ria td { background: #e4ecfb !important; }
 tr.termine td { color: #7a857e; } tr.ligne-depot td { font-weight: 600; } .retrait { padding-left: 22px; }
@@ -521,10 +596,12 @@ FONCTIONS = [
              "Articles", menu=False),
     Fonction("/historique", "Recherche dans l'historique", "rapports", historique, "🔎", "État", menu=False),
     Fonction("/suivi-ventes", "Suivi des ventes", "rapports", suivi_ventes, "📈", "État", menu=False),
+    Fonction("/operations-journalieres", "Opérations journalières", "rapports", operations_journalieres, "🗓", "État",
+             menu=False),
     Fonction("/inactifs", "Produits inactifs", "rapports", inactifs, "💤", "État", menu=False),
     Fonction("/pareto", "Articles 20/80", "rapports", pareto, "🥇", "État", menu=False),
 ]
-WEB = {"Suivi des ventes": "/suivi-ventes", "Produits inactifs": "/inactifs", "Articles 20/80": "/pareto",
+WEB = {"Suivi des ventes": "/suivi-ventes", "Opérations journalières": "/operations-journalieres", "Produits inactifs": "/inactifs", "Articles 20/80": "/pareto",
        "Recherche dans l'historique": "/historique", "Interrogation de compte client": "/interrogation-client",
        "Interrogation de compte fournisseur": "/interrogation-fournisseur",
        "Interrogation de compte article": "/interrogation-article"}

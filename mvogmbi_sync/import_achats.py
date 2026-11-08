@@ -226,6 +226,9 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
         if presentes.get(f.fichier):
             f.etat = IMPORTEE
             resultats[f.fichier] = f"importée (n° {f.numero}, {f.total} $)"
+            from .operations_journalieres import ACHAT, noter as noter_operation
+
+            noter_operation(racine, ACHAT, f.date_facture, f.numero, f.numero, f.fournisseur_sage, f.total)
             try:  # gardée pour consultation (page Rapports)
                 archiver(racine, f)
             except OSError as exc:

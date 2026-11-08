@@ -29,8 +29,9 @@ class Tache:
     resultat: str = ""
 
 
-def lancer(ctx, titre: str, travail, retour: str, sage: bool = False) -> Reponse:
-    """travail(journal) -> texte du résultat (lignes) ; redirige vers la page de suivi."""
+def lancer(ctx, titre: str, travail, retour: str, sage: bool = False, noter: bool = True) -> Reponse:
+    """travail(journal) -> texte du résultat (lignes) ; redirige vers la page de suivi. Chaque travail est noté au
+    récapitulatif des traitements (`noter=False` : le travail lance une commande qui s'y note elle-même)."""
     from .. import audit
     from .serveur import redirection
 
@@ -48,14 +49,19 @@ def lancer(ctx, titre: str, travail, retour: str, sage: bool = False) -> Reponse
         del t.messages[:-200]
 
     def executer() -> None:
+        from .. import traitements
+
+        traitements.definir_personne(t.personne)
         try:
-            if sage:
-                with VERROU_SAGE:
+            with traitements.suivre(titre if noter else "", ctx.racine, "Web", t.personne) as suivi:
+                if sage:
+                    with VERROU_SAGE:
+                        resultat = travail(journal)
+                else:
                     resultat = travail(journal)
-            else:
-                resultat = travail(journal)
-            t.resultat = resultat if isinstance(resultat, str) else "\n".join(resultat or [])
-            t.etat = "Terminé"
+                t.resultat = resultat if isinstance(resultat, str) else "\n".join(resultat or [])
+                t.etat = "Terminé"
+                suivi["detail"] = " ".join(t.resultat.split())[:300]
         except BaseException as erreur:  # noqa: BLE001 — SystemExit compris (jeton absent)
             t.resultat = str(erreur) or type(erreur).__name__
             t.etat = "Échec"

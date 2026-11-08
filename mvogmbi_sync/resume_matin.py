@@ -221,7 +221,10 @@ def tranche(donnees, du: date, au: date):
 
 def decisions_du_mois(racine: Path, config_toml: dict, donnees, hier: date) -> list[tuple[str, str]]:
     """Décisions de « Synthèse et décisions » sur les 28 derniers jours contre les 28 d'avant, sans relire Clover."""
-    from .analyses_clover import calculer as analyser
+    from .analyses_clover import PRIORITES, _t as _t_, calculer as analyser, resume_concernes
+
+    def _t_priorite(p):
+        return _t_(PRIORITES[p])
 
     du, au = hier - timedelta(days=JOURS_DECISIONS - 1), hier
     du2, au2 = du - timedelta(days=JOURS_DECISIONS), du - timedelta(days=1)
@@ -232,7 +235,8 @@ def decisions_du_mois(racine: Path, config_toml: dict, donnees, hier: date) -> l
     except BaseException:  # Sage illisible : décisions sans la rentabilité
         couts = {}
     synthese = analyser("a_synthese", tranche(donnees, du, au), tranche(donnees, du2, au2), couts, du, au, du2, au2)
-    return [(l[0], f"{l[1]} — {l[2]}") for l in synthese.lignes[:DECISIONS_MAX]]
+    return [(_t_priorite(p), f"{_t_(d)} — {raison}" + resume_concernes(elements))
+            for p, d, raison, _s, _l, elements in getattr(synthese, "decisions", [])[:DECISIONS_MAX]]
 
 
 def _liste(noms: list[str], maximum: int = 8) -> str:

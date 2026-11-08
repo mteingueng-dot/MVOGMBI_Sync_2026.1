@@ -49,6 +49,9 @@ class DonneesClover:
     appareils: dict[str, str] = field(default_factory=dict)
     categories: dict[str, str] = field(default_factory=dict)
     fuseau: str = "America/Toronto"
+    # noms des employés Clover administrateurs (rôle ADMIN ou propriétaire) : leurs rabais vont dans l'état « Rabais
+    # Direction et administrateurs » (demande du propriétaire du 2026-11-08)
+    administrateurs: set = field(default_factory=set)
     prepare: list | None = field(default=None, repr=False, compare=False)  # commandes préparées (calculées une fois)
     index: dict | None = field(default=None, repr=False, compare=False)  # (jour, n°) -> identifiant de la commande
 
@@ -134,7 +137,44 @@ def lire(client, debut: date, fin: date, cache: Path | None = None, progression=
         d.paiements += donnees.get("paiements", [])
         d.remboursements += donnees.get("remboursements", [])
     d.employes, d.clients, d.appareils, d.categories = referentiels(client, cache)
+    try:
+        d.administrateurs = administrateurs(client, cache)
+    except Exception:  # noqa: BLE001 — sans les rôles, seuls les rabais « Direction » sont mis à part
+        d.administrateurs = set()
     return d
+
+
+_ADMINISTRATEURS: dict[str, tuple] = {}
+
+
+def administrateurs(client, cache: Path | None = None) -> set[str]:
+    """Noms des employés Clover au rôle ADMIN (ou propriétaires), relus au plus toutes les 6 heures."""
+    import time
+
+    cle = client.config.merchant_id
+    deja = _ADMINISTRATEURS.get(cle)
+    if deja and time.time() - deja[0] < DUREE_REFERENTIELS_DISQUE:
+        return deja[1]
+    fichier = Path(cache) / "administrateurs.json" if cache else None
+    if fichier is not None:
+        try:
+            garde = json.loads(fichier.read_text(encoding="utf-8"))
+            if garde.get("marchand") == cle and time.time() - garde["moment"] < DUREE_REFERENTIELS_DISQUE:
+                _ADMINISTRATEURS[cle] = (time.time(), set(garde["noms"]))
+                return _ADMINISTRATEURS[cle][1]
+        except (OSError, ValueError, KeyError):
+            pass
+    noms = {e.get("name") or e.get("nickname") or e["id"] for e in client._pages("employees", {})
+            if str(e.get("role", "")).upper() == "ADMIN" or e.get("isOwner")}
+    _ADMINISTRATEURS[cle] = (time.time(), noms)
+    if fichier is not None:
+        try:
+            fichier.parent.mkdir(parents=True, exist_ok=True)
+            fichier.write_text(json.dumps({"marchand": cle, "moment": time.time(), "noms": sorted(noms)},
+                                          ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+    return noms
 
 
 DUREE_REFERENTIELS_DISQUE = 6 * 3600  # noms gardés sur disque : 1,3 s de Clover évitées à chaque lecture
@@ -639,6 +679,7 @@ def fusionner(parts: list[DonneesClover]) -> DonneesClover:
         for cible, source in ((d.employes, p.employes), (d.clients, p.clients), (d.appareils, p.appareils),
                               (d.categories, p.categories)):
             cible.update(source)
+        d.administrateurs |= p.administrateurs
     return d
 
 
@@ -704,7 +745,7 @@ def filtrer(d: DonneesClover, filtres: dict[str, str]) -> DonneesClover:
                                     and (not mode or mode_de(p) in mode)],
                          remboursements=[r for r in d.remboursements if (r.get("orderRef") or {}).get("id") in ids],
                          employes=d.employes, clients=d.clients, appareils=d.appareils, categories=d.categories,
-                         fuseau=d.fuseau)
+                         fuseau=d.fuseau, administrateurs=d.administrateurs)
 
 
 # vues regroupées qui peuvent être détaillées jour par jour (demande du propriétaire du 2026-10-28 : la date compte)

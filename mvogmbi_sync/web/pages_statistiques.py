@@ -475,9 +475,10 @@ def _rendu_rapport(libelle: str, r) -> str:
 def _tableau_detaille(r) -> str:
     """Tableau du rapport ; le n° d'une commande (anomalies) ouvre sa vraie facture Clover dans un nouvel onglet."""
     ids = getattr(r, "ids_commandes", None) or []
-    if not ids or "Commande ou jour" not in r.entetes:
+    colonne = next((c for c in ("Commande ou jour", "Concerné") if c in r.entetes), None)
+    if not any(ids) or colonne is None:
         return tableau_section(Section("Rapport détaillé", r.entetes, r.lignes))
-    col = r.entetes.index("Commande ou jour")
+    col = r.entetes.index(colonne)
     lignes = []
     for ligne, ident in zip(r.lignes, ids + [""] * len(r.lignes)):
         ligne = list(ligne)

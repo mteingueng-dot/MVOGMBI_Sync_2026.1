@@ -85,6 +85,35 @@ def _commandes(donnees):
     return preparer(donnees) if donnees is not None else []
 
 
+MOT_DIRECTION = "direction"   # rabais nommé « Direction » dans Clover
+
+
+def mises_a_part(ctx) -> dict[str, str]:
+    """{identifiant de commande: motif} des commandes dont le rabais va dans l'état « Rabais Direction et
+    administrateurs » (demande du propriétaire du 2026-11-08) : rabais nommé « Direction » (commande ou ligne), ou
+    commande enregistrée par un compte administrateur de Clover (rôle ADMIN ou propriétaire)."""
+    donnees = ctx.get("donnees")
+    if donnees is None:
+        return {}
+    if "_mises_a_part" in ctx:
+        return ctx["_mises_a_part"]
+    admins = getattr(donnees, "administrateurs", set()) or set()
+    employes = getattr(donnees, "employes", {}) or {}
+    motifs = {}
+    for o in donnees.commandes:
+        noms = [x.get("name") or "" for x in (o.get("discounts") or {}).get("elements", [])]
+        for li in (o.get("lineItems") or {}).get("elements", []):
+            noms += [x.get("name") or "" for x in (li.get("discounts") or {}).get("elements", [])]
+        direction = any(MOT_DIRECTION in n.casefold() for n in noms)
+        employe = employes.get((o.get("employee") or {}).get("id", ""), "")
+        admin = bool(employe) and employe in admins
+        if direction or admin:
+            motifs[o["id"]] = ("Rabais Direction et compte administrateur" if direction and admin else
+                               "Rabais Direction" if direction else "Compte administrateur")
+    ctx["_mises_a_part"] = motifs
+    return motifs
+
+
 def _jours(du: date, au: date) -> list[date]:
     fin = min(au, date.today())
     return [du + timedelta(days=i) for i in range((fin - du).days + 1)] if fin >= du else []
@@ -522,6 +551,7 @@ def anomalies(c, avant, ctx) -> RapportGestion:
                 prix[l.nom].append(float(l.ventes_brutes / l.quantite_vendue))
     prix_median = {k: _quantile(v, 0.5) for k, v in prix.items() if len(v) >= 5}
     ids = {}  # (date et heure, n°) -> identifiant Clover : un clic sur le n° ouvre la vraie facture
+    a_part = mises_a_part(ctx)  # rabais Direction et administrateurs : dans leur propre état
     for x in c:
         quand = f"{x.moment:%Y-%m-%d %H:%M}"
         ids[(quand, x.numero)] = x.id
@@ -530,11 +560,12 @@ def anomalies(c, avant, ctx) -> RapportGestion:
         if len(c) >= 20 and float(x.nettes) > seuil > 0:
             lignes.append([_t("Commande inhabituelle"), quand, x.numero, _t("Montant très élevé ({e})", e=x.employe),
                            x.nettes, _d(_quantile(montants, 0.5)), _d(float(x.nettes) - _quantile(montants, 0.5)), None])
-        if brut > 0 and rabais / brut >= Decimal("0.5"):
+        if brut > 0 and rabais / brut >= Decimal("0.5") and x.id not in a_part:
             lignes.append([_t("Rabais de 50 % ou plus"), quand, x.numero, _t("Rabais de {p} % ({e})",
                                                                            p=_nb(_pc(rabais, brut), 0), e=x.employe),
                            x.nettes, _d(brut), _d(-rabais), None])
-        if x.lignes and x.nettes <= 0 and not (brut > 0 and rabais / brut >= Decimal("0.5")):
+        if x.lignes and x.nettes <= 0 and not (brut > 0 and rabais / brut >= Decimal("0.5")) \
+                and x.id not in a_part:
             lignes.append([_t("Commande à 0 $ ou négative"), quand, x.numero, x.employe, x.nettes, _d(brut),
                            _d(x.nettes - brut), None])
         for l in x.lignes:
@@ -566,6 +597,10 @@ def anomalies(c, avant, ctx) -> RapportGestion:
     constats = [_k(None, "Jour atypique : à plus de 2 écarts-types de la moyenne du même jour de la semaine (au moins 4 "
                    "semaines) ; commande inhabituelle : au-delà de Q3 + 3 × l'écart interquartile et du 99e centile ; prix inhabituel : "
                    "à 40 % ou plus du prix médian de l'article (5 ventes au moins).")]
+    if a_part:
+        constats.append(_k(None, "Les rabais « Direction » et ceux des comptes administrateurs sont dans l'état "
+                           "« Rabais Direction et administrateurs » ({n} commande(s)).",
+                           n=sum(1 for x in c if x.id in a_part)))
     if compte[_t("Rabais de 50 % ou plus")]:
         constats.append(_k(None, "{n} commande(s) avec un rabais de 50 % ou plus : à vérifier avec les employés.",
                            n=compte[_t("Rabais de 50 % ou plus")]))
@@ -756,7 +791,9 @@ def associations(c, avant, ctx) -> RapportGestion:
 def employes(c, avant, ctx) -> RapportGestion:
     total = sum((x.nettes for x in c), ZERO)
     e = defaultdict(lambda: {"cmd": 0, "nettes": ZERO, "brut": ZERO, "rabais": ZERO, "remb": ZERO, "art": 0,
-                             "qte": ZERO, "heures": set(), "clients": 0, "par_jour": defaultdict(Decimal)})
+                             "qte": ZERO, "heures": set(), "clients": 0, "par_jour": defaultdict(Decimal),
+                             "a_part": ZERO})
+    a_part = mises_a_part(ctx)
     for x in c:
         g = e[x.employe]
         g["cmd"] += 1
@@ -767,7 +804,10 @@ def employes(c, avant, ctx) -> RapportGestion:
         g["par_jour"][x.moment.date()] += x.nettes
         for l in x.lignes:
             g["brut"] += l.ventes_brutes
-            g["rabais"] += l.rabais
+            if x.id in a_part:  # rabais Direction ou d'un administrateur : compté à part
+                g["a_part"] += l.rabais
+            else:
+                g["rabais"] += l.rabais
             g["remb"] += l.remboursements
             g["qte"] += l.quantite_nette
     avant_e = defaultdict(Decimal)
@@ -784,12 +824,14 @@ def employes(c, avant, ctx) -> RapportGestion:
                        _pc(-g["remb"], g["brut"], "0.01"), heures, _d(g["nettes"] / heures) if heures else ZERO,
                        _d(Decimal(g["cmd"]) / heures, "0.1") if heures else ZERO,
                        _d(panier / panier_global * 100, "1") if panier_global else ZERO, _pc(g["clients"], g["cmd"]),
-                       _pc(g["nettes"] - avant_e[nom], avant_e[nom]) if avant_e.get(nom) else None])
+                       _pc(g["nettes"] - avant_e[nom], avant_e[nom]) if avant_e.get(nom) else None,
+                       _d(-g["a_part"])])
     r = RapportGestion()
     r.entetes = ["Employé", "Commandes", "Ventes nettes", "% des ventes", "Panier moyen", "Articles par commande",
-                 "Prix moyen d'un article", "Taux de rabais %", "Taux de remboursement %", "Heures actives",
-                 "Ventes par heure active", "Commandes par heure active", "Indice de panier (100 = moyenne)",
-                 "Commandes avec client %", "Variation %"]
+                 "Prix moyen d'un article", "Taux de rabais % (hors Direction et administrateurs)",
+                 "Taux de remboursement %", "Heures actives", "Ventes par heure active", "Commandes par heure active",
+                 "Indice de panier (100 = moyenne)", "Commandes avec client %", "Variation %",
+                 "Rabais Direction et administrateurs"]
     r.lignes = lignes
     toutes_heures = sum(l[9] for l in lignes)
     r.cartes = [("Employés actifs", "n", len(lignes)),
@@ -818,6 +860,59 @@ def employes(c, avant, ctx) -> RapportGestion:
         if bas[4]:
             constats.append(_k(None, "Écart de panier : {h} ({a}) contre {b} ({c}).", h=haut[0], a=_argent(haut[4]),
                                b=bas[0], c=_argent(bas[4])))
+    r.note = _note(constats)
+    return r
+
+
+# --------------------------------------------------------------------------------------------- rabais Direction
+def rabais_direction(c, avant, ctx) -> RapportGestion:
+    """Rabais « Direction » et rabais des comptes administrateurs, à part des rabais du personnel : ils ne comptent
+    ni dans les anomalies, ni dans le taux de rabais des employés, ni dans la décision « Encadrer les rabais »."""
+    a_part = mises_a_part(ctx)
+    jours = _jours(ctx["du"], ctx["au"])
+    lignes, ids, par_jour, par_employe, par_motif = [], [], defaultdict(Decimal), defaultdict(Decimal), defaultdict(int)
+    total_rabais = direction = ZERO
+    for x in sorted(c, key=lambda x: x.moment, reverse=True):
+        brut = sum((l.ventes_brutes for l in x.lignes), ZERO)
+        rabais = -sum((l.rabais for l in x.lignes), ZERO)
+        total_rabais += rabais
+        motif = a_part.get(x.id)
+        if not motif or rabais <= 0:
+            continue
+        par_jour[x.moment.date()] += rabais
+        par_employe[x.employe] += rabais
+        par_motif[motif] += 1
+        if "Direction" in motif:
+            direction += rabais
+        lignes.append([_t(motif), f"{x.moment:%Y-%m-%d %H:%M}", x.numero, x.employe, _d(brut), _d(rabais),
+                       x.nettes, _pc(rabais, brut) if brut else None])
+        ids.append(x.id)
+    total = sum((l[5] for l in lignes), ZERO)
+    r = RapportGestion()
+    r.ids_commandes = ids
+    r.entetes = ["Type", "Date", "Commande ou jour", "Employé", "Ventes brutes", "Rabais", "Ventes nettes",
+                 "Rabais %"]
+    r.lignes = lignes
+    r.cartes = [("Rabais mis à part", "$", _d(total)), ("Commandes", "n", len(lignes)),
+                ("Rabais Direction", "$", _d(direction)), ("Rabais des administrateurs", "$", _d(total - direction)),
+                ("Part de tous les rabais", "%", _pc(total, total_rabais) if total_rabais else ZERO)]
+    r.titre_evolution = "Rabais Direction et administrateurs par jour"
+    r.etiquettes = [_etiquette(j) for j in jours]
+    r.series = [("Rabais", [_d(par_jour.get(j, ZERO)) for j in jours])]
+    r.genre_evolution = "barres"
+    r.titre_repartition = "Rabais par employé"
+    r.genre_repartition = "classement"
+    r.repartition = [(n, _d(v)) for n, v in sorted(par_employe.items(), key=lambda kv: -kv[1])[:8]]
+    constats = [_k(None, "Rabais nommés « Direction » dans Clover et commandes enregistrées par un compte "
+                   "administrateur (rôle ADMIN ou propriétaire) : suivis ici, à part des rabais du personnel (anomalies, "
+                   "taux de rabais des employés, décisions).")]
+    if lignes:
+        constats.append(_k("attention" if total_rabais and total * 3 > total_rabais else None,
+                           "{v} de rabais mis à part sur {n} commande(s), soit {p} % de tous les rabais de la "
+                           "période.", v=_argent(total), n=len(lignes), p=_nb(_pc(total, total_rabais) if total_rabais
+                                                                              else 0)))
+    else:
+        constats.append(_k("bon", "Aucun rabais Direction ni rabais d'un compte administrateur dans la période."))
     r.note = _note(constats)
     return r
 
@@ -1239,23 +1334,54 @@ def synthese(c, avant, ctx) -> RapportGestion:
         _principal(sous.get("a_paniers", vide)), _repartition(sous.get("a_anomalies", vide)),
         _repartition(sous.get("a_associations", vide)), _repartition(sous.get("a_fidelite", vide)))
         if g["titre"] and (g["elements"] or any(v for _n, vs in g["series"] for v in vs))]
-    r.entetes = ["Priorité", "Décision à prendre", "Pourquoi", "Où regarder"]
-    r.lignes = [[_t(PRIORITES[p]), _t(decision), raison, _t(section) + " > " + _t(libelle)]
-                for p, decision, raison, section, libelle in sorted(_decisions(sous), key=lambda x: x[0])]
+    # chaque décision, puis la liste de ce qu'elle concerne (articles, clients, employés, commandes) : demande du
+    # propriétaire du 2026-11-08 « je veux avoir la liste des articles concernés dans les décisions »
+    toutes = sorted(_decisions(sous), key=lambda x: x[0])
+    r.decisions = toutes  # (priorité, décision, pourquoi, section, analyse, éléments) : courriel du matin
+    r.entetes = ["Priorité", "Décision à prendre", "Concerné", "Détail", "Où regarder"]
+    r.lignes, r.ids_commandes = [], []
+    for p, decision, raison, section, libelle, elements in toutes:
+        r.lignes.append([_t(PRIORITES[p]), _t(decision),
+                         _t("{n} élément(s)", n=len(elements)) if elements else "—", raison,
+                         _t(section) + " > " + _t(libelle)])
+        r.ids_commandes.append("")
+        for nom, detail, ident in elements[:MAX_CONCERNES]:
+            r.lignes.append(["", "", nom, detail, ""])
+            r.ids_commandes.append(ident or "")
+        if len(elements) > MAX_CONCERNES:
+            r.lignes.append(["", "", _t("… et {n} autre(s)", n=len(elements) - MAX_CONCERNES),
+                             _t("Liste complète : {o}", o=_t(section) + " > " + _t(libelle)), ""])
+            r.ids_commandes.append("")
     nb = {n: sum(1 for x in constats if x[1] == n) for n in ("alerte", "attention", "bon")}
     entete = _t("{a} point(s) à agir, {s} à surveiller, {b} point(s) positif(s) ; {d} décision(s) proposée(s).",
-                a=nb["alerte"], s=nb["attention"], b=nb["bon"], d=len(r.lignes))
-    # lecture de la direction : les décisions d'abord (couleur = priorité), puis les points positifs ; le détail de
-    # chaque constat reste dans son analyse
+                a=nb["alerte"], s=nb["attention"], b=nb["bon"], d=len(toutes))
+    # lecture de la direction : les décisions d'abord (couleur = priorité) avec les premiers éléments concernés, puis
+    # les points positifs ; le détail de chaque constat reste dans son analyse
     couleur_priorite = {1: "alerte", 2: "attention", 3: "info"}
-    decisions = [MARQUES[couleur_priorite[p]] + _t("Décision : {d} — {r}", d=_t(d), r=raison)
-                 for p, d, raison, _s, _l in sorted(_decisions(sous), key=lambda x: x[0])]
+    decisions = [MARQUES[couleur_priorite[p]] + _t("Décision : {d} — {r}", d=_t(d), r=raison) + resume_concernes(el)
+                 for p, d, raison, _s, _l, el in toutes]
     positifs = [MARQUES["bon"] + texte for _o, n, texte in constats if n == "bon"]
     r.note = _note([MARQUES["info"] + entete] + decisions + positifs)
     return r
 
 
 PRIORITES = {1: "1 — Haute", 2: "2 — Moyenne", 3: "3 — Basse"}
+MAX_CONCERNES = 50      # éléments concernés listés sous une décision (la liste complète reste dans son analyse)
+NOMS_DANS_LE_RESUME = 5  # éléments cités dans le bandeau de la décision et dans le courriel du matin
+
+
+def resume_concernes(elements) -> str:
+    """« Concernés : A, B, C, D, E et 17 autre(s). » (bandeau de la décision, courriel du matin)."""
+    if not elements:
+        return ""
+    noms = ", ".join(n for n, _d_, _i in elements[:NOMS_DANS_LE_RESUME])
+    reste = len(elements) - NOMS_DANS_LE_RESUME
+    return " " + (_t("Concernés : {n} et {r} autre(s).", n=noms, r=reste) if reste > 0
+                  else _t("Concernés : {n}.", n=noms))
+
+
+def _pourcent(v) -> str:
+    return "—" if v is None else _nb(v) + " %"
 
 
 def _carte(r, titre, defaut=None):
@@ -1263,32 +1389,45 @@ def _carte(r, titre, defaut=None):
 
 
 def _decisions(sous: dict) -> list[tuple]:
-    """Décisions proposées à la direction : (priorité, décision, pourquoi, section, analyse)."""
+    """Décisions proposées à la direction : (priorité, décision, pourquoi, section, analyse, éléments concernés) ;
+    éléments = [(nom, détail, identifiant de commande Clover ou "")], du plus important au moins important."""
     vide = RapportGestion()
     sortie = []
 
-    def ajouter(priorite, decision, raison, cle):
+    def ajouter(priorite, decision, raison, cle, elements=()):
         libelle, _c_, _f, section, _a = next(a for a in ANALYSES if a[1] == cle)
-        sortie.append((priorite, decision, raison, section, libelle))
+        sortie.append((priorite, decision, raison, section, libelle, list(elements)))
 
     var = sous.get("a_variation", vide)
     variation_ = _carte(var, "Variation")
     if variation_ is not None and variation_ < -5:
-        baisses = [l for l in var.lignes if l[0] == _t("Catégorie") and l[4] < 0]
+        baisses = sorted((l for l in var.lignes if l[0] == _t("Catégorie") and l[4] < 0), key=lambda l: l[4])
         cible = baisses[0][1] if baisses else ""
+        articles_b = sorted((l for l in var.lignes if l[0] == _t("Article") and l[4] < 0), key=lambda l: l[4])
         ajouter(1, "Agir sur la baisse des ventes", _t("Ventes nettes {v} % ; plus forte baisse : {c}.",
-                                                       v=_nb(variation_), c=cible), "a_variation")
+                                                       v=_nb(variation_), c=cible), "a_variation",
+                [(l[1], _t("{t} : écart {e} ({p}) ; {a} contre {b}", t=l[0], e=_argent(l[4]), p=_pourcent(l[5]),
+                           a=_argent(l[2]), b=_argent(l[3])), "") for l in baisses + articles_b])
     effet_panier = _carte(var, "Effet panier moyen")
     if effet_panier is not None and effet_panier < 0:
         ajouter(2, "Relever le panier moyen (ventes complémentaires, offres groupées)",
                 _t("Le panier plus petit coûte {v}.", v=_argent(effet_panier)), "a_variation")
     ano = sous.get("a_anomalies", vide)
+    ids_ano = list(ano.ids_commandes) + [""] * len(ano.lignes)
+
+    def anomalies_de(type_):
+        return [(l, ids_ano[i]) for i, l in enumerate(ano.lignes) if l[0] == _t(type_)]
+
     if (_carte(ano, "Rabais de 50 % ou plus") or 0) > 0:
         ajouter(1, "Contrôler les rabais de 50 % et plus avec les employés concernés",
-                _t("{n} commande(s) à fort rabais.", n=_carte(ano, "Rabais de 50 % ou plus")), "a_anomalies")
+                _t("{n} commande(s) à fort rabais.", n=_carte(ano, "Rabais de 50 % ou plus")), "a_anomalies",
+                [(l[2], _t("{q} — {d} ; payé {m} sur {b}", q=l[1], d=l[3], m=_argent(l[4]), b=_argent(l[5])), i)
+                 for l, i in anomalies_de("Rabais de 50 % ou plus")])
     if (_carte(ano, "Prix inhabituels") or 0) > 0:
         ajouter(2, "Vérifier les prix dans Clover (prix saisis à la main ou erronés)",
-                _t("{n} ligne(s) à un prix inhabituel.", n=_carte(ano, "Prix inhabituels")), "a_anomalies")
+                _t("{n} ligne(s) à un prix inhabituel.", n=_carte(ano, "Prix inhabituels")), "a_anomalies",
+                [(l[2], _t("{q} — {d} : {m} au lieu de {b}", q=l[1], d=l[3], m=_argent(l[4]), b=_argent(l[5])), i)
+                 for l, i in anomalies_de("Prix inhabituel")])
     tend = sous.get("a_tendance", vide)
     if (_carte(tend, "Tendance par semaine") or 0) < 0:
         ajouter(2, "Préparer un plan pour inverser la tendance",
@@ -1300,51 +1439,84 @@ def _decisions(sous: dict) -> list[tuple]:
             ajouter(3, _t("Animer le {j} (promotion, dégustation)", j=faible[0]),
                     _t("Jour le plus faible : indice {i} (100 = moyenne).", i=_nb(faible[1], 0)), "a_tendance")
     mat = sous.get("a_matrice", vide)
+
+    def articles_du_quadrant(quadrant, croissant=False):
+        lignes = [l for l in mat.lignes if l[11] == _t(quadrant)]
+        lignes.sort(key=lambda l: l[3], reverse=not croissant)
+        return [(l[0], _t("{c} ; ventes {v} ({q} vendus) ; bénéfice {b} ; marge {m}", c=l[1], v=_argent(l[3]),
+                          q=_nb(l[2], 0), b=_argent(l[9]) if l[9] is not None else "—", m=_pourcent(l[10])), "")
+                for l in lignes]
+
     if (_carte(mat, "Locomotives") or 0) > 0:
         ajouter(1, "Revoir le prix ou le coût d'achat des locomotives",
-                _t("{n} article(s) très vendus à faible marge.", n=_carte(mat, "Locomotives")), "a_matrice")
+                _t("{n} article(s) très vendus à faible marge.", n=_carte(mat, "Locomotives")), "a_matrice",
+                articles_du_quadrant("Locomotive"))
     if (_carte(mat, "Poids morts") or 0) > 0:
         ajouter(3, "Réduire le stock ou retirer les poids morts",
-                _t("{n} article(s) peu vendus et peu rentables.", n=_carte(mat, "Poids morts")), "a_matrice")
+                _t("{n} article(s) peu vendus et peu rentables.", n=_carte(mat, "Poids morts")), "a_matrice",
+                articles_du_quadrant("Poids mort", croissant=True))
     ass = sous.get("a_associations", vide)
     meilleure = _carte(ass, "Association la plus forte")
     if meilleure and meilleure != "—":
+        paires = sorted((l for l in ass.lignes if l[0] == _t("Articles") and l[7] >= 2),
+                        key=lambda l: -(l[7] * min(l[3], 20)))
         ajouter(3, _t("Placer côte à côte ou grouper : {p}", p=meilleure),
-                _t("Articles achetés ensemble bien plus souvent que le hasard."), "a_associations")
+                _t("Articles achetés ensemble bien plus souvent que le hasard."), "a_associations",
+                [(f"{l[1]} + {l[2]}", _t("{n} commande(s) ensemble ; lift {l} ; {c}", n=l[3], l=_nb(l[7], 1),
+                                         c=l[8]), "") for l in paires])
     prix_ = sous.get("a_prix", vide)
-    couteux = [l for l in prix_.lignes if l[11] < l[10] and l[5] > 0]
+    couteux = sorted((l for l in prix_.lignes if l[11] < l[10] and l[5] > 0), key=lambda l: l[11] - l[10])
     if couteux:
-        pire = min(couteux, key=lambda l: l[11] - l[10])
+        pire = couteux[0]
         ajouter(2, _t("Revoir la hausse de prix de {a}", a=pire[0]),
-                _t("{v} de ventes par jour depuis la hausse.", v=_argent(pire[11] - pire[10])), "a_prix")
+                _t("{v} de ventes par jour depuis la hausse.", v=_argent(pire[11] - pire[10])), "a_prix",
+                [(l[0], _t("{j} : prix {a} → {b} ; ventes par jour {c} → {d}", j=l[2], a=_argent(l[3]),
+                           b=_argent(l[4]), c=_argent(l[10]), d=_argent(l[11])), "") for l in couteux])
     emp = sous.get("a_employes", vide)
-    if emp.lignes:  # employés qui accordent plus du double du taux de rabais moyen (10 commandes au moins)
+    # employés qui accordent plus du double du taux de rabais moyen (10 commandes au moins) ; rabais Direction et
+    # comptes administrateurs exclus (état « Rabais Direction et administrateurs », règle du 2026-11-08)
+    if emp.lignes:
         brut = sum((l[2] for l in emp.lignes), ZERO)
         moyen = (sum((l[2] * l[7] for l in emp.lignes), ZERO) / brut) if brut else ZERO
         trop = [l for l in emp.lignes if moyen and l[7] > moyen * 2 and l[1] >= 10]
         if trop:
             ajouter(1, "Encadrer les rabais accordés", _t("{n} employé(s) au-delà du double du taux moyen ({m} %) : {e}.",
                                                           n=len(trop), m=_nb(moyen), e=", ".join(
-                                                              f"{l[0]} ({_nb(l[7])} %)" for l in trop)), "a_employes")
+                                                              f"{l[0]} ({_nb(l[7])} %)" for l in trop)), "a_employes",
+                    [(l[0], _t("Taux de rabais {t} ; {c} commande(s) ; ventes {v}", t=_pourcent(l[7]), c=l[1],
+                               v=_argent(l[2])), "") for l in sorted(trop, key=lambda l: -l[7])])
     con = sous.get("a_concentration", vide)
     for l in con.lignes:
         if l[0] == _t("Employés") and l[2] >= 60:
             ajouter(2, "Former un deuxième vendeur principal", _t("{p} % des ventes passent par un seul employé.",
-                                                                 p=_nb(l[2])), "a_concentration")
+                                                                 p=_nb(l[2])), "a_concentration",
+                    [(x[0], _t("{p} des ventes ; {c} commande(s)", p=_pourcent(x[3]), c=x[1]), "")
+                     for x in sorted(emp.lignes, key=lambda x: -x[3])])
     rfm_ = sous.get("a_rfm", vide)
+
+    def clients_du_segment(segment):
+        return [(l[0], _t("Dernier achat {d} (il y a {j} jours) ; {c} commande(s) ; {v}", d=l[7], j=l[8], c=l[9],
+                          v=_argent(l[10])), "") for l in rfm_.lignes if l[1] == _t(segment)]
+
     if (_carte(rfm_, "À risque") or 0) > 0:
         ajouter(2, "Relancer les clients à risque", _t("{n} client(s) qui achetaient souvent ne viennent plus.",
-                                                       n=_carte(rfm_, "À risque")), "a_rfm")
+                                                       n=_carte(rfm_, "À risque")), "a_rfm",
+                clients_du_segment("À risque"))
     part = _carte(rfm_, "Part des ventes avec un client")
     if part is not None and part < 30:
         ajouter(2, "Demander le client à la caisse (fidélité, relances)",
-                _t("Seules {p} % des ventes sont rattachées à un client.", p=_nb(part, 0)), "a_rfm")
+                _t("Seules {p} % des ventes sont rattachées à un client.", p=_nb(part, 0)), "a_rfm",
+                [(x[0], _t("{p} des commandes avec un client ; {c} commande(s)", p=_pourcent(x[13]), c=x[1]), "")
+                 for x in sorted(emp.lignes, key=lambda x: (x[13], -x[1]))])
     fid = sous.get("a_fidelite", vide)
     retention = _carte(fid, "Taux de rétention")
     if retention is not None and retention < 30 and _carte(fid, "Clients perdus"):
+        perdus = sorted((l for l in fid.lignes if l[1] == _t("Perdu")), key=lambda l: -l[5])
         ajouter(2, "Faire revenir les clients perdus (offre de retour)",
                 _t("Rétention de {p} % ; {n} client(s) perdus.", p=_nb(retention, 0), n=_carte(fid, "Clients perdus")),
-                "a_fidelite")
+                "a_fidelite",
+                [(l[0], _t("Dernier achat {d} ; {c} commande(s), {v} dans la période de comparaison", d=l[7], c=l[4],
+                           v=_argent(l[5])), "") for l in perdus])
     pan = sous.get("a_paniers", vide)
     if (_carte(pan, "Paniers d'un seul article") or 0) >= 30:
         ajouter(3, "Proposer un 2e article à la caisse", _t("{p} % des paniers n'ont qu'un article.",
@@ -1530,7 +1702,16 @@ def _repartition(r) -> dict:
                    elements=r.repartition)
 
 
-SUPPLEMENTS = {"a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
+def _sup_rabais_direction(r):
+    par_type, par_cmd = defaultdict(Decimal), []
+    for l in r.lignes:
+        par_type[l[0]] += l[5]
+        par_cmd.append((f"{l[2]} ({l[3]})", l[5]))
+    return [_graphe("anneau", "Rabais mis à part par type", elements=sorted(par_type.items(), key=lambda kv: -kv[1])),
+            _graphe("classement", "Plus forts rabais mis à part", elements=sorted(par_cmd, key=lambda x: -x[1])[:8])]
+
+
+SUPPLEMENTS = {"a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
                "a_associations": _sup_associations, "a_prix": _sup_prix, "a_employes": _sup_employes,
                "a_rfm": _sup_rfm, "a_fidelite": _sup_fidelite, "a_cohortes": _sup_cohortes}
@@ -1559,6 +1740,7 @@ ANALYSES = [
     ("Articles achetés ensemble", "a_associations", associations, "Articles", "a_matrice"),
     ("Prix et sensibilité au prix", "a_prix", prix, "Articles", "a_associations"),
     ("Performance des employés", "a_employes", employes, "Employés", "Par employé"),
+    ("Rabais Direction et administrateurs", "a_rabais_direction", rabais_direction, "Rapports", "Rabais"),
     ("Segmentation RFM", "a_rfm", rfm, "Clients", "Par client"),
     ("Fidélité et rétention", "a_fidelite", fidelite, "Clients", "a_rfm"),
     ("Cohortes de clients", "a_cohortes", cohortes, "Clients", "a_fidelite"),

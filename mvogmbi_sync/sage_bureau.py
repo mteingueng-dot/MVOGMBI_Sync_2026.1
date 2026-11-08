@@ -58,7 +58,36 @@ class _PROCESS_INFORMATION(ctypes.Structure):
 
 def executer_sur_bureau_cache(commande: list[str], dossier: Path | None = None, delai: int = 1800,
                               fermer: bool = True) -> int:
-    """Exécute `commande` sur le bureau caché du robot et renvoie son code de sortie (-1 si délai dépassé)."""
+    """Exécute `commande` sur le bureau caché du robot et renvoie son code de sortie (-1 si délai dépassé). Chaque
+    saisie est notée au récapitulatif des traitements (traitements.py)."""
+    from .traitements import nom_commande, origine_courante, suivre
+
+    nom = nom_commande(commande)
+    if not nom:
+        return _executer_sur_bureau_cache(commande, dossier, delai, fermer)
+    import os
+
+    from .traitements import personne_courante
+
+    avant = {k: os.environ.get(k) for k in ("MVOGMBI_LANCE_PAR", "MVOGMBI_ORIGINE")}
+    with suivre(nom, origine=origine_courante()) as etat:
+        # personne et origine reprises par la commande (Opérations journalières : « Par », « Origine »)
+        os.environ["MVOGMBI_LANCE_PAR"], os.environ["MVOGMBI_ORIGINE"] = personne_courante(), origine_courante()
+        try:
+            code = _executer_sur_bureau_cache(commande, dossier, delai, fermer)
+        finally:
+            for k, v in avant.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        if code:
+            etat["resultat"] = "Délai dépassé (travail arrêté)" if code == -1 else f"Terminé avec des erreurs (code {code})"
+        return code
+
+
+def _executer_sur_bureau_cache(commande: list[str], dossier: Path | None = None, delai: int = 1800,
+                               fermer: bool = True) -> int:
     from .__main__ import fermer_bases
 
     if fermer:

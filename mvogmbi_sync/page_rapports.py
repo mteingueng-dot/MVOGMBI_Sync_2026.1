@@ -219,6 +219,11 @@ class PageRapports(ttk.Frame):
         self.onglets.add(self.onglet_inactifs, text="  " + t("Produits inactifs") + "  ")
         self.onglet_pareto = OngletPareto(self, self.onglets)
         self.onglets.add(self.onglet_pareto, text="  " + t("Articles 20/80") + "  ")
+        from .onglet_operations import OngletOperations  # demande du propriétaire du 2026-11-08
+
+        self.onglet_operations = OngletOperations(self, self.onglets)
+        # placé juste après « Suivi des ventes » (_au_changement reconnaît les onglets par leur cadre)
+        self.onglets.insert(1, self.onglet_operations, text="  " + t("Opérations journalières") + "  ")
         self.onglets.bind("<<NotebookTabChanged>>", lambda _e: self._au_changement())
 
     def _config(self) -> dict:
@@ -667,6 +672,7 @@ class PageRapports(ttk.Frame):
 
         cadre = ttk.Frame(self.onglets, padding=(0, 8, 0, 0))
         self.onglets.add(cadre, text="  " + t("Statistiques Clover") + "  ")
+        self.cadre_statistiques = cadre
         barre = Rangee(cadre)  # passe à la ligne si la fenêtre est étroite
         barre.pack(fill="x")
         # filtre de date comme Clover : un bouton « 📅 Aujourd'hui ⌄ » qui ouvre la liste des périodes
@@ -1967,6 +1973,7 @@ class PageRapports(ttk.Frame):
     def _onglet_archives(self) -> None:
         cadre = ttk.Frame(self.onglets, padding=(0, 8, 0, 0))
         self.onglets.add(cadre, text="  " + t("Factures fournisseurs archivées") + "  ")
+        self.cadre_archives = cadre
         barre = ttk.Frame(cadre)
         barre.pack(fill="x")
         ttk.Label(barre, text=t("Rechercher :")).pack(side="left", padx=(0, 4))
@@ -1999,14 +2006,17 @@ class PageRapports(ttk.Frame):
         self.tableau_lignes = tableau_simple(cadre, hauteur=6)
 
     def _au_changement(self) -> None:
-        onglet = self.onglets.index("current")
-        if onglet == 2:
+        if self.onglets.select() == str(self.onglet_operations):
+            self.onglet_operations.premiere_fois()
+            return
+        onglet = self.onglets.select()
+        if onglet == str(self.cadre_archives):
             self.charger_archives()
-        elif onglet == 3 and not self.vues_stats and not self._calcul_en_cours:
+        elif onglet == str(self.cadre_statistiques) and not self.vues_stats and not self._calcul_en_cours:
             self.calculer_statistiques()  # journée en cours dès l'ouverture de l'onglet
-        elif onglet == 4:
+        elif onglet == str(self.onglet_inactifs):
             self.onglet_inactifs.premiere_fois()
-        elif onglet == 5:
+        elif onglet == str(self.onglet_pareto):
             self.onglet_pareto.premiere_fois()
 
     def charger_archives(self) -> None:
