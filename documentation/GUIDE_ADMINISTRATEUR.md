@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -156,6 +156,16 @@ Ne jamais publier `config.toml` ni le dossier `donnees/`.
 | Serveur web | navigateur du serveur : `https://app.marchemvogmbi.com/` (ou `http://<adresse Tailscale>:8765/`) | page de connexion |
 | Import | sur la **copie d'essai** : une facture de vente, puis un 2e import | importée, puis refusée (doublon) |
 
+### 3.7 Ordre de démarrage du serveur
+
+Après un redémarrage du serveur, dans cet ordre :
+
+1. Ouvrir la session Windows du compte qui garde la session (le traitement de nuit, le serveur web et l'ouverture de Sage en ont besoin ; jamais la session 0).
+2. Vérifier que le service « Sage 50 Gestionnaire de connexion de base de données » est **démarré** (il reste parfois arrêté après un redémarrage).
+3. Le serveur web démarre de lui-même (raccourci du dossier Démarrage, une seule copie) ; contrôle : `journal_web.log` et la page de connexion.
+4. Ouvrir l'application Windows et se connecter : elle ouvre le Sage de la journée (2 à 3 minutes, `journal_sage_garde.log`).
+5. Verrouiller la session (Windows + L), ne jamais la fermer.
+
 ---
 
 ## 4. Sage 50 : réglages et règles d'exploitation
@@ -190,7 +200,35 @@ Le vrai fichier est une **entreprise partagée** et le partage n'est jamais arr�
 - Déclarer chaque point de vente (Administration > Clover > Points de vente : « dépôt Sage ») et les dépôts sans Clover (Administration > Sage 50).
 - Une facture s'importe dans l'**« Emplacement par défaut »**, puis l'application la **transfère** dans son dépôt (source « DP <n° de facture> », environ 2 min 45). Un transfert échoué est signalé « à refaire » ; la facture reste importée.
 
-### 4.5 Essais
+### 4.5 Le Sage de la journée et ses marques
+
+L'application et le serveur web se coordonnent par de petits fichiers dans `donnees/`. Ils se créent et s'effacent d'eux-mêmes ; ne les toucher qu'application et serveur web arrêtés, Sage fermé.
+
+| Fichier | Écrit par | Sens |
+|---|---|---|
+| `sage_garde.json` | application Windows, puis le gardien de Sage | Sage de la journée : programme, fichier, session ; marque « en ouverture » pendant les 2 à 3 minutes d'ouverture |
+| `sage_emprunt.json` | une saisie qui utilise le Sage de la journée | saisie en cours : le gardien attend sa fin avant de fermer Sage (30 min au plus) |
+| `sage_lancement.json` | une saisie qui lance Sage | Sage en train de démarrer (5 min au plus) : aucune lecture par l'outil d'import pendant ce temps |
+| `sage_mono.verrou` | un import (mono-utilisateur) | les connexions directes à la base sont fermées, chaque seconde, jusqu'à la fin de l'import |
+| `sage_orphelin.verrou` | le programme qui referme un Sage resté seul | un seul programme à la fois referme ce Sage |
+| `sage_pause.txt` | l'installateur | pas d'ouverture de Sage pendant 15 minutes (mise à jour en cours) |
+| `base_gardee.pid`, `liberer_base.signal` | lecture de Sage fermé | base gardée ouverte par l'outil d'import ; demande de la libérer |
+| `traitement.verrou` | traitement de nuit | un seul traitement à la fois |
+
+Cycle de vie :
+
+| Moment | Ce qui se passe |
+|---|---|
+| Connexion à l'application Windows (6 h à minuit) | Sage ouvert en multi-utilisateur sur un bureau invisible ; contrôle toutes les 5 s |
+| Saisie (Windows ou web) | La saisie **emprunte** ce Sage, ouvre sa fenêtre, saisit, vérifie, referme sa fenêtre ; Sage reste ouvert |
+| Import | Sage de la journée libéré (~30 s), import en mono-utilisateur, Sage rouvert ensuite |
+| Une personne ouvre Sage sur le serveur | Sage de la journée refermé ; rouvert 5 min après la fermeture du Sage de la personne |
+| Sage ferme l'entreprise pour inactivité | Le gardien le voit (contrôle toutes les 30 s) et referme Sage ; il se rouvre au besoin |
+| Fermeture de l'application Windows | Sage refermé ; le serveur web ne le rouvre jamais |
+| Minuit / traitement de nuit | Sage refermé ; la nuit ouvre et ferme Sage pour chacun de ses travaux |
+| Application arrêtée brutalement ou mise à jour | Le gardien referme Sage en ~10 s ; sinon le Sage resté seul (« orphelin ») est refermé dans la minute, questions comprises |
+
+### 4.6 Essais
 
 **Tout nouvel usage se valide d'abord sur une copie** du fichier d'entreprise (« Fichier d'import » d'Administration > Sage 50 pointé vers la copie). Le vrai fichier n'est remis en place qu'après un essai réussi.
 
@@ -317,7 +355,18 @@ Un jour bloqué (article non relié, compte manquant) est signalé et repris la 
 | Tous les 60 jours environ | renouvellement du certificat HTTPS (TXT chez WHC) |
 | Chaque année | première paie de l'année (Administration > Sage 50 > Paie) ; T4 / RL-1 ; vérification des formulaires officiels |
 
-### 7.3 Sauvegarde et restauration
+### 7.3 Rattraper des ventes ou des encaissements en retard
+
+**Factures de vente** : « Vente > Ventes Clover → factures Sage », période choisie, « Charger la période » (ou `auto --depuis … --jusqua …`). Les jours déjà facturés sont sautés ; les factures sont importées par lots de 25. Durée : environ 20 minutes par lot de 25 factures sur le vrai fichier (le temps suit le nombre de lignes, ~0,3 s par ligne). Une nuit normale ne fait qu'une facture.
+
+**Encaissements** : « Comptabilité > Encaissements », ventes du … au …, « Calculer », puis « Encaisser dans Sage ». Sage doit être fermé par les personnes (ou ouvert seulement par l'application). Conseils :
+
+- Procéder **mois par mois** : une ouverture de Sage par mois, environ 20 s par dépôt (un mois de 30 dépôts ≈ 15 min). Constat du 7 novembre 2026 : 229 dépôts d'avril à novembre en environ 2 h.
+- Un dépôt en échec ne bloque pas les autres ; à la fin, reprendre seulement ceux notés « NON encaissé », après correction dans Sage.
+- Les dépôts « Déjà au compte de dépôt ? » et « Espèces à répartir à la main » ne sont jamais saisis d'office : à traiter à la main.
+- Le message de Sage « Votre compte chèques est à découvert » est un simple conseil (dépôts saisis à des dates antérieures) : il est fermé et noté.
+
+### 7.4 Sauvegarde et restauration
 
 - Chaque nuit : archive `.zip` de `donnees/` et `config.toml` (sans les caches), **vérifiée**, écrite dans `[sauvegarde] dossier` (sinon OneDrive). Conservation : 14 jours, 8 semaines, 12 mois.
 - Alerte si la sauvegarde est sur le même disque que l'application, ou si elle date de plus de 2 jours.
@@ -325,12 +374,14 @@ Un jour bloqué (article non relié, compte manquant) est signalé et repris la 
 - Le coffre-fort (mots de passe) **n'est pas** dans la sauvegarde : il faut retaper les mots de passe après une restauration sur une autre machine.
 - Sage se sauvegarde **à part**, avec les outils de Sage.
 
-### 7.4 Mettre à jour l'application
+### 7.5 Mettre à jour l'application
 
 1. Prévenir les utilisateurs (le serveur web s'arrête quelques secondes).
 2. Sur le serveur : lancer `Installer_MVOGMBI_Sync_x.y.z.exe` par-dessus (données et réglages gardés).
 3. Si le client a changé : installer `Installer_MVOGMBI_Sync_Client_x.y.z.exe` sur les postes.
 4. Contrôler la version (bas du menu), l'accès à Sage et la page de connexion web.
+
+L'installateur arrête le serveur web, demande au Sage de la journée de se fermer (et suspend toute ouverture de Sage 15 minutes), copie les fichiers, puis relance le serveur web. Installation silencieuse possible : `Installer_MVOGMBI_Sync_x.y.z.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=<fichier>`, lancée dans la session ouverte (jamais en session 0).
 
 Chaque livraison a son numéro et son installateur ; les anciens installateurs restent disponibles pour revenir en arrière. La numérotation a été remise à **1.0.0** le 5 novembre 2026 : une 1.0.x est **plus récente** que les anciennes 2.x.
 
@@ -357,6 +408,22 @@ Tous dans `donnees/` (raccourci « Journal du traitement automatique » au menu 
 | `sage_garde.json`, `sage_mono.verrou` | Sage de la journée (en ouverture ou prêt) ; travail mono-utilisateur en cours |
 | `entreprises_partagees.json` | fichiers Sage importés par l'assistant |
 | `traitement.verrou`, `base_gardee.pid` | traitement en cours, base de Sage gardée ouverte |
+| `historique_ventes.csv` | une ligne par journée traitée : date de traitement, journée, statut, n° de facture (page « Suivi des ventes ») |
+| `articles_a_relier.csv` | articles vendus non reliés (aussi supprimés ou renommés dans Clover) |
+
+Registres (état de chaque fonction ; jamais à modifier à la main) :
+
+| Fichier | Contenu |
+|---|---|
+| `utilisateurs.json` | comptes (empreintes des mots de passe), profils, droits |
+| `factures_fournisseurs.json`, `correspondance_fournisseurs.json` | factures lues et leur état ; mémoire article + facteur par fournisseur |
+| `paiements_fournisseurs.json`, `encaissements_manuels.json` | avis Interac et décisions ; encaissements notés à la main |
+| `releves_<code>/releves.json` | relevés chargés et décisions par mouvement, un dossier par compte bancaire |
+| `documents.json`, `bons_commande.json`, `retours.json`, `transferts.json` | documents de l'application, bons, retours, transferts |
+| `employes_paie.json`, `pointages.json`, `feuilles_temps.json`, `planning.json`, `conges.json`, `paies_sage.json` | paie (NIP en empreinte, jamais de NAS) |
+| `caisse.json`, `pertes.json`, `depenses.json`, `promotions.json`, `ria.json`, `budget.json` | gestion |
+| `categories_comptes.json`, `couts_sage.json` | table des comptes par catégorie ; coûts Sage du jour |
+| `cache_clover/` | jours de ventes Clover terminés (jamais relus dans Clover) |
 
 ---
 
@@ -382,6 +449,9 @@ Tous dans `donnees/` (raccourci « Journal du traitement automatique » au menu 
 | « Fermez Sage sur le serveur : l'application l'ouvre elle-même » alors que personne n'a ouvert Sage | (corrigé en 1.0.5) le Sage de la journée en ouverture était pris pour celui d'une personne | mettre à jour ; sinon, vérifier qu'aucun Sage n'est ouvert dans la session Windows de l'application |
 | « Un autre utilisateur utilise actuellement cette entreprise sur cet ordinateur » (journal_sage_garde.log) | entreprise prise par l'outil d'import ou par un autre Sage de la même machine | depuis 1.0.5 l'outil n'est plus utilisé pendant la journée ; sinon fermer le Sage resté ouvert, l'application réessaie 10 min plus tard |
 | « La cellule Montant reçu ne s'est pas ouverte » | (corrigé en 1.0.4) fenêtre Encaissements plus petite sur le serveur | mettre à jour ; sinon joindre la photo de `diagnostic_encaissements/` |
+| Encaissement « NON encaissé : … dépôt supérieur au solde dû (déjà encaissée autrement ?) » | une partie de la facture a déjà été encaissée à la main | vérifier les encaissements de la facture dans Sage, corriger, relancer « Encaisser dans Sage » ; les autres dépôts ont été saisis (1.0.19) |
+| Encaissement « NON encaissé : … n'est pas dans la liste des factures en souffrance de Sage » | facture déjà payée, ou datée d'une autre année | corriger la facture (date) dans Sage, relancer « Encaisser dans Sage » |
+| Encaissement « Essai 1 : total affiché … au lieu de … » | (corrigé en 1.0.20) Sage proposait le montant dû pendant la saisie | mettre à jour ; le 2e essai était bon, rien de faux n'a été traité |
 | Dépôt « Déjà au compte de dépôt ? » (Encaissements) | le montant exact est déjà au 1055 par une autre écriture Sage | vérifier dans Sage : si c'est bien ce dépôt, rien à faire ; sinon l'encaisser à la main |
 | Le client ne s'ouvre pas sur le serveur | Tailscale déconnecté, serveur web arrêté, certificat expiré | Tailscale connecté ? `journal_web.log` ; relancer « Serveur de l'application web » ; renouveler le certificat |
 | « Certificat refusé » dans le client | certificat expiré ou nom différent | renouveler (§ 5.3) ; l'adresse doit être `app.marchemvogmbi.com` |
@@ -415,11 +485,47 @@ Avant de signaler un problème : noter l'heure, le message exact, la page, et jo
 | Commande | Usage |
 |---|---|
 | `verifier-sage` | teste la lecture de Sage |
-| `facture --periode jour --date AAAA-MM-JJ` | prépare la facture d'un jour sans l'importer |
-| `importer --periode jour --date AAAA-MM-JJ` | prépare et importe (refuse les doublons) |
-| `auto --depuis AAAA-MM-JJ --jusqua AAAA-MM-JJ` | rattrape une période |
-| `encaissements --du … --au …` | dépôts à encaisser et leur état |
+| `facture --periode jour, semaine ou mois --date AAAA-MM-JJ` | prépare la facture sans l'importer (fichier `.IMP` + détail Excel dans `sortie/factures/`) |
+| `importer --periode … --date … [--forcer]` | prépare et importe ; refuse les doublons et les points à vérifier |
+| `auto --depuis AAAA-MM-JJ --jusqua AAAA-MM-JJ [--point-de-vente CODE ou tous]` | rattrape une période (jours déjà facturés sautés) |
+| `rapport --periode … --date … [--par-jour] [--export X.xlsx]` | ventes d'une période |
+| `encaissements --du … --au … [--export X.xlsx]` | dépôts à encaisser et leur état |
+| `importer-factures-fournisseurs [--numero N …] [--sans-clover]` | importe les factures fournisseurs prêtes (comme le bouton) |
 | `correspondance` | met à jour la correspondance des articles |
-| `verifier-comptes` | comptes des articles Sage à corriger |
+| `verifier-comptes [--fichier X.SAI]` | comptes des articles Sage à corriger |
+| `inventaire [--export X.xlsx ou --saisir X.xlsx]` | inventaire Clover + Sage |
+| `planifier` | installe ou retire la tâche de nuit |
 | `web [--adresse A] [--port P]` | démarre le serveur web (en premier plan) |
+| `pointage` | poste de pointage plein écran |
 | `essai-pdf <chemin>` | vérifie la création d'un PDF |
+| `liberer-sage` | demande au Sage de la journée de se fermer (utilisé par l'installateur) |
+
+Commandes **internes**, lancées par l'application elle-même sur un bureau invisible (ne jamais les lancer à la main sur le vrai fichier) : `encaisser-bureau`, `payer-bureau`, `import-assistant-bureau`, `inventaire-bureau`, `creer-articles-bureau`, `tiers-bureau`, `fiches-articles-bureau`, `prix-sage-bureau`, `comptes-bureau`, `depenses-bureau`, `paie-bureau`, `transfert-bureau`, `journal-bureau`, `garder-sage`, `fermer-sage-orphelin`.
+
+---
+
+## 12. Durées de référence
+
+Mesures sur le vrai fichier (serveur, Sage 2027, entreprise partagée) et sur la copie d'essai ; elles servent à juger si une opération est anormalement lente.
+
+| Opération | Durée habituelle |
+|---|---|
+| Ouverture du Sage de la journée | 1,5 à 3 min |
+| Saisie avec le Sage de la journée déjà ouvert | Sage prêt en moins d'une seconde ; fenêtre ouverte en ~7 s |
+| Encaissement d'un dépôt | ~20 s (un 2e essai ajoutait ~30 s avant la 1.0.20) |
+| Import d'une facture fournisseur par l'assistant | 1 min 30 à 2 min |
+| Import d'un lot de 25 factures de vente (rattrapage) | ~20 min (~0,3 s par ligne) |
+| Transfert vers un dépôt | ~2 min 45 (Sage fermé) |
+| Page web (Sage prêt) | moins de 0,3 s ; 2e passage ~60 ms |
+| Première lecture de Sage fermé | ~10 s (outil d'import) |
+| Statistiques d'une année Clover (1re fois) | ~50 s, puis quelques secondes |
+| Sauvegarde des données | moins d'une seconde |
+
+---
+
+## 13. Intervenir à distance sur le serveur
+
+- Le **Bureau à distance** est le moyen normal : il ouvre la session où tout tourne.
+- Une console à distance (PowerShell à distance, WinRM) s'exécute en **session 0** : elle peut lire les journaux, la version, les réglages et les photos de diagnostic, mais **ne peut pas** piloter Sage ni lire le coffre-fort (mots de passe). Pour lancer une commande dans la session ouverte, créer une tâche planifiée **temporaire** « interactive » pour le compte de la session, la lancer, puis la supprimer.
+- Ne jamais changer la stratégie d'exécution des scripts ni les réglages de sécurité du serveur pour une intervention.
+- Ne jamais arrêter Sage de force : demander sa fermeture (`liberer-sage`) ou attendre que l'application le referme.

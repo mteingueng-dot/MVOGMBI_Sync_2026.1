@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Processus métier (BPM)
 
-Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Notation : chaque couloir est un acteur ou un système ; ( ) = début ou fin, [ ] = activité, { } = décision, flèches = enchaînement. Les processus sont ceux en service.
 
@@ -25,6 +25,7 @@ flowchart TB
         C5[Rapprocher dépôt et facture]
         C7{Montant déjà au 1055<br/>par une autre écriture ?}
         C6[Compte rendu par courriel]
+        C8[Dépôt en échec noté,<br/>dépôt suivant saisi]
     end
     subgraph SAGE["Sage 50"]
         D1[Facture « Vente AAAA-MM-JJ »<br/>import mono-utilisateur]
@@ -45,6 +46,7 @@ flowchart TB
     D1 --> C5 --> C7
     C7 -- non --> D2 --> C6 --> F2
     C7 -- oui --> F3 --> F2
+    D2 -. échec .-> C8 --> C6
 ```
 
 ---
@@ -246,4 +248,99 @@ flowchart TB
     B --> C
     E --> F
     I --> L
+```
+
+---
+
+## 7. Espèces : du tiroir à la banque
+
+```mermaid
+flowchart TB
+    subgraph CAI["Caissier"]
+        A1([Ventes en espèces])
+    end
+    subgraph GERC["Gérant"]
+        B1[Compter le tiroir<br/>par coupures]
+        B2{Écart de plus de 5 $ ?}
+        B3[Recompter, expliquer]
+        B4[Déposer au guichet]
+    end
+    subgraph CLOC["Clover"]
+        C1[Paiements en espèces,<br/>remboursements, retraits]
+    end
+    subgraph APPC["MVOGMBI_Sync"]
+        D1[Espèces attendues]
+        D2[Écart, à déposer]
+        D3[Dépôt du relevé réparti<br/>sur les factures]
+        D4{Surplus au-delà<br/>des ventes ?}
+        D5[Part RIA à confirmer]
+    end
+    subgraph SAGEC["Sage 50"]
+        E1[Encaissements<br/>sur les factures]
+    end
+    A1 --> C1 --> D1 --> B1 --> D2 --> B2
+    B2 -- oui --> B3 --> D2
+    B2 -- non --> B4 --> D3 --> D4
+    D4 -- non --> E1
+    D4 -- oui --> D5 --> E1
+```
+
+---
+
+## 8. Pertes et démarque
+
+```mermaid
+flowchart TB
+    subgraph MAG["Magasin"]
+        A1([Produit périmé,<br/>abîmé ou volé])
+    end
+    subgraph GERD["Gérant"]
+        B1[Déclarer la perte<br/>motif, dépôt, lignes]
+        B2[Analyser le rapport]
+    end
+    subgraph APPD["MVOGMBI_Sync"]
+        C1[Valoriser au CUMP Sage<br/>sinon coût Clover]
+        C2[Taux de perte<br/>= pertes / ventes nettes]
+    end
+    subgraph CLOD["Clover"]
+        D1[Stock diminué]
+    end
+    subgraph SAGED["Sage 50"]
+        E1[Document de stock<br/>« Sortie »]
+    end
+    A1 --> B1 --> C1
+    C1 --> D1
+    C1 --> E1
+    D1 & E1 --> C2 --> B2
+```
+
+---
+
+## 9. De l'embauche au premier bulletin
+
+```mermaid
+flowchart TB
+    subgraph PRO["Propriétaire / gérant"]
+        A1([Embauche])
+        A2[Créer l'employé<br/>NIP, courriel, dépôt]
+        A3[Publier le planning]
+        A4[Approuver la feuille]
+    end
+    subgraph EMPL["Employé"]
+        B1[Pointer au magasin]
+        B2([Recevoir son bulletin<br/>par courriel])
+    end
+    subgraph CLOE["Clover"]
+        C1[Fiche employé]
+    end
+    subgraph SAGEE["Sage Paie"]
+        D1[Fiche employé<br/>taux, impôt, périodes]
+        D2[Chèque de paie<br/>PAYjjmmaaaa]
+    end
+    subgraph APPE["MVOGMBI_Sync"]
+        E1[Feuille de temps<br/>de la période]
+        E2[Bulletin PDF<br/>un destinataire]
+    end
+    A1 --> A2 --> C1 & D1
+    A2 --> A3 --> B1 --> E1 --> A4 --> D2 --> E2 --> B2
 ```

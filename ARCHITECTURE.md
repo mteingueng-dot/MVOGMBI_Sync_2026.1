@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -320,6 +320,8 @@ flowchart TD
     W --> Y["Vérification :<br/>baisse du solde de la facture"]
     V -- oui --> OK["Appliqué"]
 ```
+
+Saisie des dépôts (`robot_encaissements.appliquer`) : chaque dépôt « À saisir » dans son propre essai (`_encaisser_et_verifier`, la base de Sage fait foi) ; un échec est noté « NON encaissé » avec une photo de la fenêtre, puis `remettre_a_zero` referme les questions restées ouvertes (la fenêtre « Traitement… » est attendue, jamais touchée), rouvre la fenêtre Encaissements si elle a disparu (`SessionSage.ouvrir_encaissements`) et efface la saisie ; fenêtre impossible à rouvrir : dépôts restants « Non tenté » (toujours un résultat par dépôt). Cellule « Montant reçu » : position selon la largeur réelle de la grille, cellule sélectionnée en entier (EM_SETSEL), montant tapé caractère par caractère, relu (WM_GETTEXT) et retapé (3 essais) avant le Tab (`_saisir_controle`, version 1.0.20) ; total contrôlé avant « Traiter ». `robot_paiements.appliquer` suit les mêmes règles.
 
 Un dépôt d'espèces supérieur aux espèces dues garde son surplus en « Part RIA à confirmer » (`repartir_especes`). `ria.py` (`donnees/ria.json`) note la part confirmée, retirée du dépôt au calcul suivant ; `journal_sur_bureau_cache` saisit aussi les opérations de RIA (`mouvements_a_saisir`), avec le n° « RI-0001 » comme source.
 
@@ -683,6 +685,64 @@ flowchart TD
 - `donnees/sage_mono.verrou` marque un travail mono-utilisateur en cours (import, compte ou article rendu inactif) : le Sage de la journée attend.
 
 ---
+
+### 5.3 Fenêtres de Sage pilotées : référence
+
+Chaque saisie suit le même schéma : ouvrir (ou emprunter) Sage, ouvrir la fenêtre par l'accueil, remplir les champs par messages Windows (`WM_SETTEXT`, `CB_SETCURSEL` + `CBN_SELCHANGE`, `WM_CHAR` dans les grilles, clics par `PostMessage`), contrôler le total affiché, « Traiter » ou « Enreg. et Fermer », répondre aux questions connues, puis **vérifier dans la base**. Les identifiants ci-dessous ont été relevés sur la copie d'essai et confirmés sur le vrai fichier.
+
+| Fenêtre de Sage | Module | Contrôles (identifiant) | Vérification dans la base |
+|---|---|---|---|
+| Encaissements | `robot_encaissements` | client 25, « Payé par » 49, « Dépôt » 51, date 31, grille 5013 (lignes de 16 points, 1re à y = 40, « Montant reçu » à 90 % de la largeur réelle), total 100, Traiter 106 | baisse du solde de chaque facture (`tcustrdt`, compte de dépôt) |
+| Paiements | `robot_paiements` | liste 39 « Payer les factures d'achat », 49 « Comptant », 51 compte, fournisseur 25, date 31, grille 5012 (factures et notes de crédit ouvertes par date puis n° interne ; montant à 91,5 % de la largeur, 1re ligne y = 42), total 101 | baisse du solde (`tventrdt`) |
+| Journal général | `robot_journal` | source 20, date 21, remarque 23, grille 5006 (y = 30 + 16 × rang ; compte x = 60, débit x = 168, crédit x = 264), totaux 100 / 101, Traiter 102 | source + date + montant au compte de banque (`tjourent`) |
+| Ajustements des Stocks & Transferts | `robot_inventaire`, `robot_transferts` | source 21, date 22, remarque 24, emplacement 37, grille 5015 (y = 30 + 16 × rang ; article x = 40, qté x = 120 ou 114, coût x = 338), transfert : liste 35, de 40, à 42 ; total 100, Traiter 34 ; 7 lignes par « Traiter » | stock relu (`tinvbyln`) ; transfert : `titrec` journal 14, `bTrfLoc`, source |
+| Enregistrements des stocks & services | `robot_articles`, `robot_fiches_articles`, `robot_prix_sage` | n° 23, description 24, stock / service 30 / 31, comptes actif 77, produits 73, CMV 74, écart 78 (onglet « Associé »), inactif 153, prix « Régulier » grille 3679 (x = 150, y = 25, virgule décimale), Enreg. et Fermer 1002 ; liste : 3000 ouvrir, 3001 nouvelle fiche ; menu 412 supprimer | `tinvent`, `tinvprc` |
+| Enregistrements des clients / fournisseurs | `robot_tiers` | nom 26, contact 43, rue 44 / 45, ville 46, province 47, code postal 48, téléphones 49 / 50, courriel 52, site 53, n° de taxe 58, compte de produits 80 / de charges 105 (n° tapé), « mes n° d'articles » 227 | `tcustomr` / `tvendor` |
+| Enregistrements du plan comptable | `robot_comptes` | n° 22, description 26, types 40-44, inactif 200 ; recherche par la fenêtre « Chercher » (413 : champ 40, « Numéro » 50, bouton 223) | `taccount` |
+| Chèques de paie | `robot_paie` | employé choisi **par clic** dans la liste, dates et n° « PAYjjmmaaaa » **tapés** (un texte posé par message est ignoré), grille des gains (heures normales, supplémentaires), Traiter | `tjourent` module 3, remarque = nom + date |
+| Enregistrements des employés | `robot_paie` | nom, adresse, NAS (jamais gardé), naissance, embauche, impôt du Québec, 26 périodes, taux dans la grille | `temp` |
+| Assistant d'importation des transactions | `robot_import_assistant` | menu Fichier > Importer/Exporter > Importer des transactions repéré par son **texte** (photo + OCR), radio 443 factures (442 journal), Suivant 12324, fichier 450 ; erreur « Importation - Sage 50 », résumé « Sage 50 - Importation » (Edit 100) | facture présente (`tcustr` / `tventr`) pendant le résumé |
+
+Questions de Sage reconnues (texte lu par `WM_GETTEXT`, aussi les boutons WinForms) :
+
+| Question | Réponse |
+|---|---|
+| « …antérieure à la date de session » / « …postérieure… » | Oui |
+| « Cette transaction utilise des comptes de taxe associés… » | Oui |
+| Conseil (« Votre compte chèques est à découvert… ») | fermé, noté |
+| « Traitement… » (progression) | attendue, jamais touchée |
+| « La transaction en cours sera supprimée » (changement de client) | Oui |
+| « Voulez-vous sauvegarder… » (à la fermeture) | Non |
+| « …fermée suite à une période d'inactivité. Voulez-vous la réouvrir ? » | Non |
+| « …un autre utilisateur traitait aussi une transaction… » / « Un autre utilisateur utilise actuellement cette entreprise… » | OK |
+| « Comment voulez-vous ouvrir cette entreprise partagée ? » | Mono (import) ou Multi (saisie) |
+| « Sage 50 - Mise à jour » | « Rappelez-le-moi plus tard » |
+| Toute autre question | Non / Annuler, texte noté et photographié |
+
+### 5.4 Saisie de plusieurs dépôts : enchaînement et reprise
+
+```mermaid
+sequenceDiagram
+    participant A as Application
+    participant F as Fenêtre Encaissements
+    participant B as Base de Sage
+    loop chaque dépôt « À saisir »
+        A->>B: ordre des factures en souffrance, solde avant
+        A->>F: client, Comptant, compte de dépôt, date
+        A->>F: clic dans « Montant reçu », tout sélectionner, taper
+        A->>F: relire la cellule (retaper au besoin), un seul Tab
+        A->>F: lire le total (3 essais, saisie effacée sinon)
+        A->>F: Traiter, répondre aux questions connues
+        A->>B: solde après (la base fait foi)
+        alt échec
+            A->>F: refermer les questions, effacer la saisie
+            A->>F: rouvrir la fenêtre si elle a disparu
+            Note over A: dépôt « NON encaissé », photo, dépôt suivant
+        end
+    end
+```
+
+Si la fenêtre ne peut pas être rouverte, les dépôts restants sont rendus « Non tenté » : chaque dépôt « À saisir » a toujours un résultat (le résumé reste aligné sur la liste). `robot_paiements.appliquer` suit le même enchaînement.
 
 ## 6. Sécurité
 

@@ -177,3 +177,25 @@ def test_un_encaissement_en_echec_ne_bloque_pas_les_suivants(monkeypatch):
     resultats = re_.appliquer({}, depots, "Vente Hebdomadaire", "1055", journal=lambda t: None)
     assert len(resultats) == 3 and not any(r.traite for r in resultats)
     assert resultats[1].messages[0].startswith("Non tenté")
+
+
+def test_cellule_relue_avant_de_valider(monkeypatch):
+    """Sage remplit la cellule du montant dû après les premiers caractères : on retape tant qu'elle n'a pas le dépôt."""
+    from decimal import Decimal
+    from mvogmbi_sync import robot_encaissements as r
+
+    assert r.FenetreEncaissements._contenu_egal("1 554,72", Decimal("1554.72")) is True
+    assert r.FenetreEncaissements._contenu_egal("1684,22", Decimal("1554.72")) is False
+    assert r.FenetreEncaissements._contenu_egal("", Decimal("1554.72")) is None
+
+    f = r.FenetreEncaissements.__new__(r.FenetreEncaissements)
+    contenus = iter(["1684,22", "1554,72"])
+    ecrits = []
+    monkeypatch.setattr(r.time, "sleep", lambda s: None)
+    monkeypatch.setattr(f, "_ecrire", lambda e, t: ecrits.append(t), raising=False)
+    monkeypatch.setattr(f, "_contenu", lambda e: next(contenus), raising=False)
+    f._saisir_controle(1, "1554,72", Decimal("1554.72"))
+    assert ecrits == ["1554,72", "1554,72"]
+    ecrits.clear()
+    f._saisir_controle(1, "12,00", None)  # autres grilles (journal, inventaire) : sans relecture
+    assert ecrits == ["12,00"]

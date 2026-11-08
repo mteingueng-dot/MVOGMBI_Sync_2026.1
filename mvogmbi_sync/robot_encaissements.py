@@ -29,6 +29,7 @@ WM_LBUTTONDOWN, WM_LBUTTONUP, WM_CHAR, WM_KEYDOWN, WM_KEYUP = 0x0201, 0x0202, 0x
 WM_COMMAND, WM_SETTEXT, WM_VSCROLL, WM_CLOSE, WM_GETTEXT = 0x0111, 0x000C, 0x0115, 0x0010, 0x000D
 CB_SETCURSEL, CB_GETCURSEL, CB_GETCOUNT, CB_GETLBTEXT, CB_GETLBTEXTLEN = 0x014E, 0x0147, 0x0146, 0x0148, 0x0149
 CBN_SELCHANGE, EN_CHANGE, EN_KILLFOCUS = 1, 0x0300, 0x0200
+EM_SETSEL = 0x00B1
 SB_LINEDOWN, SB_TOP, SB_VERT = 1, 6, 1
 
 TITRE = "Encaissements"
@@ -257,9 +258,43 @@ class FenetreEncaissements:
         rang = ligne - self._position()
         if not 0 <= rang < visibles:
             raise ErreurRobot(f"Ligne {ligne} hors de la zone visible de la grille.")
-        self.taper(self.x_montant(), self.ligne_y0 + HAUTEUR_LIGNE * rang, montant_sage(montant), self.colonne_montant)
+        self.taper(self.x_montant(), self.ligne_y0 + HAUTEUR_LIGNE * rang, montant_sage(montant), self.colonne_montant,
+                   controle=montant)
 
-    def taper(self, x: int, y: int, texte: str, nom: str = "") -> None:
+    @staticmethod
+    def _contenu(editeur) -> str:
+        """Texte de la cellule ouverte (WM_GETTEXT : GetWindowText ne lit pas un contrôle d'un autre programme)."""
+        tampon = ctypes.create_unicode_buffer(64)
+        user32.SendMessageW(editeur, WM_GETTEXT, 64, tampon)
+        return tampon.value
+
+    @staticmethod
+    def _contenu_egal(texte: str, attendu: Decimal) -> bool | None:
+        """Vrai / faux si la cellule se lit, None si elle ne se lit pas (le contrôle du total reste le garde-fou)."""
+        if not texte.strip():
+            return None
+        try:
+            return _lire_montant(texte) == attendu
+        except Exception:
+            return None
+
+    def _ecrire(self, editeur, texte: str) -> None:
+        user32.SendMessageW(editeur, EM_SETSEL, 0, -1)  # tout sélectionné : le texte tapé remplace le montant proposé
+        for caractere in texte:
+            user32.PostMessageW(editeur, WM_CHAR, ord(caractere), 0)
+            time.sleep(0.03)
+        time.sleep(0.6)
+
+    def _saisir_controle(self, editeur, texte: str, controle: Decimal | None) -> None:
+        if controle is not None:
+            time.sleep(0.5)
+        for _ in range(3):
+            self._ecrire(editeur, texte)
+            if controle is None or self._contenu_egal(self._contenu(editeur), controle) is not False:
+                return
+            time.sleep(0.5)
+
+    def taper(self, x: int, y: int, texte: str, nom: str = "", controle: Decimal | None = None) -> None:
         """Clique dans la cellule (x, y) de la grille, tape `texte` caractère par caractère, puis un seul Tab."""
         position = (y << 16) | x
         editeur = None
@@ -286,11 +321,12 @@ class FenetreEncaissements:
             chemin = self.photo_diagnostic("colonne")
             raise ErreurRobot(f"La cellule ouverte n'est pas dans la colonne « {nom or self.colonne_montant} »"
                               + (f" (photo de la fenêtre : {chemin})." if chemin else "."))
-        # surtout pas WM_SETTEXT : Sage croirait la cellule non modifiée et y mettrait tout le montant dû
-        for caractere in texte:
-            user32.PostMessageW(editeur, WM_CHAR, ord(caractere), 0)
-            time.sleep(0.03)
-        time.sleep(0.6)
+        # surtout pas WM_SETTEXT : Sage croirait la cellule non modifiée et y mettrait tout le montant dû.
+        # Constat du 2026-11-06 sur le vrai fichier : juste après un « Traiter », Sage remplit la cellule du montant dû
+        # APRÈS l'arrivée des premiers caractères : le total affiché était le solde dû et il fallait tout refaire
+        # (~30 s par dépôt). On laisse Sage proposer son montant, on sélectionne tout, on tape, puis on relit la
+        # cellule avant le Tab (3 essais).
+        self._saisir_controle(editeur, texte, controle)
         user32.PostMessageW(editeur, WM_KEYDOWN, 0x09, 1)  # un seul Tab : valide la cellule
         user32.PostMessageW(editeur, WM_CHAR, 0x09, 1)
         user32.PostMessageW(editeur, WM_KEYUP, 0x09, 0xC0000001)

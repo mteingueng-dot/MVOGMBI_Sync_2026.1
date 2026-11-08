@@ -94,8 +94,8 @@ s.addShape(pres.shapes.RIGHT_ARROW, { x: W / 2 - 0.35, y: 3.7, w: 0.7, h: 0.6, f
 
 // ------------------------------------------------------------------ 3. chiffres clés
 s = contenu("Introduction", "La version 2.15.0 en chiffres",
-  "Quatorze jours de réalisation, plus de 150 versions livrées avec leur installateur, 305 tests automatiques ; application web identique à Windows, Sage gardé ouvert pour les saisies de la journée.");
-const stats = [["150+", "versions livrées\nen 14 jours"], ["305", "tests automatiques\nréussis"], ["10", "rubriques au menu"],
+  "Quinze jours de réalisation, plus de 160 versions livrées avec leur installateur, 315 tests automatiques ; application web identique à Windows, Sage gardé ouvert pour les saisies de la journée.");
+const stats = [["160+", "versions livrées\nen 15 jours"], ["315", "tests automatiques\nréussis"], ["10", "rubriques au menu"],
                ["< 1 s", "pour ouvrir une liste\nmême Sage fermé"]];
 stats.forEach(([n, l], i) => {
   const x = M + i * 3.1;
@@ -242,8 +242,8 @@ texte(s, "Mots de passe jamais gardés en clair · secrets dans le coffre-fort d
 
 // ------------------------------------------------------------------ 12. qualité
 s = contenu("Confiance", "Testé avant chaque livraison",
-  "305 tests automatiques et un tour de 124 pages web, puis essais réels sur une copie du fichier d'entreprise et sur des articles Clover d'essai supprimés ensuite.");
-const qual = [["305", "tests automatiques"], ["0", "écriture d'essai dans\nle vrai fichier Sage"], ["23", "scénarios d'écriture\nvalidés dans Sage"]];
+  "315 tests automatiques et un tour de 124 pages web, puis essais réels sur une copie du fichier d'entreprise et sur des articles Clover d'essai supprimés ensuite.");
+const qual = [["315", "tests automatiques"], ["0", "écriture d'essai dans\nle vrai fichier Sage"], ["28", "scénarios d'écriture\nvalidés dans Sage"]];
 qual.forEach(([n, l], i) => {
   const x = M + i * 4.1;
   texte(s, n, { x, y: 1.6, w: 3.8, h: 1.3, fontSize: 64, bold: true, color: i === 1 ? P.rouge : P.vert });

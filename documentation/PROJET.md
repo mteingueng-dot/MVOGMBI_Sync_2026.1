@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
+Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 160 versions livrées en 15 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
 
 ---
 
@@ -160,6 +160,8 @@ mindmap
 | 6 nov. 2026 | Premier encaissement réel dans le vrai fichier depuis l'accès à distance ; la base fait foi ; plus d'outil d'import pendant le lancement de Sage | 1.0.13 à 1.0.14 |
 | 6 nov. 2026 | Factures fournisseurs importées sur le vrai fichier (Sage 2027) ; verrouillage et reconnexion qui reprennent où l'on en était | 1.0.15 à 1.0.18 |
 | 7 nov. 2026 | Un encaissement ou un paiement en échec ne bloque plus les suivants | 1.0.19 |
+| 7 nov. 2026 | Dépôts en retard encaissés dans le vrai fichier (229) ; montant reçu relu avant validation | 1.0.20 |
+| 7 nov. 2026 | Documentation enrichie en profondeur (fonctionnelle, administrateur, règles avec exemples chiffrés, fenêtres de Sage pilotées, 9 nouveaux workflows, 3 processus) | 1.0.20 |
 
 ---
 
@@ -188,3 +190,7 @@ Méthode : une demande → une version livrée avec son installateur, ses tests 
 | Deux serveurs qui traitent les mêmes ventes | Retirer la tâche et le serveur web de l'ancien serveur à la mise en service |
 | Sage gardé ouvert qui bloque l'entreprise | Refermé la nuit, avant chaque import et à la sortie ; jamais l'outil d'import pendant la journée ; `[sage] garder_ouvert = false` pour revenir en arrière |
 | Écran du serveur différent de la copie d'essai (taille des fenêtres de Sage) | Positions calculées d'après la fenêtre réelle ; photo de diagnostic à chaque échec |
+| Fichier Sage converti en 2027 par l'ouverture avec la nouvelle version | L'application prend d'elle-même la version la plus récente de Sage ; lecture, encaissements et imports revalidés en 2027 |
+| Un dépôt en erreur qui arrête toute une saisie | Chaque dépôt et chaque paiement dans son propre essai ; fenêtre remise à zéro ; reprise des seuls dépôts « NON encaissé » (1.0.19) |
+| Saisie plus lente que prévu (2e essai à chaque dépôt) | Cellule relue avant validation (1.0.20) ; durées de référence dans le guide de l'administrateur |
+| Sage resté ouvert sans l'application (mise à jour, arrêt brutal) | Gardien qui referme Sage, réponses aux questions connues, marque de pause de l'installateur |

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -11,11 +11,14 @@ Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 | Tests automatiques | Règles de calcul, formats d'import, droits, registres | `tests/` (pytest), sans Clover ni Sage | À chaque changement, avant chaque installateur |
 | Tests d'intégration | Lectures et écritures réelles | Clover réel (articles et employés d'essai cachés, supprimés ensuite) ; Sage sur la **copie** `MVOGMBI_ESSAI.SAI` | À chaque fonction qui écrit dans Clover ou Sage |
 | Recette | Parcours complets par profil | Application installée, copie d'essai | Avant une livraison |
+| Essais réels | Écritures dans le **vrai** fichier, à la demande expresse du propriétaire | Serveur, session du propriétaire, Sage 2027 ; résultats relus dans la base | Après validation sur la copie (depuis le 6 novembre 2026) |
 | Exploitation | Traitement de nuit réel | Journal `journal_automatique.log`, compte rendu par courriel | Chaque nuit |
 
 Règles :
 
-- Aucun essai d'écriture dans le **vrai** fichier de l'entreprise.
+- Aucun essai d'écriture dans le **vrai** fichier de l'entreprise sans la demande expresse du propriétaire ; chaque fonction y passe d'abord par la copie d'essai.
+- Chaque écriture d'essai est **relue dans la base** (Sage) ou dans l'API (Clover) ; le message du programme ne suffit jamais.
+- Un essai sur le serveur se lance dans la session ouverte du propriétaire (tâche temporaire supprimée ensuite), jamais en session 0.
 - Dans Clover (production), écriture seulement sur des éléments d'essai cachés, supprimés à la fin.
 - Un défaut trouvé reçoit un test automatique quand c'est possible.
 
@@ -27,14 +30,15 @@ Règles :
 |---|---|
 | Poste | Windows 11, session ouverte (verrouillée possible) |
 | Python | 3.13, pytest |
-| Sage | Sage 50 Comptabilité Supérieur 2026 ; service « Gestionnaire de connexion de base de données » démarré |
+| Sage | Poste : Sage 50 Comptabilité Supérieur 2026 ; serveur : Sage 50 2027 (le vrai fichier y est converti) ; service « Gestionnaire de connexion de base de données » démarré |
+| Serveur | SERVDCSAGE : application, serveur web, traitement de nuit et Sage sur la même machine ; essais lancés à distance dans la session ouverte |
 | Fichiers Sage | Vrai fichier (lecture seulement), copie d'essai `MVOGMBI_ESSAI.SAI` (lecture et écriture) |
 | Clover | Compte marchand réel, jeton avec lecture, inventaire et employés en écriture |
 | Commande | `python -m pytest` |
 
 ---
 
-## 3. Tests automatiques — 314 tests
+## 3. Tests automatiques — 315 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -68,7 +72,10 @@ Règles :
 | Version 1.0.14 : aucun outil d'import quand un Sage tourne | test_sage_journee | 1 |
 | Version 1.0.18 : reconnexion web à la même page, adresse de retour sûre | test_web | 1 |
 | Version 1.0.19 : un encaissement en échec ne bloque pas les suivants | test_encaissements | 1 |
-| **Total** | 60 fichiers | **314** |
+| Version 1.0.20 : montant reçu relu avant d'être validé | test_encaissements | 1 |
+| **Total** | 60 fichiers | **315** |
+
+Résultat du 7 novembre 2026 (version 1.0.20) : **315 réussis** (1 min 50), compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
 
 Résultat du 6 novembre 2026 (version 1.0.7) : **305 réussis**, y compris les 2 tests de fenêtres Tk ; compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
 
@@ -133,6 +140,8 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | S24 | Sage de la journée rendu orphelin (gardien arrêté comme par l'installateur, Sage jamais touché) | multi-utilisateur | Réussi : reconnu orphelin, jamais pris pour le Sage d'une personne, refermé proprement en 12 s |
 | S25 | Application Windows arrêtée brutalement pendant que son Sage est ouvert | multi-utilisateur | Réussi : Sage refermé proprement 10 s après, aucun orphelin |
 | S26 | **Vrai fichier (serveur)** : encaissement d'un dépôt réel (2026-01-06, 1 020,36 $ sur « Vente 2026-01-05 ») lancé à distance dans la session de l'administrateur | multi-utilisateur | **Enregistré** (solde 1 102,81 -> 82,45 $) ; question de Sage après « Traiter » mal comprise : corrigé en 1.0.13 |
+| S27 | **Vrai fichier (serveur, Sage 2027, 1.0.19)** : dépôts en retard encaissés mois par mois (un lot par mois, une ouverture de Sage chacun), avril à novembre 2026 | multi-utilisateur | **229 encaissés en ~2 h**, 2 à vérifier (dépôt > solde dû ; facture absente des factures en souffrance) : notés, les dépôts suivants saisis |
+| S28 | Cellule « Montant reçu » relue avant validation (1.0.20) | multi-utilisateur | Test automatique ; à confirmer au prochain encaissement réel (plus de « Essai 1 : total affiché ») |
 | S23 | Fenêtre Encaissements : cellule « Montant reçu » avec la grille normale (791 points) et réduite à la taille du serveur (641 × 96) | multi-utilisateur | Réussi : x = 696 puis 559, bonne colonne, rien de traité |
 
 ### 4.4 Profils et droits
@@ -220,6 +229,7 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | Sage resté seul (vrai fichier) qui ne se referme pas ; encaissement : 0 sur 43 | Fenêtre « Sage 50 - Confirmation » sans réponse (texte WinForms non lu) ; deux programmes refermaient le même Sage ; l'encaissement lançait quand même un 2e Sage | Textes WinForms lus (WM_GETTEXT), sauvegarde -> Non, fermeture -> Oui, un seul programme à la fois, saisie arrêtée avec un message clair (1.0.11) |
 | Encaissement réel dit « NON encaissé » alors qu'il est dans Sage | Question de Sage après l'enregistrement, texte illisible (GetWindowText) | Texte lu par WM_GETTEXT, photo, la base fait foi (1.0.13) |
 | « Un autre utilisateur utilise actuellement cette entreprise » au lancement d'une saisie (vrai fichier) | La surveillance du web relançait l'outil d'import pendant le lancement de Sage (Sage du bureau caché non compté depuis 1.0.9) | `sage_tourne` : aucun outil d'import tant qu'un Sage tourne ou se lance (1.0.14) |
+| Encaissements réels : au 1er essai de chaque dépôt après un « Traiter », total affiché = solde dû (~30 s perdues par dépôt) | Sage remplissait la cellule du montant dû après les premiers caractères tapés | Cellule sélectionnée en entier, relue et retapée avant le Tab (1.0.20) |
 | `/aide` sans « ?page= » : aucune réponse | Paramètre lu sans valeur par défaut, et la page d'erreur plantait aussi | Valeur par défaut, page d'erreur de secours (1.0.7) |
 | Avertissement « invalid escape sequence » (lanceur du serveur web) | « \M » dans un nom de verrou | Chaîne brute (1.0.7) |
 
@@ -239,13 +249,35 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 
 ## 7. Reste à tester
 
-- Mise en service complète sur SERVDCSAGE : traitement de nuit, HTTPS, client des postes (l'import par l'assistant et la mise à jour Clover y sont validés).
-- Sur le vrai fichier (serveur, version 1.0.7) : Sage de la journée ouvert au démarrage, puis « Encaisser dans Sage » des 364 dépôts en retard (grille du serveur).
+- **Correction 1.0.20** (montant reçu relu avant validation) : à confirmer au prochain encaissement réel ; attendu : plus de « Essai 1 : total affiché … ».
+- **Deux dépôts à vérifier** après le rattrapage du 7 novembre : un dépôt supérieur au solde dû de sa facture ; une facture absente des factures en souffrance (date de l'année d'avant). À corriger dans Sage, puis relancer.
+- **26 dépôts « Espèces à répartir à la main »** : encaissements manuels au rapprochement.
+- Paiements fournisseurs sur le vrai fichier : après confirmation du propriétaire.
+- Traitement de nuit complet sur SERVDCSAGE avec la 1.0.20 (factures, encaissements des ventes importées, compte rendu).
 - Transferts vers un dépôt sur le vrai fichier (dès qu'un deuxième dépôt sera créé dans Sage).
 - Relevés BNC de plusieurs mois et écritures saisies au compte 1060.
 - Pointage depuis le Wi-Fi du magasin (adresse publique du magasin à relever sur place) et pause automatique d'un téléphone qui sort du Wi-Fi.
 - Plusieurs points de vente réels (dès qu'un deuxième sera configuré).
-- Remises de retenues réelles (pas encore payées au 30 octobre 2026).
+- Remises de retenues réelles.
 - Promotions et envoi des bulletins de paie sur des données réelles.
 - Écritures RIA : dès que les comptes RIA et commissions seront créés dans Sage.
 - Renommage et suppression d'un article Clover depuis la liste des articles (même écriture que le prix, déjà validée).
+
+## 8. Matrice de couverture
+
+| Fonction | Tests automatiques | Copie d'essai | Vrai fichier / production |
+|---|---|---|---|
+| Facture de vente (jour, fin de semaine) | ✔ | ✔ | ✔ (221 factures, nuit du 6 novembre) |
+| Encaissements | ✔ | ✔ | ✔ (229 dépôts, 7 novembre) |
+| Paiements fournisseurs | ✔ | ✔ | à faire (confirmation du propriétaire) |
+| Factures fournisseurs (assistant d'importation) | ✔ | ✔ | ✔ (Sage 2027) |
+| Stock et coût Clover après achat | ✔ | ✔ (article d'essai) | ✔ |
+| Rapprochement Desjardins / BNC | ✔ | ✔ | lecture ✔ ; écritures à faire |
+| Journal général, dépenses | ✔ | ✔ | à faire |
+| Documents de stock, inventaire, transferts | ✔ | ✔ | à faire (un seul dépôt réel) |
+| Création d'articles, clients, fournisseurs, comptes | ✔ | ✔ | à faire |
+| Prix de vente Sage depuis Clover | ✔ | ✔ | à faire |
+| Paie (chèques, bulletins, T4 / RL-1) | ✔ | ✔ | lecture ✔ ; chèques à faire |
+| Sage de la journée, Sage orphelin, questions de Sage | ✔ | ✔ | ✔ |
+| Application web (76 pages) | ✔ | ✔ (tour complet) | ✔ (serveur) |
+| Statistiques Clover | ✔ | — | ✔ (lecture seule) |

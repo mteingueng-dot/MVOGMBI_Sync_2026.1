@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -98,6 +98,12 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-ENC-10 | Un lot de cartes dont le **montant exact est déjà au compte de dépôt** par une autre écriture (3 jours avant à 7 jours après le dépôt) passe à « Déjà au compte de dépôt ? » : jamais encaissé d'office, pour ne pas compter la banque deux fois. |
 | RG-ENC-11 | La saisie d'un montant dans la fenêtre Encaissements se fait toujours dans la colonne « Montant reçu », quelle que soit la taille de la fenêtre de Sage ; une cellule ouverte ailleurs est refermée **sans rien taper**. |
 | RG-ENC-12 | **Un encaissement qui échoue ne bloque pas les suivants** (demande du propriétaire du 7 novembre 2026) : il est noté « NON encaissé » avec la raison (et une photo), les questions restées ouvertes sont refermées, la saisie est effacée et le dépôt suivant est saisi. Seule une fenêtre Encaissements impossible à rouvrir arrête la saisie ; les dépôts restants sont alors notés « non tenté ». Même règle pour les paiements fournisseurs. |
+| RG-ENC-13 | **Le montant tapé est relu avant d'être validé** (constat du 7 novembre 2026 sur le vrai fichier) : juste après un encaissement traité, Sage propose le montant dû dans la cellule « Montant reçu » pendant que l'application tape ; la cellule est sélectionnée en entier avant la saisie, puis relue, et retapée (3 essais) tant qu'elle ne contient pas le montant du dépôt. Le contrôle du total avant « Traiter » reste le garde-fou. |
+| RG-ENC-14 | **Jamais de Tab pour passer d'une cellule à l'autre** dans la grille des encaissements : Sage remplit d'office le « Montant reçu » de chaque cellule traversée. La grille défile, l'application clique dans la bonne cellule, tape, puis un seul Tab valide. |
+| RG-ENC-15 | **Questions de Sage pendant un encaissement** : « date antérieure à la date de session » → Oui ; conseil de Sage (« compte chèques à découvert ») → fermé et noté ; fenêtre « Traitement… » → attendue (120 s au plus), jamais touchée ; « un autre utilisateur traitait aussi une transaction » → OK ; toute autre question → Non, le dépôt est noté et le suivant est saisi. |
+| RG-ENC-16 | **Ordre de la grille** : les factures en souffrance du client apparaissent triées par date puis par n° interne, comme dans la base ; l'ordre est relu dans Sage avant chaque dépôt (une facture payée en entier disparaît de la grille). |
+| RG-ENC-17 | Un dépôt couvre au plus le **solde dû** de chaque facture : un dépôt plus grand n'est pas saisi (« déjà encaissée autrement ? »), une facture absente de la grille non plus (déjà payée ou mal datée). |
+| RG-ENC-18 | Un **rattrapage** d'encaissements se fait par mois de dépôt (une ouverture de Sage par mois) ; les dépôts « Déjà au compte de dépôt ? » et « Espèces à répartir à la main » n'y sont jamais saisis d'office. |
 
 ---
 
@@ -115,6 +121,9 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-RAP-09 | **Relevé BNC** : le sens de chaque mouvement (débit / crédit) se déduit de la variation du solde imprimé ; les totaux « TRANSACTIONS DÉBIT / CRÉDIT » du relevé doivent être retrouvés ; la facturation détaillée est ignorée. |
 | RG-RAP-10 | **Comptes bancaires** : d'autres comptes s'ajoutent dans « Administration > Sage 50 » (banque, format du relevé, compte Sage, n° de compte) ; dans une écriture de journal, seul le compte de banque du mouvement est refusé comme contrepartie (un virement d'une banque à l'autre est permis). Encaissements, caisse et RIA restent sur Desjardins. |
 | RG-RAP-07 | Un mouvement absent de Sage devient une écriture de journal général seulement après **décision** de la personne (compte choisi) ; source « Relevé AAAA-MM-JJ », vérifiée par source + date + montant. |
+| RG-RAP-11 | **Espèces des ventes** : un virement Interac reçu (« VRW Virement Interac de ») ou un dépôt d'espèces au guichet (« DGA Dépôt au GA ») est marqué « À encaisser sur les ventes » : il n'est jamais une écriture de journal (il passe par les encaissements). |
+| RG-RAP-12 | Un relevé chargé deux fois n'est gardé qu'une fois ; « Supprimer le relevé » le range à part (jamais effacé), ses décisions avec lui. |
+| RG-RAP-13 | Mouvements à rapprocher dans l'ordre : même montant à la date la plus proche d'abord ; une écriture Sage ne sert qu'à un seul mouvement. |
 
 ---
 
@@ -152,6 +161,8 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-PAY-03 | Un virement peut payer plusieurs factures du même fournisseur : **de la plus ancienne à la plus récente**, seule la dernière en partie. |
 | RG-PAY-04 | Un virement déjà saisi à la main dans Sage passe à « Déjà dans Sage ». |
 | RG-PAY-05 | Vérification par la baisse du solde de chaque facture. |
+| RG-PAY-06 | **Un paiement en échec ne bloque pas les suivants** (comme RG-ENC-12) ; fenêtre Paiements rouverte au besoin, paiements restants « non tenté » si elle ne peut pas l'être. |
+| RG-PAY-07 | Les avis sont lus **depuis la date choisie** (même réglage que la boîte des avis) ; un avis déjà traité n'est jamais relu comme nouveau. |
 
 ### 7.3 Bons de commande et retours
 
@@ -256,6 +267,10 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-CPT-08 | **Budget** : réel = état des résultats de Sage ; écart et cumul depuis janvier ; proposition = an dernier × (1 + croissance). |
 | RG-CPT-09 | **Clôture du mois** : contrôles (factures non encaissées, relevés non rapprochés, documents non passés) et état des résultats comparé au mois précédent et au même mois de l'an dernier. |
 | RG-CPT-10 | **Plan comptable** : seuls les comptes de groupe et de sous-groupe reçoivent des écritures ; création, modification, inactivation et suppression vérifiées dans Sage. |
+| RG-CPT-11 | **Espèces attendues** : seuls les paiements en espèces **réussis** comptent ; le jour est celui du paiement au fuseau de Clover ; un pourboire en espèces est attendu dans le tiroir. |
+| RG-CPT-12 | **À déposer** = compté − fond laissé pour le lendemain ; l'écart cumulé des dépôts d'espèces se lit contre les dépôts au guichet du relevé. |
+| RG-CPT-13 | **Écriture de dépense** : la ligne au **crédit** (moyen de paiement) est saisie en premier, Sage propose ensuite le reste au débit ; source « Dépense DP-nnnn », vérifiée par source et date, jamais deux fois. |
+| RG-CPT-14 | Les calculs lourds de la comptabilité (TPS/TVQ, trésorerie, retenues, suivi des remises, clôture) ne se lancent que sur demande (« Calculer », « Vérifier ») ; le mois terminé est proposé par défaut pour les retenues et la clôture. |
 
 ---
 
@@ -299,6 +314,10 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-STA-07 | **Articles à commander** : stock − vendu sur l'horizon ≤ 0 ; un stock négatif compte pour 0 dans la quantité suggérée. |
 | RG-STA-08 | **Résumé du matin** (courriel) : ventes d'hier comparées au même jour la semaine passée, marge, solde bancaire, factures à payer d'ici 7 jours, ruptures des articles A, péremption, alertes (retenues, caisse non comptée ou écart > 5 $) ; chaque partie est indépendante. |
 | RG-STA-09 | Les paiements par carte ne gardent que le type de carte et le mode de saisie, **jamais les chiffres de la carte**. |
+| RG-STA-10 | Un jour **terminé** lu dans Clover est gardé et n'est plus relu ; la journée en cours est relue (chaque minute si demandé, sinon toutes les 5 minutes). |
+| RG-STA-11 | **Filtres** : client et employé gardent les commandes entières ; article et catégorie gardent seulement leurs lignes ; les paiements sont comptés pour la part des lignes gardées ; « Mode de paiement » garde les commandes payées au moins en partie ainsi, avec ces paiements seulement. |
+| RG-STA-12 | **Axe des graphiques** : 5 % au-dessus de la plus grande valeur, 4 graduations rondes (paliers 1, 1,2, 1,5, 2, 2,5, 3, 4, 5, 6, 8) ; moyenne en pointillé rouge ; valeurs écrites sur les barres s'il y en a 14 au plus. |
+| RG-STA-13 | **Rapport des ventes** : brutes, rabais, remboursements, nettes, taxes, pourboires, perçu, par jour ou par heure ; les articles supprimés et les cartes-cadeaux, absents de l'API Clover, ne figurent pas. |
 
 ---
 
@@ -373,6 +392,11 @@ Ordre des étapes :
 | RG-NUI-01 | Un seul traitement à la fois (verrou). |
 | RG-NUI-02 | Chaque étape est indépendante : un échec est noté au compte rendu et les étapes suivantes continuent. |
 | RG-NUI-03 | La session Windows doit être ouverte (verrouillée possible). |
+| RG-NUI-04 | **Jours à facturer** : tous les jours sans facture « Vente AAAA-MM-JJ » depuis la date de départ jusqu'à hier, du plus ancien au plus récent ; une facture de Sage dont la date n'est pas le dernier jour de son numéro est ignorée et signalée. |
+| RG-NUI-05 | Un **jour bloqué** (ou toute sa fin de semaine) n'arrête pas les autres ; il est repris la nuit suivante. |
+| RG-NUI-06 | Import par **lots** de 25 factures (un fichier et une ouverture de Sage par lot) ; durées de chaque lot notées au journal. |
+| RG-NUI-07 | Le Sage gardé ouvert pour la journée est refermé avant la nuit (minuit) ; la nuit ouvre et ferme Sage pour chacun de ses travaux. |
+| RG-NUI-08 | Le **compte rendu** part même si une étape a échoué ; il porte une pièce jointe Excel par module et les alertes en rouge. |
 
 ---
 
@@ -412,3 +436,67 @@ Ordre des étapes :
 | RG-WEB-09 | Le **serveur web** tourne sans fenêtre, une seule copie à la fois, démarré à l'ouverture de session. |
 | RG-WEB-10 | Dans un tableau web, un texte de plus de 45 caractères est **coupé** (« … ») et se lit en entier au survol : les montants et les états d'une ligne restent toujours visibles ; une cellule avec un champ ou un bouton n'est jamais coupée. |
 | RG-WEB-07 | Changer de serveur : reprendre `config.toml` et `donnees/`, retaper les mots de passe (coffre-fort propre à chaque machine), régler le serveur, relancer `installer_web.ps1` et la tâche planifiée ; retirer tâche et serveur web de l'ancien serveur (jamais deux traitements de nuit). |
+
+---
+
+## 22. Exemples chiffrés
+
+Exemples **fictifs** qui montrent l'application des règles de bout en bout.
+
+### 22.1 Facture d'une fin de semaine (RG-VEN-02, 04, 07)
+
+Ventes Clover de l'article « Pomme rouge en lb » du vendredi au dimanche :
+
+| Jour | Quantité | Ventes brutes | Rabais | Remboursements | Ventes nettes |
+|---|---|---|---|---|---|
+| Vendredi | 12,500 lb | 37,50 $ | −1,25 $ | 0,00 $ | 36,25 $ |
+| Samedi | 20,000 lb | 60,00 $ | 0,00 $ | −3,00 $ (1 lb) | 57,00 $ |
+| Dimanche | 8,250 lb | 24,75 $ | 0,00 $ | 0,00 $ | 24,75 $ |
+| **Total** | **39,750 lb nets** | | | | **118,00 $** |
+
+Une seule facture « Vente 2026-10-23/25 » datée du dimanche ; ligne de l'article : quantité 39,750, prix unitaire = 118,00 / 39,750 = **2,9686** $ (4 décimales), montant **118,00 $**. Le total de la facture égale les ventes nettes Clover des trois jours.
+
+### 22.2 Encaissement d'un dépôt (RG-ENC-01, 02, 06)
+
+Facture « Vente 2026-10-23/25 » : 3 000,00 $ TTC. Lot de cartes du vendredi 1 200,00 $, du samedi 900,00 $, du dimanche 500,00 $ ; espèces 400,00 $.
+
+- Dépôt du lundi = 1 200,00 + 900,00 + 500,00 = **2 600,00 $** : un encaissement daté du lundi, une seule ligne sur la facture de fin de semaine.
+- Solde dû après : 400,00 $ = les espèces.
+- Mardi, dépôt d'espèces au guichet de 650,00 $ : 400,00 $ vont sur cette facture (la plus ancienne avec des espèces dues), 250,00 $ sur la facture suivante qui a encore des espèces dues ; s'il n'y en a plus, les 250,00 $ restent « Part RIA à confirmer ».
+
+### 22.3 Ligne de facture fournisseur (RG-FRN-01)
+
+Facture : 3 caisses de bananes à 24,00 $ la caisse ; une caisse = 18 kg (facteur 18) ; l'article Sage est vendu au kg.
+
+- Montant = 3 × 24,00 = **72,00 $**
+- Qté Sage = 3 × 18 = **54 kg**
+- Prix Sage = 72,00 / 54 = **1,3333 $ / kg**
+- Après l'import : stock Clover + 54, coût Clover = 1,3333 $.
+
+### 22.4 Prix proposé (RG-ART-11)
+
+Coût (CUMP) 2,10 $, marge minimale 25 % : 2,10 / (1 − 0,25) = 2,80 $ ; arrondi « ,49 / ,99 » vers le haut = **2,99 $**. Si 120 unités ont été vendues en 90 jours au prix actuel de 2,49 $, effet estimé = (2,99 − 2,49) × 120 = **60,00 $**.
+
+### 22.5 Indemnité de jour férié (RG-PAI-09)
+
+Heures normales des 4 semaines complètes avant la semaine du férié : 38, 40, 35 et 40 heures (une semaine de 44 h compte pour 40) = 153 heures. Indemnité = 153 / 20 = **7,65 heures**, payées en heures « Régulières ».
+
+### 22.6 Heures supplémentaires (RG-PAI-03, 04)
+
+Semaine du dimanche au samedi : 5 jours de 8 h 30 de présence avec 30 minutes de pause pointée chacun = 5 × 8 h = 40 h, plus un samedi de 6 h sans pause = **46 h** : 40 h normales, **6 h supplémentaires**.
+
+### 22.7 Contrôle de la caisse (RG-CPT-01, 02)
+
+Fond du matin 200,00 $ ; paiements en espèces 845,30 $ (pourboires compris) ; remboursement en espèces 12,00 $ ; retrait d'argent sur carte 40,00 $.
+
+- Attendu = 200,00 + 845,30 − 12,00 − 40,00 = **993,30 $**
+- Compté 988,05 $ : écart = **−5,25 $** → alerte (au-delà de 5 $).
+- Fond laissé 200,00 $ : à déposer = 988,05 − 200,00 = **788,05 $**.
+
+### 22.8 Articles 20/80 (RG-STA-04)
+
+Catalogue de 1 000 articles vendus sur la période : les 200 articles qui vendent le plus (rang 1 à 200) sont la classe **A**, les rangs 201 à 500 la classe **B**, les 500 autres la classe **C**. Si les 200 articles A font 760 000 $ de ventes sur 1 000 000 $, le résumé affiche « les 20 % d'articles font 76 % des ventes ».
+
+### 22.9 Dépense de petite caisse (RG-CPT-03, 13)
+
+Reçu de 23,00 $ TTC avec TPS et TVQ (code GQ) : HT = 23,00 / 1,14975 = 20,00 $ ; TPS = 1,00 $ ; TVQ = 23,00 − 20,00 − 1,00 = 2,00 $ (l'arrondi va à la TVQ). Écriture : crédit petite caisse 23,00 $ (1re ligne), débit charge 20,00 $, débit TPS payée 1,00 $, débit TVQ payée 2,00 $.

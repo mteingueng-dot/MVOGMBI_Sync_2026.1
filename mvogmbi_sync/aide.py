@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.19"
+VERSION = "1.0.20"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -677,6 +677,32 @@ FAQ = {
                     "Wi-Fi du magasin (« Administration > Automatisation > Wi-Fi du magasin »). Si vous avez pointé "
                     "depuis votre téléphone et qu'il quitte le Wi-Fi 5 minutes de suite, vous êtes mis en pause (à "
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi."),
+        ("sous_titre", "Nouveautés des versions 1.0.8 à 1.0.20 (6 et 7 novembre 2026)"),
+        ("question", "Un encaissement échoue : les autres dépôts sont-ils saisis ?"),
+        ("reponse", "Oui (version 1.0.19). Le dépôt en échec est noté « NON encaissé » avec la raison, les questions "
+                    "restées ouvertes dans Sage sont refermées, la saisie est effacée et le dépôt suivant est saisi. Si "
+                    "la fenêtre Encaissements ne peut pas être rouverte, les dépôts restants sont notés « Non tenté » : "
+                    "relancez « Encaisser dans Sage » plus tard. Même règle pour les paiements fournisseurs."),
+        ("question", "« Dépôt supérieur au solde dû (déjà encaissée autrement ?) » : que faire ?"),
+        ("reponse", "Le dépôt est plus grand que ce qui reste à payer sur la facture dans Sage : une partie a sans "
+                    "doute déjà été encaissée à la main. Rien n'est saisi. Ouvrez la facture dans Sage, vérifiez ses "
+                    "encaissements, corrigez au besoin, puis relancez « Encaisser dans Sage »."),
+        ("question", "« … n'est pas dans la liste des factures en souffrance de Sage » : que faire ?"),
+        ("reponse", "Sage ne propose pas cette facture à l'encaissement : elle est déjà payée, ou sa date est fausse "
+                    "(par exemple datée de l'année d'avant). Corrigez la facture dans Sage, puis relancez « Encaisser "
+                    "dans Sage » pour ce dépôt."),
+        ("question", "Sage est ouvert par une personne sur le serveur : l'application attend-elle ?"),
+        ("reponse", "Le Sage d'une personne passe toujours d'abord (version 1.0.8) : le Sage de l'application se ferme, "
+                    "et ne se rouvre que 5 minutes après la fermeture du vôtre. Un Sage resté ouvert sans l'application "
+                    "(par exemple après une mise à jour) est refermé de lui-même, ses questions comprises (versions 1.0.9 "
+                    "à 1.0.12)."),
+        ("question", "L'application fonctionne-t-elle avec Sage 50 2027 ?"),
+        ("reponse", "Oui : elle prend d'elle-même la version de Sage la plus récente installée. Lecture, encaissements "
+                    "et import des factures fournisseurs ont été vérifiés avec Sage 2027 sur le vrai fichier."),
+        ("question", "Pourquoi les encaissements sont-ils plus rapides depuis la version 1.0.20 ?"),
+        ("reponse", "Juste après un encaissement, Sage proposait le montant dû dans la cellule « Montant reçu » pendant "
+                    "la saisie : le total ne correspondait pas et il fallait tout recommencer (environ 30 secondes par "
+                    "dépôt). Le montant tapé est maintenant relu dans la cellule et retapé au besoin avant d'être validé."),
         ("sous_titre", "Nouveautés des versions 1.0.3 à 1.0.7 (6 novembre 2026)"),
         ("question", "Pourquoi Sage est-il ouvert sur le serveur quand l'application est ouverte ?"),
         ("reponse", "Pour que les saisies commencent tout de suite : de 6 h à minuit, tant que l'application Windows "
@@ -1334,6 +1360,31 @@ FAQ = {
                     "addresses (“Administration > Automation > Store Wi-Fi”). If you clocked in from your phone and it "
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi."),
+        ("sous_titre", "What's new in versions 1.0.8 to 1.0.20 (November 6 and 7, 2026)"),
+        ("question", "A receipt fails: are the other deposits entered?"),
+        ("reponse", "Yes (version 1.0.19). The failed deposit is marked “NOT received” with the reason, questions left "
+                    "open in Sage are closed, the entry is cleared and the next deposit is entered. If the Receipts "
+                    "window cannot be reopened, the remaining deposits are marked “Not tried”: run “Record in Sage” "
+                    "again later. Same rule for supplier payments."),
+        ("question", "“Deposit greater than the balance due (already received otherwise?)”: what should I do?"),
+        ("reponse", "The deposit is larger than what remains to be paid on the invoice in Sage: part of it was probably "
+                    "already received by hand. Nothing is entered. Open the invoice in Sage, check its receipts, correct "
+                    "if needed, then run “Record in Sage” again."),
+        ("question", "“… is not in Sage's list of outstanding invoices”: what should I do?"),
+        ("reponse", "Sage does not offer this invoice for a receipt: it is already paid, or its date is wrong (for "
+                    "example dated the previous year). Correct the invoice in Sage, then run “Record in Sage” again for "
+                    "this deposit."),
+        ("question", "Someone has Sage open on the server: does the application wait?"),
+        ("reponse", "A person's Sage always comes first (version 1.0.8): the application's Sage closes and reopens only "
+                    "5 minutes after yours is closed. A Sage left open without the application (for example after an "
+                    "update) closes by itself, its questions included (versions 1.0.9 to 1.0.12)."),
+        ("question", "Does the application work with Sage 50 2027?"),
+        ("reponse", "Yes: it picks the most recent Sage version installed. Reading, receipts and supplier invoice "
+                    "imports were checked with Sage 2027 on the real file."),
+        ("question", "Why are receipts faster since version 1.0.20?"),
+        ("reponse", "Right after a receipt, Sage proposed the amount due in the “Amount received” cell while typing: the "
+                    "total did not match and everything had to be redone (about 30 seconds per deposit). The typed "
+                    "amount is now read back from the cell and retyped if needed before it is accepted."),
         ("sous_titre", "What's new in versions 1.0.3 to 1.0.7 (November 6, 2026)"),
         ("question", "Why is Sage open on the server while the application is open?"),
         ("reponse", "So that entries start right away: from 6 a.m. to midnight, while the Windows application is "

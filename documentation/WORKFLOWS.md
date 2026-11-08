@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 
@@ -316,6 +316,9 @@ flowchart TD
     I -->|oui| K["Fenêtre Encaissements :<br/>montant dans « Montant reçu »,<br/>total contrôlé, Traiter"]
     K --> L["Solde de chaque facture<br/>vérifié dans Sage"]
     L --> M([Dépôt « Appliqué »])
+    K -->|échec| N["« NON encaissé » + raison<br/>fenêtre remise à zéro"]
+    N --> O([Dépôt suivant saisi])
+    N --> P["Vérifier dans Sage<br/>puis relancer"]
 ```
 
 ## 9. Droits d'un profil
@@ -333,4 +336,168 @@ flowchart TD
     M([Employé parti ou absent]) --> N["Administration > Utilisateurs<br/>choisir le compte, Activer / désactiver"]
     N --> O([Connexion refusée, sessions fermées]) --> P["Activer / désactiver<br/>à son retour"]
     J([Compte verrouillé après 3 essais faux]) --> K["Administration > Utilisateurs<br/>nouveau mot de passe"] --> L([Compte rouvert])
+```
+
+---
+
+## 10. Contrôle de la caisse du soir
+
+```mermaid
+flowchart TD
+    A([Fermeture du magasin]) --> B["Comptabilité > Contrôle de la caisse<br/>point de vente, date du jour"]
+    B --> C["Espèces attendues lues dans Clover<br/>fond + espèces − remboursements − retraits"]
+    C --> D["Compter le tiroir par coupures"]
+    D --> E{"Écart de plus de 5 $ ?"}
+    E -- oui --> F["Recompter ;<br/>voir les espèces par employé"]
+    F --> G["Enregistrer le comptage<br/>(l'ancien reste dans l'historique)"]
+    E -- non --> G
+    G --> H["Fond laissé pour demain<br/>à déposer = compté − fond"]
+    H --> I["Dépôt au guichet"]
+    I --> J([Le relevé suivant le rapproche<br/>onglet « Dépôts d'espèces »])
+    G -.-> K([Alerte au courriel du matin<br/>si non compté ou écart])
+```
+
+---
+
+## 11. Déclarer une perte
+
+```mermaid
+flowchart TD
+    A([Produit abîmé, périmé, volé…]) --> B["Stock > Pertes et démarque<br/>Déclarer une perte"]
+    B --> C["Motif, dépôt, date"]
+    C --> D["Lignes : articles du catalogue Clover<br/>ou « Ajouter les produits périmés en stock »"]
+    D --> E["Coût : CUMP Sage, sinon coût Clover"]
+    E --> F["Valider"]
+    F --> G["Stock Clover diminué ligne par ligne"]
+    F --> H["Document de stock « Sortie »<br/>passé dans Sage"]
+    G & H --> I([Rapport des pertes et taux de perte])
+    I -.-> J["Erreur ? Ouvrir, Modifier<br/>ou Supprimer = annulation"]
+```
+
+---
+
+## 12. Transfert entre magasins
+
+```mermaid
+flowchart TD
+    A([Marchandise envoyée<br/>à un autre magasin]) --> B["Stock > Transferts entre magasins<br/>Ajouter"]
+    B --> C["Point de vente de départ et d'arrivée<br/>(dépôts différents)"]
+    C --> D["Lignes : article, quantité<br/>stock Sage départ / arrivée affiché"]
+    D --> E["Enregistrer (Brouillon)"]
+    E --> F["🖨 Bon de transfert<br/>accompagne la marchandise"]
+    F --> G["Transférer"]
+    G --> H["Sage : transfert entre emplacements<br/>lots de 7 lignes, vérifié"]
+    H --> I{"Jeton Clover des deux magasins ?"}
+    I -- oui --> J["Clover : départ − qté, arrivée + qté"]
+    I -- non --> K["« À compléter »<br/>Clover fait plus tard"]
+    J --> L([Terminé])
+```
+
+---
+
+## 13. Promotion
+
+```mermaid
+flowchart TD
+    A([Prix réduit pour une période]) --> B["Articles > Promotions<br/>Ajouter"]
+    B --> C["Article, prix promo, du / au,<br/>point de vente"]
+    C --> D{"Chevauche une autre promotion ?"}
+    D -- oui --> E([Refusée])
+    D -- non --> F["Enregistrée « Prévue »"]
+    F --> G["1er jour, la nuit :<br/>prix normal lu, prix promo appliqué"]
+    G --> H["Lendemain du dernier jour :<br/>prix encore = promo ?"]
+    H -- oui --> I["Prix normal remis"]
+    H -- non --> J["Laissé tel quel, noté"]
+    I & J --> K([Effet : ventes pendant contre avant])
+    F -.-> L["Annuler : prévue = annulée,<br/>en cours = prix normal remis tout de suite"]
+```
+
+---
+
+## 14. Nouvel employé
+
+```mermaid
+flowchart TD
+    A([Embauche]) --> B["Paie > Employés et NIP<br/>Nouvel employé"]
+    B --> C["Nom, surnom, rôle Clover,<br/>courriel, NIP du poste"]
+    C --> D["Créé dans Clover"]
+    D --> E{"Créer dans Sage Paie ?"}
+    E -- oui --> F["Adresse, naissance, embauche,<br/>NAS tapé une fois (jamais gardé), taux"]
+    F --> G["Fiche employé créée dans Sage"]
+    E -- non --> H["Lier aux employés Sage plus tard"]
+    G & H --> I["Dépôt principal ;<br/>« Relier à un compte… » (connexion)"]
+    I --> J["Planning : quarts du mois, publier"]
+    J --> K([Pointe au magasin avec son NIP])
+```
+
+---
+
+## 15. Relier les articles vendus (correspondance)
+
+```mermaid
+flowchart TD
+    A(["Courriel : jour bloqué,<br/>article non relié"]) --> B["Articles > Correspondance<br/>Mettre à jour depuis Clover et Sage"]
+    B --> C["Afficher : à confirmer / non reliés /<br/>supprimés ou renommés dans Clover"]
+    C --> D["Choisir l'article Clover"]
+    D --> E{"Proposition juste ?"}
+    E -- oui --> F["Accepter la proposition"]
+    E -- non --> G["Chercher l'article Sage"]
+    G --> H{"Même format ?"}
+    H -- oui --> I["Confirmer l'article choisi"]
+    H -- non --> J["Confirmer quand même<br/>(ou créer l'article dans Sage)"]
+    F & I & J --> K["Enregistré tout de suite"]
+    K --> L([Charger la période :<br/>le jour bloqué est facturé])
+```
+
+---
+
+## 16. Mettre à jour l'application
+
+```mermaid
+flowchart TD
+    A([Nouvelle version livrée]) --> B["Prévenir : serveur web<br/>arrêté quelques secondes"]
+    B --> C["Sur le serveur, session ouverte :<br/>Installer_MVOGMBI_Sync_x.y.z.exe"]
+    C --> D["L'installateur arrête le serveur web<br/>et ferme le Sage de la journée"]
+    D --> E["Fichiers copiés ;<br/>config.toml et donnees/ gardés"]
+    E --> F["Serveur web relancé"]
+    F --> G["Rouvrir l'application Windows<br/>(Sage de la journée rouvert)"]
+    G --> H["Contrôles : version au bas du menu,<br/>Tester l'accès à Sage, page web"]
+    H --> I{"Client changé ?"}
+    I -- oui --> J["Installer le client sur les postes"]
+    I -- non --> K([Terminé])
+    J --> K
+```
+
+---
+
+## 17. Restaurer une sauvegarde
+
+```mermaid
+flowchart TD
+    A([Données perdues ou abîmées]) --> B["Fermer l'application partout<br/>(Windows et web)"]
+    B --> C["Administration > Sauvegarde des données<br/>choisir l'archive"]
+    C --> D["Restaurer"]
+    D --> E["État actuel sauvegardé d'abord<br/>dans « avant_restauration »"]
+    E --> F["Archive vérifiée, donnees/<br/>et config.toml remis"]
+    F --> G{"Autre ordinateur ?"}
+    G -- oui --> H["Retaper les mots de passe<br/>(coffre-fort propre à la machine)"]
+    G -- non --> I([Rouvrir l'application])
+    H --> I
+```
+
+---
+
+## 18. Rattraper une période de ventes
+
+```mermaid
+flowchart TD
+    A([Jours sans facture<br/>ex. reprise après une panne]) --> B["Vente > Ventes Clover → factures Sage<br/>période du … au …"]
+    B --> C["Charger la période"]
+    C --> D["Jours déjà facturés sautés ;<br/>fin de semaine en partie facturée bloquée"]
+    D --> E["Factures préparées, contrôlées"]
+    E --> F{"Jour bloqué ?"}
+    F -- oui --> G["Relier l'article / corriger le compte,<br/>puis recharger"]
+    F -- non --> H["Import par lots de 25<br/>(~20 min par lot), vérifié"]
+    H --> I["Comptabilité > Encaissements<br/>mois par mois"]
+    I --> J([Factures encaissées])
 ```
