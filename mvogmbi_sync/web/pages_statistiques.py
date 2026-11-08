@@ -469,7 +469,23 @@ def _rendu_rapport(libelle: str, r) -> str:
     # les chiffres d'abord, puis les constats (comme Windows)
     return (f"<h2 class='titre-etat'>{e(libelle)}</h2>" + f"<div class='kpis ligne-kpi'>{cartes}</div>" + note
             + f"<div class='grille2'>{_graph(evolution)}{_graph(repartition)}"
-            "</div>" + sup + tableau_section(Section("Rapport détaillé", r.entetes, r.lignes)))
+            "</div>" + sup + _tableau_detaille(r))
+
+
+def _tableau_detaille(r) -> str:
+    """Tableau du rapport ; le n° d'une commande (anomalies) ouvre sa vraie facture Clover dans un nouvel onglet."""
+    ids = getattr(r, "ids_commandes", None) or []
+    if not ids or "Commande ou jour" not in r.entetes:
+        return tableau_section(Section("Rapport détaillé", r.entetes, r.lignes))
+    col = r.entetes.index("Commande ou jour")
+    lignes = []
+    for ligne, ident in zip(r.lignes, ids + [""] * len(r.lignes)):
+        ligne = list(ligne)
+        texte = e(str(ligne[col]))
+        ligne[col] = (f"<a href='/facture-clover?{e(urlencode({'id': ident}))}' target='_blank' "
+                      f"title='Ouvrir la facture Clover'>🧾 {texte}</a>") if ident else texte
+        lignes.append(ligne)
+    return tableau_section(Section("Rapport détaillé", r.entetes, lignes, html={col}))
 
 
 def _graphe_sup(d: dict, vide: str) -> Graphique:
@@ -691,7 +707,17 @@ def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> 
     if vue == "Résumé":  # aperçu financier : les indicateurs en cartes
         return corps + _kpi(r)
     titre = f"Tableau : {libelle} — {len(lignes)} ligne(s)"
-    return corps + graph + tableau_section(Section(titre, entetes, lignes), limite=3000)
+    html = set()
+    if vue in sc.COLONNES_COMMANDE and b and b.get("donnees") is not None and not q.get("par_jour"):
+        col_date, col_num = sc.COLONNES_COMMANDE[vue]  # n° de commande : lien vers la vraie facture Clover
+        lignes = [list(l) for l in lignes]
+        for l in lignes:
+            ident = sc.id_commande(b["donnees"], l[col_date], l[col_num])
+            texte = e(str(l[col_num]))
+            l[col_num] = (f"<a href='/facture-clover?{e(urlencode({'id': ident}))}' target='_blank' "
+                          f"title='Ouvrir la facture Clover'>🧾 {texte}</a>") if ident else texte
+        html = {col_num}
+    return corps + graph + tableau_section(Section(titre, entetes, lignes, html=html), limite=3000)
 
 
 STYLE_STATS = """
@@ -751,4 +777,45 @@ tr.total td { font-weight: 600; background: #e8f3ea !important; }
 }
 """
 
-FONCTIONS = [Fonction("/statistiques", "Statistiques Clover", "rapports", statistiques, "📊", "État", menu=False)]
+def facture_clover(ctx: Contexte) -> Reponse:
+    """Vraie facture Clover d'une commande (lien des anomalies), relue dans Clover : en-tête, articles, rabais,
+    paiements, remboursements, totaux. Un login limité à un employé ne voit que ses propres commandes."""
+    from ..facture_clover import ENTETES_LIGNES, ENTETES_PAIEMENTS, ENTETES_REMBOURSEMENTS, lire
+
+    ident = ctx.req.query.get("id", "")
+    if not ident or not ident.replace("_", "").replace("-", "").isalnum() or len(ident) > 40:
+        return Reponse(corps=page(ctx, "Facture Clover", "<p class='erreur'>Commande inconnue.</p>"), statut=404)
+    try:
+        f = lire(ctx.racine, ident, _points(ctx) or None)
+    except (Exception, SystemExit) as erreur:  # noqa: BLE001 — Clover injoignable ou commande introuvable
+        ctx.app.noter(f"Facture Clover {ident} : {erreur!r}")
+        return Reponse(corps=page(ctx, "Facture Clover", f"<p class='erreur'>{e(str(erreur))}</p>"))
+    if not ctx.voit_tous():
+        moi = ctx.employe()
+        if not moi or moi.nom.casefold() != f.employe.casefold():
+            return Reponse(corps=page(ctx, "Facture Clover", "<p class='erreur'>Cette commande n'est pas la vôtre."
+                                                             "</p>"), statut=403)
+    infos = [("Commande", f.numero), ("Date et heure", f.moment), ("Employé", f.employe), ("Client", f.client),
+             ("Appareil", f.appareil or "—"), ("État", f.etat), ("Point de vente", f.point_vente or "n° 1")]
+    entete = "".join(f"<div class='kpi'><div class='t'>{e(t)}</div><div class='v texte'>{e(v)}</div></div>"
+                     for t, v in infos)
+    totaux = "".join(
+        f"<div class='kpi{' etat-bon' if t == 'Montant payé' else ''}'><div class='t'>{e(t)}</div><div class='v grand'>"
+        f"{e(montant(v))}</div></div>" for t, v in f.totaux)
+    corps = (f"<h2 class='titre-etat'>🧾 Facture Clover n° {e(f.numero)} — {e(f.moment)}</h2>"
+             + (f"<div class='constats'><div class='constat alerte'><span class='i'>✖</span>{e(f.note)}</div></div>"
+                if f.note else "")
+             + f"<div class='kpis ligne-kpi'>{entete}</div><div class='kpis ligne-kpi'>{totaux}</div>"
+             + tableau_section(Section("Articles", ENTETES_LIGNES, f.lignes))
+             + (tableau_section(Section("Rabais de la commande", ["Rabais", "Valeur"], f.rabais_commande))
+                if f.rabais_commande else "")
+             + tableau_section(Section("Paiements", ENTETES_PAIEMENTS, f.paiements))
+             + (tableau_section(Section("Remboursements", ENTETES_REMBOURSEMENTS, f.remboursements))
+                if f.remboursements else "")
+             + "<p class='note'>Lue dans Clover à l'instant (lecture seule) ; les chiffres de la carte ne sont jamais "
+               "repris.</p>")
+    return Reponse(corps=page(ctx, f"Facture Clover n° {f.numero}", corps))
+
+
+FONCTIONS = [Fonction("/statistiques", "Statistiques Clover", "rapports", statistiques, "📊", "État", menu=False),
+             Fonction("/facture-clover", "Statistiques Clover", "rapports", facture_clover, "🧾", "État", menu=False)]

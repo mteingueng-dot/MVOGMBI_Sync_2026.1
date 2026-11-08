@@ -50,6 +50,7 @@ class DonneesClover:
     categories: dict[str, str] = field(default_factory=dict)
     fuseau: str = "America/Toronto"
     prepare: list | None = field(default=None, repr=False, compare=False)  # commandes préparées (calculées une fois)
+    index: dict | None = field(default=None, repr=False, compare=False)  # (jour, n°) -> identifiant de la commande
 
 
 _MEMOIRE: dict[str, dict] = {}          # jours terminés déjà lus (fichier -> données), le temps de la session
@@ -775,3 +776,40 @@ def resume_rapide(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
         ["Rabais", sum((l.rabais for l in lignes), ZERO)],
         ["Remboursements (articles)", sum((l.remboursements for l in lignes), ZERO)],
     ])}
+
+
+# --------------------------------------------------------------------------------------------- facture d'une commande
+# états où apparaît un n° de commande Clover : (colonne de la date, colonne du n°) ; un clic sur le n° ouvre la vraie
+# facture Clover (facture_clover.py, demande du propriétaire du 2026-11-08 : « partout où un numéro de commande
+# apparaît »)
+COLONNES_COMMANDE = {"Commandes": (0, 1), "Paiements": (0, 1), "Remboursements": (0, 1)}
+
+
+def id_commande(d: DonneesClover, jour: str, numero: str) -> str:
+    """Identifiant Clover de la commande n° `numero` du jour `jour` (« AAAA-MM-JJ… ») ; un n° unique dans la période
+    suffit (remboursement fait un autre jour) ; "" si inconnu ou ambigu."""
+    if d.index is None:
+        fuseau = ZoneInfo(d.fuseau)
+        par_jour, par_numero = {}, defaultdict(set)
+        for o in d.commandes:
+            numero_o = str(o.get("title") or o["id"])
+            ms = moment_paiement(o) or o.get("createdTime") or 0
+            jour_o = datetime.fromtimestamp(ms / 1000, fuseau).date().isoformat() if ms else ""
+            par_jour[(jour_o, numero_o)] = o["id"]
+            par_numero[numero_o].add(o["id"])
+            par_numero[o["id"]].add(o["id"])  # commande sans titre : son identifiant sert de n°
+        for r in d.remboursements:  # commande remboursée d'une autre période : son identifiant est dans le remboursement
+            ref = r.get("orderRef") or {}
+            if ref.get("id"):
+                numero_r = str(ref.get("title") or ref["id"])
+                ms = r.get("createdTime") or 0
+                jour_r = datetime.fromtimestamp(ms / 1000, fuseau).date().isoformat() if ms else ""
+                par_jour.setdefault((jour_r, numero_r), ref["id"])
+                par_numero[ref["id"]].add(ref["id"])
+        d.index = {"jour": par_jour, "numero": par_numero}
+    numero = str(numero or "").removeprefix("🧾 ").strip()
+    trouve = d.index["jour"].get((str(jour or "")[:10], numero))
+    if trouve:
+        return trouve
+    ids = d.index["numero"].get(numero, set())
+    return next(iter(ids)) if len(ids) == 1 else ""

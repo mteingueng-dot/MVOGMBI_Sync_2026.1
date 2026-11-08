@@ -203,3 +203,38 @@ def test_constats_en_couleur_et_decisions():
     assert priorites == sorted(priorites) and priorites[0].startswith("1")
     assert any(l[1] == "Contrôler les rabais de 50 % et plus avec les employés concernés" for l in syn.lignes)
     assert an.niveau_constat(syn.note.splitlines()[1])[0] == "alerte"  # la décision la plus urgente en premier
+
+
+def test_facture_clover_et_lien_des_anomalies():
+    """Anomalie : le n° de commande ouvre la vraie facture Clover (lien web, double-clic Windows)."""
+    from mvogmbi_sync import facture_clover as fc
+    from mvogmbi_sync.web.pages_statistiques import _tableau_detaille
+
+    r = _toutes()["a_anomalies"]
+    assert len(r.ids_commandes) == len(r.lignes)
+    rang = next(i for i, l in enumerate(r.lignes) if l[2] == "X1")
+    assert r.ids_commandes[rang] == "X1"
+    html = _tableau_detaille(r)
+    assert "/facture-clover?id=X1" in html and "target='_blank'" in html
+    commande = _commande("X1", DU, [("Sel", "S", 2000)], rabais=100)
+    commande["payments"]["elements"][0].update({"amount": 0, "taxAmount": 0, "tipAmount": 0,
+                                                "tender": {"label": "Espèces"}})
+    f = fc.detail(commande, categories={"S": "Riz"})
+    assert f.numero == "X1" and f.lignes[0][:2] == ["Sel", "Riz"] and f.lignes[0][5] == D("-20.00")
+    assert dict(f.totaux)["Ventes nettes"] == 0 and f.note.startswith("Rabais de 50 %")
+    assert f.paiements[0][1] == "Espèces" and f.paiements[0][7] == "Réussi"
+
+
+def test_numero_de_commande_partout():
+    """Commandes, Transactions, Remboursements : chaque n° de commande retrouve sa commande Clover (facture)."""
+    from mvogmbi_sync import statistiques_clover as sc
+
+    d = _periode()
+    d.remboursements = [{"createdTime": d.commandes[0]["createdTime"], "amount": -100,
+                         "orderRef": {"id": "ANCIENNE", "title": "999"}}]
+    vues = sc.statistiques(d)
+    for nom, (cd, cn) in sc.COLONNES_COMMANDE.items():
+        for ligne in vues[nom][1]:
+            assert sc.id_commande(d, ligne[cd], ligne[cn]), (nom, ligne)
+    assert sc.id_commande(d, "2026-09-07", "999") == "ANCIENNE"   # commande d'une autre période
+    assert sc.id_commande(d, "", "inconnue") == ""

@@ -460,10 +460,23 @@ def mes_heures(ctx: Contexte) -> Reponse:
 
 def _poste_permis(ctx: Contexte) -> tuple[bool, str]:
     """Le pointage se fait au magasin (règle du propriétaire) : poste du magasin ([web] postes_pointage) ou appareil
-    sur le Wi-Fi du magasin ([pointage] adresses_magasin, lu dans Tailscale : `pointage_wifi.autorise`)."""
+    sur le Wi-Fi du magasin ([pointage] adresses_magasin, lu dans Tailscale : `pointage_wifi.autorise`).
+    Règle du propriétaire du 2026-11-08 : cette restriction ne vaut que pour les profils autres qu'Administrateur ;
+    un administrateur ouvre le pointage de partout."""
     from ..pointage_wifi import autorise
 
-    return autorise(ctx.config, ctx.req.adresse)
+    permis_, raison = autorise(ctx.config, ctx.req.adresse)
+    if not permis_ and ctx.u is not None and ctx.u.est_admin:
+        return True, "administrateur : pointage permis hors du Wi-Fi du magasin"
+    return permis_, raison
+
+
+def _sur_le_wifi(ctx: Contexte) -> bool:
+    """Appareil réellement au magasin (sans l'exception de l'administrateur) : seul un tel appareil est suivi pour la
+    pause automatique hors du Wi-Fi (sinon un pointage fait ailleurs déclencherait une pause au bout de 5 min)."""
+    from ..pointage_wifi import autorise
+
+    return autorise(ctx.config, ctx.req.adresse)[0]
 
 
 RETOUR_POSTE = 12  # secondes avant le retour à la liste des noms (fenetre_pointage.RETOUR_ACCUEIL_MS)
@@ -545,7 +558,12 @@ def pointage(ctx: Contexte) -> Reponse:
                 pointe = registre.pointer(etat["employe"], action[8:])
                 from ..pointage_wifi import noter_pointage
 
-                noter_pointage(ctx.racine, ctx.config, etat["employe"], pointe.type, ctx.req.adresse)
+                if _sur_le_wifi(ctx):
+                    noter_pointage(ctx.racine, ctx.config, etat["employe"], pointe.type, ctx.req.adresse)
+                else:  # administrateur hors du magasin : pas de suivi du Wi-Fi pour cet appareil
+                    from ..pointage_wifi import oublier
+
+                    oublier(ctx.racine, etat["employe"])
             message = f"{par_id[etat['employe']].nom} : {pointe.type} à {pointe.quand:%H:%M} — merci !"
             etat = {}
         except pt.ErreurPointage as erreur:

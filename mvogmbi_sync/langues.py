@@ -2879,3 +2879,15 @@ for _fr, _en in {
     "{p} % des paniers n'ont qu'un article.": "{p}% of baskets have a single item.",
 }.items():
     EN.setdefault(_fr, _en)
+
+# facture Clover d'une commande (2026-11-08)
+for _fr, _en in {
+    "Facture Clover": "Clover invoice", "Facture Clover n° {n}": "Clover invoice no. {n}",
+    "Lecture de la commande dans Clover…": "Reading the order from Clover…",
+    "Lue dans Clover à l'instant (lecture seule).": "Read from Clover just now (read only).",
+    "Rabais de 50 % ou plus sur cette commande.": "Discount of 50% or more on this order.",
+    "Rabais de la commande": "Order discounts", "Prix unitaire": "Unit price", "Valeur": "Value",
+    "Taxes payées": "Taxes paid", "Montant payé": "Amount paid", "Total de la commande (Clover)": "Order total (Clover)",
+    "Résultat": "Result", "Saisie": "Entry", "Carte": "Card", "Appareil": "Device", "Commande": "Order",
+}.items():
+    EN.setdefault(_fr, _en)

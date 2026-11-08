@@ -17,10 +17,22 @@ TEXTE, TEXTE_DOUX, CARTE, BORDURE = "#1f2d24", "#5f6f66", "#ffffff", "#e2e8e4"
 POLICE = "font-family:'Segoe UI',Arial,sans-serif;font-size:12px"
 
 
-def _t(x, y, texte, ancre="start", couleur=TEXTE_DOUX, taille=12, gras=False, base="middle") -> str:
+def _t(x, y, texte, ancre="start", couleur=TEXTE_DOUX, taille=12, gras=False, base="middle", longueur=None) -> str:
     poids = ";font-weight:600" if gras else ""
-    return (f"<text x='{x:.1f}' y='{y:.1f}' text-anchor='{ancre}' dominant-baseline='{base}' fill='{couleur}' "
+    ajuste = f" textLength='{longueur:.1f}' lengthAdjust='spacingAndGlyphs'" if longueur else ""
+    return (f"<text x='{x:.1f}' y='{y:.1f}' text-anchor='{ancre}' dominant-baseline='{base}' fill='{couleur}'{ajuste} "
             f"style=\"font-family:'Segoe UI',Arial,sans-serif;font-size:{taille}px{poids}\">{escape(str(texte))}</text>")
+
+
+def texte_entier(texte: str, place: float, taille: int = 12) -> tuple[float, float | None]:
+    """Texte toujours entier (« les textes doivent être bien visibles ») : (taille de police, longueur imposée ou
+    None). La police baisse jusqu'à 10 px ; si le texte dépasse encore, il est resserré dans la place disponible."""
+    largeur = len(texte) * 6.8 * taille / 12
+    if largeur <= place:
+        return taille, None
+    taille = max(10.0, taille * place / largeur)
+    largeur = len(texte) * 6.8 * taille / 12
+    return taille, (place if largeur > place else None)
 
 
 def _ancre(code: str) -> tuple[str, str]:
@@ -67,9 +79,9 @@ class Graphique:
         self.elements.append(f"<rect x='{min(x0, x1):.1f}' y='{min(y0, y1):.1f}' width='{abs(x1 - x0):.1f}' "
                              f"height='{abs(y1 - y0):.1f}' fill='{couleur}' stroke='{contour}'>{titre}</rect>")
 
-    def texte(self, x, y, texte, ancre="", couleur=TEXTE, taille=12, gras=False) -> None:
+    def texte(self, x, y, texte, ancre="", couleur=TEXTE, taille=12, gras=False, longueur=None) -> None:
         h, v = _ancre(ancre) if ancre else ("middle", "middle")
-        self.elements.append(_t(x, y, texte, h, couleur, taille, gras, v))
+        self.elements.append(_t(x, y, texte, h, couleur, taille, gras, v, longueur))
 
     def ovale(self, x0, y0, x1, y1, couleur, contour=None, epaisseur=1) -> None:
         self.elements.append(f"<ellipse cx='{(x0 + x1) / 2:.1f}' cy='{(y0 + y1) / 2:.1f}' rx='{(x1 - x0) / 2:.1f}' "
@@ -177,12 +189,14 @@ class Graphique:
             maximum = max(float(v) for _, v in elements) or 1
             total = sum(float(v) for _, v in elements) or 1
             ligne = min(22, (hauteur - haut - 6) / len(elements))
-            debut_barre, fin_barre = largeur * gauche_max, largeur - 78
+            # colonne des noms élargie pour les noms longs (jusqu'à 58 % de la largeur)
+            plus_long = max(len(str(n)) for n, _ in elements) * 6.8 + 22
+            debut_barre = min(largeur * 0.58, max(largeur * gauche_max, plus_long))
+            fin_barre = largeur - 78
             for i, (nom, valeur) in enumerate(elements):
                 y = haut + i * ligne
-                place = max(8, int((debut_barre - 16) / 6.8))
-                texte = nom if len(nom) <= place else nom[:place - 1] + "…"
-                self.texte(10, y + ligne / 2, texte, "w", TEXTE)
+                taille, longueur = texte_entier(str(nom), debut_barre - 20)
+                self.texte(10, y + ligne / 2, nom, "w", TEXTE, taille, longueur=longueur)
                 x1 = debut_barre + (fin_barre - debut_barre) * max(float(valeur), 0) / maximum
                 valeur_txt = format_valeur(valeur) if format_valeur else str(valeur)
                 self.rect(debut_barre, y + 3, max(x1, debut_barre + 1), y + ligne - 3, couleur)
@@ -221,10 +235,9 @@ class Graphique:
             for i, (nom, v) in enumerate(parts):
                 y = 66 + i * ligne
                 self.rect(x, y - 5, x + 10, y + 5, PALETTE[i % len(PALETTE)])
-                pourcent = f" {100 * v / total:.0f} %"
-                place = max(4, int((largeur - x - 22) / 6.8) - len(pourcent))
-                texte = (nom if len(nom) <= place else nom[:place - 1] + "…") + pourcent
-                self.texte(x + 16, y, texte, "w", TEXTE)
+                texte = f"{nom} {100 * v / total:.0f} %"
+                taille, longueur = texte_entier(texte, largeur - x - 26)
+                self.texte(x + 16, y, texte, "w", TEXTE, taille, longueur=longueur)
 
         self._dessin = dessiner
         return self

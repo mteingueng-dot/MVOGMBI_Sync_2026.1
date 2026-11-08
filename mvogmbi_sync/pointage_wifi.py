@@ -172,6 +172,14 @@ def noter_pointage(racine, config: dict, employe: str, type_: str, ip: str) -> N
     _ecrire_suivi(racine, suivi)
 
 
+def oublier(racine, employe: str) -> None:
+    """Pointage fait hors du Wi-Fi du magasin (administrateur, règle du 2026-11-08) : l'appareil n'est pas suivi,
+    et un suivi précédent de l'employé s'arrête (jamais de pause automatique due à cet appareil)."""
+    suivi = lire_suivi(racine)
+    if suivi.pop(employe, None) is not None:
+        _ecrire_suivi(racine, suivi)
+
+
 def controler(racine, config: dict, maintenant=None, sur_wifi=None) -> list[str]:
     """Un tour de contrôle (chaque minute) : pause après N minutes de suite hors du Wi-Fi, fin de pause au retour.
     Rend ce qui a été fait (journal)."""

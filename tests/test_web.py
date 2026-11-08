@@ -148,6 +148,19 @@ def test_pointage_et_approbation(site, tmp_path):
     srv.app.config["web"]["postes_pointage"] = ["10.0.0."]
     _, page, _ = ouvrir(nav, base + "/pointage")
     assert "poste du magasin" in page
+    # règle du 2026-11-08 : la restriction ne vaut pas pour un administrateur, et son appareil n'est jamais suivi
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/pointage")
+    assert "Touchez votre nom" in page
+    _, page, _ = ouvrir(patron, base + f"/pointage?employe={awa.id}")
+    jeton = jeton_csrf(page)
+    ouvrir(patron, base + "/pointage", {"csrf": jeton, "nip": "1234", "action": "NIP"})
+    _, page, _ = ouvrir(patron, base + "/pointage", {"csrf": jeton, "action": "pointer:Début de pause"})
+    assert "Début de pause à" in page
+    from mvogmbi_sync import pointage_wifi as pw
+
+    assert awa.id not in pw.lire_suivi(tmp_path)
+    srv.app.config["web"]["postes_pointage"] = ["127.0.0.1"]
 
     # feuille d'une période passée : approuvée par le patron
     registre = pt.Registre(tmp_path)

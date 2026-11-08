@@ -42,6 +42,14 @@ def _arrondi_haut(valeur: float) -> float:
     return 40 * puissance
 
 
+def police_entiere(texte: str, place: float):
+    """Police d'un nom de légende ou de classement : réduite (jusqu'à 7 points) pour que le texte tienne en entier ;
+    au-delà, `create_text(width=)` le passe sur deux lignes (« les textes doivent être bien visibles »)."""
+    famille, taille = POLICE[0], POLICE[1]
+    largeur = len(texte) * 6.8 * taille / 9
+    return (famille, taille) if largeur <= place else (famille, max(7, int(taille * place / largeur)))
+
+
 class Graphique(tk.Canvas):
     """Canvas qui garde ses données et se redessine à la bonne taille."""
 
@@ -227,13 +235,14 @@ class Graphique(tk.Canvas):
                 return
             maximum = max(float(v) for _, v in elements) or 1
             ligne = min(22, (hauteur - haut - 6) / len(elements))
-            debut_barre = largeur * gauche_max
+            # colonne des noms élargie pour les noms longs (jusqu'à 58 % de la largeur), jamais de nom coupé
+            plus_long = max(len(str(n)) for n, _ in elements) * 6.8 + 22
+            debut_barre = min(largeur * 0.58, max(largeur * gauche_max, plus_long))
             fin_barre = largeur - 78
             for i, (nom, valeur) in enumerate(elements):
                 y = haut + i * ligne
-                place = max(8, int((debut_barre - 16) / 6.8))  # caractères qui tiennent avant la barre
-                texte = nom if len(nom) <= place else nom[:place - 1] + "…"
-                self.create_text(10, y + ligne / 2, text=texte, anchor="w", font=POLICE, fill=TEXTE)
+                self.create_text(10, y + ligne / 2, text=nom, anchor="w", fill=TEXTE,
+                                 font=police_entiere(str(nom), debut_barre - 20), width=debut_barre - 16)
                 x1 = debut_barre + (fin_barre - debut_barre) * max(float(valeur), 0) / maximum
                 self.create_rectangle(debut_barre, y + 3, max(x1, debut_barre + 1), y + ligne - 3, fill=couleur,
                                       outline="")
@@ -287,9 +296,9 @@ class Graphique(tk.Canvas):
                 y = 66 + i * ligne
                 self.create_rectangle(x, y - 5, x + 10, y + 5, fill=PALETTE[i % len(PALETTE)], outline="")
                 pourcent = f" {100 * v / total:.0f} %"
-                place = max(4, int((largeur - x - 22) / 6.8) - len(pourcent))  # nom raccourci, puis la part
-                texte = (nom if len(nom) <= place else nom[:place - 1] + "…") + pourcent
-                self.create_text(x + 16, y, text=texte, anchor="w", font=POLICE, fill=TEXTE)
+                texte = f"{nom}{pourcent}"  # nom entier : police réduite, puis sur deux lignes
+                self.create_text(x + 16, y, text=texte, anchor="w", fill=TEXTE,
+                                 font=police_entiere(texte, largeur - x - 26), width=max(60, largeur - x - 22))
 
         self._dessin = dessiner
         self.redessiner()

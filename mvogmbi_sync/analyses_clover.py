@@ -521,8 +521,10 @@ def anomalies(c, avant, ctx) -> RapportGestion:
             if l.quantite_vendue > 0 and l.ventes_brutes > 0:
                 prix[l.nom].append(float(l.ventes_brutes / l.quantite_vendue))
     prix_median = {k: _quantile(v, 0.5) for k, v in prix.items() if len(v) >= 5}
+    ids = {}  # (date et heure, n°) -> identifiant Clover : un clic sur le n° ouvre la vraie facture
     for x in c:
         quand = f"{x.moment:%Y-%m-%d %H:%M}"
+        ids[(quand, x.numero)] = x.id
         brut = sum((l.ventes_brutes for l in x.lignes), ZERO)
         rabais = -sum((l.rabais for l in x.lignes), ZERO)
         if len(c) >= 20 and float(x.nettes) > seuil > 0:
@@ -544,6 +546,7 @@ def anomalies(c, avant, ctx) -> RapportGestion:
                                    _d(pu - m), None])
     lignes.sort(key=lambda l: l[1], reverse=True)
     r = RapportGestion()
+    r.ids_commandes = [ids.get((l[1], l[2]), "") for l in lignes]
     r.entetes = ["Type", "Date", "Commande ou jour", "Détail", "Montant", "Attendu", "Écart", "Écart-type (z)"]
     r.lignes = lignes
     compte = defaultdict(int)

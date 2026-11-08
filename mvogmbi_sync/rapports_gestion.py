@@ -41,6 +41,8 @@ class RapportGestion:
     # {genre « barres » « courbes » « anneau » « classement », titre, unite « $ » « % » « », etiquettes, series
     # [(nom, valeurs)], elements [(nom, valeur)]}
     graphiques: list[dict] = field(default_factory=list)
+    # identifiant Clover de la commande de chaque ligne du tableau ("" = pas de commande) : un clic ouvre la facture
+    ids_commandes: list[str] = field(default_factory=list)
 
 
 def _d(v) -> Decimal:

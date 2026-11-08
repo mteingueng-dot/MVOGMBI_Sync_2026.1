@@ -800,6 +800,10 @@ class PageRapports(ttk.Frame):
                                       background=fond_de(cadre), anchor="w")
         self.titre_tableau.pack(fill="x", pady=(8, 0))
         self.tableau_stats = tableau_simple(self.page_tableau)
+        # n° de commande (Commandes, Transactions, Remboursements) : double-clic = vraie facture Clover
+        self._ids_stats: list[str] = []
+        self.tableau_stats.bind("<Double-1>", lambda _e: self._facture_de_l_etat())
+        self.tableau_stats.bind("<Return>", lambda _e: self._facture_de_l_etat())
         self.tableau_stats.tag_configure("a_commander", background=COULEURS_PEREMPTION["rouge"])
         placer_a_droite(bouton_exporter(ligne, self.tableau_stats, t("Statistiques Clover")))
         self.donnees_prev = None
@@ -882,6 +886,10 @@ class PageRapports(ttk.Frame):
         tk.Label(corps_g, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 10), foreground=TEXTE,
                  background=fond_de(cadre), anchor="w").pack(fill="x", pady=(8, 0))
         self.tableau_gestion = tableau_simple(corps_g, 10)
+        # anomalies : double-clic (ou Entrée) sur une commande = sa vraie facture Clover, pour vérification
+        self._ids_gestion: list[str] = []
+        self.tableau_gestion.bind("<Double-1>", lambda _e: self._ouvrir_facture_clover())
+        self.tableau_gestion.bind("<Return>", lambda _e: self._ouvrir_facture_clover())
         placer_a_droite(bouton_exporter(ligne_g, self.tableau_gestion,
                                         lambda: self.titre_gestion.cget("text") or t("Gestion")))
         self._calcul_gestion = 0
@@ -1348,6 +1356,28 @@ class PageRapports(ttk.Frame):
 
         threading.Thread(target=travail, daemon=True).start()
 
+    def _facture_de_l_etat(self) -> None:
+        """Vraie facture Clover de la commande choisie dans Commandes, Transactions ou Remboursements."""
+        from .fenetre_facture_clover import FenetreFactureClover
+
+        choix = self.tableau_stats.selection()
+        if not choix or not self._ids_stats:
+            return
+        rang = int(choix[0])
+        if rang < len(self._ids_stats) and self._ids_stats[rang]:
+            FenetreFactureClover(self, self.racine, self._ids_stats[rang], self._points_choisis())
+
+    def _ouvrir_facture_clover(self) -> None:
+        """Vraie facture Clover de la commande choisie (anomalies), relue dans Clover."""
+        from .fenetre_facture_clover import FenetreFactureClover
+
+        choix = self.tableau_gestion.selection()
+        if not choix or not self._ids_gestion:
+            return
+        rang = int(choix[0])
+        if rang < len(self._ids_gestion) and self._ids_gestion[rang]:
+            FenetreFactureClover(self, self.racine, self._ids_gestion[rang], self._points_choisis())
+
     def _remplir_gestion(self, r) -> None:
         from .graphiques import BLEU, BLEU_PALE, PALETTE
 
@@ -1423,8 +1453,11 @@ class PageRapports(ttk.Frame):
             g = Graphique(self.graphiques_sup, 200)
             g.grid(row=k // 2, column=k % 2, sticky="nsew", padx=(0, 4) if k % 2 == 0 else (4, 0), pady=(8, 0))
             dessiner_graphe(g, d, vide)
-        remplir(self.tableau_gestion, r.entetes, [[t(x) if isinstance(x, str) and x in TEXTES_GESTION else x
-                                                   for x in l] for l in r.lignes])
+        self._ids_gestion = list(getattr(r, "ids_commandes", []) or [])
+        remplir(self.tableau_gestion, r.entetes, [[(("🧾 " + x) if j == 2 and i < len(self._ids_gestion)
+                                                    and self._ids_gestion[i] else
+                                                    t(x) if isinstance(x, str) and x in TEXTES_GESTION else x)
+                                                   for j, x in enumerate(l)] for i, l in enumerate(r.lignes)])
         colonnes = self.tableau_gestion["columns"]
         if colonnes and not any(self.tableau_gestion.column(c, "stretch") for c in colonnes):
             for c in colonnes:  # aucune colonne de texte extensible : toutes s'élargissent (pas de vide à droite)
@@ -1515,6 +1548,15 @@ class PageRapports(ttk.Frame):
         if texte:
             lignes = [l for l in lignes if any(texte in str(v).casefold() for v in l)]
         lignes = [[t(x) if isinstance(x, str) and nom == "Résumé" else x for x in l] for l in lignes]
+        self._ids_stats = []
+        from .statistiques_clover import COLONNES_COMMANDE, id_commande
+
+        brut = getattr(self, "brut_stats", None) or {}
+        if nom in COLONNES_COMMANDE and source is self.vues_stats and brut.get("donnees") is not None:
+            col_date, col_num = COLONNES_COMMANDE[nom]
+            self._ids_stats = [id_commande(brut["donnees"], l[col_date], l[col_num]) for l in lignes]
+            lignes = [[("🧾 " + str(x)) if j == col_num and self._ids_stats[i] else x for j, x in enumerate(l)]
+                      for i, l in enumerate(lignes)]
         libelle = next((l for _, _, etats in NAVIGATION for l, c in etats if c == nom), nom)
         self.titre_tableau.configure(text=t("Tableau : {etat} — {n} ligne(s)", etat=t(libelle), n=len(lignes)))
         remplir(self.tableau_stats, entetes, lignes, decroissant=nom not in PREVISIONS, largeurs={

@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.22"
+VERSION = "1.0.23"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -676,7 +676,9 @@ FAQ = {
                     "magasin (et à Tailscale). Le réseau du téléphone est lu dans Tailscale et comparé aux adresses du "
                     "Wi-Fi du magasin (« Administration > Automatisation > Wi-Fi du magasin »). Si vous avez pointé "
                     "depuis votre téléphone et qu'il quitte le Wi-Fi 5 minutes de suite, vous êtes mis en pause (à "
-                    "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi."),
+                    "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi. Un administrateur "
+                    "peut ouvrir le pointage de partout ; son appareil n'est alors jamais suivi pour la pause "
+                    "automatique."),
         ("sous_titre", "Nouveautés de la version 1.0.22 (8 novembre 2026) : analyses décisionnelles"),
         ("question", "Quelles analyses décisionnelles (BI) contiennent les statistiques Clover ?"),
         ("reponse", "Treize analyses rangées dans les rubriques existantes des statistiques, sans répéter les états "
@@ -693,6 +695,11 @@ FAQ = {
                     "rassemble les décisions proposées, de la plus urgente à la moins urgente, avec la raison et "
                     "l'endroit où vérifier ; le tableau des décisions s'exporte pour une réunion. Sur le téléphone, le "
                     "menu des états devient une ligne d'onglets qui défile et le rapport s'affiche sur une colonne."),
+        ("question", "Comment vérifier une commande Clover ?"),
+        ("reponse", "Partout où un n° de commande apparaît (🧾) dans les statistiques Clover — anomalies, Commandes, "
+                    "Transactions, Remboursements — un clic sur le n° (web, nouvel onglet) ou un double-clic sur la "
+                    "ligne (Windows) ouvre la vraie facture, relue dans Clover à l'instant : articles, rabais, "
+                    "paiements, remboursements et totaux."),
         ("question", "Comment lire la matrice des articles ?"),
         ("reponse", "Vedette : très vendu et rentable (garder en stock, mettre en avant). Locomotive : très vendu mais "
                     "peu rentable (revoir le prix ou le coût d'achat). Énigme : rentable mais peu vendu (mieux exposer). "
@@ -1394,7 +1401,8 @@ FAQ = {
                     "(and to Tailscale). The phone's network is read in Tailscale and compared with the store Wi-Fi "
                     "addresses (“Administration > Automation > Store Wi-Fi”). If you clocked in from your phone and it "
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
-                    "ends when it is back on the Wi-Fi."),
+                    "ends when it is back on the Wi-Fi. An administrator can open clock-in from anywhere; their "
+                    "device is then never followed for the automatic break."),
         ("sous_titre", "What's new in version 1.0.22 (November 8, 2026): business intelligence analyses"),
         ("question", "Which business intelligence (BI) analyses do the Clover statistics include?"),
         ("reponse", "Thirteen analyses placed in the existing sections of the statistics, without repeating existing "
@@ -1410,6 +1418,10 @@ FAQ = {
                     "from most to least urgent, with the reason and where to check; the decisions table can be "
                     "exported for a meeting. On the phone, the report menu becomes a scrolling row of tabs and the "
                     "report shows in one column."),
+        ("question", "How do I check a Clover order?"),
+        ("reponse", "Wherever an order number appears (🧾) in the Clover statistics — anomalies, Orders, Transactions, "
+                    "Refunds — clicking the number (web, new tab) or double-clicking the row (Windows) opens the real "
+                    "invoice, read from Clover just now: items, discounts, payments, refunds and totals."),
         ("question", "How do I read the item matrix?"),
         ("reponse", "Star: sells a lot and profitable (keep in stock, feature it). Plowhorse: sells a lot but low "
                     "margin (review price or purchase cost). Puzzle: profitable but slow (display it better). Dog: slow "

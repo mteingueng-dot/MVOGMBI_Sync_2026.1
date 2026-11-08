@@ -329,6 +329,8 @@ Lecture seule de Clover, jour par jour ; une vente est datée de son premier pai
   - *Clients > Segmentation RFM* : récence, fréquence, montant de 1 à 5 (égalités = même note), 8 segments et action suggérée ;
   - *Clients > Fidélité et rétention* : clients retenus, nouveaux, perdus, taux de rétention, jours entre deux achats ;
   - *Clients > Cohortes de clients* : clients identifiés groupés par mois du premier achat (période et comparaison), part qui revient 1, 2, 3… mois plus tard.
+- **Facture Clover** (version 1.0.23) : partout où un n° de commande apparaît (🧾 : anomalies, Commandes, Transactions, Remboursements), un clic (web, nouvel onglet) ou un double-clic (Windows) ouvre la vraie facture relue dans Clover (lecture seule : en-tête, articles, rabais, paiements, remboursements, totaux ; un login limité ne voit que ses commandes).
+- Noms jamais coupés dans les classements et les légendes : colonne élargie, police réduite, texte ajusté (web) ou sur deux lignes (Windows).
 - « 📕 PDF de la page » : graphiques et tableau complet, période et filtres en sous-titre.
 
 ### 3.12 Exports et impressions
