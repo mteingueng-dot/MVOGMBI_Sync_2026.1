@@ -92,10 +92,7 @@ STYLE = """
         --gris: #6b7a70; --fond: #fafafa; --carte: #ffffff; --bord: #e2e8e4;
         --menu: #eef4f0; --menu-survol: #e2ede6; --menu-actif: #d3eadb; --vert-vif: #1a9b3c;
         --fond-page: #f3f5f4; }
-@media (prefers-color-scheme: dark) {
-  :root { --vert: #4cc26d; --vert-pale: #1d3325; --texte: #e6efe8; --gris: #9fb0a5; --fond: #121814;
-          --carte: #1a221d; --bord: #2c3a31; --menu: #17201a; --menu-survol: #1f2b23; --menu-actif: #24402d; --fond-page: #121814; }
-}
+:root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond);
        color: var(--texte); font-size: 16px; line-height: 1.4; }
@@ -116,7 +113,7 @@ h2 { font-size: 17px; margin: 22px 0 8px; }
 .defile { overflow-x: auto; background: var(--carte); border: 1px solid var(--bord); border-radius: 12px; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th { background: var(--vert); color: #fff; text-align: left; padding: 8px; white-space: nowrap; }
-td { padding: 7px 8px; border-top: 1px solid var(--bord); vertical-align: top; }
+td { padding: 7px 8px; border-top: 1px solid var(--bord); vertical-align: top; white-space: nowrap; }
 tr:nth-child(even) td { background: var(--vert-pale); }
 td.n, th.n { text-align: right; white-space: nowrap; }
 progress { width: 100%; min-width: 80px; height: 12px; accent-color: var(--vert); }
@@ -171,7 +168,7 @@ def _expiration(ctx: Contexte | None, corps: str) -> str:
 def _document(titre: str, corps: str, ctx: Contexte | None = None, menu: str = "") -> str:
     contenu = f"<div class='cadre'>{menu}<main>{corps}</main></div>" if menu else f"<main>{corps}</main>"
     return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'>{_expiration(ctx, corps)}"
-            f"<meta name='viewport' content='width=device-width, initial-scale=1'>"
+            f"<meta name='viewport' content='width=device-width, initial-scale=1'><meta name='color-scheme' content='light'>"
             f"<meta name='robots' content='noindex'><title>{e(titre)} · {NOM_APPLICATION}</title>"
             f"<link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'></head><body>{_entete(ctx)}{contenu}</body></html>")
 
@@ -246,7 +243,7 @@ def _page_windows(ctx) -> bool:
 def page_poste(ctx: Contexte, corps: str) -> str:
     """Poste de pointage (fenetre_pointage.PostePointage) : fenêtre à part, sans bandeau ni menu, avec « ✖ Fermer »."""
     return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'><meta name='viewport' "
-            f"content='width=device-width, initial-scale=1'><meta name='robots' content='noindex'><title>Pointage des "
+            f"content='width=device-width, initial-scale=1'><meta name='color-scheme' content='light'><meta name='robots' content='noindex'><title>Pointage des "
             f"employés · {NOM_APPLICATION}</title><link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'></head><body "
             f"class='poste-seul'><main><div class='entete-outil'><span></span><a class='fermer' href='/'>✖ Fermer</a>"
             f"</div>{corps}</main></body></html>")

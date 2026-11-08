@@ -388,10 +388,29 @@ def _peremption(ctx: Contexte, q: dict) -> str:
             f"{rangees}</table></div><p class='note'>{len(lignes)} article(s) sur {len(articles)}.</p>")
 
 
-def _gestion(ctx: Contexte, cle: str, b: dict | None, du: date, au: date) -> str:
+def _analyse(b: dict, cle: str, filtres: dict):
+    """Analyse décisionnelle (analyses_clover) : comme PageRapports._afficher_analyse, gardée par filtres."""
+    from .. import statistiques_clover as sc
+    from ..analyses_clover import calculer
+
+    memoire = b.setdefault("_analyses", {})
+    cle_m = (cle, tuple(sorted(filtres.items())))
+    if cle_m not in memoire:
+        donnees, autres = ((sc.filtrer(b["donnees"], filtres), sc.filtrer(b["autres"], filtres)) if filtres
+                           else (b["donnees"], b["autres"]))
+        memoire[cle_m] = calculer(cle, donnees, autres, b["couts"], b["du"], b["au"], b["du2"], b["au2"])
+    return memoire[cle_m]
+
+
+def _gestion(ctx: Contexte, cle: str, b: dict | None, du: date, au: date, filtres: dict | None = None) -> str:
+    from ..analyses_clover import ANALYSES, CLES as CLES_ANALYSES
     from ..rapports_gestion import ETATS, calculer
 
-    libelle = next((l for l, c, _f in ETATS if c == cle), cle)
+    libelle = next((l for l, c, *_r in ETATS + ANALYSES if c == cle), cle)
+    if cle in CLES_ANALYSES:
+        if not b:
+            return f"<h2 class='titre-etat'>{e(libelle)}</h2><p class='erreur'>Clover ne répond pas pour l'instant.</p>"
+        return _rendu_rapport(libelle, _analyse(b, cle, filtres or {}))
     contexte = {"ventes_par_jour": {}, "donnees": None, "config": ctx.config}
     if ctx.req.query.get("Point de vente", ""):
         contexte["points_vente"] = _points(ctx)  # filtre « Point de vente » = ses dépôts
@@ -402,28 +421,75 @@ def _gestion(ctx: Contexte, cle: str, b: dict | None, du: date, au: date) -> str
                 contexte["ventes_par_jour"][date.fromisoformat(str(l[0])[:10])] = Decimal(str(l[3]))
             except (ValueError, IndexError, ArithmeticError):
                 pass
-    r = calculer(cle, ctx.racine, du, au, contexte)
+    return _rendu_rapport(libelle, calculer(cle, ctx.racine, du, au, contexte))
+
+
+def _rendu_rapport(libelle: str, r) -> str:
+    """Rapport de gestion ou analyse : cartes, évolution, répartition, constats, tableau (comme _remplir_gestion)."""
+    from ..analyses_clover import etat_carte, niveau_constat
+
     cartes = ""
-    for titre, genre, valeur in r.cartes:
+    for titre, genre, valeur in r.cartes:  # feu de couleur comme les cartes de Windows
         texte = (montant(valeur) if genre == "$" else f"{valeur} %".replace(".", ",") if genre == "%"
-                 else f"{valeur} h".replace(".", ",") if genre == "h" else str(valeur))
-        cartes += f"<div class='kpi'><div class='t'>{e(titre)}</div><div class='v benefice grand'>{e(texte)}</div></div>"
+                 else f"{valeur} h".replace(".", ",") if genre == "h"
+                 else str(valeur).replace(".", ",") if genre == "n" else str(valeur))
+        etat = etat_carte(titre, valeur)
+        if titre in ("Variation", "Écart") and etat in ("bon", "alerte"):
+            texte = ("▲ " if etat == "bon" else "▼ ") + texte
+        classe = "v texte" if genre == "t" else "v benefice grand"
+        cartes += (f"<div class='kpi{' etat-' + etat if etat else ''}'><div class='t'>{e(titre)}</div>"
+                   f"<div class='{classe}'>{e(texte)}</div></div>")
+    lignes_note = (r.note or "").splitlines()
+    if any(l[:1] in "✔⚠✖ℹ" for l in lignes_note):  # constats des analyses : un bandeau coloré chacun
+        icones = {"alerte": "✖", "attention": "⚠", "bon": "✔", "info": "ℹ"}
+        note = "<div class='constats'>" + "".join(
+            f"<div class='constat {n}'><span class='i'>{icones[n]}</span>{e(texte)}</div>"
+            for n, texte in (niveau_constat(l) for l in lignes_note)) + "</div>"
+    else:
+        note = f"<p class='note'>{'<br>'.join(e(x) for x in lignes_note)}</p>" if r.note else ""
     vide = "Aucune donnée pour la période"
     couleurs = [BLEU, "#f6b81a", *PALETTE]
-    evolution = Graphique(550, 200, r.titre_evolution)
-    if len(r.etiquettes) <= 1:
+    evolution = Graphique(480, 210, r.titre_evolution)
+    evolution.unite = r.unite_evolution
+    if len(r.etiquettes) <= 1 or r.genre_evolution == "barres":
         evolution.barres(r.etiquettes, [(n, v, couleurs[k]) for k, (n, v) in enumerate(r.series)], vide)
     else:
         evolution.courbes(r.etiquettes, [(n, v, couleurs[k], k > 0) for k, (n, v) in enumerate(r.series)], vide)
     format_ = montant if r.argent_repartition else (lambda v: f"{v:.0f}" if v == int(v) else f"{v:.1f}")
-    repartition = Graphique(550, 200, r.titre_repartition)
+    repartition = Graphique(480, 210, r.titre_repartition)
     if r.genre_repartition == "anneau":
         repartition.anneau(r.repartition, vide, format_valeur=format_)
     else:
         repartition.classement(r.repartition, vide=vide, format_valeur=format_, couleur=BLEU_PALE)
-    return (f"<h2 class='titre-etat'>{e(libelle)}</h2>" + (f"<p class='note'>{e(r.note)}</p>" if r.note else "")
-            + f"<div class='kpis ligne-kpi'>{cartes}</div><div class='grille2'>{_graph(evolution)}{_graph(repartition)}"
-            "</div>" + tableau_section(Section("Rapport détaillé", r.entetes, r.lignes)))
+    sup = ""
+    for d in getattr(r, "graphiques", []) or []:  # graphiques de plus (analyses décisionnelles), deux par rangée
+        sup += _graph(_graphe_sup(d, vide))
+    if sup:
+        sup = f"<div class='grille2'>{sup}</div>"
+    # les chiffres d'abord, puis les constats (comme Windows)
+    return (f"<h2 class='titre-etat'>{e(libelle)}</h2>" + f"<div class='kpis ligne-kpi'>{cartes}</div>" + note
+            + f"<div class='grille2'>{_graph(evolution)}{_graph(repartition)}"
+            "</div>" + sup + tableau_section(Section("Rapport détaillé", r.entetes, r.lignes)))
+
+
+def _graphe_sup(d: dict, vide: str) -> Graphique:
+    """Comme page_rapports.dessiner_graphe : graphique de plus d'une analyse."""
+    g = Graphique(480, 210, d["titre"])
+    g.unite = unite = d.get("unite", "$")
+    format_ = (montant if unite == "$" else (lambda v: f"{v} %".replace(".", ",")) if unite == "%"
+               else (lambda v: f"{v:.0f}" if v == int(v) else f"{v:.2f}".replace(".", ",")))
+    couleurs = [BLEU, "#f6b81a", *PALETTE]
+    elements = [(str(n), v) for n, v in d.get("elements", [])]
+    series = d.get("series", [])
+    if d["genre"] == "anneau":
+        g.anneau(elements, vide, format_valeur=format_)
+    elif d["genre"] == "classement":
+        g.classement(elements, vide=vide, format_valeur=format_, couleur=BLEU_PALE)
+    elif d["genre"] == "courbes" and len(d.get("etiquettes", [])) > 1:
+        g.courbes(d["etiquettes"], [(n, v, couleurs[k], k > 0) for k, (n, v) in enumerate(series)], vide)
+    else:
+        g.barres(d.get("etiquettes", []), [(n, v, couleurs[k]) for k, (n, v) in enumerate(series)], vide)
+    return g
 
 
 # --------------------------------------------------------------------------------------------- page
@@ -447,6 +513,7 @@ def _navigation(q: dict, vue: str, section: str, limite: bool) -> str:
 
 def statistiques(ctx: Contexte) -> Reponse:
     from .. import statistiques_clover as sc
+    from ..analyses_clover import CLES as CLES_ANALYSES
     from ..rapports_gestion import CLES as CLES_GESTION
 
     q = {k: v for k, v in ctx.req.query.items() if v != ""}
@@ -519,6 +586,8 @@ def statistiques(ctx: Contexte) -> Reponse:
     try:
         if vue in CLES_GESTION and not limite:
             contenu = _gestion(ctx, vue, b, du, au)
+        elif vue in CLES_ANALYSES:
+            contenu = _gestion(ctx, vue, b, du, au, filtres)
         elif vue == "peremption":
             contenu = _peremption(ctx, q)
         elif r is None:
@@ -656,8 +725,28 @@ tr.total td { font-weight: 600; background: #e8f3ea !important; }
 .pe-rouge, tr.pe-rouge td { background: #f8c9cf !important; } .pe-orange, tr.pe-orange td { background: #ffe3a8 !important; }
 .pe-neutre, tr.pe-neutre td { background: #eef1ef !important; }
 .legende-pe span { display: inline-block; width: 18px; border: 1px solid #999; margin-left: 10px; }
+/* analyses décisionnelles : cartes à feu de couleur et constats en bandeaux colorés */
+.kpi.etat-bon { border-top: 4px solid #1b7f3b; } .kpi.etat-bon .v { color: #1b7f3b; }
+.kpi.etat-attention { border-top: 4px solid #e0a100; } .kpi.etat-attention .v { color: #b77f00; }
+.kpi.etat-alerte { border-top: 4px solid #d7263d; } .kpi.etat-alerte .v { color: #d7263d; }
+.kpis.ligne-kpi .kpi { border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 8px 10px; }
+.constats { margin: 8px 0; display: grid; gap: 4px; }
+.constat { padding: 6px 10px 6px 8px; border-left: 5px solid #8a9690; background: #eef1ef; border-radius: 4px;
+  font-size: 13px; line-height: 1.35; }
+.constat .i { font-weight: 700; margin-right: 8px; }
+.constat.alerte { border-color: #d7263d; background: #fde2e4; } .constat.alerte .i { color: #d7263d; }
+.constat.attention { border-color: #e0a100; background: #fff4d6; } .constat.attention .i { color: #b77f00; }
+.constat.bon { border-color: #1b7f3b; background: #e6f4ea; } .constat.bon .i { color: #1b7f3b; }
+.carte-graph { border-radius: 8px; }
 @media (max-width: 820px) {
   .corps-stats { display: block; } nav.nav-stats { width: auto; margin-bottom: 8px; }
+  /* téléphone : le menu des états devient une ligne d'onglets qui défile, le rapport vient tout de suite */
+  nav.nav-stats { display: flex; overflow-x: auto; white-space: nowrap; gap: 4px; padding: 4px;
+    -webkit-overflow-scrolling: touch; }
+  nav.nav-stats a { flex: none; border: 1px solid var(--bord); background: var(--carte); padding: 6px 10px !important; }
+  nav.nav-stats a.nav-section.ouverte { background: var(--menu-actif); }
+  .kpis.ligne-kpi { grid-template-columns: 1fr 1fr; } .kpi .v.grand { font-size: 18px; }
+  .constat { font-size: 14px; }
   .cartes-stats, .kpis { grid-template-columns: 1fr 1fr; } .grille2, .grille3 { grid-template-columns: 1fr; }
 }
 """

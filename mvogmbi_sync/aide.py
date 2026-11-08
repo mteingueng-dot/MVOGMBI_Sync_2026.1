@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.20"
+VERSION = "1.0.22"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -677,6 +677,41 @@ FAQ = {
                     "Wi-Fi du magasin (« Administration > Automatisation > Wi-Fi du magasin »). Si vous avez pointé "
                     "depuis votre téléphone et qu'il quitte le Wi-Fi 5 minutes de suite, vous êtes mis en pause (à "
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi."),
+        ("sous_titre", "Nouveautés de la version 1.0.22 (8 novembre 2026) : analyses décisionnelles"),
+        ("question", "Quelles analyses décisionnelles (BI) contiennent les statistiques Clover ?"),
+        ("reponse", "Treize analyses rangées dans les rubriques existantes des statistiques, sans répéter les états "
+                    "déjà en place : Accueil > Synthèse et décisions (cartes à feux de couleur, décisions à prendre par priorité, points positifs) ; Activités de "
+                    "vente > Anomalies et alertes ; Rapports > Tendance et saisonnalité, Analyse de la variation, "
+                    "Analyse des paniers, Concentration des ventes ; Articles > Matrice des articles, Articles achetés "
+                    "ensemble, Prix et sensibilité au prix ; Employés > Performance des employés ; Clients > "
+                    "Segmentation RFM, Fidélité et rétention, Cohortes de clients. Chacune a ses cartes, deux graphiques, des constats "
+                    "écrits en clair et un tableau exportable ; elle suit la période et les filtres choisis, sans "
+                    "relire Clover."),
+        ("question", "Que veulent dire les couleurs des analyses ?"),
+        ("reponse", "Rouge : à agir ; orange : à surveiller ; vert : bon ; gris : information. Les cartes chiffrées ont "
+                    "le même feu (par exemple une variation en baisse en rouge). « Synthèse et décisions » (Accueil) "
+                    "rassemble les décisions proposées, de la plus urgente à la moins urgente, avec la raison et "
+                    "l'endroit où vérifier ; le tableau des décisions s'exporte pour une réunion. Sur le téléphone, le "
+                    "menu des états devient une ligne d'onglets qui défile et le rapport s'affiche sur une colonne."),
+        ("question", "Comment lire la matrice des articles ?"),
+        ("reponse", "Vedette : très vendu et rentable (garder en stock, mettre en avant). Locomotive : très vendu mais "
+                    "peu rentable (revoir le prix ou le coût d'achat). Énigme : rentable mais peu vendu (mieux exposer). "
+                    "Poids mort : peu vendu et peu rentable (réduire ou retirer). La rentabilité vient du CUMP de Sage "
+                    "(article relié). La lettre X, Y ou Z dit si la demande est régulière, variable ou irrégulière, "
+                    "mesurée semaine par semaine dès 4 semaines : un article AX se réassortit automatiquement."),
+        ("question", "Comment lire « Prix et sensibilité au prix » ?"),
+        ("reponse", "L'application repère dans les ventes chaque changement de prix durable (3 % ou plus) et compare "
+                    "les quantités vendues par jour d'ouverture avant et après, sur le même nombre de jours (28 au "
+                    "plus). L'élasticité dit de combien les quantités bougent pour 1 % de prix : −2 veut dire qu'une "
+                    "hausse de 10 % fait perdre environ 20 % des quantités. Une rupture de stock, la saison ou une "
+                    "promotion peuvent aussi jouer : c'est une indication, pas une certitude."),
+        ("question", "Que veut dire le lift dans « Articles achetés ensemble » ?"),
+        ("reponse", "Combien de fois plus souvent deux articles sont achetés ensemble que par hasard : un lift de 3 "
+                    "veut dire 3 fois plus souvent. Avec la confiance (part des clients qui prennent A et prennent "
+                    "aussi B), il aide à placer les articles côte à côte ou à faire des offres groupées."),
+        ("question", "Pourquoi la segmentation RFM porte-t-elle sur peu de clients ?"),
+        ("reponse", "Seules les ventes où le client est choisi à la caisse sont rattachées à un client. Choisissez une "
+                    "longue période (6 à 12 mois) et demandez le client à la caisse pour une segmentation plus utile."),
         ("sous_titre", "Nouveautés des versions 1.0.8 à 1.0.20 (6 et 7 novembre 2026)"),
         ("question", "Un encaissement échoue : les autres dépôts sont-ils saisis ?"),
         ("reponse", "Oui (version 1.0.19). Le dépôt en échec est noté « NON encaissé » avec la raison, les questions "
@@ -1360,6 +1395,40 @@ FAQ = {
                     "addresses (“Administration > Automation > Store Wi-Fi”). If you clocked in from your phone and it "
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi."),
+        ("sous_titre", "What's new in version 1.0.22 (November 8, 2026): business intelligence analyses"),
+        ("question", "Which business intelligence (BI) analyses do the Clover statistics include?"),
+        ("reponse", "Thirteen analyses placed in the existing sections of the statistics, without repeating existing "
+                    "reports: Home > Summary and decisions (traffic-light cards, decisions to make by priority, positive points); Sales activity > Anomalies and "
+                    "alerts; Reports > Trend and seasonality, Variance analysis, Basket analysis, Sales concentration; "
+                    "Items > Item matrix, Items bought together, Prices and price sensitivity; Employees > Employee "
+                    "performance; Customers > RFM segmentation, Loyalty and retention, Customer cohorts. Each has "
+                    "its cards, two charts, plain-language findings and an exportable table; it follows the chosen "
+                    "period and filters without reading Clover again."),
+        ("question", "What do the colors of the analyses mean?"),
+        ("reponse", "Red: act; orange: watch; green: good; grey: information. Figure cards have the same traffic light "
+                    "(for example a decrease in red). “Summary and decisions” (Home) gathers the proposed decisions, "
+                    "from most to least urgent, with the reason and where to check; the decisions table can be "
+                    "exported for a meeting. On the phone, the report menu becomes a scrolling row of tabs and the "
+                    "report shows in one column."),
+        ("question", "How do I read the item matrix?"),
+        ("reponse", "Star: sells a lot and profitable (keep in stock, feature it). Plowhorse: sells a lot but low "
+                    "margin (review price or purchase cost). Puzzle: profitable but slow (display it better). Dog: slow "
+                    "and low margin (reduce or remove). Profitability comes from the Sage average cost (linked item). "
+                    "The letter X, Y or Z tells whether demand is steady, variable or irregular, measured week by week "
+                    "from 4 weeks: an AX item can be restocked automatically."),
+        ("question", "How do I read “Prices and price sensitivity”?"),
+        ("reponse", "The application finds every lasting price change (3% or more) in the sales and compares the "
+                    "quantities sold per open day before and after, over the same number of days (28 at most). "
+                    "Elasticity tells how much quantities move for 1% of price: −2 means a 10% increase loses about 20% "
+                    "of the quantities. A stock-out, the season or a promotion can also play a part: it is an "
+                    "indication, not a certainty."),
+        ("question", "What does lift mean in “Items bought together”?"),
+        ("reponse", "How many times more often two items are bought together than by chance: a lift of 3 means 3 "
+                    "times more often. With confidence (share of customers who take A and also take B), it helps "
+                    "place items side by side or build bundles."),
+        ("question", "Why does the RFM segmentation cover few customers?"),
+        ("reponse", "Only sales where the customer is selected at checkout are linked to a customer. Choose a long "
+                    "period (6 to 12 months) and ask for the customer at checkout for a more useful segmentation."),
         ("sous_titre", "What's new in versions 1.0.8 to 1.0.20 (November 6 and 7, 2026)"),
         ("question", "A receipt fails: are the other deposits entered?"),
         ("reponse", "Yes (version 1.0.19). The failed deposit is marked “NOT received” with the reason, questions left "

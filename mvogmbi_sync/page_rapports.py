@@ -50,6 +50,8 @@ NAVIGATION = [
     ("🧩", "Gestion", [(libelle, cle) for libelle, cle, _f in __import__(
         "mvogmbi_sync.rapports_gestion", fromlist=["ETATS"]).ETATS]),
 ]
+# analyses décisionnelles (demande du propriétaire du 2026-11-08) rangées dans les sections existantes
+NAVIGATION = __import__("mvogmbi_sync.analyses_clover", fromlist=["inserer"]).inserer(NAVIGATION)
 PREVISIONS = ("prev_ventes", "prev_achats", "prev_commande")
 HORIZONS = (7, 10, 14, 21, 28, 30, 45, 60, 90)  # jours : horizon des prévisions et période des articles à commander
 # graphique au-dessus de chaque état : (genre, colonne de l'étiquette, colonne de la valeur)
@@ -72,7 +74,13 @@ TITRES_GRAPHIQUES = {
     "Bénéfices": "Les 8 articles les plus rentables", "prev_achats": "Les 8 plus gros achats à prévoir",
     "Jour × heure": "Ventes nettes par jour de la semaine et par heure",
 }
-NOTES_ETATS: dict[str, str] = {}   # texte sous le titre d'un état (prévisions)
+# colonnes de nombres sans unité (analyses décisionnelles) : jamais affichées en « $ »
+MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z)", "Articles par", "Commandes par", "Jours entre")
+NOTES_ETATS: dict[str, str] = {}
+# constats des analyses décisionnelles : (fond, trait à gauche) et icône par niveau
+COULEURS_CONSTATS = {"alerte": ("#fde2e4", "#d7263d"), "attention": ("#fff4d6", "#e0a100"),
+                     "bon": ("#e6f4ea", "#1b7f3b"), "info": ("#eef1ef", "#8a9690")}
+ICONES_CONSTATS = {"alerte": "✖", "attention": "⚠", "bon": "✔", "info": "ℹ"}  # hors émojis : Tk   # texte sous le titre d'un état (prévisions)
 A_COMMANDER_TEXTE = "À commander"
 FILTRES_PEREMPTION = ["Bientôt périmés (3 mois ou moins)", "Périmés", "Un mois ou moins", "De 1 à 3 mois",
                       "Plus de 3 mois", "Tous"]
@@ -86,7 +94,8 @@ STATISTIQUES = {"Statistiques client": "Client", "Statistiques fournisseur": "Fo
                 "Statistiques employé": "Employé"}
 REGROUPEMENTS = ["Article", "Catégorie", "Article par jour", "Catégorie par jour"]
 EXTENSIBLES = {"Commentaire", "Description", "Client / fournisseur", "Fournisseur", "Client", "Article Sage", "Article",
-               "Indicateur", "Appareil", "Employé", "Mode(s) de paiement", "Type", "Source", "Pièce", "Dépôt"}
+               "Indicateur", "Appareil", "Employé", "Mode(s) de paiement", "Type", "Source", "Pièce", "Dépôt",
+               "Constat", "Conseil", "Action suggérée"}  # textes longs des analyses décisionnelles
 COLONNES_ARCHIVES = (("date", "Date", 90), ("fournisseur", "Fournisseur", 260), ("numero", "N°", 110),
                      ("total", "Total", 100), ("lignes", "Lignes", 70), ("archivee", "Archivée le", 150))
 
@@ -156,6 +165,7 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
                 if "%" in entete:
                     v = f"{v} %".replace(".", ",")
                 elif (any(m in entete for m in ("Quantité", "Cumul", "Vendu", "Stock ", "Stock", "Besoin", "À acheter",
+                                                  *MOTS_SANS_UNITE,
                                                   "Sold")) or "qté" in entete.casefold())                         and "Valeur" not in entete and not entete.startswith("Solde"):
                     v = f"{v.normalize():f}".replace(".", ",")
                 else:
@@ -163,6 +173,28 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
             valeurs.append("" if v is None else v)
         tableau.insert("", "end", iid=str(i), values=valeurs, tags=tags(i) if tags else ())
     rayer(tableau)
+
+
+def dessiner_graphe(g, d: dict, vide: str) -> None:
+    """Graphique de plus d'une analyse décisionnelle (rapports_gestion.RapportGestion.graphiques)."""
+    from .graphiques import BLEU, BLEU_PALE, PALETTE
+
+    g.titre = t(d["titre"])
+    g.unite = d.get("unite", "$")
+    unite = g.unite
+    format_ = (montant if unite == "$" else (lambda v: f"{v} %".replace(".", ",")) if unite == "%"
+               else (lambda v: f"{v:.0f}" if v == int(v) else f"{v:.2f}".replace(".", ",")))
+    couleurs = [BLEU, "#f6b81a", *PALETTE]
+    elements = [(t(n) if isinstance(n, str) else str(n), v) for n, v in d.get("elements", [])]
+    series = d.get("series", [])
+    if d["genre"] == "anneau":
+        g.anneau(elements, vide, format_valeur=format_)
+    elif d["genre"] == "classement":
+        g.classement(elements, vide=vide, format_valeur=format_, couleur=BLEU_PALE)
+    elif d["genre"] == "courbes" and len(d.get("etiquettes", [])) > 1:
+        g.courbes(d["etiquettes"], [(t(n), v, couleurs[k], k > 0) for k, (n, v) in enumerate(series)], vide)
+    else:
+        g.barres(d.get("etiquettes", []), [(t(n), v, couleurs[k]) for k, (n, v) in enumerate(series)], vide)
 
 
 class PageRapports(ttk.Frame):
@@ -788,17 +820,53 @@ class PageRapports(ttk.Frame):
 
         # page « Gestion » : rapport d'une fonction de gestion (cartes, évolution, répartition, tableau)
         self.page_gestion = tk.Frame(self.contenu_stats, background=fond_de(cadre))
-        ligne_g = tk.Frame(self.page_gestion, background=fond_de(cadre))
+        # page qui défile (cartes, graphiques et tableau dépassent la hauteur de l'écran sur les analyses)
+        defil_g = ttk.Scrollbar(self.page_gestion, orient="vertical")
+        defil_g.pack(side="right", fill="y")
+        toile_g = tk.Canvas(self.page_gestion, background=fond_de(cadre), highlightthickness=0,
+                            yscrollcommand=defil_g.set)
+        toile_g.pack(side="left", fill="both", expand=True)
+        defil_g.configure(command=toile_g.yview)
+        corps_g = tk.Frame(toile_g, background=fond_de(cadre))
+        fenetre_g = toile_g.create_window(0, 0, window=corps_g, anchor="nw")
+
+        def ajuster_g(_e=None):
+            largeur, hauteur = toile_g.winfo_width(), toile_g.winfo_height()
+            toile_g.itemconfigure(fenetre_g, width=largeur,
+                                  height=max(corps_g.winfo_reqheight(), hauteur))
+            toile_g.configure(scrollregion=(0, 0, largeur, max(corps_g.winfo_reqheight(), hauteur)))
+            self.note_gestion.configure(wraplength=max(400, largeur - 30))
+
+        toile_g.bind("<Configure>", ajuster_g)
+        corps_g.bind("<Configure>", lambda _e: toile_g.after_idle(ajuster_g))
+
+        def molette_g(e):
+            if isinstance(e.widget, ttk.Treeview) or not toile_g.winfo_ismapped():
+                return  # le tableau défile lui-même
+            try:
+                if not str(e.widget).startswith(str(toile_g)):
+                    return
+            except tk.TclError:
+                return
+            toile_g.yview_scroll(-1 if e.delta > 0 else 1, "units")
+
+        toile_g.bind_all("<MouseWheel>", molette_g, add="+")
+        self.toile_gestion = toile_g
+        ligne_g = tk.Frame(corps_g, background=fond_de(cadre))
         ligne_g.pack(fill="x")
         self.titre_gestion = tk.Label(ligne_g, text="", font=("Segoe UI Semibold", 13), foreground=VERT_FONCE,
                                       background=fond_de(cadre))
         self.titre_gestion.pack(side="left")
-        self.note_gestion = ttk.Label(self.page_gestion, text="", foreground=TEXTE_DOUX, wraplength=900,
+        self.note_gestion = ttk.Label(corps_g, text="", foreground=TEXTE_DOUX, wraplength=900,
                                       justify="left")
         self.note_gestion.pack(fill="x", pady=(4, 0))
-        self.cartes_gestion = tk.Frame(self.page_gestion, background=fond_de(cadre))
-        self.cartes_gestion.pack(fill="x", pady=(6, 0))
-        graphiques_g = tk.Frame(self.page_gestion, background=fond_de(cadre))
+        # constats des analyses en couleur (à agir, à surveiller, bon, information)
+        self.constats_gestion = tk.Frame(corps_g, background=fond_de(cadre))
+        self.constats_gestion.pack(fill="x")
+        self.cartes_gestion = tk.Frame(corps_g, background=fond_de(cadre))
+        # les chiffres d'abord (lecture de la direction), puis les constats
+        self.cartes_gestion.pack(fill="x", pady=(6, 0), before=self.note_gestion)
+        graphiques_g = tk.Frame(corps_g, background=fond_de(cadre))
         graphiques_g.pack(fill="x", pady=(6, 0))
         graphiques_g.columnconfigure(0, weight=3, uniform="g")
         graphiques_g.columnconfigure(1, weight=2, uniform="g")
@@ -806,9 +874,14 @@ class PageRapports(ttk.Frame):
         self.g_gestion_evolution.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
         self.g_gestion_repartition = Graphique(graphiques_g, 200)
         self.g_gestion_repartition.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
-        tk.Label(self.page_gestion, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 10), foreground=TEXTE,
+        # graphiques de plus des analyses décisionnelles, deux par rangée (« ne laisse pas trop de vides »)
+        self.graphiques_sup = tk.Frame(corps_g, background=fond_de(cadre))
+        self.graphiques_sup.pack(fill="x")
+        self.graphiques_sup.columnconfigure(0, weight=3, uniform="gs")  # mêmes proportions que la 1re rangée
+        self.graphiques_sup.columnconfigure(1, weight=2, uniform="gs")
+        tk.Label(corps_g, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 10), foreground=TEXTE,
                  background=fond_de(cadre), anchor="w").pack(fill="x", pady=(8, 0))
-        self.tableau_gestion = tableau_simple(self.page_gestion, 10)
+        self.tableau_gestion = tableau_simple(corps_g, 10)
         placer_a_droite(bouton_exporter(ligne_g, self.tableau_gestion,
                                         lambda: self.titre_gestion.cget("text") or t("Gestion")))
         self._calcul_gestion = 0
@@ -1019,7 +1092,9 @@ class PageRapports(ttk.Frame):
         self.moyens_stats = r["moyens"]
         from .rapports_gestion import CLES as CLES_GESTION
 
-        if self.vue_courante in CLES_GESTION:  # nouvelle période : le rapport de gestion affiché suit
+        from .analyses_clover import CLES as CLES_ANALYSES
+
+        if self.vue_courante in CLES_GESTION or self.vue_courante in CLES_ANALYSES:  # le rapport affiché suit
             self.after(0, self.afficher_gestion)
         completes = self.brut_stats["completes"]  # choix des filtres : toutes les valeurs de la période
         for nom, vue, colonne in (("Article", "Par article", 0), ("Client", "Par client", 0),
@@ -1091,6 +1166,11 @@ class PageRapports(ttk.Frame):
             images = [image_widget(self.page_apercu)]
         elif cle == "peremption":
             entetes, lignes = contenu(self.tableau_peremption)
+        elif self.page_gestion.winfo_ismapped():  # rapport de gestion ou analyse : cartes, graphiques, tableau
+            for g in (self.g_gestion_evolution, self.g_gestion_repartition):
+                g.delete("bulle")
+            images = [image_widget(self.cartes_gestion), image_widget(self.g_gestion_evolution.master)]
+            entetes, lignes = contenu(self.tableau_gestion)
         else:
             if self.kpi_cadre.winfo_ismapped():
                 images.append(image_widget(self.kpi_cadre))
@@ -1154,7 +1234,9 @@ class PageRapports(ttk.Frame):
             page.pack_forget()
         from .rapports_gestion import CLES as CLES_GESTION
 
-        if cle in CLES_GESTION:
+        from .analyses_clover import CLES as CLES_ANALYSES
+
+        if cle in CLES_GESTION or cle in CLES_ANALYSES:
             self.page_gestion.pack(fill="both", expand=True)
             self.afficher_gestion()
         elif cle == "accueil":
@@ -1191,9 +1273,14 @@ class PageRapports(ttk.Frame):
 
         from .rapports_gestion import ETATS, calculer
 
+        from .analyses_clover import ANALYSES
+
         cle = self.vue_courante
-        libelle = next((l for l, c, _f in ETATS if c == cle), cle)
+        libelle = next((l for l, c, *_r in ETATS + ANALYSES if c == cle), cle)
         self.titre_gestion.configure(text=t(libelle))
+        if cle in {c for _l, c, *_r in ANALYSES}:
+            self._afficher_analyse(cle)
+            return
         try:
             du, au = date.fromisoformat(self.stat_du.get()), date.fromisoformat(self.stat_au.get())
         except ValueError:
@@ -1227,28 +1314,94 @@ class PageRapports(ttk.Frame):
 
         threading.Thread(target=travail, daemon=True).start()
 
+    def _afficher_analyse(self, cle: str) -> None:
+        """Analyse décisionnelle (analyses_clover) sur les ventes déjà lues, filtres globaux appliqués ; résultat
+        gardé par combinaison de filtres."""
+        from .analyses_clover import calculer as calculer_analyse
+        from .statistiques_clover import filtrer
+
+        brut = getattr(self, "brut_stats", None)
+        if not brut:
+            self.note_gestion.configure(text=t("Calculez d'abord les statistiques de la période (ventes lues dans Clover)."))
+            return
+        f = self._filtres_actifs()
+        memoire = brut.setdefault("_analyses", {})
+        cle_m = (cle, tuple(sorted(f.items())))
+        if cle_m in memoire:
+            self._remplir_gestion(memoire[cle_m])
+            return
+        self._calcul_gestion += 1
+        numero = self._calcul_gestion
+        self.note_gestion.configure(text=t("Calcul…"))
+
+        def travail():
+            try:
+                donnees, autres = (filtrer(brut["donnees"], f), filtrer(brut["autres"], f)) if f else (
+                    brut["donnees"], brut["autres"])
+                rapport = calculer_analyse(cle, donnees, autres, brut["couts"], brut["du"], brut["au"], brut["du2"],
+                                           brut["au2"])
+                memoire[cle_m] = rapport
+                self.after(0, lambda: numero == self._calcul_gestion and self._remplir_gestion(rapport))
+            except Exception as exc:
+                texte = str(exc)
+                self.after(0, lambda: self.note_gestion.configure(text="✘ " + texte))
+
+        threading.Thread(target=travail, daemon=True).start()
+
     def _remplir_gestion(self, r) -> None:
         from .graphiques import BLEU, BLEU_PALE, PALETTE
 
-        self.note_gestion.configure(text=t(r.note) if r.note else "")
+        from .analyses_clover import etat_carte, niveau_constat
+
+        for enfant in self.constats_gestion.winfo_children():
+            enfant.destroy()
+        lignes_note = (r.note or "").splitlines()
+        if any(l[:1] in "✔⚠✖ℹ" for l in lignes_note):  # analyse : un bandeau coloré par constat
+            self.note_gestion.configure(text="")
+            largeur = max(400, self.constats_gestion.winfo_width() - 40)
+            for ligne in lignes_note:
+                niveau, texte = niveau_constat(ligne)
+                fond, trait = COULEURS_CONSTATS[niveau]
+                bandeau = tk.Frame(self.constats_gestion, background=fond)
+                bandeau.pack(fill="x", pady=(3, 0))
+                tk.Frame(bandeau, background=trait, width=5).pack(side="left", fill="y")
+                tk.Label(bandeau, text=ICONES_CONSTATS[niveau] + "  " + texte, background=fond, foreground=TEXTE,
+                         anchor="w", justify="left", font=("Segoe UI", 9), wraplength=largeur
+                         ).pack(side="left", fill="x", expand=True, padx=(8, 6), pady=3)
+        else:
+            self.note_gestion.configure(text=t(r.note) if r.note else "")
+        if hasattr(self, "toile_gestion"):
+            self.toile_gestion.yview_moveto(0)  # nouveau rapport : retour en haut
         for enfant in self.cartes_gestion.winfo_children():
             enfant.destroy()
-        for i, (titre, genre, valeur) in enumerate(r.cartes):  # cartes d'indicateurs
+        for k in range(12):  # colonnes d'un rapport précédent remises à zéro
+            self.cartes_gestion.columnconfigure(k, weight=0, uniform="")
+        par_rangee = len(r.cartes) if len(r.cartes) <= 6 else 4  # au-delà de 6 cartes : 2 rangées lisibles
+        for i, (titre, genre, valeur) in enumerate(r.cartes):  # cartes d'indicateurs, feu de couleur
+            etat = etat_carte(titre, valeur)
+            couleur_etat = {"bon": "#1b7f3b", "attention": "#e0a100", "alerte": ROUGE}.get(etat)
             carte = tk.Frame(self.cartes_gestion, background=CARTE, highlightthickness=1,
-                             highlightbackground="#e2e8e4")
-            carte.grid(row=0, column=i, sticky="nsew", padx=3)
-            self.cartes_gestion.columnconfigure(i, weight=1, uniform="cg")
+                             highlightbackground=couleur_etat or "#e2e8e4")
+            carte.grid(row=i // par_rangee, column=i % par_rangee, sticky="nsew", padx=3, pady=3)
+            self.cartes_gestion.columnconfigure(i % par_rangee, weight=1, uniform="cg")
+            if couleur_etat:
+                tk.Frame(carte, background=couleur_etat, height=4).pack(fill="x")
             texte = (montant(valeur) if genre == "$" else f"{valeur} %".replace(".", ",") if genre == "%"
-                     else f"{valeur} h".replace(".", ",") if genre == "h" else str(valeur))
+                     else f"{valeur} h".replace(".", ",") if genre == "h"
+                     else str(valeur).replace(".", ",") if genre == "n" else str(valeur))
             tk.Label(carte, text=t(titre), background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 9),
-                     anchor="w").pack(fill="x", padx=8, pady=(6, 0))
-            tk.Label(carte, text=texte, background=CARTE, foreground=VERT_FONCE, font=("Segoe UI Semibold", 15),
-                     anchor="w").pack(fill="x", padx=8, pady=(0, 6))
+                     anchor="w", justify="left", wraplength=220).pack(fill="x", padx=8, pady=(6, 0))
+            tk.Label(carte, text=("▲ " if etat == "bon" else "▼ " if etat == "alerte" else "") + texte
+                     if genre in ("$", "%") and etat in ("bon", "alerte") and titre in ("Variation", "Écart")
+                     else texte, background=CARTE, foreground=couleur_etat or VERT_FONCE, anchor="w", justify="left",
+                     font=("Segoe UI Semibold", 11 if genre == "t" else 15), wraplength=230 if genre == "t" else 0
+                     ).pack(fill="x", padx=8, pady=(0, 6))
         vide = t("Aucune donnée pour la période")
         # graphique d'évolution (courbe ; barres pour un seul jour)
         self.g_gestion_evolution.titre = t(r.titre_evolution)
+        self.g_gestion_evolution.unite = getattr(r, "unite_evolution", "$")
         couleurs = [BLEU, "#f6b81a", *PALETTE]
-        if len(r.etiquettes) <= 1:
+        if len(r.etiquettes) <= 1 or getattr(r, "genre_evolution", "") == "barres":
             self.g_gestion_evolution.barres(r.etiquettes, [(t(n), v, couleurs[k]) for k, (n, v) in enumerate(r.series)],
                                             vide)
         else:
@@ -1262,8 +1415,20 @@ class PageRapports(ttk.Frame):
             self.g_gestion_repartition.anneau(valeurs, vide, format_valeur=format_)
         else:
             self.g_gestion_repartition.classement(valeurs, vide=vide, format_valeur=format_, couleur=BLEU_PALE)
+        from .graphiques import Graphique
+
+        for enfant in self.graphiques_sup.winfo_children():
+            enfant.destroy()
+        for k, d in enumerate(getattr(r, "graphiques", []) or []):
+            g = Graphique(self.graphiques_sup, 200)
+            g.grid(row=k // 2, column=k % 2, sticky="nsew", padx=(0, 4) if k % 2 == 0 else (4, 0), pady=(8, 0))
+            dessiner_graphe(g, d, vide)
         remplir(self.tableau_gestion, r.entetes, [[t(x) if isinstance(x, str) and x in TEXTES_GESTION else x
                                                    for x in l] for l in r.lignes])
+        colonnes = self.tableau_gestion["columns"]
+        if colonnes and not any(self.tableau_gestion.column(c, "stretch") for c in colonnes):
+            for c in colonnes:  # aucune colonne de texte extensible : toutes s'élargissent (pas de vide à droite)
+                self.tableau_gestion.column(c, stretch=True)
 
     def afficher_apercu(self) -> None:
         """Aperçu des ventes : évolution brutes / nettes, composition, jour de la semaine, heure."""

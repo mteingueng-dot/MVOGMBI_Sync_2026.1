@@ -45,6 +45,22 @@ def _arrondi_haut(valeur: float) -> float:
 class Graphique(tk.Canvas):
     """Canvas qui garde ses données et se redessine à la bonne taille."""
 
+    unite = "$"  # « $ » (montants), « % » ou « » (nombres) : axes, étiquettes et infobulles
+
+    def _court(self, v: float) -> str:
+        if self.unite == "$":
+            return _court(v)
+        suffixe = " %" if self.unite == "%" else ""
+        if abs(v) >= 1000:
+            return f"{v / 1000:.1f} k".replace(".", ",") + suffixe
+        return (f"{v:.0f}" if v == int(v) or abs(v) >= 10 else f"{v:.1f}".replace(".", ",")) + suffixe
+
+    def _argent(self, v) -> str:
+        if self.unite == "$":
+            return format_argent(v)
+        texte = f"{float(v):,.1f}".replace(",", " ").replace(".", ",")
+        return texte.removesuffix(",0") + (" %" if self.unite == "%" else "")
+
     def __init__(self, parent, hauteur: int = 200, titre: str = ""):
         super().__init__(parent, height=hauteur, background=CARTE, highlightthickness=1,
                          highlightbackground=BORDURE)
@@ -96,7 +112,7 @@ class Graphique(tk.Canvas):
         x = s["xs"][i]
         self.create_line(x, s["haut"], x, s["bas"], fill="#9aa5a0", dash=(2, 2), tags="bulle")
         lignes = [(s["etiquettes"][i], TEXTE, None)] + [
-            (f"{nom} : {format_argent(vs[i])}", TEXTE, couleur) for nom, vs, couleur in s["series"]
+            (f"{nom} : {self._argent(vs[i])}", TEXTE, couleur) for nom, vs, couleur in s["series"]
             if i < len(vs) and vs[i] is not None]
         self._dessiner_bulle(x, evenement.y, lignes)
 
@@ -158,7 +174,7 @@ class Graphique(tk.Canvas):
             for i in range(5):  # graduations
                 y = bas_y = hauteur - bas - zone_h * i / 4
                 self.create_line(gauche, y, largeur - droite, y, fill="#eef1ef")
-                self.create_text(gauche - 6, bas_y, text=_court(maximum * i / 4), anchor="e", font=POLICE,
+                self.create_text(gauche - 6, bas_y, text=self._court(maximum * i / 4), anchor="e", font=POLICE,
                                  fill=TEXTE_DOUX)
             pas = (largeur - gauche - droite) / len(etiquettes)
             largeur_barre = max(2, min(26, pas * 0.8 / len(series)))
@@ -183,7 +199,7 @@ class Graphique(tk.Canvas):
                 for i, v in enumerate(premiere):
                     if v > 0:
                         y0 = hauteur - bas - zone_h * v / maximum
-                        self.create_text(gauche + pas * (i + 0.5), y0 - 7, text=_court(v), font=("Segoe UI", 8),
+                        self.create_text(gauche + pas * (i + 0.5), y0 - 7, text=self._court(v), font=("Segoe UI", 8),
                                          fill=TEXTE)
             self._moyenne(premiere, gauche, largeur - droite, hauteur - bas, zone_h, maximum)
 
@@ -198,7 +214,7 @@ class Graphique(tk.Canvas):
         moyenne = sum(utiles) / len(utiles)
         y = bas_y - zone_h * moyenne / maximum
         self.create_line(x0, y, x1, y, fill="#d7263d", dash=(6, 4))
-        self.create_text(x1 - 4, y - 8, text=f"moy. {_court(moyenne)}", anchor="e", font=("Segoe UI", 8),
+        self.create_text(x1 - 4, y - 8, text=f"moy. {self._court(moyenne)}", anchor="e", font=("Segoe UI", 8),
                          fill="#d7263d")
 
     # ------------------------------------------------------------------ barres horizontales (classement)
@@ -293,7 +309,7 @@ class Graphique(tk.Canvas):
             for i in range(5):
                 y = hauteur - bas - zone_h * i / 4
                 self.create_line(gauche, y, largeur - droite, y, fill="#eef1ef")
-                self.create_text(gauche - 6, y, text=_court(maximum * i / 4), anchor="e", font=POLICE, fill=TEXTE_DOUX)
+                self.create_text(gauche - 6, y, text=self._court(maximum * i / 4), anchor="e", font=POLICE, fill=TEXTE_DOUX)
             n = len(etiquettes)
             pas = zone_l / max(1, n - 1)
             self._survol = {"xs": [gauche + pas * i for i in range(n)], "pas": pas / 2, "haut": haut,
@@ -329,7 +345,7 @@ class Graphique(tk.Canvas):
                 cote = "w" if px < gauche + 90 else "e" if px > largeur - 90 else ""
                 decale = 6 if cote == "w" else -6 if cote == "e" else 0
                 self.create_text(px + decale, py - 12 if vertical == "s" else py + 12,
-                                 text=f"max {_court(v)} ({etiquettes[i]})", font=("Segoe UI Semibold", 8), fill=TEXTE,
+                                 text=f"max {self._court(v)} ({etiquettes[i]})", font=("Segoe UI Semibold", 8), fill=TEXTE,
                                  anchor=vertical + cote if cote else vertical)
 
         self._dessin = dessiner
@@ -357,11 +373,11 @@ class Graphique(tk.Canvas):
                     self.create_rectangle(x0 + 1, y0 + 1, x0 + l_case - 1, y0 + h_case - 1,
                                           fill=_degrade(v / maximum), outline="")
                     if v and l_case > 34 and h_case > 16:
-                        self.create_text(x0 + l_case / 2, y0 + h_case / 2, text=_court(v).replace(" $", ""),
+                        self.create_text(x0 + l_case / 2, y0 + h_case / 2, text=self._court(v).replace(" $", ""),
                                          font=("Segoe UI", 7), fill="white" if v / maximum > 0.55 else TEXTE)
                     zones.append(((lambda x, y, a=x0, b=y0: a <= x < a + l_case and b <= y < b + h_case),
                                   [(f"{nom_ligne} {nom_col}", TEXTE, None),
-                                   (format_argent(v), TEXTE, _degrade(v / maximum))]))
+                                   (self._argent(v), TEXTE, _degrade(v / maximum))]))
             for c_, nom_col in enumerate(colonnes):
                 if len(colonnes) <= 24 or c_ % 2 == 0:
                     self.create_text(gauche + (c_ + 0.5) * l_case, hauteur - bas + 10, text=nom_col, font=POLICE,

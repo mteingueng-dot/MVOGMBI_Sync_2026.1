@@ -26,6 +26,8 @@ JOURS_MAX_PAR_JOUR = 62  # au-delà, l'évolution est regroupée par mois
 class RapportGestion:
     cartes: list[tuple[str, str, object]] = field(default_factory=list)  # (titre, genre « $ » « n » « % » « h » « t », valeur)
     titre_evolution: str = ""
+    genre_evolution: str = ""
+    unite_evolution: str = "$"                                            # « $ », « % » ou « » (nombres)                                             # « barres » : barres même sur plusieurs points
     etiquettes: list[str] = field(default_factory=list)
     series: list[tuple[str, list]] = field(default_factory=list)          # (nom, valeurs)
     titre_repartition: str = ""
@@ -35,6 +37,10 @@ class RapportGestion:
     entetes: list[str] = field(default_factory=list)
     lignes: list[list] = field(default_factory=list)
     note: str = ""
+    # graphiques de plus, deux par rangée sous les deux premiers (analyses décisionnelles) : dictionnaires
+    # {genre « barres » « courbes » « anneau » « classement », titre, unite « $ » « % » « », etiquettes, series
+    # [(nom, valeurs)], elements [(nom, valeur)]}
+    graphiques: list[dict] = field(default_factory=list)
 
 
 def _d(v) -> Decimal:

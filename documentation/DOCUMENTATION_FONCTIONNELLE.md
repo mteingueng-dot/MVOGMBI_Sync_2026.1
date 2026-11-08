@@ -315,6 +315,20 @@ Lecture seule de Clover, jour par jour ; une vente est datée de son premier pai
 - **Prévisions** : ventes (même jour sur 4 semaines × tendance bornée 0,8-1,2), achats, articles à commander (stock − vendu sur l'horizon ≤ 0 ; horizon 7 à 90 jours, 14 par défaut).
 - **Péremption** : rouge = périmé ou dans moins d'un mois, jaune = 1 à 3 mois.
 - **Gestion** : pertes, caisse, dépenses, main-d'œuvre, promotions, retours, bons de commande : cartes, évolution (par jour jusqu'à 62 jours, sinon par mois), répartition, rapport.
+- **Analyses décisionnelles** (version 1.0.22), rangées dans les rubriques existantes sans répéter un état déjà présent ; chacune : cartes à feux de couleur, constats en bandeaux colorés (rouge à agir, orange à surveiller, vert bon, gris information), quatre graphiques, tableau exportable, selon la période et les filtres, sans relire Clover ; page qui défile ; sur le téléphone, menu des états en onglets défilants et rapport sur une colonne :
+  - *Accueil > Synthèse et décisions* : cartes clés à feux de couleur, décisions à prendre classées par priorité (haute, moyenne, basse) avec la raison et l'endroit où vérifier, points positifs, 6 graphiques ; tableau des décisions exportable ;
+  - *Activités de vente > Anomalies et alertes* : jours atypiques (plus de 2 écarts-types du même jour de la semaine), commandes inhabituelles (au-delà de Q3 + 3 × écart interquartile et du 99e centile), rabais de 50 % ou plus, prix à 40 % ou plus du prix médian de l'article, commandes à 0 $ ;
+  - *Rapports > Tendance et saisonnalité* : moyenne mobile 7 jours, droite de tendance, indice saisonnier par jour de la semaine, variabilité, semaines comparées (semaine incomplète sans variation), projection des 30 prochains jours ;
+  - *Rapports > Analyse de la variation* : écart avec la comparaison = effet nombre de commandes + effet panier moyen ; contribution des catégories, des 40 articles qui bougent le plus et des employés ;
+  - *Rapports > Analyse des paniers* : commandes et ventes par tranche de montant et par nombre d'articles, panier médian, 90e centile ;
+  - *Rapports > Concentration des ventes* : courbes de concentration, indices de Gini et HHI, part des 1, 3 et 10 premiers, éléments pour 80 % des ventes, pour les articles, catégories, clients, employés, heures, jours et modes de paiement ;
+  - *Articles > Matrice des articles* : popularité × rentabilité au CUMP Sage (vedette, locomotive, énigme, poids mort), classe 20/80 × régularité X / Y / Z (par semaine dès 4 semaines), conseil ;
+  - *Articles > Articles achetés ensemble* : paires d'articles et de catégories (support, confiance, lift ; au moins 3 commandes ou 0,2 %) ;
+  - *Articles > Prix et sensibilité au prix* : changements de prix durables (3 % ou plus, prix stable avant et après) repérés dans les ventes, quantités et ventes par jour d'ouverture avant / après sur le même nombre de jours (28 au plus), élasticité et lecture (peu sensible, sensible, très sensible) ;
+  - *Employés > Performance des employés* : articles par commande, prix moyen, taux de rabais et de remboursement, heures actives, ventes par heure active, indice de panier, clients identifiés, variation ;
+  - *Clients > Segmentation RFM* : récence, fréquence, montant de 1 à 5 (égalités = même note), 8 segments et action suggérée ;
+  - *Clients > Fidélité et rétention* : clients retenus, nouveaux, perdus, taux de rétention, jours entre deux achats ;
+  - *Clients > Cohortes de clients* : clients identifiés groupés par mois du premier achat (période et comparaison), part qui revient 1, 2, 3… mois plus tard.
 - « 📕 PDF de la page » : graphiques et tableau complet, période et filtres en sous-titre.
 
 ### 3.12 Exports et impressions

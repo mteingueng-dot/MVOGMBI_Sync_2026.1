@@ -34,6 +34,22 @@ class Graphique:
     """Même interface que graphiques.Graphique : `barres`, `classement`, `anneau`, `courbes`, `chaleur`, puis
     `svg()` rend le dessin à la largeur et à la hauteur données (le SVG s'étire à la largeur de sa carte)."""
 
+    unite = "$"  # « $ » (montants), « % » ou « » (nombres) : axes, étiquettes et infobulles
+
+    def _court(self, v: float) -> str:
+        if self.unite == "$":
+            return _court(v)
+        suffixe = " %" if self.unite == "%" else ""
+        if abs(v) >= 1000:
+            return f"{v / 1000:.1f} k".replace(".", ",") + suffixe
+        return (f"{v:.0f}" if v == int(v) or abs(v) >= 10 else f"{v:.1f}".replace(".", ",")) + suffixe
+
+    def _argent(self, v) -> str:
+        if self.unite == "$":
+            return format_argent(v)
+        texte = f"{float(v):,.1f}".replace(",", " ").replace(".", ",")
+        return texte.removesuffix(",0") + (" %" if self.unite == "%" else "")
+
     def __init__(self, largeur: int = 1000, hauteur: int = 200, titre: str = ""):
         self.largeur, self.hauteur, self.titre = largeur, hauteur, titre
         self._dessin = None
@@ -111,7 +127,7 @@ class Graphique:
             for i in range(5):
                 y = hauteur - bas - zone_h * i / 4
                 self.ligne(gauche, y, largeur - droite, y, couleur="#eef1ef")
-                self.texte(gauche - 6, y, _court(maximum * i / 4), "e", TEXTE_DOUX)
+                self.texte(gauche - 6, y, self._court(maximum * i / 4), "e", TEXTE_DOUX)
             pas = (largeur - gauche - droite) / len(etiquettes)
             largeur_barre = max(2, min(26, pas * 0.8 / len(series)))
             place = max(len(e) for e in etiquettes) * 6.5 + 12
@@ -132,10 +148,10 @@ class Graphique:
                 for i, v in enumerate(premiere):
                     if v > 0:
                         y0 = hauteur - bas - zone_h * v / maximum
-                        self.texte(gauche + pas * (i + 0.5), y0 - 7, _court(v), "", TEXTE, 11)
+                        self.texte(gauche + pas * (i + 0.5), y0 - 7, self._court(v), "", TEXTE, 11)
             self._moyenne(premiere, gauche, largeur - droite, hauteur - bas, zone_h, maximum)
             for i, etiquette in enumerate(etiquettes):  # infobulle de chaque colonne
-                lignes = [etiquette] + [f"{nom} : {format_argent(vs[i])}" for nom, vs, _ in series
+                lignes = [etiquette] + [f"{nom} : {self._argent(vs[i])}" for nom, vs, _ in series
                                         if i < len(vs) and vs[i] is not None]
                 self.zone(gauche + pas * i, haut, gauche + pas * (i + 1), hauteur - bas, "\n".join(lignes))
 
@@ -149,7 +165,7 @@ class Graphique:
         moyenne = sum(utiles) / len(utiles)
         y = bas_y - zone_h * moyenne / maximum
         self.ligne(x0, y, x1, y, couleur="#d7263d", pointilles=(6, 4))
-        self.texte(x1 - 4, y - 8, f"moy. {_court(moyenne)}", "e", "#d7263d", 11)
+        self.texte(x1 - 4, y - 8, f"moy. {self._court(moyenne)}", "e", "#d7263d", 11)
 
     # ---------------------------------------------------------------- classement
     def classement(self, elements: list[tuple[str, Decimal]], couleur: str = BLEU, vide: str = "",
@@ -226,7 +242,7 @@ class Graphique:
             for i in range(5):
                 y = hauteur - bas - zone_h * i / 4
                 self.ligne(gauche, y, largeur - droite, y, couleur="#eef1ef")
-                self.texte(gauche - 6, y, _court(maximum * i / 4), "e", TEXTE_DOUX)
+                self.texte(gauche - 6, y, self._court(maximum * i / 4), "e", TEXTE_DOUX)
             n = len(etiquettes)
             pas = zone_l / max(1, n - 1)
             place = max(len(e) for e in etiquettes) * 6.5 + 12
@@ -258,10 +274,10 @@ class Graphique:
                 vertical = "s" if py > haut + 30 else "n"
                 cote = "w" if px < gauche + 90 else "e" if px > largeur - 90 else ""
                 decale = 6 if cote == "w" else -6 if cote == "e" else 0
-                self.texte(px + decale, py - 12 if vertical == "s" else py + 12, f"max {_court(v)} ({etiquettes[i]})",
+                self.texte(px + decale, py - 12 if vertical == "s" else py + 12, f"max {self._court(v)} ({etiquettes[i]})",
                            vertical + cote, TEXTE, 11, True)
             for i, etiquette in enumerate(etiquettes):  # infobulle de chaque point
-                lignes = [etiquette] + [f"{nom} : {format_argent(vs[i])}" for nom, vs, _c, _p in series
+                lignes = [etiquette] + [f"{nom} : {self._argent(vs[i])}" for nom, vs, _c, _p in series
                                         if i < len(vs) and vs[i] is not None]
                 self.zone(gauche + pas * (i - 0.5), haut, gauche + pas * (i + 0.5), hauteur - bas, "\n".join(lignes))
 
@@ -285,9 +301,9 @@ class Graphique:
                     v = float(valeurs[r_][c_] or 0)
                     x0 = gauche + c_ * l_case
                     self.rect(x0 + 1, y0 + 1, x0 + l_case - 1, y0 + h_case - 1, _degrade(v / maximum),
-                              infobulle=f"{nom_ligne} {nom_col}\n{format_argent(v)}")
+                              infobulle=f"{nom_ligne} {nom_col}\n{self._argent(v)}")
                     if v and l_case > 34 and h_case > 16:
-                        self.texte(x0 + l_case / 2, y0 + h_case / 2, _court(v).replace(" $", ""), "",
+                        self.texte(x0 + l_case / 2, y0 + h_case / 2, self._court(v).replace(" $", ""), "",
                                    "white" if v / maximum > 0.55 else TEXTE, 10)
             for c_, nom_col in enumerate(colonnes):
                 if len(colonnes) <= 24 or c_ % 2 == 0:
