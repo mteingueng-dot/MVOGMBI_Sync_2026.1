@@ -238,3 +238,18 @@ def test_numero_de_commande_partout():
             assert sc.id_commande(d, ligne[cd], ligne[cn]), (nom, ligne)
     assert sc.id_commande(d, "2026-09-07", "999") == "ANCIENNE"   # commande d'une autre période
     assert sc.id_commande(d, "", "inconnue") == ""
+
+
+def test_decisions_du_courriel_du_matin(tmp_path):
+    """Résumé du matin : décisions de la synthèse sur 28 jours contre les 28 d'avant, sans relire Clover."""
+    from mvogmbi_sync import resume_matin as rm
+
+    d = _periode()
+    d.commandes += _avant().commandes
+    hier = AU
+    partie = rm.tranche(d, DU + timedelta(days=7), AU)
+    assert partie.commandes and all(c["id"][0] in "ABXC" for c in partie.commandes)
+    decisions = rm.decisions_du_mois(tmp_path, {}, d, hier)
+    assert decisions and decisions[0][0].startswith("1")
+    r = rm.ResumeMatin(hier, decisions=decisions)
+    assert "Décisions proposées" in rm.html(r) and any("1 — Haute" in l for l in rm.texte(r))

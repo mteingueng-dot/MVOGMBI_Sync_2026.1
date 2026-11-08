@@ -1177,7 +1177,19 @@ class PageRapports(ttk.Frame):
         elif self.page_gestion.winfo_ismapped():  # rapport de gestion ou analyse : cartes, graphiques, tableau
             for g in (self.g_gestion_evolution, self.g_gestion_repartition):
                 g.delete("bulle")
-            images = [image_widget(self.cartes_gestion), image_widget(self.g_gestion_evolution.master)]
+            def capture(w):  # la page défile : l'élément est amené à l'écran avant la capture
+                corps = w.master
+                self.toile_gestion.yview_moveto(w.winfo_y() / max(1, corps.winfo_height()))
+                w.update()
+                return image_widget(w)
+
+            images = [capture(self.cartes_gestion)]
+            if self.constats_gestion.winfo_children():  # constats en couleur (décisions de la synthèse)
+                images.append(capture(self.constats_gestion))
+            images.append(capture(self.g_gestion_evolution.master))
+            if self.graphiques_sup.winfo_children():
+                images.append(capture(self.graphiques_sup))
+            self.toile_gestion.yview_moveto(0)
             entetes, lignes = contenu(self.tableau_gestion)
         else:
             if self.kpi_cadre.winfo_ismapped():

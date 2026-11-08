@@ -34,6 +34,8 @@ class ResumeMatin:
     alertes: list[str] = field(default_factory=list)   # retenues à remettre, caisse non comptée ou en écart
     infos: list[str] = field(default_factory=list)     # jours fériés et congés des 7 prochains jours
     especes_hier: Decimal | None = None                 # espèces nettes attendues d'hier (caisse.py)
+    # décisions de « Synthèse et décisions » sur les 4 dernières semaines contre les 4 d'avant : (priorité, texte)
+    decisions: list[tuple[str, str]] = field(default_factory=list)
     erreurs: list[str] = field(default_factory=list)
 
     @property
@@ -119,6 +121,10 @@ def calculer(racine: Path, config_toml: dict, aujourdhui: date | None = None) ->
                                 charger(racine, config_toml))
     except Exception as exc:
         r.erreurs.append(f"Marge : {exc}")
+    try:  # décisions pour la direction (analyses_clover, 2026-11-08) : 28 jours contre les 28 d'avant
+        r.decisions = decisions_du_mois(racine, config_toml, donnees, hier)
+    except Exception as exc:
+        r.erreurs.append(f"Décisions : {exc}")
     try:
         lignes, _ = aa.pareto(aa.articles_clover(articles, ventes_90), aa.ventes_clover(ventes_90), 90)
         r.ruptures_a = [l[3] for l in lignes if l[1] == "A" and l[10] <= 0 and l[14] != "Supprimé ou renommé dans Clover"]
@@ -185,6 +191,50 @@ def calculer(racine: Path, config_toml: dict, aujourdhui: date | None = None) ->
     return r
 
 
+JOURS_DECISIONS = 28   # période des décisions du courriel du matin (et autant de jours pour la comparaison)
+DECISIONS_MAX = 8
+
+
+def tranche(donnees, du: date, au: date):
+    """Ventes Clover déjà lues réduites aux jours du … au … (commandes datées de leur 1er paiement réussi)."""
+    from dataclasses import replace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from .api_clover import moment_paiement
+
+    zone = ZoneInfo(donnees.fuseau)
+
+    def jour(ms) -> date | None:
+        return datetime.fromtimestamp(ms / 1000, zone).date() if ms else None
+
+    def dedans(ms) -> bool:
+        j = jour(ms)
+        return j is not None and du <= j <= au
+
+    commandes = [o for o in donnees.commandes if dedans(moment_paiement(o) or o.get("createdTime"))]
+    ids = {o["id"] for o in commandes}
+    return replace(donnees, commandes=commandes, prepare=None, index=None,
+                   paiements=[p for p in donnees.paiements if (p.get("order") or {}).get("id") in ids],
+                   remboursements=[x for x in donnees.remboursements if dedans(x.get("createdTime"))])
+
+
+def decisions_du_mois(racine: Path, config_toml: dict, donnees, hier: date) -> list[tuple[str, str]]:
+    """Décisions de « Synthèse et décisions » sur les 28 derniers jours contre les 28 d'avant, sans relire Clover."""
+    from .analyses_clover import calculer as analyser
+
+    du, au = hier - timedelta(days=JOURS_DECISIONS - 1), hier
+    du2, au2 = du - timedelta(days=JOURS_DECISIONS), du - timedelta(days=1)
+    try:
+        from .couts_sage import charger, cout_par_clover
+
+        couts = cout_par_clover(racine, charger(racine, config_toml, ouvrir=False, secours=True))
+    except BaseException:  # Sage illisible : décisions sans la rentabilité
+        couts = {}
+    synthese = analyser("a_synthese", tranche(donnees, du, au), tranche(donnees, du2, au2), couts, du, au, du2, au2)
+    return [(l[0], f"{l[1]} — {l[2]}") for l in synthese.lignes[:DECISIONS_MAX]]
+
+
 def _liste(noms: list[str], maximum: int = 8) -> str:
     return ", ".join(noms[:maximum]) + (f" et {len(noms) - maximum} autre(s)" if len(noms) > maximum else "")
 
@@ -207,6 +257,9 @@ def texte(r: ResumeMatin) -> list[str]:
         lignes.append("  ● " + t("{n} produit(s) en stock périmé(s) ou qui périment dans le mois : {l}", n=len(r.peremption),
                                  l=_liste(r.peremption)))
     lignes += ["  ● " + a for a in r.alertes]
+    if r.decisions:
+        lignes.append("  " + t("Décisions proposées (4 dernières semaines, Statistiques Clover > Synthèse et décisions) :"))
+        lignes += [f"    {p} : {d}" for p, d in r.decisions]
     lignes += ["  ○ " + x for x in r.infos]
     lignes += ["  " + t("Non calculé : {e}", e=e) for e in r.erreurs]
     return lignes
@@ -247,6 +300,15 @@ def html(r: ResumeMatin) -> str:
     alertes += [("#b3261e", a) for a in r.alertes]
     alertes += [("#1f5f99", x) for x in r.infos]
     alertes += [("#5a6b60", t("Non calculé : {e}", e=x)) for x in r.erreurs]
+    decisions = ""
+    if r.decisions:  # couleur de la priorité : haute rouge, moyenne orange, basse gris (comme l'application)
+        couleurs = {"1": ("#fde2e4", "#d7263d"), "2": ("#fff4d6", "#e0a100"), "3": ("#eef1ef", "#8a9690")}
+        decisions = (f"<div style='font-weight:600;margin:10px 0 4px'>"
+                     f"{e(t('Décisions proposées (4 dernières semaines, Statistiques Clover > Synthèse et décisions) :'))}"
+                     "</div>" + "".join(
+                         f"<div style='background:{couleurs.get(p[:1], couleurs['3'])[0]};border-left:5px solid "
+                         f"{couleurs.get(p[:1], couleurs['3'])[1]};padding:5px 9px;margin:3px 0;border-radius:4px'>"
+                         f"<b>{e(p)}</b> — {e(d)}</div>" for p, d in r.decisions))
     return (f"<h3 style='margin:4px 0'>{e(t('Résumé du {d}', d=f'{r.jour:%Y-%m-%d}'))}</h3>{cartes}"
-            + "".join(f"<div style='color:{c};margin:2px 0'>● {e(x)}</div>" for c, x in alertes)
+            + "".join(f"<div style='color:{c};margin:2px 0'>● {e(x)}</div>" for c, x in alertes) + decisions
             + "<hr style='border:none;border-top:1px solid #e2e8e4;margin:14px 0'>")

@@ -2891,3 +2891,7 @@ for _fr, _en in {
     "Résultat": "Result", "Saisie": "Entry", "Carte": "Card", "Appareil": "Device", "Commande": "Order",
 }.items():
     EN.setdefault(_fr, _en)
+
+# décisions dans le courriel du matin (2026-11-08)
+EN.setdefault("Décisions proposées (4 dernières semaines, Statistiques Clover > Synthèse et décisions) :",
+              "Proposed decisions (last 4 weeks, Clover statistics > Summary and decisions):")

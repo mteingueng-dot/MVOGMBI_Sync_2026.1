@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.23"
+VERSION = "1.0.24"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -695,6 +695,11 @@ FAQ = {
                     "rassemble les décisions proposées, de la plus urgente à la moins urgente, avec la raison et "
                     "l'endroit où vérifier ; le tableau des décisions s'exporte pour une réunion. Sur le téléphone, le "
                     "menu des états devient une ligne d'onglets qui défile et le rapport s'affiche sur une colonne."),
+        ("question", "Les décisions arrivent-elles aussi par courriel ?"),
+        ("reponse", "Oui : le courriel du matin (traitement de nuit) contient les 8 premières décisions de « Synthèse "
+                    "et décisions », calculées sur les 4 dernières semaines comparées aux 4 d'avant, en couleur selon "
+                    "leur priorité. Le « PDF de la page » d'une analyse reprend aussi les constats en couleur et tous "
+                    "les graphiques, pour une réunion."),
         ("question", "Comment vérifier une commande Clover ?"),
         ("reponse", "Partout où un n° de commande apparaît (🧾) dans les statistiques Clover — anomalies, Commandes, "
                     "Transactions, Remboursements — un clic sur le n° (web, nouvel onglet) ou un double-clic sur la "
@@ -1418,6 +1423,10 @@ FAQ = {
                     "from most to least urgent, with the reason and where to check; the decisions table can be "
                     "exported for a meeting. On the phone, the report menu becomes a scrolling row of tabs and the "
                     "report shows in one column."),
+        ("question", "Do the decisions also arrive by email?"),
+        ("reponse", "Yes: the morning email (night processing) lists the first 8 decisions of “Summary and "
+                    "decisions”, calculated over the last 4 weeks compared with the 4 before, colored by priority. The "
+                    "“Page PDF” of an analysis also includes the colored findings and all the charts, for a meeting."),
         ("question", "How do I check a Clover order?"),
         ("reponse", "Wherever an order number appears (🧾) in the Clover statistics — anomalies, Orders, Transactions, "
                     "Refunds — clicking the number (web, new tab) or double-clicking the row (Windows) opens the real "
