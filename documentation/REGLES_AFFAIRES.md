@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.18 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -97,6 +97,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-ENC-09 | La part d'un dépôt d'espèces **au-delà des ventes** est une part RIA : rien n'est encaissé avant sa confirmation (voir section 8). |
 | RG-ENC-10 | Un lot de cartes dont le **montant exact est déjà au compte de dépôt** par une autre écriture (3 jours avant à 7 jours après le dépôt) passe à « Déjà au compte de dépôt ? » : jamais encaissé d'office, pour ne pas compter la banque deux fois. |
 | RG-ENC-11 | La saisie d'un montant dans la fenêtre Encaissements se fait toujours dans la colonne « Montant reçu », quelle que soit la taille de la fenêtre de Sage ; une cellule ouverte ailleurs est refermée **sans rien taper**. |
+| RG-ENC-12 | **Un encaissement qui échoue ne bloque pas les suivants** (demande du propriétaire du 7 novembre 2026) : il est noté « NON encaissé » avec la raison (et une photo), les questions restées ouvertes sont refermées, la saisie est effacée et le dépôt suivant est saisi. Seule une fenêtre Encaissements impossible à rouvrir arrête la saisie ; les dépôts restants sont alors notés « non tenté ». Même règle pour les paiements fournisseurs. |
 
 ---
 

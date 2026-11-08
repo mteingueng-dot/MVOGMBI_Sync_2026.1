@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.18 (6 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
+Version 1.0.19 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 140 versions livrées en 13 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
 
 ---
 
@@ -159,6 +159,7 @@ mindmap
 | 6 nov. 2026 | Questions réelles de Sage lues sur le serveur (inactivité, enregistrement occupé) et répondues | 1.0.12 |
 | 6 nov. 2026 | Premier encaissement réel dans le vrai fichier depuis l'accès à distance ; la base fait foi ; plus d'outil d'import pendant le lancement de Sage | 1.0.13 à 1.0.14 |
 | 6 nov. 2026 | Factures fournisseurs importées sur le vrai fichier (Sage 2027) ; verrouillage et reconnexion qui reprennent où l'on en était | 1.0.15 à 1.0.18 |
+| 7 nov. 2026 | Un encaissement ou un paiement en échec ne bloque plus les suivants | 1.0.19 |
 
 ---
 

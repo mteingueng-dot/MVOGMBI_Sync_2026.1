@@ -92,38 +92,57 @@ def payer(fenetre: FenetrePaiements, fournisseur: str, lignes: list[tuple[str, D
     return resultat
 
 
-def appliquer(config_toml: dict, paiements, compte: str, mode: str = "Comptant", journal=print) -> list:
+def appliquer(config_toml: dict, paiements, compte: str, mode: str = "Comptant", journal=print, rouvrir=None) -> list:
     """Saisit dans Sage (fenêtre Paiements ouverte) chaque paiement confirmé, puis vérifie le solde dans la base.
 
     `paiements` : objets Paiement (paiements_fournisseurs) ; ceux qui sont saisis passent à l'état SAISI.
+    Règle du propriétaire (2026-11-07) : un paiement qui échoue ne bloque pas les suivants (fenêtre remise à zéro) ;
+    seule une fenêtre Paiements impossible à rouvrir arrête la saisie (les restants : « non tenté »).
     """
     from .__main__ import ouvrir_base_sage
     from .paiements_fournisseurs import SAISI
+    from .robot_encaissements import remettre_a_zero
 
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
     fenetre = FenetrePaiements()
     resultats = []
+    arret = ""
     for p in paiements:
         montant, jour = p.avis.montant, date.fromisoformat(p.avis.date_virement)
-        with ouvrir_base_sage(config_toml, fichier) as base:
-            ordre = ordre_grille(base, p.fournisseur_sage)
-            lignes = [(f, m, solde_facture(base, p.fournisseur_sage, f)) for f, m, _ in p.lignes()]
-        resultat = payer(fenetre, p.fournisseur_sage, lignes, jour, ordre, compte, mode)
-        time.sleep(1.5)
-        if resultat.traite:
+        if arret:
+            r = ResultatEncaissement(jour.isoformat(), montant)
+            r.messages.append(f"Non tenté : {arret}")
+            journal(f"{p.fournisseur_sage} {p.facture} : {montant} $ le {jour} -> NON payé (non tenté).")
+            resultats.append((p, r))
+            continue
+        try:
             with ouvrir_base_sage(config_toml, fichier) as base:
-                apres = {f: solde_facture(base, p.fournisseur_sage, f) for f, _, _ in lignes}
-            ecarts = [f"{f} : {apres[f]} $ (avant : {avant} $)" for f, m, avant in lignes
-                      if apres[f] is None or avant - apres[f] != m]
-            if not ecarts:
-                restes = ", ".join(f"{f} : {apres[f]} $" for f, _, _ in lignes)
-                p.etat, p.remarque = SAISI, f"payé {montant} $ le {jour} (solde restant {restes})"
-            else:
-                resultat.traite = False
-                resultat.messages.append("Après « Traiter », solde inattendu : " + " ; ".join(ecarts))
+                ordre = ordre_grille(base, p.fournisseur_sage)
+                lignes = [(f, m, solde_facture(base, p.fournisseur_sage, f)) for f, m, _ in p.lignes()]
+            resultat = payer(fenetre, p.fournisseur_sage, lignes, jour, ordre, compte, mode)
+            time.sleep(1.5)
+            if resultat.traite:
+                with ouvrir_base_sage(config_toml, fichier) as base:
+                    apres = {f: solde_facture(base, p.fournisseur_sage, f) for f, _, _ in lignes}
+                ecarts = [f"{f} : {apres[f]} $ (avant : {avant} $)" for f, m, avant in lignes
+                          if apres[f] is None or avant - apres[f] != m]
+                if not ecarts:
+                    restes = ", ".join(f"{f} : {apres[f]} $" for f, _, _ in lignes)
+                    p.etat, p.remarque = SAISI, f"payé {montant} $ le {jour} (solde restant {restes})"
+                else:
+                    resultat.traite = False
+                    resultat.messages.append("Après « Traiter », solde inattendu : " + " ; ".join(ecarts))
+        except Exception as exc:  # noqa: BLE001 : un paiement en échec n'arrête pas les autres
+            resultat = ResultatEncaissement(jour.isoformat(), montant)
+            resultat.messages.append(f"Erreur : {exc}")
+            fenetre.photo_diagnostic("erreur_paiement")
         journal(f"{p.fournisseur_sage} {p.facture} : {montant} $ le {jour} -> "
                 f"{'payé' if resultat.traite else 'NON payé'} " + " ".join(resultat.messages))
         resultats.append((p, resultat))
         if not resultat.traite:
-            break  # on s'arrête au premier problème
+            try:
+                fenetre = remettre_a_zero(fenetre, p.fournisseur_sage, rouvrir)
+            except Exception as exc:  # noqa: BLE001
+                arret = f"fenêtre Paiements de Sage inutilisable ({exc})"
+                journal(f"Saisie arrêtée : {arret}")
     return resultats

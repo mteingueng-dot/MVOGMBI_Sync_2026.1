@@ -252,7 +252,8 @@ def payer_sur_bureau_cache(racine, config_toml: dict, journal=print) -> dict:
         session.ouvrir(fichier, utilisateur, coffre.lire(coffre.SAGE_IMPORT, ""))
         journal(f"{len(a_saisir)} paiement(s) confirmé(s) à saisir.")
         session.ouvrir_paiements()
-        for p, r in appliquer(config_toml, a_saisir, compte, mode, journal):
+        for p, r in appliquer(config_toml, a_saisir, compte, mode, journal,
+                                rouvrir=session.ouvrir_paiements):
             texte = (f"{p.avis.date_virement} : {p.avis.montant:,.2f} $ à {p.fournisseur_sage}, facture {p.facture} "
                      f"(virement {p.avis.reference})")
             (bilan["payes"] if r.traite else bilan["a_verifier"]).append(

@@ -128,3 +128,52 @@ def test_colonne_montant_recu_selon_la_taille_de_la_grille():
     essai, serveur = Fausse((774, 160)), Fausse((641, 96))
     assert 631 <= essai.x_montant() <= 774 and essai.lignes_visibles() == 8
     assert 540 <= serveur.x_montant() <= 623 and serveur.lignes_visibles() == 4
+
+
+def test_un_encaissement_en_echec_ne_bloque_pas_les_suivants(monkeypatch):
+    """Règle du propriétaire (2026-11-07) : un dépôt en échec est noté, la fenêtre remise à zéro, les autres continuent."""
+    from contextlib import contextmanager
+    from datetime import date as _d
+    from decimal import Decimal as D
+    from types import SimpleNamespace
+
+    from mvogmbi_sync import __main__ as principal
+    from mvogmbi_sync import robot_encaissements as re_
+
+    class Fenetre:
+        titre = "Encaissements"
+
+        def photo_diagnostic(self, nom):
+            return None
+
+    monkeypatch.setattr(re_, "FenetreEncaissements", Fenetre)
+    remises = []
+    monkeypatch.setattr(re_, "remettre_a_zero", lambda f, tiers, rouvrir=None: remises.append(tiers) or f)
+
+    def faux(fenetre, depot, *args):
+        if depot.montant == D("1"):
+            raise re_.ErreurRobot("La cellule « Montant reçu » ne s'est pas ouverte")
+        return re_.ResultatEncaissement(depot.date.isoformat(), depot.montant, True)
+
+    monkeypatch.setattr(re_, "_encaisser_et_verifier", faux)
+
+    @contextmanager
+    def base(*a, **k):
+        yield None
+
+    monkeypatch.setattr(principal, "ouvrir_base_sage", base)
+    depots = [SimpleNamespace(etat="À saisir dans Sage", date=_d(2026, 1, j), montant=D(str(j)), origine="", lignes=[])
+              for j in (1, 2, 3)]
+    resultats = re_.appliquer({}, depots, "Vente Hebdomadaire", "1055", journal=lambda t: None)
+    assert [r.traite for r in resultats] == [False, True, True]
+    assert "Montant reçu" in resultats[0].messages[0]
+    assert remises == ["Vente Hebdomadaire"]
+
+    # fenêtre impossible à rouvrir : les dépôts restants sont notés « non tenté », un résultat chacun
+    def casse(f, tiers, rouvrir=None):
+        raise re_.ErreurRobot("fermée")
+
+    monkeypatch.setattr(re_, "remettre_a_zero", casse)
+    resultats = re_.appliquer({}, depots, "Vente Hebdomadaire", "1055", journal=lambda t: None)
+    assert len(resultats) == 3 and not any(r.traite for r in resultats)
+    assert resultats[1].messages[0].startswith("Non tenté")

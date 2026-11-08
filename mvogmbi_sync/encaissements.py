@@ -555,7 +555,8 @@ def encaisser_sur_bureau_cache(racine, config_toml: dict, journal=print, facture
             if not ouverte:
                 session.ouvrir_encaissements()
                 ouverte = True
-            for d, r in zip(a_saisir, appliquer(config_toml, a_saisir, pdv.client_sage, compte, mode, journal)):
+            for d, r in zip(a_saisir, appliquer(config_toml, a_saisir, pdv.client_sage, compte, mode, journal,
+                                                            rouvrir=session.ouvrir_encaissements)):
                 texte = (f"{nom}{d.origine or 'Dépôt'} du {r.date} : {r.montant:,.2f} $ au compte {compte} "
                          f"({', '.join(l.facture for l in d.lignes)})")
                 (bilan["encaisses"] if r.traite else bilan["a_verifier"]).append(

@@ -395,8 +395,39 @@ def encaisser_depot(fenetre: FenetreEncaissements, depot, ordre: list[str], clie
     return resultat
 
 
-def appliquer(config_toml: dict, depots, client: str, compte: str, mode: str = "Comptant", journal=print) -> list:
-    """Saisit dans Sage (ouvert, fenêtre Encaissements affichée) chaque dépôt « À saisir », puis vérifie dans la base."""
+def remettre_a_zero(fenetre: FenetreEncaissements, tiers: str, rouvrir=None) -> FenetreEncaissements:
+    """Après un échec : questions restées ouvertes refermées (« Non » / « Annuler » / « OK »), saisie effacée, pour
+    que l'opération suivante parte d'une fenêtre propre. Fenêtre disparue : rouverte par `rouvrir` s'il est donné,
+    sinon ErreurRobot (rien d'autre ne peut être saisi)."""
+    for _ in range(3):
+        restes = fenetre.dialogues() if user32.IsWindow(fenetre.h) else []
+        if not restes:
+            break
+        for d in restes:
+            if fenetre.message(d).strip().startswith("Traitement"):
+                _attendre_fermeture(d, 120)  # progression de Sage : jamais touchée
+            else:
+                fenetre.repondre(d, ("non", "annuler", "ok"))
+        time.sleep(1.5)
+    if not user32.IsWindow(fenetre.h) or not user32.IsWindowVisible(fenetre.h):
+        if rouvrir is None:
+            raise ErreurRobot(f"La fenêtre « {fenetre.titre} » de Sage s'est fermée.")
+        rouvrir()
+        fenetre = type(fenetre)()
+    try:
+        fenetre.effacer(tiers)
+    except ErreurRobot:
+        pass
+    return fenetre
+
+
+def appliquer(config_toml: dict, depots, client: str, compte: str, mode: str = "Comptant", journal=print,
+              rouvrir=None) -> list:
+    """Saisit dans Sage (ouvert, fenêtre Encaissements affichée) chaque dépôt « À saisir », puis vérifie dans la base.
+
+    Règle du propriétaire (2026-11-07) : un encaissement qui échoue ne bloque pas la suite ; il est noté
+    « NON encaissé » et les dépôts suivants sont saisis. Seule une fenêtre Encaissements impossible à rouvrir
+    arrête la saisie (les dépôts restants sont alors notés « non tenté »). Un résultat par dépôt « À saisir »."""
     from datetime import date as _date
 
     from .__main__ import ouvrir_base_sage
@@ -405,34 +436,59 @@ def appliquer(config_toml: dict, depots, client: str, compte: str, mode: str = "
     fichier = config_toml.get("sage_import", {}).get("fichier_entreprise")
     fenetre = FenetreEncaissements()
     resultats = []
+    arret = ""
     for depot in depots:
         if depot.etat != A_SAISIR:
             continue
-        with ouvrir_base_sage(config_toml, fichier) as base:
-            ordre = ordre_grille(base, client)
-            avant = etat_factures_sage(base, client, numero_compte_sage(compte), [l.facture for l in depot.lignes])
-        resultat = encaisser_depot(fenetre, depot, ordre, client, compte, mode)
-        time.sleep(1.5)
-        with ouvrir_base_sage(config_toml, fichier) as base:
-            etat = etat_factures_sage(base, client, numero_compte_sage(compte), [l.facture for l in depot.lignes])
-        if depot.origine:  # Interac / espèces : le solde de chaque facture doit avoir baissé de sa part
-            ecarts = [l.facture for l in depot.lignes
-                      if avant.get(l.facture, {}).get("du", 0) - etat.get(l.facture, {}).get("du", 0) != l.montant]
-            depot.etat = APPLIQUE if not ecarts else f"solde inchangé ou différent : {', '.join(ecarts)}"
-        else:
-            evaluer([depot], etat, _date.today())
-        if resultat.traite and depot.etat != APPLIQUE:
-            resultat.messages.append(f"Après « Traiter », état dans Sage : {depot.etat}.")
-            resultat.traite = False
-        elif not resultat.traite and depot.etat == APPLIQUE and any(m.startswith("Sage : ") for m in resultat.messages):
-            # la base fait foi (constat du 2026-11-06 sur le vrai fichier : question de Sage APRÈS l'enregistrement,
-            # le dépôt était bien encaissé)
-            resultat.traite = True
-            resultat.messages.append("Encaissement bien enregistré dans Sage (solde vérifié dans la base) ; la "
-                                     "question est venue après l'enregistrement.")
+        if arret:
+            r = ResultatEncaissement(depot.date.isoformat(), depot.montant)
+            r.messages.append(f"Non tenté : {arret}")
+            journal(f"{depot.date} : {depot.origine or 'dépôt'} {depot.montant} $ -> NON encaissé (non tenté).")
+            resultats.append(r)
+            continue
+        try:
+            resultat = _encaisser_et_verifier(fenetre, depot, client, compte, mode, config_toml, fichier,
+                                              ouvrir_base_sage, APPLIQUE, etat_factures_sage, evaluer,
+                                              numero_compte_sage, _date)
+        except Exception as exc:  # noqa: BLE001 : un dépôt en échec n'arrête pas les autres
+            resultat = ResultatEncaissement(depot.date.isoformat(), depot.montant)
+            resultat.messages.append(f"Erreur : {exc}")
+            fenetre.photo_diagnostic("erreur")
         journal(f"{depot.date} : {depot.origine or 'dépôt'} {depot.montant} $ -> "
                 f"{'encaissé' if resultat.traite else 'NON encaissé'} " + " ".join(resultat.messages))
         resultats.append(resultat)
         if not resultat.traite:
-            break  # on s'arrête au premier problème
+            try:  # fenêtre remise à zéro, puis on passe au dépôt suivant
+                fenetre = remettre_a_zero(fenetre, client, rouvrir)
+            except Exception as exc:  # noqa: BLE001
+                arret = f"fenêtre Encaissements de Sage inutilisable ({exc})"
+                journal(f"Saisie arrêtée : {arret}")
     return resultats
+
+
+def _encaisser_et_verifier(fenetre, depot, client, compte, mode, config_toml, fichier, ouvrir_base_sage, APPLIQUE,
+                           etat_factures_sage, evaluer, numero_compte_sage, _date) -> ResultatEncaissement:
+    """Un dépôt : état avant, saisie, état après dans la base (qui fait foi)."""
+    with ouvrir_base_sage(config_toml, fichier) as base:
+        ordre = ordre_grille(base, client)
+        avant = etat_factures_sage(base, client, numero_compte_sage(compte), [l.facture for l in depot.lignes])
+    resultat = encaisser_depot(fenetre, depot, ordre, client, compte, mode)
+    time.sleep(1.5)
+    with ouvrir_base_sage(config_toml, fichier) as base:
+        etat = etat_factures_sage(base, client, numero_compte_sage(compte), [l.facture for l in depot.lignes])
+    if depot.origine:  # Interac / espèces : le solde de chaque facture doit avoir baissé de sa part
+        ecarts = [l.facture for l in depot.lignes
+                  if avant.get(l.facture, {}).get("du", 0) - etat.get(l.facture, {}).get("du", 0) != l.montant]
+        depot.etat = APPLIQUE if not ecarts else f"solde inchangé ou différent : {', '.join(ecarts)}"
+    else:
+        evaluer([depot], etat, _date.today())
+    if resultat.traite and depot.etat != APPLIQUE:
+        resultat.messages.append(f"Après « Traiter », état dans Sage : {depot.etat}.")
+        resultat.traite = False
+    elif not resultat.traite and depot.etat == APPLIQUE and any(m.startswith("Sage : ") for m in resultat.messages):
+        # la base fait foi (constat du 2026-11-06 sur le vrai fichier : question de Sage APRÈS l'enregistrement,
+        # le dépôt était bien encaissé)
+        resultat.traite = True
+        resultat.messages.append("Encaissement bien enregistré dans Sage (solde vérifié dans la base) ; la "
+                                 "question est venue après l'enregistrement.")
+    return resultat
