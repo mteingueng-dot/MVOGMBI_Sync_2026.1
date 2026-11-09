@@ -599,3 +599,15 @@ def test_productivite_de_l_assortiment():
     fruits = next(l for l in r.lignes if l[0] == "Fruits")
     assert fruits[1] == 16 and fruits[8] == 16 and fruits[9] == D("100.0")
     assert [l[0] for l in r.alleger] == ["Fruits"] and r.graphiques
+
+
+def test_prix_et_volume():
+    """Riz : 10 à 10 $ avant, 9 à 12 $ maintenant -> prix +20 %, ventes +8 %, volume -10 %."""
+    cmds = [_commande(f"PV-A{k}", date(2026, 9, 1) + timedelta(days=k), [("Riz", "R", 1200)]) for k in range(9)]
+    avant = [_commande(f"PV-B{k}", date(2026, 8, 1) + timedelta(days=k), [("Riz", "R", 1000)]) for k in range(10)]
+    r = an.calculer("a_prix_volume", _donnees(cmds), _donnees(avant), {}, date(2026, 9, 1), date(2026, 9, 30),
+                    date(2026, 8, 1), date(2026, 8, 31))
+    cartes = dict((t_, v) for t_, _g, v in r.cartes)
+    assert cartes["Indice des prix (100 = période d'avant)"] == D("120.0")
+    assert cartes["Croissance des ventes"] == D("8.0") and cartes["Croissance en volume (hors prix)"] == D("-10.0")
+    assert r.volume_en_baisse and r.graphiques

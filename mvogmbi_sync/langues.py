@@ -4052,3 +4052,43 @@ for _fr, _en in {
     "{f} article(s) peu vendus sur {n} ; {v} de ventes": "{f} slow item(s) out of {n}; {v} of sales",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.41 : prix et volume (2026-11-09)
+for _fr, _en in {
+    "Prix et volume": "Price and volume",
+    "Prix moyen avant": "Average price before",
+    "Prix moyen maintenant": "Average price now",
+    "Variation du prix %": "Price change %",
+    "Quantité avant": "Quantity before",
+    "Quantité maintenant": "Quantity now",
+    "Poids dans l'indice %": "Weight in the index %",
+    "Indice des prix (100 = période d'avant)": "Price index (100 = previous period)",
+    "Hausse des prix": "Price increase",
+    "Croissance des ventes": "Sales growth",
+    "Croissance en volume (hors prix)": "Volume growth (excluding prices)",
+    "Articles plus chers": "Dearer items",
+    "Articles moins chers": "Cheaper items",
+    "Croissance des ventes : effet des prix et effet du volume (%)": "Sales growth: price effect and volume effect (%)",
+    "Ventes": "Sales", "Prix": "Price", "Volume": "Volume", "Variation": "Change",
+    "Hausse des prix par catégorie (%)": "Price increase by category (%)",
+    "Articles dont le prix a le plus changé (%)": "Items whose price changed the most (%)",
+    "Articles plus chers, moins chers ou au même prix": "Items dearer, cheaper or at the same price",
+    "Plus chers": "Dearer", "Moins chers": "Cheaper", "Même prix": "Same price",
+    "Indice des prix : prix affichés moyens d'aujourd'hui appliqués aux quantités vendues la période d'avant, pour les "
+    "articles vendus dans les deux périodes (100 = mêmes prix). Croissance en volume : croissance des ventes sans la "
+    "hausse des prix.":
+        "Price index: today's average shelf prices applied to the quantities sold in the previous period, for items "
+        "sold in both periods (100 = same prices). Volume growth: sales growth without the price increase.",
+    "Aucun article vendu dans les deux périodes : rien à comparer.": "No item sold in both periods: nothing to compare.",
+    "Les prix ont varié de {p} % ; les ventes de {v} %, soit {q} % en volume.":
+        "Prices changed by {p}%; sales by {v}%, i.e. {q}% in volume.",
+    "Les ventes tiennent grâce aux prix : on vend {q} % de marchandise en moins.":
+        "Sales hold up thanks to prices: {q}% less merchandise is sold.",
+    "On vend plus de marchandise : +{q} % en volume, au-delà de l'effet des prix.":
+        "More merchandise is sold: +{q}% in volume, beyond the price effect.",
+    "Regagner du volume : les ventes ne tiennent que grâce aux hausses de prix":
+        "Win back volume: sales only hold up thanks to price increases",
+    "Prix {p} % ; volume {q} %.": "Prices {p}%; volume {q}%.",
+}.items():
+    EN.setdefault(_fr, _en)

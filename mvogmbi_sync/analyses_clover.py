@@ -3136,6 +3136,80 @@ def assortiment(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- prix et volume
+def prix_volume(c, avant, ctx) -> RapportGestion:
+    """Indice des prix (Laspeyres) des articles vendus dans les deux périodes : prix affiché moyen (ventes avant
+    rabais / quantité) de maintenant appliqué aux quantités d'avant ; la croissance des ventes est séparée en effet
+    des prix et effet du volume (croissance « hors hausse des prix »)."""
+    def cumul(cmds):
+        g = defaultdict(lambda: [ZERO, ZERO, ""])  # quantité, brut, catégorie
+        for x in cmds:
+            for l in x.lignes:
+                if l.quantite_vendue > 0 and l.ventes_brutes > 0:
+                    a = g[l.nom]
+                    a[0] += l.quantite_vendue
+                    a[1] += l.ventes_brutes
+                    a[2] = l.categorie
+        return g
+
+    g1, g0 = cumul(c), cumul(avant)
+    communs = [n for n in g1 if n in g0]
+    lignes, par_cat = [], defaultdict(lambda: [ZERO, ZERO])
+    base = sum((g0[n][1] for n in communs), ZERO)
+    for n in communs:
+        q0, b0, _cat = g0[n]
+        q1, b1, cat = g1[n]
+        p0, p1 = b0 / q0, b1 / q1
+        par_cat[cat][0] += p1 * q0
+        par_cat[cat][1] += b0
+        lignes.append([n, cat, _d(p0), _d(p1), _pc(p1 - p0, p0), _d(q0, "0.001"), _d(q1, "0.001"),
+                       _pc(b0, base) if base else ZERO])
+    panier_courant = sum((g1[n][1] / g1[n][0] * g0[n][0] for n in communs), ZERO)
+    indice = _d(panier_courant * 100 / base, "0.1") if base else Decimal(100)
+    v1 = sum((x.nettes for x in c), ZERO)
+    v0 = sum((x.nettes for x in avant), ZERO)
+    croissance = _pc(v1 - v0, v0) if v0 else ZERO
+    volume = _d(((v1 / v0) / (indice / 100) - 1) * 100, "0.1") if v0 and indice else ZERO
+    plus = [l for l in lignes if l[4] >= 2]
+    moins = [l for l in lignes if l[4] <= -2]
+    lignes.sort(key=lambda l: -(abs(l[4]) * l[7]))
+    cats = sorted(((cat, _d(v[0] * 100 / v[1] - 100, "0.1")) for cat, v in par_cat.items() if v[1] > 0),
+                  key=lambda kv: -kv[1])
+    r = RapportGestion()
+    r.entetes = ["Article", "Catégorie", "Prix moyen avant", "Prix moyen maintenant", "Variation du prix %",
+                 "Quantité avant", "Quantité maintenant", "Poids dans l'indice %"]
+    r.lignes = lignes
+    r.cartes = [("Indice des prix (100 = période d'avant)", "n", indice), ("Hausse des prix", "%", _d(indice - 100, "0.1")),
+                ("Croissance des ventes", "%", croissance), ("Croissance en volume (hors prix)", "%", volume),
+                ("Articles plus chers", "n", len(plus)), ("Articles moins chers", "n", len(moins))]
+    r.titre_evolution = "Croissance des ventes : effet des prix et effet du volume (%)"
+    r.genre_evolution = "barres"
+    r.unite_evolution = "%"
+    r.etiquettes = [_t("Ventes"), _t("Prix"), _t("Volume")]
+    r.series = [(_t("Variation"), [croissance, _d(indice - 100, "0.1"), volume])]
+    r.titre_repartition = "Hausse des prix par catégorie (%)"
+    r.genre_repartition = "classement"
+    r.argent_repartition = False
+    r.repartition = [_signe(cat, v) for cat, v in cats[:4] + [x for x in cats[-4:] if x not in cats[:4]] if v]
+    constats = [_k(None, "Indice des prix : prix affichés moyens d'aujourd'hui appliqués aux quantités vendues la "
+                   "période d'avant, pour les articles vendus dans les deux périodes (100 = mêmes prix). Croissance en "
+                   "volume : croissance des ventes sans la hausse des prix.")]
+    if not communs:
+        constats.append(_k("info", "Aucun article vendu dans les deux périodes : rien à comparer."))
+    else:
+        constats.append(_k("info", "Les prix ont varié de {p} % ; les ventes de {v} %, soit {q} % en volume.",
+                           p=_nb(indice - 100), v=_nb(croissance), q=_nb(volume)))
+        if volume <= -3 and indice >= 103:
+            constats.append(_k("attention", "Les ventes tiennent grâce aux prix : on vend {q} % de marchandise en moins."
+                               , q=_nb(abs(volume))))
+        elif volume >= 3:
+            constats.append(_k("bon", "On vend plus de marchandise : +{q} % en volume, au-delà de l'effet des prix.",
+                               q=_nb(volume)))
+    r.volume_en_baisse = bool(communs and volume <= -3 and indice >= 103)
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -3824,6 +3898,13 @@ def _decisions(sous: dict) -> list[tuple]:
                 _t("{n} catégorie(s) ont 70 % ou plus d'articles qui se vendent à peine.", n=len(aso.alleger)),
                 "a_assortiment", [(l[0], _t("{f} article(s) peu vendus sur {n} ; {v} de ventes", f=l[8], n=l[1],
                                             v=_argent(l[10])), "") for l in aso.alleger])
+    pvo = sous.get("a_prix_volume", vide)
+    if getattr(pvo, "volume_en_baisse", False):
+        ajouter(2, "Regagner du volume : les ventes ne tiennent que grâce aux hausses de prix",
+                _t("Prix {p} % ; volume {q} %.", p=_nb(_carte(pvo, "Hausse des prix")),
+                   q=_nb(_carte(pvo, "Croissance en volume (hors prix)"))), "a_prix_volume",
+                [(l[0], _t("{a} → {b} ({p} %)", a=_argent(l[2]), b=_argent(l[3]), p=_nb(l[4])), "")
+                 for l in pvo.lignes if l[4] >= 5][:50])
     bai = sous.get("a_baisse", vide)
     fortes = [l for l in bai.lignes if l[7] == _t("Forte baisse")]
     if fortes:
@@ -3954,7 +4035,7 @@ DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure
                "Jour normal :", "Moyenne par jour ouvert de chaque jour", "Articles importants :", "Ventes moyennes par jour "
                "ouvert", "Prévision :", "Les taxes perçues par Clover",
                "Valeur sur un an =", "Seuil de rentabilité :", "Quantité prévue =", "Pour la semaine qui vient",
-               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes", "Article peu vendu : 2 commandes")
+               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes", "Article peu vendu : 2 commandes", "Indice des prix : prix affichés")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -4365,7 +4446,17 @@ def _sup_assortiment(r):
                     elements=[(l[0], Decimal(l[1])) for l in sorted(r.lignes, key=lambda l: -l[1])[:8]])]
 
 
-SUPPLEMENTS = {"a_assortiment": _sup_assortiment, "a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
+def _sup_prix_volume(r):
+    return [_graphe("classement", "Articles dont le prix a le plus changé (%)", "%",
+                    elements=[_signe(l[0], l[4]) for l in r.lignes[:8] if l[4]]),
+            _graphe("anneau", "Articles plus chers, moins chers ou au même prix", "",
+                    elements=[(n, Decimal(v)) for n, v in ((_t("Plus chers"), sum(1 for l in r.lignes if l[4] >= 2)),
+                                                           (_t("Moins chers"), sum(1 for l in r.lignes if l[4] <= -2)),
+                                                           (_t("Même prix"), sum(1 for l in r.lignes if -2 < l[4] < 2)))
+                              if v])]
+
+
+SUPPLEMENTS = {"a_prix_volume": _sup_prix_volume, "a_assortiment": _sup_assortiment, "a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
                "a_categories_jour": _sup_categories_jour, "a_prevu": _sup_prevu, "a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
@@ -4392,6 +4483,7 @@ ANALYSES = [
     ("Tendance des ventes", "a_tendance", tendance, "Rapports", "evolution_annees"),
     ("Pourquoi les ventes changent", "a_variation", variation, "Rapports", "a_tendance"),
     ("Ce qui fait monter ou baisser les ventes", "a_contribution", contribution, "Rapports", "a_variation"),
+    ("Prix et volume", "a_prix_volume", prix_volume, "Rapports", "a_contribution"),
     ("Rythme et objectif", "a_rythme", rythme, "Rapports", "a_variation"),
     ("Jours fériés", "a_feries", feries, "Rapports", "a_rythme"),
     ("Ventes selon le jour du mois", "a_jour_mois", jour_du_mois, "Rapports", "a_feries"),
