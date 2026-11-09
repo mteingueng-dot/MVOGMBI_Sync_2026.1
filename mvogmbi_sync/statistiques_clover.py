@@ -801,6 +801,45 @@ def evolution_par_annee(par_annee: dict[int, DonneesClover], du: date, au: date)
     return etiquettes, series
 
 
+MOIS_COURTS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc.")
+
+
+def reperes_mois(du: date, n: int) -> list[tuple[int, str]] | None:
+    """Axe des X continu (demande du propriétaire du 2026-11-09) : un repère au 1er de chaque mois, nommé par le
+    mois (« janv. », « févr. »…) ; None pour une période de moins de 45 jours (dates jj/mm habituelles)."""
+    if n < 45:
+        return None
+    from .langues import t
+
+    jours = [du + timedelta(days=i) for i in range(n)]
+    return [(i, t(MOIS_COURTS[j.month - 1]) + (f" {j.year}" if j.month == 1 or i == 0 else ""))
+            for i, j in enumerate(jours) if j.day == 1 or i == 0]
+
+
+def par_mois(du: date, series: dict[int, list]) -> tuple[list[str], dict[int, list]]:
+    """Les séries de `evolution_par_annee` cumulées par mois : (mois de la période, {année: ventes du mois}) ; un mois
+    sans aucune valeur connue reste vide (None)."""
+    from .langues import t
+
+    n = max((len(v) for v in series.values()), default=0)
+    mois = []
+    for i in range(n):
+        j = du + timedelta(days=i)
+        if not mois or mois[-1] != (j.year, j.month):
+            mois.append((j.year, j.month))
+    etiquettes = [t(MOIS_COURTS[m - 1]) for _a, m in mois]
+    sortie = {}
+    for annee, valeurs in series.items():
+        cumul: dict[tuple[int, int], Decimal] = {}
+        for i, v in enumerate(valeurs):
+            if v is None:
+                continue
+            j = du + timedelta(days=i)
+            cumul[(j.year, j.month)] = cumul.get((j.year, j.month), ZERO) + v
+        sortie[annee] = [cumul.get(m) for m in mois]
+    return etiquettes, sortie
+
+
 def resume_rapide(d: DonneesClover) -> dict[str, tuple[list[str], list[list]]]:
     """Seulement les chiffres des cartes (période de comparaison) : bien plus rapide que `statistiques`."""
     commandes = preparer(d)

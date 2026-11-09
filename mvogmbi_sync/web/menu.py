@@ -21,7 +21,7 @@ PAGES_MENU = {0: ("🏠", "Accueil"), 1: ("🛒", "Clover"), 2: ("📒", "Sage 5
 # entrées déjà en page web (titre de l'entrée du menu -> adresse)
 WEB = {"Accueil": "/", "Pointage des employés": "/pointage", "Mes heures et mes paies": "/mes-heures",
        "Feuilles de temps": "/feuilles", "Planning mensuel": "/planning", "Mon horaire": "/horaire",
-       "Employés et NIP": "/employes", "Jours fériés et congés": "/conges", "Statistiques Clover": "/statistiques",
+       "Employés et NIP": "/employes", "Jours fériés et congés": "/conges", "Reporting": "/statistiques",
        "Tableau du gérant (téléphone)": "/tableau", "Guide de configuration": "/aide?page=guide",
        "Aide / FAQ": "/aide?page=faq"}
 TOUJOURS = {"Mes heures et mes paies", "Guide de configuration", "Aide / FAQ"}

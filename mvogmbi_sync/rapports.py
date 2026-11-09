@@ -160,9 +160,24 @@ def suivi_ventes(racine: Path, base, client: str, compte_depot: int,
             (client_pv, "^" + re.escape(prefixe) + r" [0-9]{4}-[0-9]{2}-[0-9]{2}(/[0-9]{2})?$"))
         _, incoherentes = jours_couverts_sage(lignes, prefixe)
         dans_sage = {l["s"] for l in lignes}
-        for ligne in suivi.values():  # importée autrefois, supprimée de Sage depuis
-            if (ligne.statut == "Facture importée" and ligne.facture.startswith(prefixe + " ")
-                    and ligne.facture not in dans_sage):
+        # jour de vente -> facture de Sage qui le couvre (« Vente 2026-10-23/25 » couvre le 23, le 24 et le 25)
+        couverture = {}
+        for numero in dans_sage:
+            for jour in jours_facture(numero, prefixe):
+                couverture.setdefault(jour, numero)
+        for ligne in suivi.values():  # importée (ou tentée) autrefois, absente de Sage aujourd'hui
+            if not ligne.facture.startswith(prefixe + " ") or ligne.facture in dans_sage:
+                continue
+            if not (ligne.statut == "Facture importée" or ligne.statut.startswith("Import :")):
+                continue
+            jours = jours_facture(ligne.facture, prefixe)
+            remplacantes = sorted({couverture[j] for j in jours if j in couverture})
+            if jours and all(j in couverture for j in jours):
+                # demande du propriétaire du 2026-11-09 : facture d'un jour remplacée par la facture de la fin de
+                # semaine (ou tentative en échec faite depuis) : grisée, avec la facture qui couvre ces jours
+                ligne.statut = "Remplacée"
+                ligne.commentaire = "remplacée par la facture « " + " », « ".join(remplacantes) + " »"
+            elif ligne.statut == "Facture importée":
                 ligne.commentaire = " — ".join(x for x in (ligne.commentaire, "n'est plus dans Sage (supprimée)") if x)
         for l in lignes:
             numero = l["s"]

@@ -116,7 +116,7 @@ MENU_GROUPES = [
     ("État", "📊", [("📈", "Suivi des ventes", RAPPORTS, "ouvrir_rapports", "Suivi des ventes"),
                     ("🗓", "Opérations journalières", RAPPORTS, "ouvrir_rapports", "Opérations journalières"),
                     ("🔎", "Recherche dans l'historique", RAPPORTS, "ouvrir_rapports", "Recherche dans l'historique"),
-                    ("📊", "Statistiques Clover", RAPPORTS, "ouvrir_rapports", "Statistiques Clover"),
+                    ("📊", "Reporting", RAPPORTS, "ouvrir_rapports", "Reporting"),
                     ("💤", "Produits inactifs", RAPPORTS, "ouvrir_rapports", "Produits inactifs"),
                     ("🥇", "Articles 20/80", RAPPORTS, "ouvrir_rapports", "Articles 20/80")]),
     (None, "", [GUIDE, FAQ]),  # aide : hors des rubriques, en bas du menu (demande du propriétaire)
@@ -124,7 +124,7 @@ MENU_GROUPES = [
 # libellés du menu (sans n° de page) ; la page « Tableau de bord » est la facturation des ventes Clover
 LIBELLES_MENU = {TABLEAU: "Ventes Clover → factures Sage"}
 TITRES_ONGLETS_RAPPORTS = ("Suivi des ventes", "Opérations journalières", "Recherche dans l'historique",
-                           "Statistiques Clover",
+                           "Reporting",
                            "Produits inactifs", "Articles 20/80", "Factures fournisseurs archivées")
 # pages ouvertes seulement par des entrées de fenêtre ou d'onglet : leur groupe
 GROUPE_DES_PAGES_SANS_LIGNE = {RAPPORTS: "État"}

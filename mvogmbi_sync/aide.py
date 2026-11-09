@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.38"
+VERSION = "1.0.39"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -221,7 +221,7 @@ FAQ = {
                     "d'export des tableaux et l'export des graphiques disparaissent ou sont refusés. Par défaut : "
                     "l'administrateur et le comptable peuvent exporter, l'employé non."),
         ("question", "Comment voir les statistiques jour par jour ?"),
-        ("reponse", "« État > Statistiques Clover » : sur les vues par article, catégorie, employé, client, mode de "
+        ("reponse", "« État > Reporting » : sur les vues par article, catégorie, employé, client, mode de "
                     "paiement, carte, appareil et bénéfices, cochez « Détail par jour » : une ligne par jour, avec la "
                     "date en premier (le jour le plus récent en haut). « État > Recherche dans l'historique » : "
                     "« Par : Article par jour » ou « Catégorie par jour » pour les statistiques client, fournisseur "
@@ -290,7 +290,7 @@ FAQ = {
                     "fermez Sage avant « Importer » ; la nuit, rien à faire. Sage fermé, l'application garde la base "
                     "ouverte 10 minutes pour lire vite, et la relâche dès que vous lancez Sage."),
         ("question", "Où voir les rapports des pertes, de la caisse, des dépenses ou de la main-d'œuvre ?"),
-        ("reponse", "« État > Statistiques Clover », section « Gestion » du menu de gauche : Pertes et démarque, "
+        ("reponse", "« État > Reporting », section « Gestion » du menu de gauche : Pertes et démarque, "
                     "Contrôle de la caisse, Petite caisse et dépenses, Main-d'œuvre, Promotions, Retours fournisseurs, "
                     "Bons de commande. Chacun montre, pour la période choisie en haut : des cartes d'indicateurs, un "
                     "graphique d'évolution (par jour, ou par mois au-delà de 62 jours), une carte graphique de "
@@ -706,7 +706,7 @@ FAQ = {
                     "traitement (nuit, imports, saisies dans Sage, travaux du web) avec son début, sa fin, sa durée et "
                     "son résultat."),
         ("question", "Où sont les rabais « Direction » et ceux des administrateurs ?"),
-        ("reponse", "Statistiques Clover > Rapports > « Rabais Direction et administrateurs » : les rabais nommés "
+        ("reponse", "Reporting > Rapports > « Rabais Direction et administrateurs » : les rabais nommés "
                     "« Direction » dans Clover et toutes les commandes enregistrées par un compte administrateur de "
                     "Clover (rôle ADMIN ou propriétaire), avec le type, l'employé, le rabais et le lien vers la facture. "
                     "Ils ne comptent plus dans les anomalies (rabais de 50 % ou plus), ni dans le taux de rabais des "
@@ -726,7 +726,7 @@ FAQ = {
                     "commandes de chaque jour et heure aux employés qui y vendent : créneaux sous tension (renforcer la "
                     "caisse) et créneaux calmes (autres tâches). Leurs décisions s'ajoutent à « Synthèse et décisions »."),
         ("question", "Comment savoir si le mois atteindra son objectif ?"),
-        ("reponse", "Statistiques Clover > Rapports > « Rythme et objectif ». Choisissez « Ce mois-ci » (ou cette "
+        ("reponse", "Reporting > Rapports > « Rythme et objectif ». Choisissez « Ce mois-ci » (ou cette "
                     "semaine, cette année) : l'objectif est le budget des ventes saisi dans Comptabilité > Budget et "
                     "écarts, sinon le rythme de la période de comparaison. Vous voyez le réalisé, la projection de fin de "
                     "période (chaque jour restant estimé par la moyenne du même jour de la semaine), le pourcentage "
@@ -1032,7 +1032,7 @@ FAQ = {
                     "disappear or are refused. By default: the administrator and the accountant can export, the "
                     "employee cannot."),
         ("question", "How do I see the statistics day by day?"),
-        ("reponse", "“Reports > Clover statistics”: on the views by item, category, employee, customer, payment "
+        ("reponse", "“Reports > Reporting”: on the views by item, category, employee, customer, payment "
                     "method, card, device and profits, check “Detail by day”: one row per day, with the date first "
                     "(most recent day at the top). “Reports > Search the history”: “By: Item by day” or “Category by "
                     "day” for customer, supplier and employee statistics. Changing the search type keeps the chosen "
@@ -1098,7 +1098,7 @@ FAQ = {
                     "before “Import”; at night, nothing to do. With Sage closed, the application keeps the database open "
                     "10 minutes for fast reads and releases it as soon as you start Sage."),
         ("question", "Where can I see reports on losses, cash, expenses or labour?"),
-        ("reponse", "“Status > Clover statistics”, “Management” section of the left menu: Losses and shrinkage, Cash "
+        ("reponse", "“Status > Reporting”, “Management” section of the left menu: Losses and shrinkage, Cash "
                     "control, Petty cash and expenses, Labour, Promotions, Supplier returns, Purchase orders. Each "
                     "shows, for the period chosen at the top: indicator cards, a trend chart (per day, or per month "
                     "beyond 62 days), a breakdown chart and the detailed report, which can be exported. Cash and labour "
@@ -1271,7 +1271,7 @@ FAQ = {
                     "wide tables."),
         ("question", "How do I export a chart or a whole statistics page to PDF?"),
         ("reponse", "Right-click the chart: “Export the chart to PDF…” or “Save the chart as an image (PNG)…”. The "
-                    "“📕 Page PDF” button at the top of the Clover statistics: the page shown (Home, Sales overview, "
+                    "“📕 Page PDF” button at the top of Reporting: the page shown (Home, Sales overview, "
                     "Financial overview or a report) with its indicators, charts and full table, the period and filters "
                     "as subtitle."),
 
@@ -1461,7 +1461,7 @@ FAQ = {
                     "ends when it is back on the Wi-Fi. An administrator can open clock-in from anywhere; their "
                     "device is then never followed for the automatic break."),
         ("sous_titre", "What's new in version 1.0.22 (November 8, 2026): business intelligence analyses"),
-        ("question", "Which business intelligence (BI) analyses do the Clover statistics include?"),
+        ("question", "Which business intelligence (BI) analyses does Reporting include?"),
         ("reponse", "Thirteen analyses placed in the existing sections of the statistics, without repeating existing "
                     "reports: Home > Summary and decisions (traffic-light cards, decisions to make by priority, positive points); Sales activity > Anomalies and "
                     "alerts; Reports > Trend and seasonality, Variance analysis, Basket analysis, Sales concentration; "
@@ -1485,7 +1485,7 @@ FAQ = {
                     "each processing run (night, imports, entries in Sage, web jobs) with its start, end, duration and "
                     "result."),
         ("question", "Where are the “Direction” and administrator discounts?"),
-        ("reponse", "Clover statistics > Reports > “Management and administrator discounts”: discounts named "
+        ("reponse", "Reporting > Reports > “Management and administrator discounts”: discounts named "
                     "“Direction” in Clover and every order entered by a Clover administrator account (ADMIN role or "
                     "owner), with the type, employee, discount and the link to the invoice. They no longer count in "
                     "the anomalies (discounts of 50% or more), in employee discount rates or in the “Supervise the "
@@ -1505,7 +1505,7 @@ FAQ = {
                     "and hour with the employees selling then: busy time slots (add cashier staff) and quiet ones "
                     "(other tasks). Their decisions are added to “Summary and decisions”."),
         ("question", "How do I know whether the month will reach its target?"),
-        ("reponse", "Clover statistics > Reports > “Pace and target”. Choose “This month” (or this week, this year): "
+        ("reponse", "Reporting > Reports > “Pace and target”. Choose “This month” (or this week, this year): "
                     "the target is the sales budget entered in Accounting > Budget and variances, otherwise the pace of "
                     "the comparison period. You see what was achieved, the end-of-period projection (each remaining day "
                     "estimated from the average of the same weekday), the projected percentage and the sales needed per "
@@ -1528,7 +1528,7 @@ FAQ = {
                     "decisions”, calculated over the last 4 weeks compared with the 4 before, colored by priority. The "
                     "“Page PDF” of an analysis also includes the colored findings and all the charts, for a meeting."),
         ("question", "How do I check a Clover order?"),
-        ("reponse", "Wherever an order number appears (🧾) in the Clover statistics — anomalies, Orders, Transactions, "
+        ("reponse", "Wherever an order number appears (🧾) in Reporting — anomalies, Orders, Transactions, "
                     "Refunds — clicking the number (web, new tab) or double-clicking the row (Windows) opens the real "
                     "invoice, read from Clover just now: items, discounts, payments, refunds and totals."),
         ("question", "How do I read the item matrix?"),
@@ -1879,7 +1879,7 @@ GUIDE = {
         ("puce", "Factures fournisseurs archivées : chaque facture importée est gardée (copie du PDF, détail des "
                  "lignes en Excel) dans donnees\\archives\\factures_fournisseurs ; recherche par fournisseur, n°, "
                  "date ou article."),
-        ("puce", "Statistiques Clover, comme le tableau de bord de Clover : bouton « 📅 Aujourd'hui » (hier, cette "
+        ("puce", "Reporting, comme le tableau de bord de Clover : bouton « 📅 Aujourd'hui » (hier, cette "
                  "semaine, semaine dernière, ce mois-ci, mois dernier, 30 derniers jours, cette année, période "
                  "personnalisée), indicateurs avec leur variation (aujourd'hui par rapport au même jour la semaine "
                  "dernière), graphiques des ventes par heure ou par jour, du montant perçu, des meilleurs articles et "
@@ -2133,7 +2133,7 @@ GUIDE = {
                  "with the running total), over any period."),
         ("puce", "Archived supplier invoices: each imported invoice is kept (PDF copy, line details in Excel) in "
                  "donnees\\archives\\factures_fournisseurs; search by supplier, number, date or item."),
-        ("puce", "Clover statistics, like the Clover dashboard: “📅 Today” button (yesterday, this week, last week, "
+        ("puce", "Reporting, like the Clover dashboard: “📅 Today” button (yesterday, this week, last week, "
                  "this month, last month, last 30 days, this year, custom period), indicators with their change "
                  "(today compared with the same day last week), charts of sales by hour or by day, amount collected, "
                  "top items and employees. The current day refreshes every 5 minutes. The left menu leads to each "

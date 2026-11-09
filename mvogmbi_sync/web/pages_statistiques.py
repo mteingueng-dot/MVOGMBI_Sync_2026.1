@@ -227,10 +227,22 @@ def _graphique_etat(nom: str, lignes: list[list], vues: dict, extra: dict) -> st
             etiquettes, [("Ventes réelles", reels, BLEU, False), ("Prévision", prevus, "#f6b81a", True)],
             "Aucune vente"))
     if nom == "evolution_annees" and extra.get("series_annees"):
+        # demande du propriétaire du 2026-11-09 : axe des X continu (repère à chaque mois) et, à côté, le même
+        # graphique par mois
+        from .. import statistiques_clover as sc
+
         etiquettes, series = extra["series_annees"]
-        return _graph(Graphique(1100, 170, "Ventes nettes par jour, année par année").courbes(
-            etiquettes, [(str(a), v, PALETTE[k % len(PALETTE)], k > 0) for k, (a, v) in enumerate(series.items())],
-            "Aucune vente"))
+        du = extra.get("du")
+        courbes = [(str(a), v, PALETTE[k % len(PALETTE)], k > 0) for k, (a, v) in enumerate(series.items())]
+        jour = Graphique(640, 260, "Évolution des ventes par jour").courbes(
+            etiquettes, courbes, "Aucune vente", reperes=sc.reperes_mois(du, len(etiquettes)) if du else None)
+        if not du:
+            return _graph(jour, "plein")
+        mois, cumuls = sc.par_mois(du, series)
+        mensuel = Graphique(640, 260, "Évolution des ventes par mois").courbes(
+            mois, [(str(a), v, PALETTE[k % len(PALETTE)], k > 0) for k, (a, v) in enumerate(cumuls.items())],
+            "Aucune vente")
+        return f"<div class='grille2'>{_graph(jour, 'demi')}{_graph(mensuel, 'demi')}</div>"
     if nom == "prev_commande":
         compte: dict[str, int] = {}
         for l in lignes:
@@ -587,11 +599,25 @@ def _navigation(q: dict, vue: str, section: str, limite: bool) -> str:
         actif_seul = ouverte and len(etats) == 1 and vue == premier
         html += (f"<a class='nav-section{' ouverte' if ouverte and len(etats) > 1 else ''}"
                  f"{' actif' if actif_seul else ''}' href='{e(lien)}'>{icone}&nbsp;&nbsp; {e(nom)}</a>")
-        if ouverte and len(etats) > 1:
+        if ouverte and 1 < len(etats) <= MAX_ETATS_MENU:
             for libelle, cle in etats:
                 lien = "?" + urlencode({**q, "vue": cle, "section": nom})
                 html += f"<a class='nav-etat{' actif' if cle == vue else ''}' href='{e(lien)}'>{e(libelle)}</a>"
     return html + "</nav>"
+
+
+# sections longues (demande du propriétaire du 2026-11-09 : « réorganise les sous-sections dans un ruban horizontal
+# pour les pages plus longues ») : au-delà de MAX_ETATS_MENU états, ils sont dans un ruban en haut du rapport
+MAX_ETATS_MENU = 7
+
+
+def _ruban(q: dict, vue: str, section: str) -> str:
+    etats = next((x for _i, n, x in NAVIGATION if n == section), [])
+    if len(etats) <= MAX_ETATS_MENU:
+        return ""
+    liens = "".join(f"<a class='{'actif' if cle == vue else ''}' href='?{e(urlencode({**q, 'vue': cle, 'section': section}))}'>"
+                    f"{e(libelle)}</a>" for libelle, cle in etats)
+    return f"<nav class='ruban-etats'>{liens}</nav>"
 
 
 def statistiques(ctx: Contexte) -> Reponse:
@@ -689,9 +715,9 @@ def statistiques(ctx: Contexte) -> Reponse:
 
     if q.get("pdf") and ctx.reg.peut_exporter(ctx.u):  # PageRapports.pdf_page : état affiché, période et filtres
         return _pdf_page(ctx, vue, du, au, filtres, etat + contenu)
-    corps = (onglets("Statistiques Clover", ctx) + barre + message + etat + "<div class='corps-stats' data-pleine-hauteur>" + _navigation(q_nav, vue, section, limite)
-             + f"<div class='contenu-stats'>{contenu}</div></div>")
-    html = page(ctx, "Statistiques Clover", corps)
+    corps = (onglets("Reporting", ctx) + barre + message + etat + "<div class='corps-stats' data-pleine-hauteur>" + _navigation(q_nav, vue, section, limite)
+             + f"<div class='contenu-stats'>{_ruban(q_nav, vue, section)}{contenu}</div></div>")
+    html = page(ctx, "Reporting", corps)
     if auto and au >= date.today():
         html = html.replace("<head>", "<head><meta http-equiv='refresh' content='60'>", 1)
     return Reponse(corps=html)
@@ -711,7 +737,7 @@ def _pdf_page(ctx: Contexte, vue: str, du, au, filtres: dict, contenu: str) -> R
     from .style_windows import STYLE_WINDOWS
 
     libelle = next((l for _i, _s, etats in NAVIGATION for l, c in etats if c == vue), vue)
-    titre = f"Statistiques Clover — {libelle}"
+    titre = f"Reporting — {libelle}"
     sous_titre = f"Du {du} au {au}" + (" · " + ", ".join(f"{k} = {v}" for k, v in filtres.items()) if filtres else "")
     export_tableau.RACINE_ENTETE = export_tableau.RACINE_ENTETE or ctx.racine
     try:
@@ -743,6 +769,7 @@ def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> 
         entetes, lignes, note = _liste_articles(ctx)
     elif vue == "evolution_annees":
         entetes, lignes, note, extra["series_annees"] = _annees(ctx, b, filtres)
+        extra["du"] = b["du"]
     elif vue in PREVISIONS:
         entetes, lignes, note, extra = _previsions(ctx, vue, horizon)
     elif vue in r["vues"]:
@@ -810,6 +837,13 @@ nav.nav-stats a { display: block; text-decoration: none; color: var(--texte); bo
 nav.nav-stats a.actif { background: var(--menu-actif); color: var(--vert); font-weight: 600; }
 nav.nav-stats a:hover { background: var(--menu-survol); }
 .contenu-stats { flex: 1; min-width: 0; }
+/* ruban des états d'une section longue : au-dessus du rapport, sur plusieurs lignes au besoin */
+nav.ruban-etats { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; padding: 6px; background: var(--menu);
+  border: 1px solid var(--bord); border-radius: 8px; flex: none; }
+nav.ruban-etats a { text-decoration: none; color: var(--texte); font-size: 13px; padding: 5px 10px; border-radius: 6px;
+  background: var(--carte); border: 1px solid var(--bord); white-space: nowrap; }
+nav.ruban-etats a:hover { background: var(--menu-survol); }
+nav.ruban-etats a.actif { background: var(--menu-actif); color: var(--vert); font-weight: 600; border-color: #b9dcc3; }
 /* graphiques dynamiques : élément survolé surligné, série masquée d'un clic sur sa légende, bulle immédiate */
 svg .g-zone:hover { fill: rgba(31, 111, 235, .08); }
 svg .g-part:hover { opacity: .78; }
@@ -923,5 +957,5 @@ def facture_clover(ctx: Contexte) -> Reponse:
     return Reponse(corps=page(ctx, f"Facture Clover n° {f.numero}", corps))
 
 
-FONCTIONS = [Fonction("/statistiques", "Statistiques Clover", "rapports", statistiques, "📊", "État", menu=False),
-             Fonction("/facture-clover", "Statistiques Clover", "rapports", facture_clover, "🧾", "État", menu=False)]
+FONCTIONS = [Fonction("/statistiques", "Reporting", "rapports", statistiques, "📊", "État", menu=False),
+             Fonction("/facture-clover", "Reporting", "rapports", facture_clover, "🧾", "État", menu=False)]

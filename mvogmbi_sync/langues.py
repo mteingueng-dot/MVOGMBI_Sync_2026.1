@@ -3977,6 +3977,28 @@ for _fr, _en in {
     EN.setdefault(_fr, _en)
 
 
+# 1.0.39 : factures remplacées du suivi des ventes (2026-11-09)
+for _fr, _en in {
+    "Remplacée": "Replaced",
+    "remplacée par la facture « {0} »": "replaced by invoice “{0}”",
+    "Reporting": "Reporting",
+    "Décisions proposées (4 dernières semaines, Reporting > Synthèse et décisions) :":
+        "Proposed decisions (last 4 weeks, Reporting > Summary and decisions):",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
+# 1.0.39 : évolution par année, axe continu et graphique par mois (2026-11-09)
+for _fr, _en in {
+    "Ventes nettes par mois, année par année": "Net sales per month, year by year",
+    "Évolution des ventes par jour": "Sales trend by day",
+    "Évolution des ventes par mois": "Sales trend by month",
+    "janv.": "Jan.", "févr.": "Feb.", "mars": "Mar.", "avr.": "Apr.", "mai": "May", "juin": "June", "juil.": "July",
+    "août": "Aug.", "sept.": "Sep.", "oct.": "Oct.", "nov.": "Nov.", "déc.": "Dec.",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
 EN.setdefault("Détail : {l}", "Detail: {l}")
 EN.setdefault("Cliquer pour masquer ou afficher « {n} »", "Click to hide or show \u201c{n}\u201d")
 

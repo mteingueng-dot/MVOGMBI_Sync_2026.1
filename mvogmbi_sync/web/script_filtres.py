@@ -1,7 +1,9 @@
 """Seul script du site web (/filtres.js, servi par l'application, aucun script d'ailleurs ni dans la page) :
 
-- filtres automatiques (demande du propriétaire du 2026-11-08 : « pas besoin de cliquer sur le bouton Afficher ») :
-  dans un formulaire de consultation (method="get"), changer une liste, une case ou une date relance la recherche ;
+- filtres automatiques (demandes du propriétaire du 2026-11-08 et 2026-11-09 : « pas besoin de cliquer sur le
+  bouton Afficher », « sur tous les filtres ») : dans un formulaire de consultation (method="get"), changer une liste,
+  une case, une date ou un champ texte relance la recherche (data-manuel : pas d'envoi) ; une date choisie passe la
+  période à « Personnalisée », une période choisie vide les dates ; bandeau « Chargement… » pendant le rechargement ;
   le bouton reste pour un navigateur sans script et est caché sinon (classe « sans-js ») ;
 - touche Entrée : clique le bouton [data-entree] du formulaire s'il existe, et n'actionne jamais un bouton qui
   supprime ou écarte ;
@@ -16,12 +18,33 @@ SCRIPT = r"""
     return (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   }
   function soumettre(f) { if (f.requestSubmit) { f.requestSubmit(); } else { f.submit(); } }
+  // tous les filtres relancent la recherche d'eux-mêmes (demande du propriétaire du 2026-11-09 : « la sélection
+  // d'un filtre actualise automatiquement la page, applique cela sur tous les filtres ») : listes, cases, dates, et
+  // champs texte (valeur choisie dans la liste proposée, ou champ quitté après la frappe)
   document.addEventListener('change', function (ev) {
     var c = ev.target;
     if (!c || !c.form || (c.form.getAttribute('method') || 'get').toLowerCase() !== 'get') { return; }
     if (c.hasAttribute('data-filtre')) { filtrer(c.getAttribute('data-filtre')); return; }
-    if (c.tagName === 'SELECT' || c.type === 'checkbox' || c.type === 'radio' || c.type === 'date') { soumettre(c.form); }
+    if (c.hasAttribute('data-manuel') || c.readOnly) { return; }
+    var periode = c.form.querySelector('select[name="periode"]');
+    if (periode && c.type === 'date' && (c.name === 'du' || c.name === 'au')) {
+      // une date choisie : période personnalisée (sinon le serveur reprendrait les dates de la période)
+      var perso = Array.prototype.find.call(periode.options, function (o) { return /personnalis/i.test(o.text); });
+      if (perso) { periode.value = perso.value || perso.text; }
+    } else if (periode && c === periode && !/personnalis/i.test(periode.value)) {
+      // une période choisie : ses dates sont recalculées par le serveur
+      c.form.querySelectorAll('input[type="date"][name="du"], input[type="date"][name="au"]').forEach(function (d) {
+        d.value = '';
+      });
+    }
+    if (c.tagName === 'SELECT' || c.type === 'checkbox' || c.type === 'radio' || c.type === 'date' ||
+        c.type === 'text' || c.type === 'search' || c.type === 'number' || c.type === '') { soumettre(c.form); }
   });
+  // la page se relance : bandeau « Chargement… » (une période longue se lit en quelques secondes dans Clover)
+  function charger() { document.documentElement.classList.add('chargement'); }
+  document.addEventListener('submit', function (ev) { if (!ev.defaultPrevented) { charger(); } });
+  window.addEventListener('beforeunload', charger);
+  window.addEventListener('pageshow', function () { document.documentElement.classList.remove('chargement'); });
   function filtrer(id) {
     var champs = document.querySelectorAll('[data-filtre="' + id + '"]');
     var zone = document.getElementById(id);

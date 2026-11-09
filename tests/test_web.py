@@ -102,7 +102,7 @@ def test_connexion_et_securite(site):
     assert "frame-ancestors 'none'" in politique and "<script>" not in page
     nav = connecter(base, "Patron", "secret123")
     statut, page, _ = ouvrir(nav, base + "/")
-    assert statut == 200 and "Feuilles de temps" in page and "Statistiques Clover" in page
+    assert statut == 200 and "Feuilles de temps" in page and "Reporting" in page
     # formulaire sans jeton anti-falsification, puis venu d'un autre site
     assert ouvrir(nav, base + "/feuilles", {"debut": "2026-10-18"})[0] == 403
     statut, page, _ = ouvrir(nav, base + "/feuilles")

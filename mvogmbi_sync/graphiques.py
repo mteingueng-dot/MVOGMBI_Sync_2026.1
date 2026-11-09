@@ -356,7 +356,8 @@ class Graphique(tk.Canvas):
         self.redessiner()
 
     # ------------------------------------------------------------------ courbes d'évolution
-    def courbes(self, etiquettes: list[str], series: list[tuple[str, list, str, bool]], vide: str = "") -> None:
+    def courbes(self, etiquettes: list[str], series: list[tuple[str, list, str, bool]], vide: str = "",
+                reperes: list[tuple[int, str]] | None = None) -> None:
         """`series` : [(nom, valeurs (None = pas de point), couleur, pointillés)] sur les mêmes étiquettes."""
         origine = series
         self._masquees = set()  # nouveau graphique : toutes les séries visibles
@@ -382,9 +383,16 @@ class Graphique(tk.Canvas):
                             "series": [(nom, vs, couleur) for nom, vs, couleur, _ in series]}
             place = max(len(e) for e in etiquettes) * 6.5 + 12
             saut = max(1, -(-n // max(1, int(zone_l // place))))
-            for i, etiquette in enumerate(etiquettes):
-                if i % saut == 0:
-                    self.create_text(gauche + pas * i, hauteur - bas + 12, text=etiquette, font=POLICE, fill=TEXTE_DOUX)
+            if reperes:  # axe des X continu : trait et nom du mois au 1er de chaque mois
+                for i, libelle in reperes:
+                    x = gauche + pas * i
+                    self.create_line(x, haut, x, hauteur - bas + 4, fill="#e3e8e4")
+                    self.create_text(x + 3, hauteur - bas + 12, text=libelle, anchor="w", font=POLICE, fill=TEXTE_DOUX)
+            else:
+                for i, etiquette in enumerate(etiquettes):
+                    if i % saut == 0:
+                        self.create_text(gauche + pas * i, hauteur - bas + 12, text=etiquette, font=POLICE,
+                                         fill=TEXTE_DOUX)
             principale = [(gauche + pas * i, hauteur - bas - zone_h * float(v) / maximum)
                           for i, v in enumerate(series[0][1]) if v is not None]
             if len(principale) > 1:  # aire sous la courbe principale

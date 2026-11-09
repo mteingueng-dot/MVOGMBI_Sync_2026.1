@@ -263,7 +263,7 @@ def texte(r: ResumeMatin) -> list[str]:
                                  l=_liste(r.peremption)))
     lignes += ["  ● " + a for a in r.alertes]
     if r.decisions:
-        lignes.append("  " + t("Décisions proposées (4 dernières semaines, Statistiques Clover > Synthèse et décisions) :"))
+        lignes.append("  " + t("Décisions proposées (4 dernières semaines, Reporting > Synthèse et décisions) :"))
         lignes += [f"    {p} : {d}" for p, d in r.decisions]
     lignes += ["  ○ " + x for x in r.infos]
     lignes += ["  " + t("Non calculé : {e}", e=e) for e in r.erreurs]
@@ -309,7 +309,7 @@ def html(r: ResumeMatin) -> str:
     if r.decisions:  # couleur de la priorité : haute rouge, moyenne orange, basse gris (comme l'application)
         couleurs = {"1": ("#fde2e4", "#d7263d"), "2": ("#fff4d6", "#e0a100"), "3": ("#eef1ef", "#8a9690")}
         decisions = (f"<div style='font-weight:600;margin:10px 0 4px'>"
-                     f"{e(t('Décisions proposées (4 dernières semaines, Statistiques Clover > Synthèse et décisions) :'))}"
+                     f"{e(t('Décisions proposées (4 dernières semaines, Reporting > Synthèse et décisions) :'))}"
                      "</div>" + "".join(
                          f"<div style='background:{couleurs.get(p[:1], couleurs['3'])[0]};border-left:5px solid "
                          f"{couleurs.get(p[:1], couleurs['3'])[1]};padding:5px 9px;margin:3px 0;border-radius:4px'>"

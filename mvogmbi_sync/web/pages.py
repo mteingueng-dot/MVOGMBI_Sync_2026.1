@@ -88,6 +88,14 @@ def permis(reg, u, f: Fonction) -> bool:
 
 # --------------------------------------------------------------------------------------------- gabarit
 STYLE = """
+/* rechargement en cours (/filtres.js) : barre animée en haut et bandeau, curseur d'attente */
+html.chargement, html.chargement * { cursor: progress !important; }
+html.chargement body::before { content: ""; position: fixed; top: 0; left: 0; height: 4px; width: 35%; z-index: 2000;
+  background: linear-gradient(90deg, #13772d, #f2b705, #c8102e); animation: barre-chargement 1.1s ease-in-out infinite; }
+html.chargement body::after { content: "Chargement…"; position: fixed; top: 12px; right: 16px; z-index: 2000;
+  background: #1f2d24; color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+@keyframes barre-chargement { 0% { left: -35%; } 100% { left: 100%; } }
 :root { --vert: #13772d; --vert-pale: #e8f4ec; --rouge: #c8102e; --jaune: #f2b705; --texte: #1f2d24;
         --gris: #6b7a70; --fond: #fafafa; --carte: #ffffff; --bord: #e2e8e4;
         --menu: #eef4f0; --menu-survol: #e2ede6; --menu-actif: #d3eadb; --vert-vif: #1a9b3c;

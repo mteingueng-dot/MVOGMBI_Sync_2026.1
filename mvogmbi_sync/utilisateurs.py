@@ -57,7 +57,8 @@ ACTIONS_FENETRES = {
     "Fournisseur": ["Importer un retour dans Sage"],
 }
 # entrées du menu renommées : le droit donné sous l'ancien nom passe aux nouvelles (rubrique RIA, 2026-11-03)
-RENOMMEES = {"RIA (transferts d'argent)": ["Opérations RIA", "États de compte RIA", "Comptes RIA"]}
+RENOMMEES = {"RIA (transferts d'argent)": ["Opérations RIA", "États de compte RIA", "Comptes RIA"],
+             "Statistiques Clover": ["Reporting"]}  # onglet renommé (demande du propriétaire du 2026-11-09)
 
 
 def _renommees(fonctions) -> list[str]:
@@ -153,7 +154,7 @@ class Registre:
             self.utilisateurs = [Utilisateur(**u) for u in donnees.get("utilisateurs", [])]
             self.sans_export = [p for p in donnees.get("sans_export", SANS_EXPORT_DEFAUT) if p != ADMIN]
             self.limites = [p for p in donnees.get("limites", LIMITES_DEFAUT) if p != ADMIN]
-            self.fonctions_refusees = {k: list(v) for k, v in donnees.get("fonctions_refusees", {}).items()
+            self.fonctions_refusees = {k: _renommees(v) for k, v in donnees.get("fonctions_refusees", {}).items()
                                        if k in self.profils and k != ADMIN}
             self.fonctions_permises = {k: _renommees(v) for k, v in donnees.get("fonctions_permises", {}).items()
                                        if k in self.profils and k != ADMIN}

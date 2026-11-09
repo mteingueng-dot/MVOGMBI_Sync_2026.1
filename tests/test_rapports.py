@@ -117,3 +117,34 @@ def test_statistiques_par_jour_et_date_de_peremption():
     a = {"id": "A", "name": "Riz", "price": 180, "priceType": "FIXED", "sku": "31/12/2027", "itemStock": {"quantity": 3}}
     assert ligne_article(a, {"FIXED": "Fixe"})[2] == D("1.80") and ligne_article(a, {})[6] == date(2027, 12, 31)
     assert ligne_article({**a, "sku": "4CotEcras150g"}, {})[6] is None  # pas une date : non affichée
+
+
+
+def test_suivi_facture_remplacee_par_la_fin_de_semaine(tmp_path):
+    """Constat du propriétaire du 2026-11-09 : une facture d'un jour importée puis supprimée de Sage, remplacée par la
+    facture de la fin de semaine, s'affichait « n'est plus dans Sage (supprimée) » : elle est « Remplacée » avec la
+    facture qui couvre ces jours ; une facture supprimée sans remplaçante garde l'ancien commentaire."""
+    from datetime import datetime
+
+    from mvogmbi_sync import rapports as rp
+
+    donnees = tmp_path / "donnees"
+    donnees.mkdir()
+    (donnees / "journal_imports.csv").write_text(
+        "Date et heure;Facture;Résultat;Sous-total;Total\n"
+        "2026-10-25 20:14;Vente 2026-10-24;importée;100;110\n"
+        "2026-10-26 01:00;Vente 2026-10-25;ÉCHEC;90;99\n"
+        "2026-10-10 20:00;Vente 2026-10-09;importée;80;88\n", encoding="utf-8-sig")
+
+    class Base:
+        def requete(self, sql, params=()):
+            if "REGEXP" in sql:
+                return [{"s": "Vente 2026-10-23/25", "d": datetime(2026, 10, 25), "m": 300}]
+            return []
+
+    par_n = {l.facture: l for l in rp.suivi_ventes(tmp_path, Base(), "Vente Hebdomadaire", 10550000)}
+    for numero in ("Vente 2026-10-24", "Vente 2026-10-25"):
+        assert par_n[numero].statut == "Remplacée", numero
+        assert par_n[numero].commentaire == "remplacée par la facture « Vente 2026-10-23/25 »"
+    assert par_n["Vente 2026-10-09"].statut == "Facture importée"
+    assert "n'est plus dans Sage (supprimée)" in par_n["Vente 2026-10-09"].commentaire

@@ -298,7 +298,9 @@ class Graphique:
         return self
 
     # ---------------------------------------------------------------- courbes
-    def courbes(self, etiquettes: list[str], series: list[tuple[str, list, str, bool]], vide: str = "") -> "Graphique":
+    def courbes(self, etiquettes: list[str], series: list[tuple[str, list, str, bool]], vide: str = "",
+                reperes: list[tuple[int, str]] | None = None) -> "Graphique":
+        """`reperes` : axe des X continu, [(rang, libellé)] (1er de chaque mois) au lieu d'une date sur n."""
         def dessiner(largeur, hauteur):
             bas, gauche, droite = 30, 52, 14
             valeurs = [float(v) for _, vs, _, _ in series for v in vs if v is not None]
@@ -315,9 +317,15 @@ class Graphique:
             pas = zone_l / max(1, n - 1)
             place = max(len(e) for e in etiquettes) * 6.5 + 12
             saut = max(1, -(-n // max(1, int(zone_l // place))))
-            for i, etiquette in enumerate(etiquettes):
-                if i % saut == 0:
-                    self.texte(gauche + pas * i, hauteur - bas + 12, etiquette, "", TEXTE_DOUX)
+            if reperes:  # axe continu : trait et nom du mois au 1er de chaque mois
+                for i, libelle in reperes:
+                    x = gauche + pas * i
+                    self.ligne(x, haut, x, hauteur - bas + 4, couleur="#e3e8e4")
+                    self.texte(x + 3, hauteur - bas + 12, libelle, "w", TEXTE_DOUX)
+            else:
+                for i, etiquette in enumerate(etiquettes):
+                    if i % saut == 0:
+                        self.texte(gauche + pas * i, hauteur - bas + 12, etiquette, "", TEXTE_DOUX)
             principale = [(gauche + pas * i, hauteur - bas - zone_h * float(v) / maximum)
                           for i, v in enumerate(series[0][1]) if v is not None]
             if len(principale) > 1:

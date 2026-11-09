@@ -15,7 +15,7 @@ from .serveur import Reponse, echapper as e
 
 ONGLETS = [("Suivi des ventes", "/suivi-ventes"), ("Opérations journalières", "/operations-journalieres"),
            ("Recherche dans l'historique", "/historique"),
-           ("Factures fournisseurs archivées", "/archives-fournisseurs"), ("Statistiques Clover", "/statistiques"),
+           ("Factures fournisseurs archivées", "/archives-fournisseurs"), ("Reporting", "/statistiques"),
            ("Produits inactifs", "/inactifs"), ("Articles 20/80", "/pareto")]  # ordre des onglets de PageRapports
 # fenêtres Windows à onglets : (libellé de l'onglet, adresse web, entrée du menu qui donne le droit, page)
 GROUPES = [
@@ -137,6 +137,8 @@ def suivi_ventes(ctx: Contexte) -> Reponse:
         lignes.append(l)
 
     def couleur(l) -> str:
+        if l.statut == "Remplacée":
+            return "ligne-remplacee"
         if bloquee(l):
             return "ligne-bloquee"
         if l.encaissement not in ("—",) and not l.encaissement.startswith("Encaissée"):
@@ -389,6 +391,7 @@ nav.onglets a.onglet:hover { background: var(--menu-survol); }
 .carte-total { background: var(--carte); border: 1px solid #dfe9e2; padding: 8px 12px; }
 .carte-total .t { font-size: 12px; color: #6b7a70; } .carte-total .v { color: var(--vert); font-weight: 600; font-size: 19px; }
 .carte-total.premiere .v { font-size: 24px; }
+tr.ligne-remplacee td { color: #8a9690 !important; background: #f3f4f3 !important; }
 tr.ligne-bloquee td { background: #fde2e4 !important; } tr.ligne-a-encaisser td { background: #fff4d6 !important; }
 tr.ligne-a-rapprocher td { background: #eaf2fb !important; }
 tr.ligne-jamais td { background: #fde2e4 !important; } tr.ligne-stock td { background: #fff4d6 !important; }

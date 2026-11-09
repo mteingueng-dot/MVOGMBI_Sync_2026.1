@@ -23,7 +23,7 @@ from .rapports_gestion import TEXTES as _TEXTES_GESTION
 TEXTES_GESTION = set(_TEXTES_GESTION)  # états, motifs, notes des rapports de gestion : traduits à l'affichage
 
 # couleurs des lignes du suivi : vente bloquée, à encaisser, encaissée mais pas retrouvée sur les relevés
-COULEURS = {"bloquee": "#fde2e4", "a_encaisser": "#fff4d6", "a_rapprocher": "#eaf2fb"}
+COULEURS = {"bloquee": "#fde2e4", "a_encaisser": "#fff4d6", "a_rapprocher": "#eaf2fb", "remplacee": "#f3f4f3"}
 # Menu des statistiques Clover : (icône, section, [(libellé, vue de statistiques_clover ou page)])
 NAVIGATION = [
     ("🏠", "Accueil", [("Accueil", "accueil")]),
@@ -81,6 +81,7 @@ MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z
                    "Affinité", "Sensibilité", "Irrégularité", "Écart inhabituel", "Note du client", "Inégalité", "Dépendance (")
 NOTES_ETATS: dict[str, str] = {}
 PARTIES_GESTION = (("resume", "Résumé"), ("graphiques", "Graphiques"), ("detail", "Détail"))
+MAX_ETATS_MENU = 7  # au-delà, les états de la section sont dans un ruban en haut du rapport (comme le web)
 # constats des analyses décisionnelles : (fond, trait à gauche) et icône par niveau
 COULEURS_CONSTATS = {"alerte": ("#fde2e4", "#d7263d"), "attention": ("#fff4d6", "#e0a100"),
                      "bon": ("#e6f4ea", "#1b7f3b"), "info": ("#eef1ef", "#8a9690")}
@@ -110,6 +111,7 @@ MODELES = [  # textes du suivi composés dans rapports.py : traduits à l'affich
     (re.compile(r"^Encaissée \((\d+) encaissement\(s\)\)$"), "Encaissée ({0} encaissement(s))"),
     (re.compile(r"^En partie \((\d+) sur (\d+)\)$"), "En partie ({0} sur {1})"),
     (re.compile(r"^Import : (.+)$"), "Import : {0}"),
+    (re.compile(r"^remplacée par la facture « (.+) »$"), "remplacée par la facture « {0} »"),
 ]
 
 
@@ -338,6 +340,7 @@ class PageRapports(ttk.Frame):
         self.tableau_suivi = tableau_simple(cadre)
         for cle, couleur in COULEURS.items():
             self.tableau_suivi.tag_configure(cle, background=couleur)
+        self.tableau_suivi.tag_configure("remplacee", foreground="#8a9690")
         placer_a_droite(bouton_exporter(barre, self.tableau_suivi, t("Suivi des ventes")))
 
     def actualiser(self) -> None:
@@ -385,6 +388,8 @@ class PageRapports(ttk.Frame):
 
         def couleur(i):
             l = lignes[i]
+            if l.statut == "Remplacée":  # facture d'un jour remplacée par celle de la fin de semaine : grisée
+                return ("remplacee",)
             if any(m in l.statut for m in ("Bloquée", "Échec", "ÉCHEC", "Import :")):
                 return ("bloquee",)
             if l.encaissement not in ("—",) and not l.encaissement.startswith("Encaissée"):
@@ -727,7 +732,7 @@ class PageRapports(ttk.Frame):
         from .graphiques import Graphique
 
         cadre = ttk.Frame(self.onglets, padding=(0, 8, 0, 0))
-        self.onglets.add(cadre, text="  " + t("Statistiques Clover") + "  ")
+        self.onglets.add(cadre, text="  " + t("Reporting") + "  ")  # « Statistiques Clover » avant le 2026-11-09
         self.cadre_statistiques = cadre
         barre = Rangee(cadre)  # passe à la ligne si la fenêtre est étroite
         barre.pack(fill="x")
@@ -777,6 +782,8 @@ class PageRapports(ttk.Frame):
         self.nav.pack_propagate(False)
         self.contenu_stats = tk.Frame(corps, background=fond_de(cadre))
         self.contenu_stats.pack(side="left", fill="both", expand=True, padx=(12, 0))
+        # sections longues : leurs états dans un ruban horizontal en haut du rapport (demande du 2026-11-09)
+        self.ruban_etats = Rangee(self.contenu_stats, ecart_lignes=4)
 
         # page « Accueil » : cartes d'indicateurs (valeur et variation) et graphiques
         self.page_accueil = tk.Frame(self.contenu_stats, background=fond_de(cadre))
@@ -875,6 +882,14 @@ class PageRapports(ttk.Frame):
         self.constats_etat.pack(fill="x")
         self.g_etat = Graphique(self.page_tableau, 170)
         self.g_etat.pack(fill="x", pady=(6, 0))
+        # « Évolution par année » : par jour (axe continu, un repère par mois) et par mois, côte à côte
+        self.cadre_annees = tk.Frame(self.page_tableau, background=fond_de(cadre))
+        self.cadre_annees.columnconfigure(0, weight=1, uniform="an")
+        self.cadre_annees.columnconfigure(1, weight=1, uniform="an")
+        self.g_annee_jour = Graphique(self.cadre_annees, 220)
+        self.g_annee_jour.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        self.g_annee_mois = Graphique(self.cadre_annees, 220)
+        self.g_annee_mois.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         self.sup_etat = tk.Frame(self.page_tableau, background=fond_de(cadre))
         self.sup_etat.columnconfigure(0, weight=1, uniform="se")
         self.sup_etat.columnconfigure(1, weight=1, uniform="se")
@@ -887,7 +902,7 @@ class PageRapports(ttk.Frame):
         self.tableau_stats.bind("<Double-1>", lambda _e: self._facture_de_l_etat())
         self.tableau_stats.bind("<Return>", lambda _e: self._facture_de_l_etat())
         self.tableau_stats.tag_configure("a_commander", background=COULEURS_PEREMPTION["rouge"])
-        placer_a_droite(bouton_exporter(ligne, self.tableau_stats, t("Statistiques Clover")))
+        placer_a_droite(bouton_exporter(ligne, self.tableau_stats, t("Reporting")))
         self.donnees_prev = None
         self.vues_prev: dict = {}
         self._lecture_prev = False
@@ -1321,12 +1336,14 @@ class PageRapports(ttk.Frame):
             if self.g_etat.winfo_ismapped():
                 self.g_etat.delete("bulle")
                 images.append(image_widget(self.g_etat))
+            if self.cadre_annees.winfo_ismapped():  # évolution par année : les deux graphiques côte à côte
+                images.append(image_widget(self.cadre_annees))
             if self.tableau_stats.winfo_ismapped():
                 entetes, lignes = contenu(self.tableau_stats)
         f = self._filtres_actifs()
         sous_titre = (f"{self.stat_du.get()} → {self.stat_au.get()}"
                       + (t("   •   filtres : {f}", f=", ".join(f"{t(k)} = {v}" for k, v in f.items())) if f else ""))
-        nom = f"{t('Statistiques Clover')} — {t(libelle)}"
+        nom = f"{t('Reporting')} — {t(libelle)}"
         demander_et_ecrire(self, nom, "pdf",
                            lambda chemin: ecrire_pdf(chemin, nom, entetes, lignes, images, sous_titre))
 
@@ -1347,10 +1364,10 @@ class PageRapports(ttk.Frame):
             entete.pack(fill="x", padx=6, pady=(2, 0))
             premier = etats[0]
             entete.bind("<Button-1>", lambda _e, s=section, e=premier: self._ouvrir_section(s, e))
-            if not ouverte or len(etats) == 1:
+            if not ouverte or len(etats) == 1 or len(etats) > MAX_ETATS_MENU:
                 if len(etats) == 1:
                     self.liens_nav[(section, premier[1])] = entete
-                continue
+                continue  # section longue : ses états sont dans le ruban (_remplir_ruban)
             for libelle, cle in etats:
                 lien = tk.Label(self.nav, text=t(libelle), anchor="w", cursor="hand2", font=("Segoe UI", 9),
                                 padx=34, pady=5, background=MENU_FOND, foreground=TEXTE)
@@ -1358,6 +1375,28 @@ class PageRapports(ttk.Frame):
                 lien.bind("<Button-1>", lambda _e, c=cle, s=section: self._montrer(c, s))
                 self.liens_nav[(section, cle)] = lien
         self._surligner()
+
+    def _remplir_ruban(self) -> None:
+        """Ruban des états de la section ouverte quand elle en a plus de MAX_ETATS_MENU (Rapports, Finances,
+        Articles) : le menu de gauche reste court."""
+        etats = next((x for _i, n, x in NAVIGATION if n == self.section_ouverte), [])
+        for enfant in self.ruban_etats.winfo_children():
+            enfant.destroy()
+        self.ruban_etats.elements = []
+        if len(etats) <= MAX_ETATS_MENU:
+            self.ruban_etats.pack_forget()
+            return
+        for libelle, cle in etats:
+            actif = cle == self.vue_courante
+            lien = tk.Label(self.ruban_etats, text=t(libelle), cursor="hand2", padx=10, pady=4,
+                            font=("Segoe UI Semibold" if actif else "Segoe UI", 9),
+                            background=MENU_ACTIF if actif else "#ffffff", foreground=VERT_FONCE if actif else TEXTE,
+                            highlightthickness=1, highlightbackground="#d5dcd7")
+            lien.bind("<Button-1>", lambda _e, c=cle, s=self.section_ouverte: self._montrer(c, s))
+            self.ruban_etats.ajouter(lien, 4)
+        if not self.ruban_etats.winfo_manager():
+            premier = next((w for w in self.contenu_stats.pack_slaves()), None)
+            self.ruban_etats.pack(fill="x", pady=(0, 8), **({"before": premier} if premier else {}))
 
     def _ouvrir_section(self, section: str, premier: tuple[str, str]) -> None:
         self.section_ouverte = section
@@ -1373,6 +1412,7 @@ class PageRapports(ttk.Frame):
 
     def _montrer(self, cle: str, section: str) -> None:
         self.vue_courante, self.section_ouverte = cle, section
+        self._remplir_ruban()
         for page in (self.page_accueil, self.page_apercu, self.page_tableau, self.page_peremption,
                      self.page_gestion):
             page.pack_forget()
@@ -1540,7 +1580,8 @@ class PageRapports(ttk.Frame):
         from .analyses_clover import etat_carte, niveau_constat
 
         # largeur de la page (la sous-page « Résumé » peut être cachée pendant le calcul)
-        if dessiner_constats(self.constats_gestion, r.note, max(400, self.toile_gestion.winfo_width() - 60)):
+        if dessiner_constats(self.constats_gestion, r.note, max(700, self.toile_gestion.winfo_width() - 60,
+                                                                   self.winfo_toplevel().winfo_width() - 360)):
             self.note_gestion.configure(text="")
         else:
             self.note_gestion.configure(text=t(r.note) if r.note else "")
@@ -1660,6 +1701,7 @@ class PageRapports(ttk.Frame):
             self.g_etat.pack_forget()
             self.resume_etat.pack_forget()
             self.sup_etat.pack_forget()
+            self.cadre_annees.pack_forget()
             self.note_etat.configure(text="")
             return
         entetes, lignes = source[nom]
@@ -1914,6 +1956,8 @@ class PageRapports(ttk.Frame):
         """Graphique adapté à l'état : courbe, barres, anneau ou classement (rien pour les listes détaillées)."""
         from .graphiques import BLEU, BLEU_PALE
 
+        self.cadre_annees.pack_forget()
+
         if nom == "prev_ventes" and self.donnees_prev:
             historique, prevision = self.donnees_prev["historique"], lignes
             jours = sorted(historique)[-28:]
@@ -1928,11 +1972,20 @@ class PageRapports(ttk.Frame):
         if nom == "evolution_annees" and getattr(self, "series_annees", None):
             from .graphiques import PALETTE
 
+            from .statistiques_clover import par_mois, reperes_mois
+
             etiquettes, series = self.series_annees
-            self.g_etat.titre = t("Ventes nettes par jour, année par année")
-            self.g_etat.courbes(etiquettes, [(str(a), v, PALETTE[k % len(PALETTE)], k > 0)
-                                             for k, (a, v) in enumerate(series.items())], t("Aucune vente"))
-            self.g_etat.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
+            du = (getattr(self, "brut_stats", None) or {}).get("du")
+            courbes = [(str(a), v, PALETTE[k % len(PALETTE)], k > 0) for k, (a, v) in enumerate(series.items())]
+            self.g_annee_jour.titre = t("Évolution des ventes par jour")
+            self.g_annee_jour.courbes(etiquettes, courbes, t("Aucune vente"),
+                                      reperes=reperes_mois(du, len(etiquettes)) if du else None)
+            mois, cumuls = par_mois(du, series) if du else ([], {})
+            self.g_annee_mois.titre = t("Évolution des ventes par mois")
+            self.g_annee_mois.courbes(mois, [(str(a), v, PALETTE[k % len(PALETTE)], k > 0)
+                                             for k, (a, v) in enumerate(cumuls.items())], t("Aucune vente"))
+            self.g_etat.pack_forget()
+            self.cadre_annees.pack(fill="x", pady=(6, 0), before=self.titre_tableau)
             return
         if nom == "prev_commande":
             compte = {}

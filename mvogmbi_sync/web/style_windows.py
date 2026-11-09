@@ -178,6 +178,9 @@ label.case { display: flex; gap: 6px; align-items: center; color: var(--texte); 
   main nav.onglets { flex-wrap: nowrap; overflow-x: auto; }
   main nav.onglets a.onglet.actif { background: var(--carte); border-color: #dadada; }
   main nav.onglets + * { margin-top: 0; }
+  /* barre de boutons ou de filtres juste sous les onglets (sans cadre d'onglet) : un espace, sinon elle est collée
+     aux onglets (constat du propriétaire du 2026-11-09 sur la page Rapports > Statistiques Clover : « trop collé ») */
+  main nav.onglets:not(.sous-pages) + :not(.onglet-corps) { margin-top: 12px; }
   main .onglet-corps { border: 1px solid #dadada; border-top: 0; padding: 10px; background: var(--carte); }
 }
 """
