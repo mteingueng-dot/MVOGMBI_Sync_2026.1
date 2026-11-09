@@ -16,6 +16,10 @@ details.choix-multiple > div { position: absolute; z-index: 6; background: var(-
   padding: 6px 10px; box-shadow: 0 4px 12px rgba(0,0,0,.12); max-height: 260px; overflow-y: auto; min-width: 220px; }
 details.choix-multiple label { display: flex; gap: 6px; align-items: center; white-space: nowrap; margin: 3px 0; }
 details.choix-multiple label.tout { font-weight: 600; border-bottom: 1px solid var(--bord); padding-bottom: 4px; }
+/* filtres automatiques (script /filtres.js) : le bouton « Afficher » ne sert plus qu'aux navigateurs sans script */
+.js form:not([method='post']) .sans-js { display: none !important; }
+.filtres-tableau { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0 0; }
+.filtres-tableau input { width: 16em; }
 /* « Photographier une facture » : gros bouton pour le téléphone */
 .photo-facture label.bouton-photo { display: block; text-align: center; background: #1a9b3c; color: #fff;
   border-radius: 10px; padding: 22px 12px; font-size: 20px; font-weight: 600; margin: 12px 0; cursor: pointer; }
@@ -24,7 +28,8 @@ details.choix-multiple label.tout { font-weight: 600; border-bottom: 1px solid v
 /* Factures fournisseurs : la page tient dans la fenêtre sur PC, la liste défile seule (demande du propriétaire du
    2026-11-05 : « ne fais pas défiler la page ») */
 @media (min-width: 821px) {
-  .zone-liste-factures .defile { height: max(120px, calc(100vh - 900px)); min-height: 120px; max-height: none; }
+  /* liste des factures plus haute (demande du propriétaire du 2026-11-08) */
+  .zone-liste-factures .defile { height: max(300px, calc(100vh - 640px)); min-height: 300px; max-height: none; }
   .zone-liste-factures ~ * .defile { height: 96px; min-height: 96px; max-height: none; }
 }
 """

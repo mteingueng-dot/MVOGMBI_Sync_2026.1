@@ -96,8 +96,10 @@ def test_connexion_et_securite(site):
     assert statut == 303 and entetes["Location"] == "/connexion"
     statut, page, entetes = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": "faux"})
     assert "incorrect" in page
-    assert "script-src" not in entetes["Content-Security-Policy"] and "frame-ancestors 'none'" in \
-        entetes["Content-Security-Policy"]
+    # un seul script, servi par l'application (filtres automatiques) : jamais de script dans la page ni d'ailleurs
+    politique = entetes["Content-Security-Policy"]
+    assert "script-src 'self';" in politique and "unsafe-inline" not in politique.split("script-src")[1].split(";")[0]
+    assert "frame-ancestors 'none'" in politique and "<script>" not in page
     nav = connecter(base, "Patron", "secret123")
     statut, page, _ = ouvrir(nav, base + "/")
     assert statut == 200 and "Feuilles de temps" in page and "Statistiques Clover" in page

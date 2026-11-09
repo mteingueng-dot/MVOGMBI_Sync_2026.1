@@ -76,7 +76,7 @@ def cartes(valeurs: list[tuple[str, str]]) -> str:
 
 
 def _formulaire(contenu: str, bouton: bool = True) -> str:
-    fin = "<button class='second'>Afficher</button>" if bouton else ""
+    fin = "<button class='second sans-js'>Afficher</button>" if bouton else ""
     return f"<form class='barre-onglet' method='get'>{contenu}{fin}</form>"
 
 

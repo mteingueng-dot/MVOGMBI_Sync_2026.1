@@ -48,7 +48,8 @@ def test_factures_fournisseurs_importees_archivees(tmp_path):
                                     facteur=D("4.54"))], total=D("180.00"), etat=FACTURE_IMPORTEE)
     registre.factures.append(facture)
     registre.enregistrer()
-    assert archiver_importees(tmp_path) == 1 and archiver_importees(tmp_path) == 0  # une seule fois
+    # archivée dès l'enregistrement et retirée de la liste (règle du 2026-11-08) : rien à rattraper ensuite
+    assert Registre(tmp_path).factures == [] and archiver_importees(tmp_path) == 0
     (a,) = archives(tmp_path)
     assert a["numero"] == "14402" and a["fichier_archive"].endswith(".pdf")
     dossier = tmp_path / "donnees" / "archives" / "factures_fournisseurs" / "2026"

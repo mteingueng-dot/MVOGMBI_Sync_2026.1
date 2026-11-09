@@ -234,7 +234,8 @@ def decisions_du_mois(racine: Path, config_toml: dict, donnees, hier: date) -> l
         couts = cout_par_clover(racine, charger(racine, config_toml, ouvrir=False, secours=True))
     except BaseException:  # Sage illisible : décisions sans la rentabilité
         couts = {}
-    synthese = analyser("a_synthese", tranche(donnees, du, au), tranche(donnees, du2, au2), couts, du, au, du2, au2)
+    synthese = analyser("a_synthese", tranche(donnees, du, au), tranche(donnees, du2, au2), couts, du, au, du2, au2,
+                        racine=racine)
     return [(_t_priorite(p), f"{_t_(d)} — {raison}" + resume_concernes(elements))
             for p, d, raison, _s, _l, elements in getattr(synthese, "decisions", [])[:DECISIONS_MAX]]
 

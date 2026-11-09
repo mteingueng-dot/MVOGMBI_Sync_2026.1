@@ -2690,7 +2690,7 @@ for _fr, _en in {
         "Price change: the daily unit price moves by at least 3% and then stays stable; quantities compared over the "
         "same number of open days before and after (28 at most). Elasticity −1: a 10% increase loses 10% of the "
         "quantities. A stock-out, the season or a promotion can also play a part: read with care.",
-    "Élasticité médiane {e} : {s}.": "Median elasticity {e}: {s}.",
+    "Sensibilité au prix typique {e} : {s}.": "Median elasticity {e}: {s}.",
     "Meilleur changement : {a} ({p} → {q}), {v} de ventes par jour en plus.":
         "Best change: {a} ({p} → {q}), {v} more sales per day.",
     "Changement le plus coûteux : {a} ({p} → {q}), {v} de ventes par jour.":
@@ -2726,26 +2726,26 @@ for _fr, _en in {
     "hausse": "Upward", "baisse": "Downward",
     "Le {j} vend {p} % au-dessus de la moyenne ; le {k}, {q} % en dessous.":
         "{j} sells {p}% above average; {k}, {q}% below.",
-    "Variabilité {n} : coefficient de variation de {cv} %.": "{n} variability: coefficient of variation of {cv}%.",
+    "Les ventes varient {n}ment d'un jour à l'autre (écart moyen de {cv} %).": "{n} variability: coefficient of variation of {cv}%.",
     "faible": "Low", "moyenne": "Medium", "forte": "High",
     "Choisissez au moins": "Choose at least",
-    "Choisissez au moins 4 semaines pour une tendance et des indices fiables.":
+    "Choisissez au moins 4 semaines pour une tendance fiable.":
         "Choose at least 4 weeks for a reliable trend and indexes.",
     "La moitié des paniers font moins de {m} ; le panier moyen ({p}) est tiré par les gros paniers.":
         "Half of the baskets are below {m}; the average basket ({p}) is pulled up by large baskets.",
-    "Panier médian {m}, proche du panier moyen {p} : paniers homogènes.":
+    "Panier typique {m}, proche du panier moyen {p} : paniers semblables.":
         "Median basket {m}, close to the average basket {p}: consistent baskets.",
     "{p} % des commandes n'ont qu'un article : piste de ventes complémentaires (voir « Articles achetés ensemble »).":
         "{p}% of orders have a single item: room for cross-selling (see “Items bought together”).",
-    "Panier médian de la période de comparaison : {m} ({v} %).": "Median basket of the comparison period: {m} ({v}%).",
-    "{n} articles sur {t} ({p} %) font 80 % des ventes ; indice de Gini {g} (0 = ventes égales, 1 = un seul article).":
+    "Panier typique de la période de comparaison : {m} ({v} %).": "Median basket of the comparison period: {m} ({v}%).",
+    "{n} articles sur {t} ({p} %) font 80 % des ventes ; inégalité {g} (0 = ventes égales, 1 = un seul article).":
         "{n} items out of {t} ({p}%) make 80% of sales; Gini index {g} (0 = equal sales, 1 = a single item).",
-    "Concentration des articles {n} (HHI {h} : moins de 1 500 = faible, plus de 2 500 = forte).":
+    "Dépendance aux meilleurs articles {n} (indice {h} : moins de 1 500 = faible, plus de 2 500 = forte).":
         "Item concentration {n} (HHI {h}: under 1,500 = low, over 2,500 = high).",
     "Dépendance à un employé : {p} % des ventes passent par le même vendeur.":
         "Dependence on one employee: {p}% of sales go through the same seller.",
     "Jour atypique :": "Unusual day:",
-    "Jour atypique : à plus de 2 écarts-types de la moyenne du même jour de la semaine (au moins 4 semaines) ; "
+    "Jour inhabituel : ventes très loin de celles du même jour de la semaine (au moins 4 semaines) ; "
     "commande inhabituelle : au-delà de Q3 + 3 × l'écart interquartile et du 99e centile ; prix inhabituel : à 40 % "
     "ou plus du prix médian de l'article (5 ventes au moins).":
         "Unusual day: more than 2 standard deviations from the average of the same weekday (at least 4 weeks); "
@@ -2765,19 +2765,19 @@ for _fr, _en in {
         "(Sage average cost) at least equal to the average. X: steady demand (coefficient of variation ≤ 0.5), Y: "
         "variable (≤ 1), Z: irregular; measured {p}.",
     "semaine par semaine": "week by week", "jour par jour": "day by day",
-    "Coûts Sage absents : quadrants « Coût inconnu » (Sage ne répond pas ou articles non reliés).":
+    "Coûts Sage absents : groupe « Coût inconnu » (Sage ne répond pas ou articles non reliés).":
         "No Sage costs: “Unknown cost” quadrants (Sage not responding or items not linked).",
     "{n} locomotive(s) : articles très vendus à faible marge, premier levier de bénéfice.":
         "{n} plowhorse(s): best sellers with a low margin, the first profit lever.",
     "{n} poids mort(s) : {v} de ventes seulement.": "{n} dog(s): only {v} of sales.",
     "Seules les paires": "Only pairs",
-    "Seules les paires vues dans au moins {m} commandes sont gardées. Confiance A → B : part des commandes avec A qui "
+    "Seules les paires vues dans au moins {m} commandes sont gardées. « Clients de A qui prennent B » : part des commandes avec A qui "
     "ont aussi B ; lift > 1 : achetés ensemble plus souvent que le hasard.":
         "Only pairs seen in at least {m} orders are kept. Confidence A → B: share of orders with A that also have B; "
         "lift > 1: bought together more often than chance.",
-    "{p} % des clients qui prennent « {a} » prennent aussi « {b} » (lift {l}) : placer ces articles côte à côte ou en "
+    "{p} % des clients qui prennent « {a} » prennent aussi « {b} » ({l} fois plus que le hasard) : placer ces articles côte à côte ou en "
     "offre groupée.":
-        "{p}% of customers who take “{a}” also take “{b}” (lift {l}): place these items side by side or bundle them.",
+        "{p}% of customers who take “{a}” also take “{b}” ({l} fois plus que le hasard): place these items side by side or bundle them.",
     "Heure active :": "Active hour:",
     "Heure active : heure où l'employé a enregistré au moins une vente (mesure de l'activité, pas des heures payées). "
     "Indice de panier : panier moyen de l'employé / panier moyen du magasin × 100.":
@@ -2786,8 +2786,8 @@ for _fr, _en in {
     "{n} accorde {p} % de rabais, plus du double de la moyenne ({m} %).":
         "{n} gives {p}% in discounts, more than twice the average ({m}%).",
     "Écart de panier : {h} ({a}) contre {b} ({c}).": "Basket gap: {h} ({a}) versus {b} ({c}).",
-    "Récence, fréquence": "Recency, frequency",
-    "Récence, fréquence et montant notés de 1 à 5 (5 = meilleur) parmi les clients identifiés de la période ; "
+    "Chaque client est noté": "Recency, frequency",
+    "Chaque client est noté de 1 à 5 (5 = meilleur) sur l'achat récent, la fréquence et la dépense, parmi les clients identifiés de la période ; "
     "choisissez une longue période (6 à 12 mois) pour une segmentation fiable.":
         "Recency, frequency and monetary value scored 1 to 5 (5 = best) among the identified customers of the "
         "period; choose a long period (6 to 12 months) for a reliable segmentation.",
@@ -2805,7 +2805,7 @@ for _fr, _en in {
     "{p} % des clients de la période de comparaison sont revenus.": "{p}% of the comparison period's customers came back.",
     "Clients retenus : {p} % des ventes des clients identifiés ; ventes des clients perdus dans la comparaison : {v}.":
         "Retained customers: {p}% of identified customers' sales; sales of customers lost in the comparison: {v}.",
-    "Un client revient en moyenne tous les {j} jours (médiane).": "A customer comes back every {j} days (median).",
+    "Un client revient en général tous les {j} jours.": "A customer comes back every {j} days (median).",
 }.items():
     EN.setdefault(_fr, _en)
 
@@ -2905,7 +2905,7 @@ for _fr, _en in {
     "{q} — {d} ; payé {m} sur {b}": "{q} — {d}; paid {m} of {b}",
     "{q} — {d} : {m} au lieu de {b}": "{q} — {d}: {m} instead of {b}",
     "{c} ; ventes {v} ({q} vendus) ; bénéfice {b} ; marge {m}": "{c}; sales {v} ({q} sold); profit {b}; margin {m}",
-    "{n} commande(s) ensemble ; lift {l} ; {c}": "{n} order(s) together; lift {l}; {c}",
+    "{n} commande(s) ensemble ; {l} fois plus que le hasard ; {c}": "{n} order(s) together; lift {l}; {c}",
     "{j} : prix {a} → {b} ; ventes par jour {c} → {d}": "{j}: price {a} → {b}; sales per day {c} → {d}",
     "Taux de rabais {t} ; {c} commande(s) ; ventes {v}": "Discount rate {t}; {c} order(s); sales {v}",
     "{p} des ventes ; {c} commande(s)": "{p} of sales; {c} order(s)",
@@ -3000,9 +3000,9 @@ for _fr, _en in {
     "Ce qui explique l'écart du bénéfice": "What explains the profit variance",
     "Catégories : écart du bénéfice": "Categories: profit variance",
     "Marge brute par catégorie": "Gross margin by category",
-    "Pont de marge : effet prix = quantités vendues × variation du prix net (rabais compris) ; effet volume = "
-    "variation des quantités × bénéfice moyen par unité d'avant ; effet mix = plus ou moins d'articles rentables dans "
-    "les ventes. Coût = CUMP actuel de Sage pour les deux périodes.":
+    "Explication du bénéfice : effet des prix = quantités vendues × variation du prix net (rabais compris) ; effet volume = "
+    "variation des quantités × bénéfice moyen par unité d'avant ; effet du choix des articles = plus ou moins d'articles rentables dans "
+    "les ventes. Coût = coût moyen actuel de Sage pour les deux périodes.":
         "Margin bridge: price effect = quantities sold × change in net price (discounts included); volume effect = "
         "change in quantities × previous average profit per unit; mix effect = more or fewer profitable items in "
         "sales. Cost = current Sage average cost for both periods.",
@@ -3080,5 +3080,180 @@ for _fr, _en in {
     "{n} créneau(x) avec plusieurs employés pour peu de commandes.":
         "{n} time slot(s) with several employees for few orders.",
     "{c} commandes par jour ; {e} employé(s) actif(s)": "{c} orders per day; {e} active employee(s)",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# rythme et objectif, heures d'ouverture (2026-11-08)
+for _fr, _en in {
+    "Rythme et objectif": "Pace and target", "Objectif": "Target", "Réalisé": "Achieved",
+    "Atteinte de l'objectif": "Target achievement", "Projection de fin de période": "End-of-period projection",
+    "Atteinte projetée": "Projected achievement", "Moyenne par jour": "Average per day",
+    "À faire par jour restant": "Needed per remaining day", "Jours restants": "Days remaining",
+    "Objectif du jour": "Daily target", "Ventes cumulées": "Cumulative sales", "Objectif cumulé": "Cumulative target",
+    "Écart cumulé": "Cumulative gap", "En cours (projection)": "In progress (projection)", "Projection": "Projection",
+    "Ventes cumulées (réalisé puis projection) et objectif": "Cumulative sales (achieved then projected) and target",
+    "Ventes moyennes par jour de la semaine": "Average sales by day of the week",
+    "Ventes par jour : réalisé ou prévu et objectif du jour": "Sales by day: achieved or forecast and daily target",
+    "Écart cumulé avec l'objectif": "Cumulative gap with the target",
+    "Réalisé et projection": "Achieved and projection", "Budget des ventes": "Sales budget",
+    "Rythme de la période de comparaison": "Pace of the comparison period",
+    "Objectif : {s} ({v}). Projection : jours restants estimés par la moyenne du même jour de la semaine déjà vu dans "
+    "la période (sinon dans la comparaison).":
+        "Target: {s} ({v}). Projection: remaining days estimated from the average of the same weekday already seen in "
+        "the period (otherwise in the comparison).",
+    "Période terminée : objectif atteint à {p} % ({r} sur {o}).": "Period over: target {p}% achieved ({r} of {o}).",
+    "Au rythme actuel, la période finirait à {v}, soit {p} % de l'objectif.":
+        "At the current pace, the period would end at {v}, i.e. {p}% of the target.",
+    "Il faut {r} par jour sur les {n} jour(s) restant(s), contre {m} en moyenne jusqu'ici (+{p} %).":
+        "{r} per day is needed over the {n} remaining day(s), against {m} on average so far (+{p}%).",
+    "Il suffit de {r} par jour sur les {n} jour(s) restant(s) ({m} en moyenne jusqu'ici).":
+        "{r} per day over the {n} remaining day(s) is enough ({m} on average so far).",
+    "Rattraper l'objectif de la période": "Catch up with the period target",
+    "Projection à {p} % de l'objectif ; il faut {r} par jour sur {n} jour(s).":
+        "Projection at {p}% of the target; {r} per day is needed over {n} day(s).",
+    "Prévu {v} ; objectif du jour {o}": "Forecast {v}; daily target {o}",
+    "Heure d'ouverture peu achalandée": "Slow opening hour",
+    "{n} heure(s) d'ouverture ou de fermeture vendent moins du quart d'une heure moyenne : {c}.":
+        "{n} opening or closing hour(s) sell less than a quarter of an average hour: {c}.",
+    "Revoir les heures d'ouverture peu achalandées": "Review slow opening hours",
+    "{n} heure(s) d'ouverture ou de fermeture à moins du quart d'une heure moyenne.":
+        "{n} opening or closing hour(s) below a quarter of an average hour.",
+    "{v} de ventes par jour contre {m} pour une heure moyenne": "{v} of sales per day against {m} for an average hour",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# libellés des périodes comparées (2026-11-08)
+for _fr, _en in {
+    "comparaison : {p}": "comparison: {p}",
+    "Ventes nettes cumulées jour après jour, comparées à la période précédente":
+        "Cumulative net sales day by day, compared with the previous period",
+    "Bénéfice brut cumulé jour après jour, comparé à la période précédente":
+        "Cumulative gross profit day by day, compared with the previous period",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# libellés simplifiés pour les non-techniciens (2026-11-08) : même traduction que l'ancien libellé
+for _ancien, _nouveau in {
+    'Anomalies et alertes': 'Ventes inhabituelles à vérifier',
+    'Tendance et saisonnalité': 'Tendance des ventes',
+    'Analyse de la variation': 'Pourquoi les ventes changent',
+    'Analyse des paniers': 'Taille des paniers',
+    'Concentration des ventes': 'Dépendance aux meilleurs',
+    'Analyse de la marge': 'Pourquoi le bénéfice change',
+    'Matrice des articles': 'Articles rentables ou non',
+    'Portefeuille des catégories': 'Catégories qui montent ou baissent',
+    'Prix et sensibilité au prix': 'Effet des changements de prix',
+    'Achalandage et effectifs': 'Achalandage et personnel',
+    'Segmentation RFM': 'Groupes de clients',
+    'Fidélité et rétention': 'Clients qui reviennent',
+    'Cohortes de clients': 'Retour des nouveaux clients',
+    'Moyenne mobile 7 jours': 'Moyenne des 7 derniers jours',
+    'Moyenne mobile 4 semaines': 'Moyenne des 4 dernières semaines',
+    'Ventes nettes, moyenne mobile 7 jours et tendance': 'Ventes nettes, moyenne des 7 derniers jours et direction',
+    'Tendance': 'Direction générale',
+    'Tendance par semaine': 'Hausse ou baisse par semaine',
+    'Variabilité (coefficient de variation)': "Écart d'un jour à l'autre",
+    'Indice saisonnier par jour de la semaine (100 = moyenne)': 'Force de chaque jour de la semaine (100 = jour moyen)',
+    'Écart-type (z)': "Écart inhabituel (fois l'écart normal)",
+    'Jours atypiques': 'Jours inhabituels',
+    'Contribution (points de %)': "Part de l'écart total (points de %)",
+    'Effet nombre de commandes': 'Effet du nombre de ventes',
+    'Effet panier moyen': 'Effet du montant moyen par vente',
+    'Panier du 90e centile': 'Gros panier (10 % les plus gros)',
+    'Panier médian': 'Panier typique (médian)',
+    'Articles par panier (médiane)': 'Articles par panier (typique)',
+    'Indice HHI': 'Dépendance (0 à 10 000)',
+    'Indice de Gini': 'Inégalité (0 = égal, 1 = un seul)',
+    'Indice de Gini des articles': 'Inégalité des ventes entre articles (0 à 1)',
+    'Courbes de concentration (% des ventes détenu par les x % premiers)': 'Part des ventes faite par les premiers (en % du nombre)',
+    'Concentration': 'Niveau de dépendance',
+    'CUMP': 'Coût moyen (Sage)',
+    'Effet mix': 'Effet du choix des articles',
+    'Effet volume': 'Effet des quantités',
+    'Effet prix': 'Effet des prix',
+    'Effet quantité': 'Effet des quantités vendues',
+    'Coefficient de variation': 'Irrégularité des ventes',
+    'Régularité (X / Y / Z)': 'Régularité (X régulier, Y variable, Z irrégulier)',
+    'Demande régulière (X)': 'Ventes régulières (X)',
+    'Quadrant': 'Groupe',
+    'Ventes nettes par quadrant': 'Ventes nettes par groupe',
+    'Articles par classe 20/80 et régularité de la demande': 'Articles par classe 20/80 et régularité des ventes',
+    'Lift': 'Affinité (fois le hasard)',
+    'Confiance A → B %': 'Clients de A qui prennent B %',
+    'Confiance B → A %': 'Clients de B qui prennent A %',
+    'Paires à lift ≥ 2': 'Paires 2 fois plus fréquentes que le hasard',
+    'Paires au lift le plus fort': 'Paires les plus liées',
+    'Élasticité': 'Sensibilité au prix',
+    'Élasticité médiane': 'Sensibilité au prix (typique)',
+    'Score RFM': 'Note du client (récent, fréquent, montant)',
+    'Récence (1-5)': 'Achat récent (1-5)',
+    'Fréquence (1-5)': 'Achète souvent (1-5)',
+    'Montant (1-5)': 'Dépense (1-5)',
+    'Cohortes': 'Mois suivis',
+    'Créneaux sous tension': 'Heures chargées',
+    'Créneaux calmes': 'Heures calmes',
+    'Créneaux les plus chargés par employé': 'Heures les plus chargées par employé',
+    'Créneaux calmes : employés actifs': 'Heures calmes : employés actifs',
+    'Sous tension': 'Chargée',
+    'Écart avec la croissance du magasin (points de %)': 'Croissance au-dessus du magasin (points de %)',
+}.items():
+    EN.setdefault(_nouveau, EN.get(_ancien, _nouveau))
+for _ancien, _nouveau in {'Ventes nettes par segment': 'Ventes nettes par groupe de clients', 'Clients par segment': 'Clients par groupe', 'Segment': 'Groupe de clients'}.items():
+    EN.setdefault(_nouveau, EN.get(_ancien, _nouveau))
+
+# groupes d'articles en mots simples (2026-11-08)
+for _ancien, _nouveau in {
+    'Vedette': 'Très vendu et rentable',
+    'Locomotive': 'Très vendu, peu rentable',
+    'Énigme': 'Peu vendu mais rentable',
+    'Poids mort': 'Peu vendu, peu rentable',
+    'Vedettes': 'Très vendus et rentables',
+    'Locomotives': 'Très vendus, peu rentables',
+    'Énigmes': 'Peu vendus mais rentables',
+    'Poids morts': 'Peu vendus, peu rentables',
+    'Locomotives à revoir en priorité (ventes nettes)': 'Très vendus mais peu rentables, à revoir en priorité',
+    "Populaire mais peu rentable : revoir le prix ou le coût d'achat": "Se vend beaucoup mais rapporte peu : augmenter un peu le prix de vente ou négocier le prix d'achat",
+    "Revoir le prix ou le coût d'achat des locomotives": "Augmenter le prix de vente ou négocier le prix d'achat des articles très vendus mais peu rentables",
+    'Réduire le stock ou retirer les poids morts': 'Réduire le stock ou retirer les articles peu vendus et peu rentables',
+    '{n} locomotive(s) : articles très vendus à faible marge, premier levier de bénéfice.': "{n} article(s) très vendus mais peu rentables : le premier moyen d'augmenter le bénéfice.",
+    '{n} poids mort(s) : {v} de ventes seulement.': '{n} article(s) peu vendus et peu rentables : {v} de ventes seulement.',
+    '{n} article(s) très vendus à faible marge.': '{n} article(s) se vendent beaucoup mais rapportent peu par unité.',
+}.items():
+    EN.setdefault(_nouveau, EN.get(_ancien, _nouveau))
+
+# remboursements à surveiller, espèces et cartes (2026-11-08)
+for _fr, _en in {
+    "Remboursements à surveiller": "Refunds to watch", "Espèces et cartes": "Cash and cards",
+    "Montant remboursé": "Amount refunded", "Commandes remboursées": "Refunded orders",
+    "Part des ventes remboursée": "Share of sales refunded", "Part remboursée la période d'avant":
+        "Share refunded in the previous period", "Montant remboursé la période d'avant":
+        "Amount refunded in the previous period", "Part remboursée %": "Share refunded %", "Commande": "Order",
+    "Montant remboursé par jour": "Amount refunded by day", "Articles les plus remboursés": "Most refunded items",
+    "Montant remboursé par employé": "Amount refunded by employee",
+    "Articles remboursés le plus souvent (part de leurs ventes)": "Items refunded most often (share of their sales)",
+    "Aucun remboursement dans la période.": "No refund in the period.",
+    "{v} remboursés sur {n} commande(s), soit {p} % des ventes (période d'avant : {q} %).":
+        "{v} refunded on {n} order(s), i.e. {p}% of sales (previous period: {q}%).",
+    "{n} rembourse {p} % de ses ventes, plus du double de la moyenne ({m} %).":
+        "{n} refunds {p}% of their sales, more than twice the average ({m}%).",
+    "Article le plus remboursé : {a} ({v}).": "Most refunded item: {a} ({v}).",
+    "Vérifier les remboursements avec les employés": "Check refunds with the employees",
+    "{p} % des ventes remboursées (période d'avant : {q} %).": "{p}% of sales refunded (previous period: {q}%).",
+    "{n} : {v} remboursés ; {p} de ses ventes": "{n}: {v} refunded; {p} of its sales",
+    "Payé en espèces": "Paid in cash", "Part des espèces": "Cash share",
+    "Part des espèces la période d'avant": "Cash share in the previous period",
+    "Panier moyen en espèces": "Average cash basket", "Panier moyen par carte": "Average card basket",
+    "Commandes payées en espèces": "Orders paid in cash", "Espèces": "Cash", "Carte ou autre": "Card or other",
+    "Espèces et carte": "Cash and card", "Part des espèces %": "Cash share %",
+    "Commandes en espèces": "Cash orders", "Espèces et cartes par jour": "Cash and cards by day",
+    "Montant encaissé par mode de paiement": "Amount collected by payment method",
+    "Espèces et cartes selon l'heure": "Cash and cards by hour",
+    "Espèces moyennes selon le jour de la semaine": "Average cash by day of the week",
+    "{p} % de l'argent encaissé arrive en espèces ({v}) ; période d'avant : {q} %.":
+        "{p}% of the money collected comes in cash ({v}); previous period: {q}%.",
+    "Les espèces arrivent surtout le {j} ({v} en moyenne) : prévoir le fond de caisse et le dépôt en conséquence.":
+        "Cash comes mostly on {j} ({v} on average): plan the float and the deposit accordingly.",
+    "Panier moyen : {a} en espèces contre {b} par carte.": "Average basket: {a} in cash against {b} by card.",
+    "Aucun paiement lu pour la période.": "No payment read for the period.",
 }.items():
     EN.setdefault(_fr, _en)

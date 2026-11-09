@@ -170,7 +170,7 @@ def _document(titre: str, corps: str, ctx: Contexte | None = None, menu: str = "
     return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'>{_expiration(ctx, corps)}"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'><meta name='color-scheme' content='light'>"
             f"<meta name='robots' content='noindex'><title>{e(titre)} · {NOM_APPLICATION}</title>"
-            f"<link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'></head><body>{_entete(ctx)}{contenu}</body></html>")
+            f"<link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'><script src='/filtres.js?v={VERSION_STYLE}' defer></script></head><body>{_entete(ctx)}{contenu}</body></html>")
 
 
 def page(ctx: Contexte, titre: str, corps: str) -> str:
@@ -244,7 +244,7 @@ def page_poste(ctx: Contexte, corps: str) -> str:
     """Poste de pointage (fenetre_pointage.PostePointage) : fenêtre à part, sans bandeau ni menu, avec « ✖ Fermer »."""
     return (f"<!doctype html><html lang='fr'><head><meta charset='utf-8'><meta name='viewport' "
             f"content='width=device-width, initial-scale=1'><meta name='color-scheme' content='light'><meta name='robots' content='noindex'><title>Pointage des "
-            f"employés · {NOM_APPLICATION}</title><link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'></head><body "
+            f"employés · {NOM_APPLICATION}</title><link rel='stylesheet' href='/style.css?v={VERSION_STYLE}'><script src='/filtres.js?v={VERSION_STYLE}' defer></script></head><body "
             f"class='poste-seul'><main><div class='entete-outil'><span></span><a class='fermer' href='/'>✖ Fermer</a>"
             f"</div>{corps}</main></body></html>")
 
@@ -354,7 +354,7 @@ def _choisir_employe(ctx: Contexte, registre):
     options = "".join(f"<option value='{e(x.id)}'{' selected' if choisi and x.id == choisi.id else ''}>{e(x.nom)}"
                       f"</option>" for x in visibles)
     return choisi, (f"<form class='ligne' method='get'><div><label for='employe'>Employé</label><select id='employe' "
-                    f"name='employe'>{options}</select></div><button class='second' type='submit'>Afficher</button>"
+                    f"name='employe'>{options}</select></div><button class='second sans-js' type='submit'>Afficher</button>"
                     f"</form>")
 
 
@@ -449,7 +449,7 @@ def mes_heures(ctx: Contexte) -> Reponse:
              f"<a class='onglet' href='/paies?employe={e(employe.id)}'>Paies dans Sage</a></nav><div class='onglet-corps'>"
              f"<form class='barre-onglet' method='get'><input type='hidden' name='employe' value='{e(employe.id)}'>"
              f"<div><label>Période de paie</label><select name='periode'>{options}</select></div><div><label>Affichage"
-             f"</label><select name='vue'>{vues}</select></div><button class='second'>Afficher</button></form>"
+             f"</label><select name='vue'>{vues}</select></div><button class='second sans-js'>Afficher</button></form>"
              f"<div class='cartes-trois'>{cartes}</div>" + tableau_section(section)
              + ("<p class='erreur-texte'>À corriger par le gérant : " + e(" ; ".join(f.anomalies)) + "</p>"
                 if f.anomalies else "")
@@ -690,7 +690,7 @@ def feuilles(ctx: Contexte) -> Reponse:
     avant, apres = debut - timedelta(days=pt.JOURS_PERIODE), debut + timedelta(days=pt.JOURS_PERIODE)
     garder = parametres_depots(ctx)
     choix = (f"<form method='get' class='barre-onglet'><input type='hidden' name='debut' value='{debut}'>"
-             + filtre_depots(ctx) + "<button class='second'>Afficher</button></form>")
+             + filtre_depots(ctx) + "<button class='second sans-js'>Afficher</button></form>")
     barre = (choix + f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='debut' value='{debut}'>"
              + "".join(f"<input type='hidden' name='depot' value='{e(d)}'>" for d in (filtre or []))
              + f"<a class='ouvrir' href='?debut={avant}{garder}'>◀</a><strong class='periode'>Période de paie du {debut} au {fin}"
@@ -795,7 +795,7 @@ def statistiques(ctx: Contexte) -> Reponse:
         filtres = {"Employé": moi.nom}
     options = "".join(f"<option{' selected' if p == nom else ''}>{e(p)}</option>" for p in sc.PERIODES)
     corps = (f"<form class='ligne' method='get'><div><label for='periode'>Période</label><select id='periode' "
-             f"name='periode'>{options}</select></div><button class='second' type='submit'>Afficher</button></form>")
+             f"name='periode'>{options}</select></div><button class='second sans-js' type='submit'>Afficher</button></form>")
     try:
         d = sc.filtrer(_lire_clover(ctx, du, au), filtres)
         avant = sc.filtrer(_lire_clover(ctx, cdu, cau), filtres)

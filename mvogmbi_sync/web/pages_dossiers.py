@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from .pages import Contexte, Fonction, page
+from .pages import Contexte, Fonction, csrf, page
 from .serveur import Reponse, echapper as e
 
 # nom -> (titre de la page, fonction(ctx) -> dossier racine)
@@ -155,8 +155,18 @@ def archives_fournisseurs(ctx: Contexte) -> Reponse:
         cle = texte.casefold()
         liste = [a for a in liste if cle in " ".join(str(a.get(k, "")) for k in (
             "date_facture", "fournisseur_sage", "fournisseur_lu", "numero")).casefold()]
-    choisi = ctx.req.query.get("a", "")
+    choisi = ctx.req.query.get("a", "") or ctx.req.champ("a")
     a = next((x for x in liste if x["chemin"] == choisi), None)
+    if ctx.req.methode == "POST" and ctx.req.champ("action") == "Refaire la mise à jour Clover" and a is not None:
+        from . import taches
+        from ..fournisseurs import refaire_clover_archive
+
+        def refaire(journal, a=a):
+            journal("Stock et coût Clover des lignes pas encore faites…")
+            return refaire_clover_archive(ctx.racine, ctx.config, a)
+
+        return taches.lancer(ctx, f"Clover de la facture {a.get('numero', '')}", refaire,
+                             "/archives-fournisseurs?" + urlencode({"a": a["chemin"]}))
     voir = ctx.req.query.get("voir")
     if voir and a is None:
         message = "<p class='erreur-texte'>Choisissez une facture dans la liste.</p>"
@@ -197,7 +207,13 @@ def archives_fournisseurs(ctx: Contexte) -> Reponse:
              + tableau_section(Section("Factures fournisseurs archivées", ["", "Date", "Fournisseur", "N°", "Total",
                                                                            "Lignes", "Archivée le"], lignes,
                                        html=set(range(7))))
-             + "</form></div>")
+             + "</form>"
+             # facture choisie : « Refaire la mise à jour Clover » (formulaire POST à part, avec le jeton)
+             + (f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='a' "
+                f"value='{e(a['chemin'])}'><span>Facture choisie : {e(a.get('fournisseur_sage', ''))} n° "
+                f"{e(a.get('numero', ''))}</span><button class='second' name='action' value='Refaire la mise à jour "
+                "Clover'>🔁 Refaire la mise à jour Clover</button></form>" if a is not None else "")
+             + "</div>")
     return Reponse(corps=page(ctx, "Factures fournisseurs archivées", corps))
 
 

@@ -46,7 +46,7 @@ def page_a_cocher(ctx, adresse: str, explication: str, colonnes: list[str], lign
     caches_html = "".join(f"<input type='hidden' name='{e(k)}' value='{e(v)}'>" for k, v in caches.items())
     barre = (f"<form method='get' class='barre-onglet'>{caches_html}<div><label>Afficher :</label><select name='filtre'>"
              f"{options}</select></div><div><label>Rechercher :</label><input name='texte' value='{e(q.get('texte', ''))}'"
-             f" size='22'></div>{reglages}<button class='second'>Afficher</button>"
+             f" size='22'></div>{reglages}<button class='second sans-js'>Afficher</button>"
              f"<a class='ouvrir' href='{adresse}?{e(urlencode({**base, 'cocher': 'tout'}))}'>☑ Tout cocher</a>"
              f"<a class='ouvrir' href='{adresse}?{e(urlencode({**base, 'cocher': 'aucun'}))}'>☐ Tout décocher</a>"
              f"<a class='ouvrir' href='{adresse}?{e(urlencode({**base, 'actualiser': '1'}))}'>🔄 Actualiser</a></form>")

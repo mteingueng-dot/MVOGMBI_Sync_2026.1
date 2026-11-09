@@ -18,6 +18,7 @@ from .design import action_permise
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, apres_frappe, cadre_tableau,
                      entete_page, fond_de, rayer)
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
+                           nombre_archives,
                            completer, etat_apres_controle, lire_copie_fournisseurs, lire_facture)
 from .export_tableau import bouton_exporter, placer_a_droite, rendre_exportable
 from .langues import t
@@ -303,7 +304,7 @@ class PageFournisseurs(ttk.Frame):
         compte = {e: sum(1 for f in self.registre.factures if f.etat == e) for e in ETATS}
         self.resume.configure(text=t("{n} facture(s) — à saisir : {s}, à vérifier : {v}, prêtes : {p}, importées : {i}",
                                      n=len(self.registre.factures), s=compte[A_SAISIR], v=compte[A_VERIFIER],
-                                     p=compte[PRETE], i=compte[IMPORTEE])
+                                     p=compte[PRETE], i=nombre_archives(self.racine))
                               + ("" if self.fournisseurs_sage else
                                  t("   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et articles Sage »"))
                               + (t("   •   {n} cochée(s)", n=len(self.cochees)) if getattr(self, "cochees", None) else "")

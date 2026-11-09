@@ -161,7 +161,7 @@ def planning(ctx: Contexte) -> Reponse:
              "name='action' value='Publier le mois'>📣 Publier le mois</button></div>")
     caches = "".join(f"<input type='hidden' name='depot' value='{e(d)}'>" for d in (filtre or []))
     choix = (f"<form method='get' class='barre-onglet'><input type='hidden' name='mois' value='{mois}'>"
-             + filtre_depots(ctx) + "<button class='second'>Afficher</button></form>")
+             + filtre_depots(ctx) + "<button class='second sans-js'>Afficher</button></form>")
     corps = (message + choix + f"<form method='post'>{csrf(ctx)}<input type='hidden' name='mois' value='{mois}'>"
              + caches + barre
              + "<p class='note'>Cochez un ou plusieurs employés, puis « Horaire des employés choisis… ». « Publier le "
@@ -821,7 +821,7 @@ def conges(ctx: Contexte) -> Reponse:
                          for k, v in (("vendredi", "Vendredi saint"), ("lundi", "Lundi de Pâques")))
         corps = ("<form method='get' class='barre-onglet'><input type='hidden' name='onglet' value='feries'><div><label>"
                  f"Année</label><select name='annee'>{annees}</select></div><div><label>Pâques : jour férié</label>"
-                 f"<select name='paques'>{paques}</select></div><button class='second'>Afficher</button></form>"
+                 f"<select name='paques'>{paques}</select></div><button class='second sans-js'>Afficher</button></form>"
                  + tableau_section(Section("Jours fériés", ["Date", "Jour férié", "État", "Indemnité par employé"],
                                            lignes))
                  + "<div class='ligne-etat'>Indemnité = 1/20 des heures normales pointées pendant les 4 semaines "

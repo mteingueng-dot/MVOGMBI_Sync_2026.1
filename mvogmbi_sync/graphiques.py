@@ -50,6 +50,11 @@ def police_entiere(texte: str, place: float):
     return (famille, taille) if largeur <= place else (famille, max(7, int(taille * place / largeur)))
 
 
+
+def _largeur_texte(texte: str) -> float:
+    """Largeur estimée d'un texte en Segoe UI 9 points (les majuscules sont plus larges)."""
+    return sum(8.4 if c.isupper() or c in "MWmw%" else 3.5 if c in " .,;:'|!il()" else 6.6 for c in str(texte))
+
 class Graphique(tk.Canvas):
     """Canvas qui garde ses données et se redessine à la bonne taille."""
 
@@ -141,29 +146,39 @@ class Graphique(tk.Canvas):
                              font=("Segoe UI Semibold", 9) if not couleur else POLICE, fill=encre)
 
     def _legende(self, largeur: int, elements: list[tuple[str, str, bool]], ligne: bool = False) -> int:
-        """Légende à droite du titre, ou sous le titre si la place manque ; renvoie le haut de la zone de dessin."""
-        fin_titre = 12 + 8.2 * len(self.titre) + 16 if self.titre else 0
-        largeurs = [7.5 * len(nom) + (32 if ligne else 24) for nom, _, _ in elements]
-        y, haut = 19, 44
-        x = largeur - 14 - sum(largeurs)
-        if x < fin_titre:  # pas la place à côté du titre : en dessous
-            x, y, haut = 12, 38, 60
-        for (nom, couleur, pointilles), l in zip(elements, largeurs):
-            if ligne:
-                self.create_line(x, y, x + 16, y, fill=couleur, width=2, dash=(4, 3) if pointilles else None)
-                self.create_text(x + 20, y, text=nom, anchor="w", font=POLICE, fill=TEXTE)
-            else:
-                self.create_rectangle(x, y - 5, x + 10, y + 5, fill=couleur, outline=couleur)
-                self.create_text(x + 14, y, text=nom, anchor="w", font=POLICE, fill=TEXTE)
-            x += l
-        return haut
+        """Légende centrée sous le titre (titre centré, demande du propriétaire du 2026-11-08), sur plusieurs lignes
+        si les noms ne tiennent pas sur une seule ; renvoie le haut de la zone de dessin."""
+        marque = 22 if ligne else 16
+        rangees, courante, largeur_rangee = [], [], 0.0
+        for nom, couleur, pointilles in elements:
+            l = marque + _largeur_texte(nom) + 16
+            if courante and largeur_rangee + l > largeur - 24:
+                rangees.append((courante, largeur_rangee))
+                courante, largeur_rangee = [], 0.0
+            courante.append((nom, couleur, pointilles, l))
+            largeur_rangee += l
+        if courante:
+            rangees.append((courante, largeur_rangee))
+        y = 37 if self.titre else 14
+        for rangee, total in rangees:
+            x = (largeur - total + 16) / 2
+            for nom, couleur, pointilles, l in rangee:
+                if ligne:
+                    self.create_line(x, y, x + 16, y, fill=couleur, width=2, dash=(4, 3) if pointilles else None)
+                else:
+                    self.create_rectangle(x, y - 5, x + 10, y + 5, fill=couleur, outline=couleur)
+                self.create_text(x + marque, y, text=nom, anchor="w", font=POLICE, fill=TEXTE)
+                x += l
+            y += 17
+        return int(y + 6)
 
     def redessiner(self) -> None:
         self.delete("all")
         self._survol = None
         largeur, hauteur = self.winfo_width(), self.winfo_height()
         if self.titre:
-            self.create_text(12, 10, text=self.titre, anchor="nw", font=("Segoe UI Semibold", 11), fill=TEXTE)
+            self.create_text(largeur / 2, 10, text=self.titre, anchor="n", font=("Segoe UI Semibold", 11),
+                             fill=TEXTE, width=max(50, largeur - 24), justify="center")
         if self._dessin and largeur > 50:
             self._dessin(largeur, hauteur)
 

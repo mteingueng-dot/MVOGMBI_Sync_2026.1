@@ -76,7 +76,7 @@ def _brut(ctx: Contexte, du: date, au: date, nom_periode: str) -> dict:
         except (Exception, SystemExit):  # noqa: BLE001 — Sage illisible : pas de bénéfices
             couts = {}
         return {"donnees": donnees, "autres": autres, "couts": couts, "du": du, "au": au, "du2": du2, "au2": au2,
-                "libelle": libelle, "completes": sc.statistiques(donnees, couts)}
+                "libelle": libelle, "completes": sc.statistiques(donnees, couts), "racine": ctx.racine}
 
     cle = ("stats_brut", du, au, nom_periode, ctx.req.query.get("Point de vente", ""))
     return _garder(ctx, cle, DUREE_JOUR if au >= date.today() else DUREE, lire)
@@ -100,8 +100,20 @@ def _calculer(b: dict, f: dict) -> dict:
 
 
 # --------------------------------------------------------------------------------------------- rendu
-def _graph(g: Graphique) -> str:
-    return f"<div class='carte-graph'>{g.svg()}</div>"
+# largeur et hauteur de dessin selon la place du graphique sur PC (pleine largeur, moitié, tiers) : le graphique est
+# dessiné à sa taille d'affichage, ses écritures ont donc la même taille partout (demande du propriétaire du
+# 2026-11-08 : « ajuste les tailles de police uniformes partout ») ; sur téléphone : 400 px de large
+PLACES = {"plein": (1150, 250), "demi": (640, 260), "tiers": (420, 270)}
+
+
+def _graph(g: Graphique, place: str = "") -> str:
+    if not place:
+        place = "plein" if g.largeur >= 1000 else "demi"
+    largeur, hauteur = PLACES[place]
+    g.largeur, g.hauteur = largeur, hauteur
+    pc = g.svg("graphique g-pc")
+    g.largeur, g.hauteur = 400, max(240, hauteur - 10)
+    return f"<div class='carte-graph'>{pc}{g.svg('graphique g-tel')}</div>"
 
 
 def _cartes(r: dict) -> str:
@@ -129,7 +141,7 @@ def _accueil(r: dict) -> str:
     _, valeurs_avant = r["series_avant"]
     valeurs_avant = (valeurs_avant + [0] * len(valeurs))[:len(valeurs)]
     nom = ("Aujourd'hui" if r["du"] == r["au"] == date.today() else
-           (str(r["du"]) if r["du"] == r["au"] else "Période choisie"))
+           (str(r["du"]) if r["du"] == r["au"] else f"{r['du']:%d/%m} → {r['au']:%d/%m}"))
     g = Graphique(560, 170, "Ventes nettes par heure" if r["du"] == r["au"] else "Évolution des ventes nettes")
     if r["du"] == r["au"]:
         g.barres(etiquettes, [(nom, valeurs, BLEU), (r["libelle"].capitalize(), valeurs_avant, BLEU_PALE)],
@@ -146,8 +158,8 @@ def _accueil(r: dict) -> str:
         [(l[0], l[2]) for l in r["vues"]["Par catégorie"][1]], "Aucune vente", format_valeur=montant)
     articles = Graphique(190, 190, "Meilleurs articles").classement(
         [(l[0], l[6]) for l in r["vues"]["Par article"][1][:8]], vide="Aucune vente", format_valeur=montant)
-    return (_cartes(r) + _graph(g) + "<div class='grille3'>" + _graph(moyens) + _graph(categories) + _graph(articles)
-            + "</div>")
+    return (_cartes(r) + _graph(g, "plein") + "<div class='grille3'>" + _graph(moyens, "tiers")
+            + _graph(categories, "tiers") + _graph(articles, "tiers") + "</div>")
 
 
 def _apercu(r: dict) -> str:
@@ -380,7 +392,7 @@ def _peremption(ctx: Contexte, q: dict) -> str:
             f"</label><select name='filtre_peremption'>{options}</select></div><div><label>Rechercher</label><input "
             f"name='recherche' value='{e(q.get('recherche', ''))}'></div><div><label><input type='checkbox' "
             f"name='en_stock' value='1'{' checked' if q.get('en_stock') else ''}> Seulement les articles en stock</label>"
-            "</div><button class='second'>Afficher</button></form><p class='legende-pe'><span class='pe-rouge'>   </span>"
+            "</div><button class='second sans-js'>Afficher</button></form><p class='legende-pe'><span class='pe-rouge'>   </span>"
             " Un mois ou moins (ou périmé)  <span class='pe-orange'>   </span> De 1 à 3 mois  <span class='pe-neutre'>"
             "   </span> Plus de 3 mois</p><h2>Articles et dates de péremption (champ SKU de Clover)</h2><div "
             "class='defile'><table><tr><th>Article</th><th>Catégorie</th><th>Date de péremption</th><th class='n'>"
@@ -398,7 +410,8 @@ def _analyse(b: dict, cle: str, filtres: dict):
     if cle_m not in memoire:
         donnees, autres = ((sc.filtrer(b["donnees"], filtres), sc.filtrer(b["autres"], filtres)) if filtres
                            else (b["donnees"], b["autres"]))
-        memoire[cle_m] = calculer(cle, donnees, autres, b["couts"], b["du"], b["au"], b["du2"], b["au2"])
+        memoire[cle_m] = calculer(cle, donnees, autres, b["couts"], b["du"], b["au"], b["du2"], b["au2"],
+                                  racine=b.get("racine"))
     return memoire[cle_m]
 
 
@@ -410,7 +423,7 @@ def _gestion(ctx: Contexte, cle: str, b: dict | None, du: date, au: date, filtre
     if cle in CLES_ANALYSES:
         if not b:
             return f"<h2 class='titre-etat'>{e(libelle)}</h2><p class='erreur'>Clover ne répond pas pour l'instant.</p>"
-        return _rendu_rapport(libelle, _analyse(b, cle, filtres or {}))
+        return _rendu_rapport(libelle, _analyse(b, cle, filtres or {}), _requete(ctx))
     contexte = {"ventes_par_jour": {}, "donnees": None, "config": ctx.config}
     if ctx.req.query.get("Point de vente", ""):
         contexte["points_vente"] = _points(ctx)  # filtre « Point de vente » = ses dépôts
@@ -421,11 +434,33 @@ def _gestion(ctx: Contexte, cle: str, b: dict | None, du: date, au: date, filtre
                 contexte["ventes_par_jour"][date.fromisoformat(str(l[0])[:10])] = Decimal(str(l[3]))
             except (ValueError, IndexError, ArithmeticError):
                 pass
-    return _rendu_rapport(libelle, calculer(cle, ctx.racine, du, au, contexte))
+    return _rendu_rapport(libelle, calculer(cle, ctx.racine, du, au, contexte), _requete(ctx))
 
 
-def _rendu_rapport(libelle: str, r) -> str:
-    """Rapport de gestion ou analyse : cartes, évolution, répartition, constats, tableau (comme _remplir_gestion)."""
+PARTIES = (("resume", "📋 Résumé"), ("graphiques", "📊 Graphiques"), ("detail", "📄 Détail"))
+
+
+def _requete(ctx) -> dict | None:
+    """Paramètres de la page pour les sous-pages ; None (tout sur une page) pour le PDF de la page."""
+    try:
+        q = dict(ctx.req.query)
+    except AttributeError:
+        return None
+    return None if q.get("pdf") else q
+
+
+def _sous_pages(q: dict, actuelle: str) -> str:
+    """Onglets « Résumé / Graphiques / Détail » : pages courtes (demande du propriétaire du 2026-11-08 : « ne fait
+    pas de pages très longues, les sous-pages sont conseillées »)."""
+    liens = "".join(
+        f"<a class='onglet{' actif' if cle == actuelle else ''}' href='?{e(urlencode({**q, 'partie': cle}))}'>"
+        f"{e(nom)}</a>" for cle, nom in PARTIES)
+    return f"<nav class='onglets sous-pages'>{liens}</nav>"
+
+
+def _rendu_rapport(libelle: str, r, q: dict | None = None) -> str:
+    """Rapport de gestion ou analyse : cartes, évolution, répartition, constats, tableau (comme _remplir_gestion) ;
+    avec `q`, une sous-page à la fois (Résumé : cartes et constats ; Graphiques ; Détail : tableau)."""
     from ..analyses_clover import etat_carte, niveau_constat
 
     cartes = ""
@@ -467,9 +502,14 @@ def _rendu_rapport(libelle: str, r) -> str:
     if sup:
         sup = f"<div class='grille2'>{sup}</div>"
     # les chiffres d'abord, puis les constats (comme Windows)
-    return (f"<h2 class='titre-etat'>{e(libelle)}</h2>" + f"<div class='kpis ligne-kpi'>{cartes}</div>" + note
-            + f"<div class='grille2'>{_graph(evolution)}{_graph(repartition)}"
-            "</div>" + sup + _tableau_detaille(r))
+    titre = f"<h2 class='titre-etat'>{e(libelle)}</h2>"
+    resume = f"<div class='kpis ligne-kpi'>{cartes}</div>" + note
+    graphiques = f"<div class='grille2'>{_graph(evolution)}{_graph(repartition)}</div>" + sup
+    if q is None:
+        return titre + resume + graphiques + _tableau_detaille(r)
+    partie = q.get("partie") if q.get("partie") in dict(PARTIES) else "resume"
+    corps = {"resume": lambda: resume, "graphiques": lambda: graphiques, "detail": lambda: _tableau_detaille(r)}
+    return titre + _sous_pages(q, partie) + f"<div class='onglet-corps'>{corps[partie]()}</div>"
 
 
 def _tableau_detaille(r) -> str:
@@ -747,7 +787,12 @@ nav.nav-stats a:hover { background: var(--menu-survol); }
 .kpi { background: var(--carte); border: 1px solid #e2e8e4; padding: 5px 8px; }
 .kpi .t { font-size: 12px; color: var(--gris); } .kpi .v { font-size: 16px; font-weight: 600; }
 .kpi .v.benefice { color: var(--vert); } .kpi .v.texte { font-size: 12px; } .kpi .v.grand { font-size: 20px; }
-.titre-etat { color: var(--vert); font-size: 17px; margin: 0 0 6px; }
+.titre-etat { color: var(--vert); font-size: 17px; font-weight: 700; margin: 0 0 6px; }
+nav.onglets.sous-pages { display: flex; gap: 2px; margin: 6px 0 0; }
+nav.onglets.sous-pages a.onglet { text-decoration: none; color: var(--texte); border: 1px solid transparent; }
+nav.onglets.sous-pages a.onglet.actif { font-weight: 700; color: var(--vert); }
+.carte-graph svg.g-tel { display: none; }
+@media (max-width: 820px) { .carte-graph svg.g-pc { display: none; } .carte-graph svg.g-tel { display: block; } }
 tr.total td { font-weight: 600; background: #e8f3ea !important; }
 .pe-rouge, tr.pe-rouge td { background: #f8c9cf !important; } .pe-orange, tr.pe-orange td { background: #ffe3a8 !important; }
 .pe-neutre, tr.pe-neutre td { background: #eef1ef !important; }

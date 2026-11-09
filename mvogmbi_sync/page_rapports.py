@@ -76,8 +76,10 @@ TITRES_GRAPHIQUES = {
 }
 # colonnes de nombres sans unité (analyses décisionnelles) : jamais affichées en « $ »
 MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z)", "Articles par", "Commandes par", "Jours entre",
-                   "Employés actifs", "Active employees", "Orders per", "Items per")
+                   "Employés actifs", "Active employees", "Orders per", "Items per",
+                   "Affinité", "Sensibilité", "Irrégularité", "Écart inhabituel", "Note du client", "Inégalité", "Dépendance (")
 NOTES_ETATS: dict[str, str] = {}
+PARTIES_GESTION = (("resume", "Résumé"), ("graphiques", "Graphiques"), ("detail", "Détail"))
 # constats des analyses décisionnelles : (fond, trait à gauche) et icône par niveau
 COULEURS_CONSTATS = {"alerte": ("#fde2e4", "#d7263d"), "attention": ("#fff4d6", "#e0a100"),
                      "bon": ("#e6f4ea", "#1b7f3b"), "info": ("#eef1ef", "#8a9690")}
@@ -868,16 +870,29 @@ class PageRapports(ttk.Frame):
         self.titre_gestion = tk.Label(ligne_g, text="", font=("Segoe UI Semibold", 13), foreground=VERT_FONCE,
                                       background=fond_de(cadre))
         self.titre_gestion.pack(side="left")
-        self.note_gestion = ttk.Label(corps_g, text="", foreground=TEXTE_DOUX, wraplength=900,
+        # sous-pages Résumé / Graphiques / Détail : pages courtes (demande du propriétaire du 2026-11-08)
+        barre_parties = tk.Frame(corps_g, background=fond_de(cadre))
+        barre_parties.pack(fill="x", pady=(4, 0))
+        self.parties_gestion = {cle: tk.Frame(corps_g, background=fond_de(cadre)) for cle, _n in PARTIES_GESTION}
+        self.boutons_parties: dict = {}
+        for cle, nom in PARTIES_GESTION:
+            b = tk.Label(barre_parties, text=t(nom), font=("Segoe UI", 10), padx=14, pady=5, cursor="hand2",
+                         background="#ececec", foreground=TEXTE)
+            b.pack(side="left", padx=(0, 2))
+            b.bind("<Button-1>", lambda _e, c=cle: self.partie_gestion(c))
+            self.boutons_parties[cle] = b
+        self.partie_courante = "resume"
+        partie_r, partie_g, partie_d = (self.parties_gestion[c] for c, _n in PARTIES_GESTION)
+        self.note_gestion = ttk.Label(partie_r, text="", foreground=TEXTE_DOUX, wraplength=900,
                                       justify="left")
         self.note_gestion.pack(fill="x", pady=(4, 0))
         # constats des analyses en couleur (à agir, à surveiller, bon, information)
-        self.constats_gestion = tk.Frame(corps_g, background=fond_de(cadre))
+        self.constats_gestion = tk.Frame(partie_r, background=fond_de(cadre))
         self.constats_gestion.pack(fill="x")
-        self.cartes_gestion = tk.Frame(corps_g, background=fond_de(cadre))
+        self.cartes_gestion = tk.Frame(partie_r, background=fond_de(cadre))
         # les chiffres d'abord (lecture de la direction), puis les constats
         self.cartes_gestion.pack(fill="x", pady=(6, 0), before=self.note_gestion)
-        graphiques_g = tk.Frame(corps_g, background=fond_de(cadre))
+        graphiques_g = tk.Frame(partie_g, background=fond_de(cadre))
         graphiques_g.pack(fill="x", pady=(6, 0))
         graphiques_g.columnconfigure(0, weight=3, uniform="g")
         graphiques_g.columnconfigure(1, weight=2, uniform="g")
@@ -886,13 +901,14 @@ class PageRapports(ttk.Frame):
         self.g_gestion_repartition = Graphique(graphiques_g, 200)
         self.g_gestion_repartition.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         # graphiques de plus des analyses décisionnelles, deux par rangée (« ne laisse pas trop de vides »)
-        self.graphiques_sup = tk.Frame(corps_g, background=fond_de(cadre))
+        self.graphiques_sup = tk.Frame(partie_g, background=fond_de(cadre))
         self.graphiques_sup.pack(fill="x")
         self.graphiques_sup.columnconfigure(0, weight=3, uniform="gs")  # mêmes proportions que la 1re rangée
         self.graphiques_sup.columnconfigure(1, weight=2, uniform="gs")
-        tk.Label(corps_g, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 10), foreground=TEXTE,
-                 background=fond_de(cadre), anchor="w").pack(fill="x", pady=(8, 0))
-        self.tableau_gestion = tableau_simple(corps_g, 10)
+        tk.Label(partie_d, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 11, "bold"), foreground=TEXTE,
+                 background=fond_de(cadre), anchor="center").pack(fill="x", pady=(8, 0))
+        self.tableau_gestion = tableau_simple(partie_d, 18)
+        self.partie_gestion("resume")
         # anomalies : double-clic (ou Entrée) sur une commande = sa vraie facture Clover, pour vérification
         self._ids_gestion: list[str] = []
         self.tableau_gestion.bind("<Double-1>", lambda _e: self._ouvrir_facture_clover())
@@ -1139,7 +1155,7 @@ class PageRapports(ttk.Frame):
         _, valeurs_avant = r["series_avant"]
         valeurs_avant = (valeurs_avant + [0] * len(valeurs))[:len(valeurs)]
         nom = (t("Aujourd'hui") if r["du"] == r["au"] == date.today() else
-               (str(r["du"]) if r["du"] == r["au"] else t("Période choisie")))
+               (str(r["du"]) if r["du"] == r["au"] else f"{r['du']:%d/%m} → {r['au']:%d/%m}"))
         self.g_ventes.titre = t("Ventes nettes par heure") if r["du"] == r["au"] else t("Évolution des ventes nettes")
         if r["du"] == r["au"]:
             self.g_ventes.barres(etiquettes, [(nom, valeurs, BLEU), (t(r["libelle"]).capitalize(), valeurs_avant,
@@ -1184,19 +1200,24 @@ class PageRapports(ttk.Frame):
         elif self.page_gestion.winfo_ismapped():  # rapport de gestion ou analyse : cartes, graphiques, tableau
             for g in (self.g_gestion_evolution, self.g_gestion_repartition):
                 g.delete("bulle")
-            def capture(w):  # la page défile : l'élément est amené à l'écran avant la capture
-                corps = w.master
-                self.toile_gestion.yview_moveto(w.winfo_y() / max(1, corps.winfo_height()))
+            partie = self.partie_courante
+
+            def capture(w, cle):  # sous-page affichée et élément amené à l'écran avant la capture
+                if self.partie_courante != cle:
+                    self.partie_gestion(cle)
+                    self.update()
+                corps = self.parties_gestion[cle]
+                self.toile_gestion.yview_moveto((corps.winfo_y() + w.winfo_y()) / max(1, corps.master.winfo_height()))
                 w.update()
                 return image_widget(w)
 
-            images = [capture(self.cartes_gestion)]
+            images = [capture(self.cartes_gestion, "resume")]
             if self.constats_gestion.winfo_children():  # constats en couleur (décisions de la synthèse)
-                images.append(capture(self.constats_gestion))
-            images.append(capture(self.g_gestion_evolution.master))
+                images.append(capture(self.constats_gestion, "resume"))
+            images.append(capture(self.g_gestion_evolution.master, "graphiques"))
             if self.graphiques_sup.winfo_children():
-                images.append(capture(self.graphiques_sup))
-            self.toile_gestion.yview_moveto(0)
+                images.append(capture(self.graphiques_sup, "graphiques"))
+            self.partie_gestion(partie)
             entetes, lignes = contenu(self.tableau_gestion)
         else:
             if self.kpi_cadre.winfo_ismapped():
@@ -1366,7 +1387,7 @@ class PageRapports(ttk.Frame):
                 donnees, autres = (filtrer(brut["donnees"], f), filtrer(brut["autres"], f)) if f else (
                     brut["donnees"], brut["autres"])
                 rapport = calculer_analyse(cle, donnees, autres, brut["couts"], brut["du"], brut["au"], brut["du2"],
-                                           brut["au2"])
+                                           brut["au2"], racine=self.racine)
                 memoire[cle_m] = rapport
                 self.after(0, lambda: numero == self._calcul_gestion and self._remplir_gestion(rapport))
             except Exception as exc:
@@ -1397,6 +1418,22 @@ class PageRapports(ttk.Frame):
         if rang < len(self._ids_gestion) and self._ids_gestion[rang]:
             FenetreFactureClover(self, self.racine, self._ids_gestion[rang], self._points_choisis())
 
+    def partie_gestion(self, cle: str) -> None:
+        """Affiche une sous-page du rapport (Résumé, Graphiques ou Détail)."""
+        self.partie_courante = cle
+        for c, cadre in self.parties_gestion.items():
+            if c == cle:
+                cadre.pack(fill="both", expand=True, pady=(4, 0))
+            else:
+                cadre.pack_forget()
+        for c, b in self.boutons_parties.items():
+            b.configure(background="#ffffff" if c == cle else "#ececec", foreground=VERT_FONCE if c == cle else TEXTE,
+                        font=("Segoe UI", 10, "bold") if c == cle else ("Segoe UI", 10))
+        if hasattr(self, "toile_gestion"):
+            self.toile_gestion.yview_moveto(0)
+            for g in (self.g_gestion_evolution, self.g_gestion_repartition):
+                g.after_idle(g.redessiner)
+
     def _remplir_gestion(self, r) -> None:
         from .graphiques import BLEU, BLEU_PALE, PALETTE
 
@@ -1407,7 +1444,8 @@ class PageRapports(ttk.Frame):
         lignes_note = (r.note or "").splitlines()
         if any(l[:1] in "✔⚠✖ℹ" for l in lignes_note):  # analyse : un bandeau coloré par constat
             self.note_gestion.configure(text="")
-            largeur = max(400, self.constats_gestion.winfo_width() - 40)
+            # largeur de la page (la sous-page « Résumé » peut être cachée pendant le calcul)
+            largeur = max(400, self.toile_gestion.winfo_width() - 60)
             for ligne in lignes_note:
                 niveau, texte = niveau_constat(ligne)
                 fond, trait = COULEURS_CONSTATS[niveau]
@@ -1988,6 +2026,8 @@ class PageRapports(ttk.Frame):
             Bouton(barre, "📗  " + t("Détail (Excel)"), self.ouvrir_detail, "secondaire", petit=True).pack(side="left")
         Bouton(barre, "📂  " + t("Dossier des archives"), self.ouvrir_dossier, "secondaire", petit=True).pack(
             side="left", padx=6)
+        Bouton(barre, "🔁  " + t("Refaire la mise à jour Clover"), self.refaire_clover_archive, "secondaire",
+               petit=True).pack(side="left")
         self.resume_archives = ttk.Label(cadre, text="", foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume_archives.pack(fill="x")
         cadre_t = cadre_tableau(cadre)
@@ -2060,6 +2100,27 @@ class PageRapports(ttk.Frame):
             messagebox.showinfo(self.titre, t("Choisissez d'abord une facture dans la liste."))
             return None
         return self._visibles()[int(choix[0])]
+
+    def refaire_clover_archive(self) -> None:
+        """Stock et coût Clover d'une facture archivée (lignes pas encore faites)."""
+        a = self._choisie()
+        if a is None:
+            return
+        self.resume_archives.configure(text=t("Mise à jour de Clover en cours…"))
+
+        def travail():
+            try:
+                import tomllib
+
+                from .fournisseurs import refaire_clover_archive
+
+                config = tomllib.loads((self.racine / "config.toml").read_text(encoding="utf-8"))
+                message = "\n\n".join(refaire_clover_archive(self.racine, config, a))
+            except Exception as exc:  # noqa: BLE001
+                message = f"✘ {exc}"
+            self.after(0, lambda: (self.afficher_archives(), messagebox.showinfo(self.titre, message)))
+
+        threading.Thread(target=travail, daemon=True).start()
 
     def afficher_lignes(self) -> None:
         choix = self.tableau_archives.selection()

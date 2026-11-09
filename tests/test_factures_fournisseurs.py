@@ -130,3 +130,31 @@ def test_facture_prete_deja_dans_sage_archivee_et_retiree(tmp_path):
     assert relu.nouveaux_fichiers() == []  # le fichier archivé n'est pas relu comme nouveau
     (a,) = archives(tmp_path)
     assert a["etat"] == "Déjà dans Sage" and a["fichier_archive"].endswith(".pdf")
+
+
+def test_assistant_de_saisie_des_articles_sage():
+    """« Il faut l'assistant de saisie » : les articles Sage sont proposés pendant la frappe (datalist) ; l'article
+    choisi passe avant le 1er résultat de la dernière recherche."""
+    from types import SimpleNamespace as N
+
+    from mvogmbi_sync.web import pages_fournisseurs as pf
+
+    arts = [N(numero="C1", description="Plantain jaune en lb"), N(numero="B2", description="Riz 20 lb")]
+    assert "<option" not in pf.assistant_articles([]) and "C1 — Plantain jaune en lb" in pf.assistant_articles(arts)
+    assert pf.article_choisi("B2 — Riz 20 lb", arts).numero == "B2" and pf.article_choisi("riz", arts) is None
+    ligne = N(description="Riz 20 lb")
+    assert [a.numero for a, _ in pf._chercher("B2 — Riz 20 lb", arts, ligne)] == ["B2"]
+
+
+def test_refaire_clover_depuis_les_archives(tmp_path, monkeypatch):
+    from mvogmbi_sync import fournisseurs as fo, import_achats
+
+    appels = []
+    monkeypatch.setattr(import_achats, "mettre_a_jour_clover",
+                        lambda racine, config, factures, res: appels.append(factures[0].numero) or {"f.pdf": "ok"})
+    r = fo.Registre(tmp_path)
+    r.factures = [fo.Facture("f.pdf", "x", numero="9", date_facture="2026-11-08", fournisseur_sage="F",
+                             etat=fo.IMPORTEE)]
+    r.enregistrer()
+    (archive,) = fo.archives(tmp_path)
+    assert fo.refaire_clover_archive(tmp_path, {}, archive) == ["f.pdf : ok"] and appels == ["9"]

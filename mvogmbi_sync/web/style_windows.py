@@ -139,6 +139,11 @@ label.case { display: flex; gap: 6px; align-items: center; color: var(--texte); 
   main .defile { min-height: 150px; max-height: calc(100vh - 300px); overflow: auto; border-radius: 0;
     border-color: #d5dcd7; }
   main .defile th { position: sticky; top: 0; z-index: 1; }
+  /* en-têtes repliés sur plusieurs lignes : le tableau tient dans la page sans défiler pour un titre long ;
+     titres des tableaux centrés et en gras (demande du propriétaire du 2026-11-08) */
+  main th { white-space: normal !important; vertical-align: bottom; min-width: 4.5em; max-width: 11em;
+            line-height: 1.25; overflow-wrap: break-word; hyphens: auto; }
+  main h2.titre-tableau { text-align: center; font-weight: 700; }
   main .carte-admin .champs input:not([type=checkbox]):not([type=radio]):not([type=date]),
   main .carte-admin .champs select { width: 100%; max-width: 760px; }
   main .carte-admin .champs div:has(> a.ouvrir) { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

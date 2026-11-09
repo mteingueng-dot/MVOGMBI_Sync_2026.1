@@ -17,21 +17,43 @@ TEXTE, TEXTE_DOUX, CARTE, BORDURE = "#1f2d24", "#5f6f66", "#ffffff", "#e2e8e4"
 POLICE = "font-family:'Segoe UI',Arial,sans-serif;font-size:12px"
 
 
+TITRE_TAILLE = 14   # titres : Segoe UI Semibold 14, centrés (demande du propriétaire du 2026-11-08)
+TEXTE_TAILLE = 12   # toutes les autres écritures des graphiques
+
+
 def _t(x, y, texte, ancre="start", couleur=TEXTE_DOUX, taille=12, gras=False, base="middle", longueur=None) -> str:
-    poids = ";font-weight:600" if gras else ""
+    police = ("font-family:'Segoe UI Semibold','Segoe UI',Arial,sans-serif;font-weight:600" if gras
+              else "font-family:'Segoe UI',Arial,sans-serif")
     ajuste = f" textLength='{longueur:.1f}' lengthAdjust='spacingAndGlyphs'" if longueur else ""
     return (f"<text x='{x:.1f}' y='{y:.1f}' text-anchor='{ancre}' dominant-baseline='{base}' fill='{couleur}'{ajuste} "
-            f"style=\"font-family:'Segoe UI',Arial,sans-serif;font-size:{taille}px{poids}\">{escape(str(texte))}</text>")
+            f"style=\"{police};font-size:{taille}px\">{escape(str(texte))}</text>")
+
+
+def deux_lignes(texte: str, place: float, taille: float = TEXTE_TAILLE) -> list[str]:
+    """Un nom trop long pour sa place est coupé en deux lignes entre deux mots (jamais écrasé)."""
+    texte = str(texte)
+    if largeur_texte(texte, taille) <= place or " " not in texte:
+        return [texte]
+    mots = texte.split(" ")
+    meilleur = min(range(1, len(mots)), key=lambda k: max(largeur_texte(" ".join(mots[:k]), taille),
+                                                          largeur_texte(" ".join(mots[k:]), taille)))
+    return [" ".join(mots[:meilleur]), " ".join(mots[meilleur:])]
+
+
+def largeur_texte(texte: str, taille: float = 12) -> float:
+    """Largeur estimée d'un texte en Segoe UI (les majuscules sont plus larges : « MEDARD GONTRAN » débordait)."""
+    unites = sum(8.6 if c.isupper() or c in "MWmw%" else 3.6 if c in " .,;:'|!il()" else 6.7 for c in str(texte))
+    return unites * taille / 12
 
 
 def texte_entier(texte: str, place: float, taille: int = 12) -> tuple[float, float | None]:
     """Texte toujours entier (« les textes doivent être bien visibles ») : (taille de police, longueur imposée ou
     None). La police baisse jusqu'à 10 px ; si le texte dépasse encore, il est resserré dans la place disponible."""
-    largeur = len(texte) * 6.8 * taille / 12
+    largeur = largeur_texte(texte, taille)
     if largeur <= place:
         return taille, None
     taille = max(10.0, taille * place / largeur)
-    largeur = len(texte) * 6.8 * taille / 12
+    largeur = largeur_texte(texte, taille)
     return taille, (place if largeur > place else None)
 
 
@@ -83,6 +105,15 @@ class Graphique:
         h, v = _ancre(ancre) if ancre else ("middle", "middle")
         self.elements.append(_t(x, y, texte, h, couleur, taille, gras, v, longueur))
 
+    def texte_coupe(self, x, y, texte, place, couleur=TEXTE, ancre="w") -> None:
+        """Texte d'une ligne de classement ou de légende : entier, sur deux lignes s'il est trop long."""
+        lignes = deux_lignes(texte, place)
+        taille = TEXTE_TAILLE if len(lignes) == 1 else TEXTE_TAILLE - 1
+        for k, l in enumerate(lignes):
+            dy = 0 if len(lignes) == 1 else (-6 if k == 0 else 6)
+            longueur = place if largeur_texte(l, taille) > place else None
+            self.texte(x, y + dy, l, ancre, couleur, taille, longueur=longueur)
+
     def ovale(self, x0, y0, x1, y1, couleur, contour=None, epaisseur=1) -> None:
         self.elements.append(f"<ellipse cx='{(x0 + x1) / 2:.1f}' cy='{(y0 + y1) / 2:.1f}' rx='{(x1 - x0) / 2:.1f}' "
                              f"ry='{(y1 - y0) / 2:.1f}' fill='{couleur}' stroke='{contour or couleur}' "
@@ -97,8 +128,10 @@ class Graphique:
     def svg(self, classe: str = "graphique") -> str:
         self.elements = []
         largeur, hauteur = self.largeur, self.hauteur
-        if self.titre:
-            self.elements.append(_t(12, 10, self.titre, "start", TEXTE, 14, True, "text-before-edge"))
+        if self.titre:  # titre centré et en gras (demande du propriétaire du 2026-11-08)
+            longueur = largeur - 24 if largeur_texte(self.titre, TITRE_TAILLE) > largeur - 24 else None
+            self.elements.append(_t(largeur / 2, 9, self.titre, "middle", TEXTE, TITRE_TAILLE, True,
+                                    "text-before-edge", longueur))
         if self._dessin:
             self._dessin(largeur, hauteur)
         return (f"<svg class='{classe}' viewBox='0 0 {largeur} {hauteur}' preserveAspectRatio='xMidYMid meet' "
@@ -107,21 +140,34 @@ class Graphique:
                 + "".join(self.elements) + "</svg>")
 
     def _legende(self, largeur: int, elements: list[tuple[str, str, bool]], ligne: bool = False) -> int:
-        fin_titre = 12 + 8.2 * len(self.titre) + 16 if self.titre else 0
-        largeurs = [7.5 * len(nom) + (32 if ligne else 24) for nom, _, _ in elements]
-        y, haut = 19, 44
-        x = largeur - 14 - sum(largeurs)
-        if x < fin_titre:
-            x, y, haut = 12, 38, 60
-        for (nom, couleur, pointilles), l in zip(elements, largeurs):
-            if ligne:
-                self.ligne(x, y, x + 16, y, couleur=couleur, epaisseur=2, pointilles=(4, 3) if pointilles else None)
-                self.texte(x + 20, y, nom, "w", TEXTE)
-            else:
-                self.rect(x, y - 5, x + 10, y + 5, couleur, couleur)
-                self.texte(x + 14, y, nom, "w", TEXTE)
-            x += l
-        return haut
+        """Légende centrée sous le titre, sur plusieurs lignes si les noms ne tiennent pas sur une seule ; renvoie le
+        haut de la zone de dessin."""
+        marque = 22 if ligne else 16
+        rangees, courante, largeur_rangee = [], [], 0.0
+        for nom, couleur, pointilles in elements:
+            taille, longueur = TEXTE_TAILLE, (largeur - 24 - marque if largeur_texte(nom) > largeur - 24 - marque
+                                              else None)
+            l = marque + (longueur or largeur_texte(nom, taille)) + 16
+            if courante and largeur_rangee + l > largeur - 24:
+                rangees.append((courante, largeur_rangee))
+                courante, largeur_rangee = [], 0.0
+            courante.append((nom, couleur, pointilles, taille, longueur, l))
+            largeur_rangee += l
+        if courante:
+            rangees.append((courante, largeur_rangee))
+        y = 37 if self.titre else 14
+        for rangee, total in rangees:
+            x = (largeur - total + 16) / 2
+            for nom, couleur, pointilles, taille, longueur, l in rangee:
+                if ligne:
+                    self.ligne(x, y, x + 16, y, couleur=couleur, epaisseur=2,
+                               pointilles=(4, 3) if pointilles else None)
+                else:
+                    self.rect(x, y - 5, x + 10, y + 5, couleur, couleur)
+                self.texte(x + marque, y, nom, "w", TEXTE, taille, longueur=longueur)
+                x += l
+            y += 17
+        return int(y + 6)
 
     def _vide(self, largeur, hauteur, vide) -> None:
         self.texte(largeur / 2, hauteur / 2, vide, "", TEXTE_DOUX)
@@ -188,15 +234,14 @@ class Graphique:
                 return self._vide(largeur, hauteur, vide)
             maximum = max(float(v) for _, v in elements) or 1
             total = sum(float(v) for _, v in elements) or 1
-            ligne = min(22, (hauteur - haut - 6) / len(elements))
+            ligne = min(26, (hauteur - haut - 6) / len(elements))
             # colonne des noms élargie pour les noms longs (jusqu'à 58 % de la largeur)
-            plus_long = max(len(str(n)) for n, _ in elements) * 6.8 + 22
+            plus_long = max(max(largeur_texte(x) for x in deux_lignes(str(n), largeur * 0.5)) for n, _ in elements) + 22
             debut_barre = min(largeur * 0.58, max(largeur * gauche_max, plus_long))
             fin_barre = largeur - 78
             for i, (nom, valeur) in enumerate(elements):
                 y = haut + i * ligne
-                taille, longueur = texte_entier(str(nom), debut_barre - 20)
-                self.texte(10, y + ligne / 2, nom, "w", TEXTE, taille, longueur=longueur)
+                self.texte_coupe(10, y + ligne / 2, nom, debut_barre - 20)
                 x1 = debut_barre + (fin_barre - debut_barre) * max(float(valeur), 0) / maximum
                 valeur_txt = format_valeur(valeur) if format_valeur else str(valeur)
                 self.rect(debut_barre, y + 3, max(x1, debut_barre + 1), y + ligne - 3, couleur)
@@ -230,14 +275,13 @@ class Graphique:
                 debut -= etendue
             x = cx + rayon + 18
             self.texte(x, 42, format_valeur(Decimal(str(round(total, 2)))) if format_valeur else f"{total:.0f}", "w",
-                       TEXTE, 13, True)
-            ligne = min(21, (hauteur - 66) / max(1, len(parts)))
+                       TEXTE, TEXTE_TAILLE + 1, True)
+            ligne = min(26, (hauteur - 66) / max(1, len(parts)))
             for i, (nom, v) in enumerate(parts):
                 y = 66 + i * ligne
                 self.rect(x, y - 5, x + 10, y + 5, PALETTE[i % len(PALETTE)])
                 texte = f"{nom} {100 * v / total:.0f} %"
-                taille, longueur = texte_entier(texte, largeur - x - 26)
-                self.texte(x + 16, y, texte, "w", TEXTE, taille, longueur=longueur)
+                self.texte_coupe(x + 16, y, texte, largeur - x - 26)
 
         self._dessin = dessiner
         return self

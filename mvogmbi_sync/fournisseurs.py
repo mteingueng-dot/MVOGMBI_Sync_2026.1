@@ -199,6 +199,11 @@ class Registre:
         self.factures = self._lire_disque() if self.chemin.exists() else []
         self._lues = {f.fichier: json.dumps(f.en_dict(), sort_keys=True) for f in self.factures}
         self._date = self._date_disque()
+        if any(f.etat == IMPORTEE for f in self.factures):  # importées d'avant cette règle : rangées aux archives
+            try:
+                self.enregistrer()
+            except OSError:
+                pass
 
     def change_ailleurs(self) -> bool:
         """Le fichier a-t-il été écrit par une autre plateforme (web, Windows, nuit) depuis la lecture ?"""
@@ -209,7 +214,10 @@ class Registre:
         « les deux plateformes doivent avoir le même statut en temps réel ») : si une autre a écrit entre-temps,
         seules les factures modifiées, ajoutées ou retirées ICI remplacent celles du disque (jamais d'écrasement
         d'un import fait ailleurs)."""
-        self.factures = [f for f in self.factures if f.etat != DEJA_DANS_SAGE]  # archivées : plus à traiter
+        # archivées : plus à traiter ; une facture importée passe dans « Factures fournisseurs archivées » (demande du
+        # propriétaire du 2026-11-08 : « les factures importées ne doivent plus figurer dans la liste »)
+        self.factures = [f for f in self.factures
+                         if f.etat != DEJA_DANS_SAGE and not (f.etat == IMPORTEE and ranger_importee(self.donnees.parent, f))]
         self.donnees.mkdir(parents=True, exist_ok=True)
         lues = getattr(self, "_lues", {})
         if self.chemin.exists() and self.change_ailleurs():
@@ -221,13 +229,16 @@ class Registre:
             for f in self._lire_disque():
                 if f.fichier in retirees or f.etat == DEJA_DANS_SAGE:
                     continue
+                if f.etat == IMPORTEE and ranger_importee(self.donnees.parent, f):
+                    continue  # importée ailleurs : aux archives
                 ici = locales.get(f.fichier)
                 if f.fichier in changees and not (f.etat == IMPORTEE and ici.etat != IMPORTEE):
                     fusion.append(ici)  # importée ailleurs : jamais ramenée à « Prête à importer »
                 else:
                     fusion.append(f)
             vues = {f.fichier for f in fusion}
-            fusion += [f for n, f in locales.items() if n in changees and n not in vues]  # ajoutées ici
+            # ajoutées ici (une facture lue au départ et disparue du disque a été archivée ou supprimée ailleurs)
+            fusion += [f for n, f in locales.items() if n in changees and n not in vues and n not in lues]
             # les objets gardés en mémoire suivent la fusion (même état partout)
             self.factures[:] = fusion
         provisoire = self.chemin.with_suffix(".tmp")
@@ -411,6 +422,26 @@ def archiver(racine: Path, facture: Facture) -> Path:
     return chemin
 
 
+def chemin_archive(racine: Path, facture: Facture) -> Path:
+    return (Path(racine) / "donnees" / ARCHIVES / (facture.date_facture[:4] or "sans date")
+            / (nom_archive(facture) + ".json"))
+
+
+def ranger_importee(racine: Path, facture: Facture) -> bool:
+    """Facture importée : archivée (si ce n'est déjà fait à l'import) puis son fichier d'origine retiré du dossier
+    des factures (une copie est dans l'archive ; sinon il serait relu comme une nouvelle facture). Vrai si elle peut
+    quitter la liste."""
+    try:
+        if not chemin_archive(racine, facture).exists():
+            archiver(racine, facture)
+        source = Path(racine) / "donnees" / "factures_fournisseurs" / facture.fichier
+        if facture.fichier and source.exists():
+            source.unlink()
+        return True
+    except OSError:
+        return False  # archive impossible pour l'instant : la facture reste dans la liste
+
+
 def archiver_deja_dans_sage(racine: Path, facture: Facture, numero_sage: str) -> Path:
     """Règle du propriétaire (2026-10-28) : une facture prête à importer qui est déjà dans Sage (saisie à la main)
     est archivée et retirée de la liste des factures à traiter. Le fichier d'origine passe dans l'archive (copie
@@ -446,6 +477,26 @@ def archiver_pretes_deja_dans_sage(racine: Path, base, registre: "Registre | Non
     if archivees:
         registre.enregistrer()
     return archivees
+
+
+def refaire_clover_archive(racine: Path, config_toml: dict, archive: dict) -> list[str]:
+    """« 🔁 Refaire la mise à jour Clover » d'une facture archivée (demande du propriétaire du 2026-11-08 : l'action
+    passe sur la page des archives, puisque les factures importées quittent la liste) : stock et coût Clover des
+    lignes pas encore faites ; le journal du stock Clover écarte les lignes déjà ajoutées."""
+    from .import_achats import mettre_a_jour_clover
+
+    facture = Facture.depuis_dict({k: v for k, v in archive.items() if k not in ("chemin", "archivee_le",
+                                                                                 "fichier_archive")})
+    if facture.etat != IMPORTEE:
+        return [f"{facture.numero} : facture archivée sans import par l'application ({facture.etat}) : Clover n'a "
+                "pas à être mis à jour."]
+    return [f"{x} : {texte}" for x, texte in mettre_a_jour_clover(racine, config_toml, [facture],
+                                                                   {facture.fichier: ""}).items()]
+
+
+def nombre_archives(racine: Path) -> int:
+    """Nombre de factures dans « Factures fournisseurs archivées » (résumé de la liste)."""
+    return sum(1 for _ in (Path(racine) / "donnees" / ARCHIVES).glob("*/*.json"))
 
 
 def archives(racine: Path) -> list[dict]:

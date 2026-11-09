@@ -20,12 +20,15 @@ def _commande(ident, jour: date, articles: list[tuple[str, str, int]], client=No
         lignes.append(l)
     return {"id": ident, "title": ident, "createdTime": moment, "employee": {"id": employe}, "device": {"id": "D1"},
             "customers": {"elements": [{"id": client}] if client else []},
-            "payments": {"elements": [{"result": "SUCCESS", "createdTime": moment}]},
+            "payments": {"elements": [{"result": "SUCCESS", "createdTime": moment,
+                                       "amount": sum(p for _n, _i, p in articles),
+                                       "tender": {"label": "Espèces" if employe == "E2" else "Carte"}}]},
             "lineItems": {"elements": lignes}}
 
 
 def _donnees(commandes):
-    return DonneesClover(commandes=commandes, employes={"E1": "Alice", "E2": "Bruno"},
+    paiements = [{**p, "order": {"id": o["id"]}} for o in commandes for p in o["payments"]["elements"]]
+    return DonneesClover(commandes=commandes, paiements=paiements, employes={"E1": "Alice", "E2": "Bruno"},
                          clients={"C1": "Client Un", "C2": "Client Deux", "C3": "Client Trois"},
                          appareils={"D1": "Station"}, categories={"P": "Fruits", "M": "Fruits", "R": "Riz", "S": "Riz"})
 
@@ -50,6 +53,9 @@ def _periode():
     cmds.append(_commande("X1", DU + timedelta(days=3), [("Sel", "S", 2000)], rabais=100))
     cmds.append(_commande("DIR1", DU + timedelta(days=5), [("Sel", "S", 3000)], rabais=100, nom_rabais="Direction"))
     cmds.append(_commande("C2a", DU + timedelta(days=10), [("Riz", "R", 1000)], client="C2"))
+    rembourse = _commande("RB1", DU + timedelta(days=2), [("Riz", "R", 1000)], employe="E2", heure=15)
+    rembourse["lineItems"]["elements"][0]["refunded"] = True  # article remboursé
+    cmds.append(rembourse)
     return _donnees(cmds)
 
 
@@ -94,7 +100,7 @@ def test_variation_effet_volume_et_panier():
     r = _toutes()["a_variation"]
     cartes = {t: v for t, _g, v in r.cartes}
     assert cartes["Écart"] == cartes["Ventes nettes"] - cartes["Période de comparaison"]
-    assert cartes["Effet nombre de commandes"] + cartes["Effet panier moyen"] == cartes["Écart"]
+    assert cartes["Effet du nombre de ventes"] + cartes["Effet du montant moyen par vente"] == cartes["Écart"]
 
 
 def test_paires_et_lift():
@@ -129,8 +135,8 @@ def test_matrice_quadrants_avec_couts():
     couts = {"P": ("A1", D("1.00")), "M": ("A2", D("2.50")), "R": ("A3", D("4.00")), "S": ("A4", D("1"))}
     r = an.calculer("a_matrice", d, a, couts, DU, AU, DU2, AU2)
     quadrants = {l[0]: l[11] for l in r.lignes}
-    assert quadrants["Plantain"] == "Vedette"       # populaire, 4 $ de bénéfice par unité
-    assert quadrants["Manioc"] == "Locomotive"      # populaire, 0,50 $ seulement
+    assert quadrants["Plantain"] == "Très vendu et rentable"       # populaire, 4 $ de bénéfice par unité
+    assert quadrants["Manioc"] == "Très vendu, peu rentable"      # populaire, 0,50 $ seulement
     assert r.lignes[0][5] == "A"
 
 
@@ -176,7 +182,7 @@ def test_cohortes_et_synthese():
     assert "2026-08" in coh and coh["2026-08"][1] == 2  # Client Un et Client Trois : premier achat en août
     syn = t["a_synthese"]
     assert syn.lignes and all(not l[2].startswith(("Jour atypique :", "Popularité :")) for l in syn.lignes)
-    assert {c[0] for c in syn.cartes} >= {"Ventes nettes", "Tendance par semaine"}
+    assert {c[0] for c in syn.cartes} >= {"Ventes nettes", "Hausse ou baisse par semaine"}
 
 
 def test_graphiques_de_plus_sans_vide():
@@ -303,7 +309,7 @@ def test_pont_de_marge():
     r = an.calculer("a_marge", _periode(), _avant(), COUTS, DU, AU, DU2, AU2)
     c = {t: v for t, _g, v in r.cartes}
     assert c["Écart du bénéfice"] == c["Bénéfice brut"] - c["Période de comparaison"]
-    total = c["Effet prix"] + c["Effet volume"] + c["Effet mix"] + c["Articles nouveaux ou arrêtés"]
+    total = c["Effet des prix"] + c["Effet des quantités"] + c["Effet du choix des articles"] + c["Articles nouveaux ou arrêtés"]
     assert abs(total - c["Écart du bénéfice"]) <= D("0.03")
     plantain = next(l for l in r.lignes if l[0] == "Plantain")
     assert plantain[6] == D("1.00") and plantain[12] == D("80.0")  # 5 $ - 1 $ = 80 % de marge
@@ -322,3 +328,43 @@ def test_portefeuille_et_achalandage():
     cartes = {t_: v for t_, _g, v in ach.cartes}
     assert cartes["Heure de pointe"] == "samedi 11 h"
     assert any(c[0] == "Marge brute" for c in t["a_synthese"].cartes)
+
+
+def test_rythme_et_objectif(tmp_path):
+    """Période en cours : réalisé, projection par jour de la semaine, à faire par jour ; budget prioritaire."""
+    from mvogmbi_sync.budget import Budget, POSTES
+
+    d, a = _periode(), _avant()
+    r = an.calculer("a_rythme", d, a, {}, DU, AU, DU2, AU2, aujourd_hui=DU + timedelta(days=14))
+    c = {t: v for t, _g, v in r.cartes}
+    assert c["Jours restants"] == 14 and c["Objectif"] == D("140.00")  # comparaison : 28 × 5 $
+    assert c["Projection de fin de période"] > c["Réalisé"] * D("0.9")
+    assert len(r.lignes) == 28 and r.lignes[13][2] == "Réalisé" and r.lignes[14][2] == "En cours (projection)"
+    assert r.lignes[-1][6] == D("140.00")  # objectif cumulé = objectif
+    Budget(tmp_path).definir(2026, 9, {POSTES[0]: D("3000")})
+    r = an.calculer("a_rythme", d, a, {}, DU, AU, DU2, AU2, racine=tmp_path, aujourd_hui=DU + timedelta(days=14))
+    c = {t: v for t, _g, v in r.cartes}
+    assert c["Objectif"] == D("2400.00")  # 24 jours de septembre × 100 $ (octobre sans budget)
+    syn = an.calculer("a_synthese", d, a, {}, DU, AU, DU2, AU2, racine=tmp_path, aujourd_hui=DU + timedelta(days=14))
+    assert any(l[1] == "Rattraper l'objectif de la période" for l in syn.lignes)
+    fini = an.calculer("a_rythme", d, a, {}, DU, AU, DU2, AU2)
+    assert dict((t, v) for t, _g, v in fini.cartes)["Jours restants"] == 0
+    # « Ce mois-ci » s'arrête à aujourd'hui : la fin visée est la fin du mois, de même pour la semaine et l'année
+    assert an.fin_naturelle(date(2026, 11, 1), date(2026, 11, 8), date(2026, 11, 8)) == date(2026, 11, 30)
+    assert an.fin_naturelle(date(2026, 11, 2), date(2026, 11, 8), date(2026, 11, 8)) == date(2026, 11, 8)
+    assert an.fin_naturelle(date(2026, 11, 2), date(2026, 11, 4), date(2026, 11, 4)) == date(2026, 11, 8)
+    assert an.fin_naturelle(date(2026, 1, 1), date(2026, 11, 8), date(2026, 11, 8)) == date(2026, 12, 31)
+    assert an.fin_naturelle(date(2026, 10, 1), date(2026, 10, 31), date(2026, 11, 8)) == date(2026, 10, 31)
+
+
+def test_remboursements_et_especes():
+    t = {cle: an.calculer(cle, _periode(), _avant(), {}, DU, AU, DU2, AU2) for cle in ("a_remboursements", "a_especes")}
+    rem = t["a_remboursements"]
+    c = {t_: v for t_, _g, v in rem.cartes}
+    assert c["Montant remboursé"] == D("10.00") and c["Commandes remboursées"] == 1
+    ligne = next(i for i, l in enumerate(rem.lignes) if l[0] == "Commande")
+    assert rem.ids_commandes[ligne] == "RB1"
+    assert an._genre_paiement("Espèces") == "Espèces" and an._genre_paiement("Carte, Espèces") == "Espèces et carte"
+    assert an._genre_paiement("Carte de crédit") == "Carte ou autre"
+    esp = t["a_especes"]
+    assert len(esp.lignes) == 28 and esp.cartes[0][0] == "Payé en espèces"

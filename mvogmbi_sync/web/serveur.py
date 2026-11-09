@@ -127,7 +127,8 @@ def redirection(chemin: str) -> Reponse:
     return Reponse(303, "", entetes={"Location": chemin})
 
 
-PAS_DE_RETOUR = ("/connexion", "/deconnexion", "/mot-de-passe", "/favicon.ico", "/logo.png", "/style.css")
+PAS_DE_RETOUR = ("/connexion", "/deconnexion", "/mot-de-passe", "/favicon.ico", "/logo.png", "/style.css",
+                 "/filtres.js")
 
 
 def adresse_de(req: Requete) -> str:
@@ -227,6 +228,11 @@ class Application:
                            + STYLE_WINDOWS + STYLE_FILTRES,
                            type="text/css; charset=utf-8",
                            entetes={"Cache-Control": "max-age=86400"})  # adresse avec la version : jamais périmé
+        if req.chemin == "/filtres.js":
+            from .script_filtres import SCRIPT
+
+            return Reponse(corps=SCRIPT, type="text/javascript; charset=utf-8",
+                           entetes={"Cache-Control": "max-age=86400"})  # adresse avec la version
         if req.chemin in ("/logo.png", "/favicon.ico"):
             # icône demandée d'office par le navigateur : publique (constat du 2026-11-05 : renvoyée vers /connexion,
             # dont l'affichage efface le témoin, elle déconnectait la personne juste après sa connexion)
@@ -293,7 +299,8 @@ class Application:
 
 
 # --------------------------------------------------------------------------------------------- HTTP
-POLITIQUE = ("default-src 'none'; style-src 'self'{inline}; img-src 'self' data:; form-action 'self'; "
+# un seul script, servi par l'application (/filtres.js) : jamais de script dans la page ni venu d'ailleurs
+POLITIQUE = ("default-src 'none'; script-src 'self'; style-src 'self'{inline}; img-src 'self' data:; form-action 'self'; "
              "frame-ancestors 'none'; base-uri 'none'")
 
 

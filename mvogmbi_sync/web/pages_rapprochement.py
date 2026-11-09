@@ -290,7 +290,7 @@ def _corps(ctx: Contexte, etat: dict, filtre: str, du: str, au: str, cle_m: str,
                       for f in [A_TRAITER_LIBELLE, "Tous"] + etats + [rp.EN_CIRCULATION])
     html += (f"<form method='get' class='barre-onglet'><input type='hidden' name='du' value='{du}'><input type='hidden' "
              f"name='au' value='{au}'><div><label>Afficher :</label><select name='filtre'>{options}</select></div>"
-             "<button class='second'>Afficher</button></form>"
+             "<button class='second sans-js'>Afficher</button></form>"
              f"<p class='note'>{e(resume)}</p>"
              + tableau_section(Section("Mouvements de banque et écritures Sage", ["Date", "Description", "Entrée",
                                                                                    "Sortie", "État", "Sage / compte"],

@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.26"
+VERSION = "1.0.28"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -683,8 +683,8 @@ FAQ = {
         ("question", "Quelles analyses décisionnelles (BI) contiennent les statistiques Clover ?"),
         ("reponse", "Treize analyses rangées dans les rubriques existantes des statistiques, sans répéter les états "
                     "déjà en place : Accueil > Synthèse et décisions (cartes à feux de couleur, décisions à prendre par priorité, points positifs) ; Activités de "
-                    "vente > Anomalies et alertes ; Rapports > Tendance et saisonnalité, Analyse de la variation, "
-                    "Analyse des paniers, Concentration des ventes ; Articles > Matrice des articles, Articles achetés "
+                    "vente > Ventes inhabituelles à vérifier ; Rapports > Tendance des ventes, Analyse de la variation, "
+                    "Analyse des paniers, Concentration des ventes ; Articles > Articles rentables ou non, Articles achetés "
                     "ensemble, Prix et sensibilité au prix ; Employés > Performance des employés ; Clients > "
                     "Segmentation RFM, Fidélité et rétention, Cohortes de clients. Chacune a ses cartes, deux graphiques, des constats "
                     "écrits en clair et un tableau exportable ; elle suit la période et les filtres choisis, sans "
@@ -713,18 +713,26 @@ FAQ = {
                     "employés, ni dans la décision « Encadrer les rabais accordés »."),
         ("question", "Quels articles sont concernés par une décision ?"),
         ("reponse", "Dans « Synthèse et décisions », chaque décision est suivie de la liste de ce qu'elle concerne : "
-                    "articles (locomotives, poids morts, hausses de prix, paires à grouper), catégories et articles en "
+                    "articles (articles très vendus mais peu rentables, articles peu vendus et peu rentables, hausses de prix, paires à grouper), catégories et articles en "
                     "baisse, employés, clients à relancer ou perdus, commandes à fort rabais ou à prix inhabituel (un "
                     "clic sur le n° ouvre la facture Clover). Les 5 premiers sont aussi cités dans le bandeau coloré "
                     "et dans le courriel du matin ; au-delà de 50, la liste complète est dans l'analyse indiquée."),
         ("question", "Que montrent l'analyse de la marge, le portefeuille des catégories et l'achalandage ?"),
-        ("reponse", "Finances > « Analyse de la marge » explique l'écart du bénéfice brut avec la période de "
+        ("reponse", "Finances > « Pourquoi le bénéfice change » explique l'écart du bénéfice brut avec la période de "
                     "comparaison : effet prix (prix nets et rabais), effet volume (quantités), effet mix (plus ou moins "
                     "d'articles rentables) et articles nouveaux ou arrêtés, au CUMP de Sage. Articles > « Portefeuille "
                     "des catégories » classe chaque catégorie selon sa part des ventes et sa croissance : étoile, vache "
-                    "à lait, prometteuse, en recul, avec sa marge. Employés > « Achalandage et effectifs » compare les "
+                    "à lait, prometteuse, en recul, avec sa marge. Employés > « Achalandage et personnel » compare les "
                     "commandes de chaque jour et heure aux employés qui y vendent : créneaux sous tension (renforcer la "
                     "caisse) et créneaux calmes (autres tâches). Leurs décisions s'ajoutent à « Synthèse et décisions »."),
+        ("question", "Comment savoir si le mois atteindra son objectif ?"),
+        ("reponse", "Statistiques Clover > Rapports > « Rythme et objectif ». Choisissez « Ce mois-ci » (ou cette "
+                    "semaine, cette année) : l'objectif est le budget des ventes saisi dans Comptabilité > Budget et "
+                    "écarts, sinon le rythme de la période de comparaison. Vous voyez le réalisé, la projection de fin de "
+                    "période (chaque jour restant estimé par la moyenne du même jour de la semaine), le pourcentage "
+                    "projeté et les ventes à faire par jour restant. Sous 95 % projetés, la décision « Rattraper "
+                    "l'objectif de la période » s'ajoute à la synthèse. L'achalandage signale aussi les heures "
+                    "d'ouverture et de fermeture qui vendent moins du quart d'une heure moyenne."),
         ("question", "Les décisions arrivent-elles aussi par courriel ?"),
         ("reponse", "Oui : le courriel du matin (traitement de nuit) contient les 8 premières décisions de « Synthèse "
                     "et décisions », calculées sur les 4 dernières semaines comparées aux 4 d'avant, en couleur selon "
@@ -735,13 +743,14 @@ FAQ = {
                     "Transactions, Remboursements — un clic sur le n° (web, nouvel onglet) ou un double-clic sur la "
                     "ligne (Windows) ouvre la vraie facture, relue dans Clover à l'instant : articles, rabais, "
                     "paiements, remboursements et totaux."),
-        ("question", "Comment lire la matrice des articles ?"),
-        ("reponse", "Vedette : très vendu et rentable (garder en stock, mettre en avant). Locomotive : très vendu mais "
-                    "peu rentable (revoir le prix ou le coût d'achat). Énigme : rentable mais peu vendu (mieux exposer). "
-                    "Poids mort : peu vendu et peu rentable (réduire ou retirer). La rentabilité vient du CUMP de Sage "
-                    "(article relié). La lettre X, Y ou Z dit si la demande est régulière, variable ou irrégulière, "
+        ("question", "Comment lire « Articles rentables ou non » ?"),
+        ("reponse", "Chaque article est rangé dans un groupe : « Très vendu et rentable » (garder en stock, mettre en "
+                    "avant) ; « Très vendu, peu rentable » (il se vend beaucoup mais rapporte peu par unité : augmenter "
+                    "un peu le prix de vente ou négocier le prix d'achat chez le fournisseur) ; « Peu vendu mais "
+                    "rentable » (mieux exposer) ; « Peu vendu, peu rentable » (réduire ou retirer). Ce qu'un article "
+                    "rapporte = prix de vente moins son coût d'achat moyen enregistré dans Sage (article relié). La lettre X, Y ou Z dit si la demande est régulière, variable ou irrégulière, "
                     "mesurée semaine par semaine dès 4 semaines : un article AX se réassortit automatiquement."),
-        ("question", "Comment lire « Prix et sensibilité au prix » ?"),
+        ("question", "Comment lire « Effet des changements de prix » ?"),
         ("reponse", "L'application repère dans les ventes chaque changement de prix durable (3 % ou plus) et compare "
                     "les quantités vendues par jour d'ouverture avant et après, sur le même nombre de jours (28 au "
                     "plus). L'élasticité dit de combien les quantités bougent pour 1 % de prix : −2 veut dire qu'une "
@@ -1482,6 +1491,14 @@ FAQ = {
                     "declining, with its margin. Employees > “Traffic and staffing” compares the orders of each day "
                     "and hour with the employees selling then: busy time slots (add cashier staff) and quiet ones "
                     "(other tasks). Their decisions are added to “Summary and decisions”."),
+        ("question", "How do I know whether the month will reach its target?"),
+        ("reponse", "Clover statistics > Reports > “Pace and target”. Choose “This month” (or this week, this year): "
+                    "the target is the sales budget entered in Accounting > Budget and variances, otherwise the pace of "
+                    "the comparison period. You see what was achieved, the end-of-period projection (each remaining day "
+                    "estimated from the average of the same weekday), the projected percentage and the sales needed per "
+                    "remaining day. Below 95% projected, the decision “Catch up with the period target” is added to the "
+                    "summary. The traffic analysis also flags opening and closing hours that sell less than a quarter "
+                    "of an average hour."),
         ("question", "Do the decisions also arrive by email?"),
         ("reponse", "Yes: the morning email (night processing) lists the first 8 decisions of “Summary and "
                     "decisions”, calculated over the last 4 weeks compared with the 4 before, colored by priority. The "

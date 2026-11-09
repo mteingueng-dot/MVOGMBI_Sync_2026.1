@@ -144,7 +144,7 @@ def caisse(ctx: Contexte) -> Reponse:
     etat = (f"Comptage déjà enregistré par {c.par} le {c.le[:16].replace('T', ' ')}." if c else
             "Comptez le tiroir à la fermeture, puis « Enregistrer le comptage ».")
     corps = (f"<form class='barre-onglet' method='get'>{choix_pv}<input type='hidden' name='jour' value='{jour}'>"
-             "<button class='second'>Afficher</button></form>" if choix_pv else "")
+             "<button class='second sans-js'>Afficher</button></form>" if choix_pv else "")
     corps += (message + onglets("Comptage du soir", ctx) + "<div class='onglet-corps'>"
               f"<form class='barre-onglet' method='get'><input type='hidden' name='pv' value='{e(code_pv)}'><div>"
               f"<label>Journée</label><input type='date' name='jour' value='{jour}'></div><button name='actualiser' value='1'>🔄 Actualiser</button>"

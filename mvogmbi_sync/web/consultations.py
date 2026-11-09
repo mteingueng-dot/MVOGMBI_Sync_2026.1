@@ -27,7 +27,8 @@ DUREE = 300  # s
 MOTS_QUANTITE = ("Quantité", "Cumul", "Vendu", "Stock", "Besoin", "À acheter", "Sold", "Factures", "Jours",
                  # analyses décisionnelles : nombres sans unité (page_rapports.MOTS_SANS_UNITE)
                  "Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z)", "Articles par", "Commandes par",
-                 "Employés actifs", "Active employees", "Orders per", "Items per")
+                 "Employés actifs", "Active employees", "Orders per", "Items per",
+                   "Affinité", "Sensibilité", "Irrégularité", "Écart inhabituel", "Note du client", "Inégalité", "Dépendance (")
 
 
 @dataclass
@@ -163,7 +164,7 @@ def tableau_section(s: Section, limite: int = 2000) -> str:
     if not s.lignes:  # tableau vide : ses colonnes restent affichées, comme dans Windows
         th = "".join(f"<th>{e(c)}</th>" for c in s.entetes)
         vide = (f"<tr><td class='vide' colspan='{max(len(s.entetes), 1)}'>Aucune ligne.</td></tr>")
-        return (f"<h2>{e(s.titre)} <span class='etat'>0</span></h2><div class='defile'><table>"
+        return (f"<h2 class='titre-tableau'>{e(s.titre)} <span class='etat'>0</span></h2><div class='defile'><table>"
                 + (f"<tr>{th}</tr>" if th else "") + f"{vide}</table></div>"
                 + (f"<p class='note'>{e(s.note)}</p>" if s.note else ""))
     nombres = {i for i in range(len(s.entetes)) if _numerique(s.lignes, i)}
@@ -178,7 +179,7 @@ def tableau_section(s: Section, limite: int = 2000) -> str:
                                for i, t in enumerate(ligne_cliquable(textes))) + "</tr>")
     reste = (f"<p class='note'>{len(s.lignes) - limite} ligne(s) de plus : précisez les filtres.</p>"
              if len(s.lignes) > limite else "")
-    return (f"<h2>{e(s.titre)} <span class='etat'>{len(s.lignes)}</span></h2>"
+    return (f"<h2 class='titre-tableau'>{e(s.titre)} <span class='etat'>{len(s.lignes)}</span></h2>"
             f"<div class='defile'><table><tr>{th}</tr>{''.join(corps)}</table></div>{reste}"
             + (f"<p class='note'>{e(s.note)}</p>" if s.note else ""))
 

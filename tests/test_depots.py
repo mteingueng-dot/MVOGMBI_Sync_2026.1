@@ -64,7 +64,26 @@ def test_registre_factures_meme_etat_partout(tmp_path):
     windows.factures[0].fournisseur_sage = "X"  # et la facture importée ailleurs, restée « Prête » ici
     windows.enregistrer()
     relue = {f.fichier: f for f in fo.Registre(tmp_path).factures}
-    assert relue["A.pdf"].etat == fo.IMPORTEE and relue["B.pdf"].numero == "2-corrigé"
+    # la facture importée a quitté la liste pour les archives (règle du 2026-11-08), jamais ramenée par Windows
+    assert "A.pdf" not in relue and relue["B.pdf"].numero == "2-corrigé"
+    assert [d["numero"] for d in fo.archives(tmp_path)] == ["1"]
+
+
+def test_facture_importee_rangee_aux_archives(tmp_path):
+    """« Les factures importées ne doivent plus figurer dans la liste mais dans les factures archivées »."""
+    from mvogmbi_sync import fournisseurs as fo
+
+    dossier = tmp_path / "donnees" / "factures_fournisseurs"
+    dossier.mkdir(parents=True)
+    (dossier / "A.pdf").write_bytes(b"%PDF")
+    r = fo.Registre(tmp_path)
+    r.factures = [fo.Facture("A.pdf", "a", numero="7", date_facture="2026-11-08", fournisseur_sage="F",
+                             etat=fo.IMPORTEE), fo.Facture("B.pdf", "b", numero="8", etat=fo.PRETE)]
+    r.enregistrer()
+    assert [f.fichier for f in fo.Registre(tmp_path).factures] == ["B.pdf"]
+    assert not (dossier / "A.pdf").exists()  # copie gardée dans l'archive
+    archive = fo.archives(tmp_path)[0]
+    assert archive["numero"] == "7" and archive["fichier_archive"].endswith(".pdf")
 
 
 def test_releve_bnc():

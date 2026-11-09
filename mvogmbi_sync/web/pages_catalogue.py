@@ -134,7 +134,7 @@ def articles_clover(ctx: Contexte) -> Reponse:
              f"name='type_prix'>{types}</select></div><div><label>Stock</label><select name='stock'>{stocks}</select>"
              f"</div><div><label>Trier par</label><select name='tri'>{tris}</select></div><div><label><input "
              f"type='checkbox' name='ordre' value='desc'{' checked' if inverse else ''}> décroissant</label></div>"
-             "<button class='second'>Afficher</button><a class='ouvrir' href='/articles-clover'>✖ Réinitialiser les "
+             "<button class='second sans-js'>Afficher</button><a class='ouvrir' href='/articles-clover'>✖ Réinitialiser les "
              "filtres</a><a class='ouvrir' href='/articles-clover?actualiser=1'>🔄 Actualiser</a><a class='ouvrir' "
              "href='/articles-clover?ugs=1'>🧹 Effacer les UGS qui ne sont pas des dates…</a></form>")
     lignes = [[e(_texte(v)) for v in l] for l in gardees]
@@ -232,7 +232,7 @@ def correspondance(ctx: Contexte) -> Reponse:
     options = "".join(f"<option{' selected' if f == filtre else ''}>{e(f)}</option>" for f in FILTRES_CORRESPONDANCE)
     barre = (f"<form method='get' class='barre-onglet'>{choix_pv}<div><label>Afficher :</label><select name='filtre'>"
              f"{options}</select></div><div><label>Rechercher :</label><input name='q' value='{e(q or '')}' size='20'>"
-             "</div><button class='second'>Afficher</button></form>"
+             "</div><button class='second sans-js'>Afficher</button></form>"
              f"<form method='post' class='barre-onglet'>{csrf(ctx)}<input type='hidden' name='pv' value='{e(code)}'>"
              f"<input type='hidden' name='filtre' value='{e(filtre)}'><button name='action' value='Mettre à jour depuis "
              "Clover et Sage'>⟳ Mettre à jour depuis Clover et Sage</button><a class='ouvrir' "

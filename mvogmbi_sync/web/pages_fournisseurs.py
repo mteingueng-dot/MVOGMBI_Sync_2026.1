@@ -329,7 +329,8 @@ def factures(ctx: Contexte) -> Reponse:
         classes.append(COULEURS.get(f.etat, "termine"))
     compte = {x: sum(1 for f in registre.factures if f.etat == x) for x in fo.ETATS}
     resume = (f"{len(registre.factures)} facture(s) — à saisir : {compte[fo.A_SAISIR]}, à vérifier : "
-              f"{compte[fo.A_VERIFIER]}, prêtes : {compte[fo.PRETE]}, importées : {compte[fo.IMPORTEE]}"
+              f"{compte[fo.A_VERIFIER]}, prêtes : {compte[fo.PRETE]}, importées (archivées) : "
+              f"{fo.nombre_archives(ctx.racine)}"
               + ("" if noms else "   •   liste des fournisseurs Sage absente : cliquez sur « Fournisseurs et "
                                  "articles Sage »"))
     options = "".join(f"<option{' selected' if x == filtre else ''}>{e(x)}</option>" for x in ["Toutes"] + fo.ETATS)
@@ -348,12 +349,23 @@ def factures(ctx: Contexte) -> Reponse:
                "</button><button class='accent' name='action' value='Importer toutes les factures prêtes'>📤 Importer "
                "toutes les factures prêtes</button></form>"
              f"<form method='get' class='barre-onglet'><div><label>Afficher :</label><select name='filtre'>{options}"
-             "</select></div><button class='second'>Afficher</button>"
+             "</select></div><button class='second sans-js'>Afficher</button>"
+             # filtres de la liste pendant la frappe (nom du fichier, fournisseur)
+             # (liste déroulante des fournisseurs de la liste, noms de fichiers proposés pendant la frappe)
+             "<div class='filtres-tableau'><label>Fichier :</label><input type='search' data-filtre='liste-factures' "
+             "data-colonnes='1' placeholder='nom du fichier' list='fichiers-factures'>"
+             + "<datalist id='fichiers-factures'>" + "".join(
+                 f"<option value='{e(f.fichier)}'>" for f in registre.factures) + "</datalist>"
+             + "<label>Fournisseur :</label><select data-filtre='liste-factures' data-colonnes='2'>"
+               "<option value=''>Tous les fournisseurs</option>" + "".join(
+                 f"<option>{e(nom)}</option>" for nom in sorted(
+                     {f.fournisseur_sage or f"({f.fournisseur_lu or '?'})" for f in registre.factures},
+                     key=str.casefold)) + "</select></div>"
              + ("<a class='ouvrir' href='?" + lien + "'>☐ Tout décocher</a>" if cocher_pretes else
                 "<a class='ouvrir' href='?" + lien + "&amp;cocher=1'>☑ Cocher les factures prêtes</a>") + "</form>")
     corps = ("<p class='sous-titre'>🧾 Factures fournisseurs — lecture des factures, articles Sage et import dans Sage"
              "</p>" + message + barre + f"<p class='note'>{e(resume)}</p>"
-             + "<div class='zone-liste-factures'>"
+             + "<div class='zone-liste-factures' id='liste-factures'>"
              + tableau_section(Section("Factures", ["", "Fichier", "Fournisseur Sage", "N°", "Date", "Total", "Dépôt",
                                                    "État"], lignes, classes=classes, html=set(range(8)))) + "</div>"
              + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p>")
@@ -453,7 +465,9 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
         elif action in ("Relier et confirmer", "Relier quand même") and ligne is not None and ligne < len(f.lignes):
             l = f.lignes[ligne]
             numero = ctx.req.champ("article")
-            a = next((x for x in articles if x.numero == numero), None)
+            # l'article choisi dans l'assistant de saisie passe avant le 1er résultat de la dernière recherche
+            a = article_choisi(ctx.req.champ("recherche"), articles) or next(
+                (x for x in articles if x.numero == numero), None)
             if a is None:
                 texte = _message(erreur="Choisissez une ligne de la facture, puis un article Sage dans la liste.")
             elif conflit_format(l.description, a.description) and action != "Relier quand même":
@@ -564,9 +578,13 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
              "class='second' name='action' value='Appliquer'>Appliquer</button><button class='second' name='action' "
              "value='➕'>➕</button><button class='danger' name='action' value='Supprimer la ligne'>🗑</button></div>"
              "<div class='fiche-bas'><div class='factures'><div class='ligne'><div class='large'><label>Article Sage :"
-             f"</label><input name='recherche' value='{e(recherche)}' size='40'></div><button class='second' "
-             "name='action' value='Chercher'>Chercher</button></div>"
-             + (radios or "<p class='note'>Aucun article : tapez quelques lettres puis « Chercher ».</p>")
+             f"</label><input name='recherche' value='{e(recherche)}' size='40' list='articles-sage' "
+             "placeholder='Tapez le n° ou quelques lettres : les articles Sage apparaissent'></div><button "
+             "class='second' name='action' value='Chercher'>Chercher</button></div>" + assistant_articles(articles)
+             + (radios or ("<p class='note'>Tapez quelques lettres : choisissez l'article proposé, puis « Relier et "
+                           "confirmer ».</p>" if articles else
+                           "<p class='erreur-texte'>Liste des articles Sage absente : cliquez sur « Fournisseurs et "
+                           "articles Sage ».</p>"))
              + "</div><div class='boutons-colonne'><button name='action' value='Relier et confirmer'>✔ Relier et "
                "confirmer</button><button class='second' name='action' value='Confirmer la proposition'>Confirmer la "
                f"proposition</button><a class='ouvrir' href='{lien_creer}'>🆕 Créer l'article</a><p class='ok-texte'>"
@@ -575,12 +593,32 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
     return html
 
 
+SEPARATEUR = " — "  # « C0001161 — Plantain jaune en lb » : choix de l'assistant de saisie
+
+
+def article_choisi(texte: str, articles):
+    """Article Sage désigné par le champ de l'assistant (« n° — description », ou le n° seul)."""
+    numero = (texte or "").split(SEPARATEUR)[0].strip()
+    return next((a for a in articles if a.numero == numero), None) if numero else None
+
+
+def assistant_articles(articles) -> str:
+    """Assistant de saisie (demande du propriétaire du 2026-11-08) : liste de suggestions du navigateur (datalist,
+    sans script) qui propose les articles Sage pendant la frappe, par n° ou par description."""
+    options = "".join(f"<option value='{e(a.numero + SEPARATEUR + a.description)}'>" for a in articles)
+    return f"<datalist id='articles-sage'>{options}</datalist>"
+
+
 def _chercher(texte: str, articles, l) -> list:
-    """Comme PageFournisseurs.chercher_sage : 12 articles Sage les plus ressemblants, « (autre format) » signalé."""
+    """Comme PageFournisseurs.chercher_sage : 12 articles Sage les plus ressemblants, « (autre format) » signalé ;
+    un article choisi dans l'assistant de saisie vient en premier."""
     from rapidfuzz import fuzz, process
 
     from ..correspondance import conflit_format, normaliser
 
+    choisi = article_choisi(texte, articles)
+    if choisi is not None:
+        return [(choisi, "  (autre format)" if conflit_format(l.description, choisi.description) else "")]
     texte = normaliser(texte or "")
     if not texte or not articles:
         return []
