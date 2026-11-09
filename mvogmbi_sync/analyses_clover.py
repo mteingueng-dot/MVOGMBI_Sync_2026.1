@@ -25,13 +25,19 @@ globaux appliqués (`statistiques_clover.filtrer`) : aucune lecture de plus dans
 - Clients > Segmentation RFM : récence, fréquence, montant notés de 1 à 5, segments et action suggérée.
 - Clients > Fidélité et rétention : clients retenus, nouveaux et perdus par rapport à la période de comparaison,
   taux de rétention, intervalle entre deux achats.
+- Finances > Analyse de la marge : écart du bénéfice brut (CUMP Sage) décomposé en effet prix, effet volume, effet
+  mix et articles nouveaux ou arrêtés.
+- Articles > Portefeuille des catégories : part des ventes × croissance (étoiles, vaches à lait, prometteuses, en
+  recul), marge de chaque catégorie.
+- Employés > Achalandage et effectifs : commandes par jour de la semaine et par heure contre les employés actifs,
+  créneaux sous tension et créneaux calmes.
 """
 
 from __future__ import annotations
 
 import math
 import statistics as st
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 from itertools import combinations
@@ -917,6 +923,327 @@ def rabais_direction(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- marge
+def _cump(couts: dict, ident: str, prix) -> Decimal | None:
+    """CUMP Sage de l'article (None : inconnu ou aberrant, plus de 5 fois le prix de vente)."""
+    valeur = couts.get(ident)
+    if not valeur or valeur[1] is None:
+        return None
+    cout = Decimal(str(valeur[1]))
+    return None if prix and cout > SEUIL_CUMP_DOUTEUX * Decimal(str(prix)) else cout
+
+
+def _par_article(cmds) -> dict:
+    articles = defaultdict(lambda: {"nom": "", "cat": "", "qte": ZERO, "vendue": ZERO, "brut": ZERO, "nettes": ZERO,
+                                    "jours": defaultdict(lambda: [ZERO, ZERO])})
+    for x in cmds:
+        for l in x.lignes:
+            a = articles[l.id_article or l.nom]
+            a["nom"], a["cat"] = l.nom, l.categorie
+            a["qte"] += l.quantite_nette
+            a["vendue"] += l.quantite_vendue
+            a["brut"] += l.ventes_brutes
+            a["nettes"] += l.ventes_nettes
+            jour = a["jours"][x.moment.date()]
+            jour[0] += l.ventes_nettes
+            jour[1] += l.quantite_nette
+    return articles
+
+
+def marge(c, avant, ctx) -> RapportGestion:
+    """Écart du bénéfice brut avec la période de comparaison, décomposé (« pont de marge ») :
+    - effet prix = quantités d'aujourd'hui × variation du prix net moyen (rabais compris) ;
+    - effet volume = variation des quantités totales × bénéfice moyen par unité d'avant ;
+    - effet mix = changement de la composition des ventes (plus ou moins d'articles rentables) ;
+    - articles nouveaux ou arrêtés = bénéfice des articles vendus dans une seule des deux périodes.
+    Le coût est le CUMP actuel de Sage pour les deux périodes (seul coût connu) : l'effet du coût d'achat n'est pas
+    séparé."""
+    couts = ctx.get("couts") or {}
+    a1, a0 = _par_article(c), _par_article(avant)
+    cump = {}
+    for k in set(a1) | set(a0):
+        g = a1.get(k) or a0.get(k)
+        cump[k] = _cump(couts, k, g["brut"] / g["vendue"] if g["vendue"] else ZERO)
+
+    def benefice(g, k):
+        return g["nettes"] - g["qte"] * cump[k]
+
+    continus = [k for k in a1 if k in a0 and cump[k] is not None and a1[k]["qte"] > 0 and a0[k]["qte"] > 0]
+    b1 = sum((benefice(g, k) for k, g in a1.items() if cump[k] is not None), ZERO)
+    b0 = sum((benefice(g, k) for k, g in a0.items() if cump[k] is not None), ZERO)
+    v1 = sum((g["nettes"] for k, g in a1.items() if cump[k] is not None), ZERO)
+    v0 = sum((g["nettes"] for k, g in a0.items() if cump[k] is not None), ZERO)
+    total1 = sum((g["nettes"] for g in a1.values()), ZERO)
+    q1 = sum((a1[k]["qte"] for k in continus), ZERO)
+    q0 = sum((a0[k]["qte"] for k in continus), ZERO)
+    moyen0 = sum((benefice(a0[k], k) for k in continus), ZERO) / q0 if q0 else ZERO
+    effet_prix = effet_quantite = ZERO
+    for k in continus:
+        p1, p0 = a1[k]["nettes"] / a1[k]["qte"], a0[k]["nettes"] / a0[k]["qte"]
+        effet_prix += a1[k]["qte"] * (p1 - p0)
+        effet_quantite += (a1[k]["qte"] - a0[k]["qte"]) * (p0 - cump[k])
+    effet_volume = (q1 - q0) * moyen0
+    effet_mix = effet_quantite - effet_volume
+    ecart = b1 - b0
+    autres = ecart - effet_prix - effet_quantite  # articles vendus dans une seule des deux périodes
+    marge1, marge0 = _pc(b1, v1) if v1 else ZERO, _pc(b0, v0) if v0 else ZERO
+    r = RapportGestion()
+    r.cartes = [("Bénéfice brut", "$", _d(b1)), ("Période de comparaison", "$", _d(b0)),
+                ("Écart du bénéfice", "$", _d(ecart)), ("Marge brute", "%", marge1),
+                ("Marge de la comparaison", "%", marge0), ("Effet prix", "$", _d(effet_prix)),
+                ("Effet volume", "$", _d(effet_volume)), ("Effet mix", "$", _d(effet_mix)),
+                ("Articles nouveaux ou arrêtés", "$", _d(autres)),
+                ("Ventes au coût connu", "%", _pc(v1, total1) if total1 else ZERO)]
+    lignes = []
+    for k in set(a1) | set(a0):
+        if cump[k] is None:
+            continue
+        g1, g0 = a1.get(k), a0.get(k)
+        n1, n0 = (benefice(g1, k) if g1 else ZERO), (benefice(g0, k) if g0 else ZERO)
+        prix1 = g1["nettes"] / g1["qte"] if g1 and g1["qte"] > 0 else None
+        prix0 = g0["nettes"] / g0["qte"] if g0 and g0["qte"] > 0 else None
+        e_prix = g1["qte"] * (prix1 - prix0) if k in continus else None
+        e_qte = (g1["qte"] - g0["qte"]) * (prix0 - cump[k]) if k in continus else None
+        g = g1 or g0
+        lignes.append([g["nom"], g["cat"], _d(g1["qte"] if g1 else ZERO, "0.001"),
+                       _d(g0["qte"] if g0 else ZERO, "0.001"), _d(prix1) if prix1 is not None else None,
+                       _d(prix0) if prix0 is not None else None, _d(cump[k]), _d(n1), _d(n0), _d(n1 - n0),
+                       _d(e_prix) if e_prix is not None else None, _d(e_qte) if e_qte is not None else None,
+                       _pc(n1, g1["nettes"]) if g1 and g1["nettes"] else None])
+    lignes.sort(key=lambda l: -abs(l[9]))
+    r.entetes = ["Article", "Catégorie", "Quantité nette", "Quantité (comparaison)", "Prix net moyen",
+                 "Prix net (comparaison)", "CUMP", "Bénéfice", "Bénéfice (comparaison)", "Écart", "Effet prix",
+                 "Effet quantité", "Marge %"]
+    r.lignes = lignes
+    # bénéfice cumulé jour par jour : période choisie contre comparaison (même rang de jour)
+    du, au, du2, au2 = ctx["du"], ctx["au"], ctx["du2"], ctx["au2"]
+    j1, j0 = _jours(du, au), _jours(du2, au2)
+
+    def par_jour(articles):
+        jours = defaultdict(Decimal)
+        for k, g in articles.items():
+            if cump[k] is not None:
+                for j, (nettes, qte) in g["jours"].items():
+                    jours[j] += nettes - qte * cump[k]
+        return jours
+
+    p1, p0 = par_jour(a1), par_jour(a0)
+    s1 = s0 = ZERO
+    cumul1, cumul0 = [], []
+    for i, j in enumerate(j1):
+        s1 += p1.get(j, ZERO)
+        s0 += p0.get(j0[i], ZERO) if i < len(j0) else ZERO
+        cumul1.append(_d(s1))
+        cumul0.append(_d(s0))
+    r.titre_evolution = "Bénéfice brut cumulé : période choisie et comparaison"
+    r.etiquettes = [_etiquette(j) for j in j1]
+    r.series = [("Période choisie", cumul1), ("Période de comparaison", cumul0)]
+    r.titre_repartition = "Ce qui explique l'écart du bénéfice"
+    r.genre_repartition = "classement"
+    r.repartition = [_signe(_t(n), v) for n, v in (("Effet prix", effet_prix), ("Effet volume", effet_volume),
+                                                   ("Effet mix", effet_mix), ("Articles nouveaux ou arrêtés", autres))
+                     if v]
+    constats = [_k(None, "Pont de marge : effet prix = quantités vendues × variation du prix net (rabais compris) ; "
+                   "effet volume = variation des quantités × bénéfice moyen par unité d'avant ; effet mix = plus ou "
+                   "moins d'articles rentables dans les ventes. Coût = CUMP actuel de Sage pour les deux périodes.")]
+    if not couts:
+        constats.append(_k("attention", "Coûts Sage absents : bénéfice et marge non calculables (Sage ne répond pas "
+                                        "ou articles non reliés)."))
+    elif v1:
+        baisse = marge0 - marge1
+        constats.append(_k("bon" if baisse <= 0 else "alerte" if baisse > 1 else "attention",
+                           "Marge brute de {m} % contre {n} % dans la période de comparaison ; bénéfice brut {b} "
+                           "({e}).", m=_nb(marge1), n=_nb(marge0), b=_argent(b1), e=_argent(ecart)))
+        effets = [("Effet prix", effet_prix), ("Effet volume", effet_volume), ("Effet mix", effet_mix)]
+        nom, v = min(effets, key=lambda x: x[1])
+        if v < 0:
+            constats.append(_k("attention", "Principal frein : {n} ({v}).", n=_t(nom), v=_argent(v)))
+        nom, v = max(effets, key=lambda x: x[1])
+        if v > 0:
+            constats.append(_k("bon", "Principal moteur : {n} ({v}).", n=_t(nom), v=_argent(v)))
+        couverture = _pc(v1, total1) if total1 else ZERO
+        if couverture < 80:
+            constats.append(_k("attention", "Seules {p} % des ventes ont un coût connu dans Sage : relier les articles "
+                                            "(Articles > Correspondance) pour une marge complète.", p=_nb(couverture, 0)))
+    r.note = _note(constats)
+    return r
+
+
+# --------------------------------------------------------------------------------------------- portefeuille
+CONSEILS_CATEGORIES = {
+    "Étoile": "Investir : stock, espace et visibilité",
+    "Vache à lait": "Protéger la marge et la disponibilité, sans trop investir",
+    "Prometteuse": "Développer : tester, promouvoir, élargir l'offre",
+    "En recul": "Réduire l'espace ou relancer l'offre",
+}
+
+
+def portefeuille(c, avant, ctx) -> RapportGestion:
+    """Catégories classées par part des ventes (au-dessus ou au-dessous de la part moyenne) et par croissance
+    (au-dessus ou au-dessous de la croissance du magasin) : étoile, vache à lait, prometteuse, en recul."""
+    couts = ctx.get("couts") or {}
+    jours = _jours(ctx["du"], ctx["au"])
+    par_semaine = len(jours) >= 28
+    cat = defaultdict(lambda: {"v1": ZERO, "v0": ZERO, "articles": set(), "benefice": ZERO, "connu": ZERO,
+                               "temps": defaultdict(Decimal)})
+    for rang, cmds in ((1, c), (0, avant)):
+        for x in cmds:
+            j = x.moment.date()
+            for l in x.lignes:
+                g = cat[l.categorie]
+                if not rang:
+                    g["v0"] += l.ventes_nettes
+                    continue
+                g["v1"] += l.ventes_nettes
+                g["articles"].add(l.nom)
+                g["temps"][j - timedelta(days=j.weekday()) if par_semaine else j] += l.ventes_nettes
+                cout = _cump(couts, l.id_article, l.ventes_brutes / l.quantite_vendue if l.quantite_vendue else 0)
+                if cout is not None:
+                    g["benefice"] += l.ventes_nettes - l.quantite_nette * cout
+                    g["connu"] += l.ventes_nettes
+    total1 = sum((g["v1"] for g in cat.values()), ZERO)
+    total0 = sum((g["v0"] for g in cat.values()), ZERO)
+    croissance_magasin = _pc(total1 - total0, total0) if total0 else ZERO
+    actives = [n for n, g in cat.items() if g["v1"] > 0]
+    part_moyenne = Decimal(100) / len(actives) if actives else ZERO
+    lignes, compte, ventes_q = [], Counter(), defaultdict(Decimal)
+    for nom, g in sorted(cat.items(), key=lambda kv: -kv[1]["v1"]):
+        part = _pc(g["v1"], total1) if total1 else ZERO
+        croissance = _pc(g["v1"] - g["v0"], g["v0"]) if g["v0"] else None
+        forte = g["v1"] > 0 and part >= part_moyenne
+        croit = g["v1"] > 0 and (croissance is None or croissance >= croissance_magasin)
+        quadrant = ("Étoile" if forte and croit else "Vache à lait" if forte else "Prometteuse" if croit else
+                    "En recul")
+        compte[quadrant] += 1
+        ventes_q[quadrant] += max(ZERO, g["v1"])
+        lignes.append([nom, _d(g["v1"]), part, _d(g["v0"]), croissance,
+                       _d(croissance - croissance_magasin, "0.1") if croissance is not None else None,
+                       len(g["articles"]), _d(g["benefice"]) if g["connu"] else None,
+                       _pc(g["benefice"], g["connu"]) if g["connu"] else None, _t(quadrant),
+                       _t(CONSEILS_CATEGORIES[quadrant])])
+    r = RapportGestion()
+    r.entetes = ["Catégorie", "Ventes nettes", "Part des ventes %", "Période de comparaison", "Croissance %",
+                 "Écart avec la croissance du magasin (points de %)", "Articles vendus", "Bénéfice", "Marge %",
+                 "Quadrant", "Conseil"]
+    r.lignes = lignes
+    r.cartes = [("Catégories", "n", len(actives)), ("Étoiles", "n", compte["Étoile"]),
+                ("Vaches à lait", "n", compte["Vache à lait"]), ("Prometteuses", "n", compte["Prometteuse"]),
+                ("En recul", "n", compte["En recul"]), ("Croissance du magasin", "%", croissance_magasin)]
+    temps = sorted({k for g in cat.values() for k in g["temps"]}) if par_semaine else jours
+    r.titre_evolution = ("Ventes nettes par semaine des principales catégories" if par_semaine else
+                         "Ventes nettes par jour des principales catégories")
+    r.etiquettes = [_etiquette(k) for k in temps]
+    r.series = [(l[0], [_d(cat[l[0]]["temps"].get(k, ZERO)) for k in temps]) for l in lignes[:5] if l[1] > 0]
+    r.titre_repartition = "Ventes nettes par quadrant"
+    r.repartition = [(_t(q), _d(v)) for q, v in sorted(ventes_q.items(), key=lambda kv: -kv[1]) if v]
+    constats = [_k(None, "Part forte : au moins la part moyenne d'une catégorie ({m} %) ; croissance forte : au moins "
+                   "la croissance du magasin ({c} %). Étoile : forte et en croissance ; vache à lait : forte, croissance "
+                   "faible ; prometteuse : petite mais en croissance ; en recul : petite et en perte de vitesse.",
+                   m=_nb(part_moyenne), c=_nb(croissance_magasin))]
+    etoiles = [l for l in lignes if l[9] == _t("Étoile")]
+    if etoiles:
+        constats.append(_k("bon", "Étoiles : {e}.", e=", ".join(l[0] for l in etoiles[:5])))
+    prometteuses = [l for l in lignes if l[9] == _t("Prometteuse") and l[4] is not None]
+    if prometteuses:
+        meilleure = max(prometteuses, key=lambda l: l[4])
+        constats.append(_k("bon", "Catégorie prometteuse la plus dynamique : {n} (+{p} %).", n=meilleure[0],
+                           p=_nb(meilleure[4])))
+    vaches = [l for l in lignes if l[9] == _t("Vache à lait") and l[4] is not None and l[4] < 0]
+    for l in vaches[:3]:
+        constats.append(_k("attention", "{n} pèse {p} % des ventes mais recule de {q} % : à surveiller.", n=l[0],
+                           p=_nb(l[2]), q=_nb(abs(l[4]))))
+    r.note = _note(constats)
+    return r
+
+
+# --------------------------------------------------------------------------------------------- achalandage
+def achalandage(c, avant, ctx) -> RapportGestion:
+    """Commandes de chaque créneau (jour de la semaine × heure), en moyenne par jour ouvert, contre les employés qui
+    y ont enregistré des ventes : créneaux sous tension (beaucoup de commandes par employé) et créneaux calmes
+    (plusieurs employés pour peu de commandes)."""
+    ouverts = Counter(j.weekday() for j in {x.moment.date() for x in c})
+    creneaux = defaultdict(lambda: {"jours": set(), "cmd": 0, "ventes": ZERO, "presences": defaultdict(set)})
+    for x in c:
+        j = x.moment.date()
+        g = creneaux[(j.weekday(), x.moment.hour)]
+        g["jours"].add(j)
+        g["cmd"] += 1
+        g["ventes"] += x.nettes
+        g["presences"][j].add(x.employe)
+    mesures = {}
+    for k, g in creneaux.items():
+        presences = sum(len(v) for v in g["presences"].values())
+        mesures[k] = {"jours": len(g["jours"]), "cmd_jour": g["cmd"] / max(1, ouverts[k[0]]),
+                      "ventes_jour": g["ventes"] / max(1, ouverts[k[0]]),
+                      "employes": presences / len(g["jours"]), "par_employe": g["cmd"] / presences,
+                      "panier": g["ventes"] / g["cmd"]}
+    charges = [m["par_employe"] for m in mesures.values()]
+    volumes = [m["cmd_jour"] for m in mesures.values()]
+    q1, charge_mediane = _quantile(charges, 0.25), _quantile(charges, 0.5)
+    volume_q3 = _quantile(volumes, 0.75)
+    lignes, tension, calmes = [], [], []
+    for (jds, heure), m in sorted(mesures.items()):
+        # sous tension : au moins 1,5 fois la charge médiane par employé, dans le quart des heures les plus achalandées
+        if len(mesures) >= 8 and m["par_employe"] >= 1.5 * charge_mediane and m["cmd_jour"] >= volume_q3:
+            diagnostic = "Sous tension"
+            tension.append((jds, heure, m))
+        elif m["employes"] >= 1.5 and m["par_employe"] <= q1:
+            diagnostic = "Calme"
+            calmes.append((jds, heure, m))
+        else:
+            diagnostic = "Normal"
+        lignes.append([_t(JOURS[jds]), f"{heure} h", m["jours"], _d(m["cmd_jour"], "0.1"), _d(m["ventes_jour"]),
+                       _d(m["employes"], "0.1"), _d(m["par_employe"], "0.1"), _d(m["panier"]), _t(diagnostic)])
+    r = RapportGestion()
+    r.entetes = ["Jour", "Heure", "Jours observés", "Commandes par jour", "Ventes nettes par jour", "Employés actifs",
+                 "Commandes par employé", "Panier moyen", "Diagnostic"]
+    r.lignes = lignes
+    pointe = max(mesures.items(), key=lambda kv: kv[1]["cmd_jour"]) if mesures else None
+    heures_ouvertes = sum(len(g["jours"]) for g in creneaux.values())
+    presences = sum(sum(len(v) for v in g["presences"].values()) for g in creneaux.values())
+    r.cartes = [("Heure de pointe", "t", f"{_t(JOURS[pointe[0][0]])} {pointe[0][1]} h" if pointe else "—"),
+                ("Commandes par heure ouverte", "n", _d(Decimal(len(c)) / heures_ouvertes, "0.1")
+                 if heures_ouvertes else ZERO),
+                ("Employés actifs par heure", "n", _d(Decimal(presences) / heures_ouvertes, "0.1")
+                 if heures_ouvertes else ZERO),
+                ("Créneaux sous tension", "n", len(tension)), ("Créneaux calmes", "n", len(calmes))]
+    heures = sorted({h for _j, h in mesures})
+    jours_ouverts = sum(ouverts.values()) or 1
+    par_heure = defaultdict(lambda: [0, 0])
+    for (_j, h), g in creneaux.items():
+        par_heure[h][0] += g["cmd"]
+        par_heure[h][1] += sum(len(v) for v in g["presences"].values())
+    r.titre_evolution = "Commandes par heure et employés actifs (moyenne par jour ouvert)"
+    r.genre_evolution = "barres"
+    r.unite_evolution = ""
+    r.etiquettes = [f"{h} h" for h in heures]
+    r.series = [("Commandes", [_d(Decimal(par_heure[h][0]) / jours_ouverts, "0.1") for h in heures]),
+                ("Employés actifs", [_d(Decimal(par_heure[h][1]) / jours_ouverts, "0.1") for h in heures])]
+    r.titre_repartition = "Créneaux les plus chargés par employé"
+    r.genre_repartition = "classement"
+    r.argent_repartition = False
+    r.repartition = [(f"{_t(JOURS[j])} {h} h", _d(m["par_employe"], "0.1"))
+                     for (j, h), m in sorted(mesures.items(), key=lambda kv: -kv[1]["par_employe"])[:8]]
+    constats = [_k(None, "Employé actif : employé qui a enregistré au moins une vente dans l'heure (un employé présent "
+                   "sans vente n'est pas compté). Sous tension : au moins 1,5 fois la charge habituelle par employé, "
+                   "dans le quart des heures les plus achalandées ; calme : 1,5 employé actif ou plus pour peu de commandes chacun.")]
+    if pointe:
+        constats.append(_k(None, "Heure de pointe : {j} {h} h, {n} commandes en moyenne.", j=_t(JOURS[pointe[0][0]]),
+                           h=pointe[0][1], n=_nb(pointe[1]["cmd_jour"])))
+    if tension:
+        constats.append(_k("attention", "{n} créneau(x) sous tension : {c}. Renforcer la caisse à ces heures.",
+                           n=len(tension), c=", ".join(f"{_t(JOURS[j])} {h} h" for j, h, _m in
+                                                       sorted(tension, key=lambda x: -x[2]["par_employe"])[:6])))
+    if calmes:
+        constats.append(_k("attention", "{n} créneau(x) calme(s) avec plusieurs employés : {c}. Prévoir d'autres "
+                                        "tâches (mise en rayon, inventaire) ou alléger l'horaire.",
+                           n=len(calmes), c=", ".join(f"{_t(JOURS[j])} {h} h" for j, h, _m in calmes[:6])))
+    if not tension and not calmes and mesures:
+        constats.append(_k("bon", "Effectifs en accord avec l'achalandage : aucun créneau sous tension ni calme."))
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -1320,9 +1647,11 @@ def synthese(c, avant, ctx) -> RapportGestion:
             cartes[(cle, titre)] = (titre, genre, valeur)
     choisies = [("a_variation", "Ventes nettes"), ("a_variation", "Variation"), ("a_tendance", "Tendance par semaine"),
                 ("a_tendance", "Projection des 30 prochains jours"), ("a_paniers", "Panier médian"),
-                ("a_anomalies", "Anomalies relevées"), ("a_matrice", "Locomotives"), ("a_fidelite", "Taux de rétention")]
-    if not ctx.get("couts"):
-        choisies.remove(("a_matrice", "Locomotives"))  # sans coûts Sage, aucune locomotive ne peut être reconnue
+                ("a_anomalies", "Anomalies relevées"), ("a_matrice", "Locomotives"), ("a_fidelite", "Taux de rétention"),
+                ("a_marge", "Marge brute"), ("a_achalandage", "Créneaux sous tension")]
+    if not ctx.get("couts"):  # sans coûts Sage, ni locomotive ni marge
+        choisies.remove(("a_matrice", "Locomotives"))
+        choisies.remove(("a_marge", "Marge brute"))
     r = RapportGestion()
     r.cartes = [cartes[k] for k in choisies if k in cartes]
     vide = RapportGestion()
@@ -1517,6 +1846,38 @@ def _decisions(sous: dict) -> list[tuple]:
                 "a_fidelite",
                 [(l[0], _t("Dernier achat {d} ; {c} commande(s), {v} dans la période de comparaison", d=l[7], c=l[4],
                            v=_argent(l[5])), "") for l in perdus])
+    mar = sous.get("a_marge", vide)
+    m1, m0 = _carte(mar, "Marge brute"), _carte(mar, "Marge de la comparaison")
+    if mar.lignes and m1 is not None and m0 and m0 - m1 > 1:
+        pertes = [l for l in mar.lignes if l[9] < 0]
+        ajouter(1, "Protéger la marge brute", _t("Marge de {a} % contre {b} % ; effet prix {p}, effet mix {x}.",
+                                                 a=_nb(m1), b=_nb(m0), p=_argent(_carte(mar, "Effet prix")),
+                                                 x=_argent(_carte(mar, "Effet mix"))), "a_marge",
+                [(l[0], _t("{c} ; bénéfice {a} contre {b} ; prix net {p} → {q} ; marge {m}", c=l[1], a=_argent(l[7]),
+                           b=_argent(l[8]), p=_argent(l[5]) if l[5] is not None else "—",
+                           q=_argent(l[4]) if l[4] is not None else "—", m=_pourcent(l[12])), "") for l in pertes])
+    por = sous.get("a_portefeuille", vide)
+    prometteuses = sorted((l for l in por.lignes if l[9] == _t("Prometteuse") and l[4] is not None),
+                          key=lambda l: -l[4])
+    if prometteuses:
+        ajouter(3, "Développer les catégories prometteuses (espace, promotion)",
+                _t("{n} catégorie(s) petites mais en croissance.", n=len(prometteuses)), "a_portefeuille",
+                [(l[0], _t("Croissance {c} ; {p} des ventes ; {v}", c=_pourcent(l[4]), p=_pourcent(l[2]),
+                           v=_argent(l[1])), "") for l in prometteuses])
+    ach = sous.get("a_achalandage", vide)
+    tension = [l for l in ach.lignes if l[8] == _t("Sous tension")]
+    if tension:
+        ajouter(2, "Renforcer l'équipe aux heures de pointe",
+                _t("{n} créneau(x) avec beaucoup de commandes par employé.", n=len(tension)), "a_achalandage",
+                [(f"{l[0]} {l[1]}", _t("{c} commandes par jour ; {e} employé(s) actif(s) ; {p} commandes par "
+                                       "employé", c=_nb(l[3]), e=_nb(l[5]), p=_nb(l[6])), "")
+                 for l in sorted(tension, key=lambda l: -l[6])])
+    calmes = [l for l in ach.lignes if l[8] == _t("Calme")]
+    if calmes:
+        ajouter(3, "Alléger l'équipe ou planifier d'autres tâches aux heures calmes",
+                _t("{n} créneau(x) avec plusieurs employés pour peu de commandes.", n=len(calmes)), "a_achalandage",
+                [(f"{l[0]} {l[1]}", _t("{c} commandes par jour ; {e} employé(s) actif(s)", c=_nb(l[3]),
+                                       e=_nb(l[5])), "") for l in sorted(calmes, key=lambda l: l[6])])
     pan = sous.get("a_paniers", vide)
     if (_carte(pan, "Paniers d'un seul article") or 0) >= 30:
         ajouter(3, "Proposer un 2e article à la caisse", _t("{p} % des paniers n'ont qu'un article.",
@@ -1544,6 +1905,14 @@ ETATS_CARTES = {
     "Paniers d'un seul article": lambda v: "attention" if v >= 30 else "bon",
     "Part des ventes avec un client": lambda v: "attention" if v < 30 else "bon",
     "Reviennent le mois suivant": lambda v: "bon" if v >= 20 else "attention",
+    "Écart du bénéfice": lambda v: "bon" if v >= 0 else "alerte",
+    "Effet prix": lambda v: "bon" if v >= 0 else "attention", "Effet volume": lambda v: "bon" if v >= 0 else "attention",
+    "Effet mix": lambda v: "bon" if v >= 0 else "attention",
+    "Ventes au coût connu": lambda v: "bon" if v >= 80 else "attention",
+    "Étoiles": lambda v: "bon" if v else None, "En recul": lambda v: "attention" if v else "bon",
+    "Croissance du magasin": lambda v: "bon" if v >= 0 else "alerte",
+    "Créneaux sous tension": lambda v: "attention" if v else "bon",
+    "Créneaux calmes": lambda v: "attention" if v else "bon",
 }
 
 
@@ -1560,7 +1929,8 @@ def etat_carte(titre: str, valeur) -> str | None:
 
 # début des constats qui sont des définitions (pas repris dans la synthèse)
 DEFINITIONS = ("Jour atypique :", "Popularité :", "Seules les paires", "Heure active :", "Récence, fréquence",
-               "Retenu :", "Changement de prix :", "Chaque ligne suit", "Choisissez au moins")
+               "Retenu :", "Changement de prix :", "Chaque ligne suit", "Choisissez au moins", "Pont de marge :",
+               "Part forte :", "Employé actif :")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -1711,7 +2081,42 @@ def _sup_rabais_direction(r):
             _graphe("classement", "Plus forts rabais mis à part", elements=sorted(par_cmd, key=lambda x: -x[1])[:8])]
 
 
-SUPPLEMENTS = {"a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
+def _sup_marge(r):
+    par_cat = defaultdict(lambda: [ZERO, ZERO, ZERO])
+    for l in r.lignes:
+        g = par_cat[l[1]]
+        g[0] += l[9]
+        g[1] += l[7]
+        g[2] += (l[4] or ZERO) * l[2] if l[4] is not None else ZERO
+    ecarts = sorted(par_cat.items(), key=lambda kv: -abs(kv[1][0]))[:8]
+    marges = sorted(((n, _pc(g[1], g[2])) for n, g in par_cat.items() if g[2] > 0), key=lambda x: -x[1])[:8]
+    return [_graphe("classement", "Catégories : écart du bénéfice", elements=[_signe(n, g[0]) for n, g in ecarts]),
+            _graphe("classement", "Marge brute par catégorie", "%", elements=marges)]
+
+
+def _sup_portefeuille(r):
+    croissance = [l for l in r.lignes if l[4] is not None]
+    marges = [l for l in r.lignes if l[8] is not None]
+    return [_graphe("classement", "Croissance des catégories", "%",
+                    elements=[_signe(l[0], l[4]) for l in sorted(croissance, key=lambda l: -abs(l[4]))[:8]]),
+            _graphe("classement", "Marge brute par catégorie", "%",
+                    elements=[(l[0], l[8]) for l in sorted(marges, key=lambda l: -l[8])[:8]])]
+
+
+def _sup_achalandage(r):
+    par_jour = defaultdict(Decimal)
+    for l in r.lignes:
+        par_jour[l[0]] += l[3]
+    ordre = [_t(j) for j in JOURS if _t(j) in par_jour]
+    calmes = [(f"{l[0]} {l[1]}", l[5]) for l in r.lignes if l[8] == _t("Calme")]
+    return [_graphe("barres", "Commandes par jour de la semaine (moyenne par jour ouvert)", "", etiquettes=ordre,
+                    series=[("Commandes", [par_jour[j] for j in ordre])]),
+            _graphe("classement", "Créneaux calmes : employés actifs", "",
+                    elements=sorted(calmes, key=lambda x: -x[1])[:8])]
+
+
+SUPPLEMENTS = {"a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
+               "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
                "a_associations": _sup_associations, "a_prix": _sup_prix, "a_employes": _sup_employes,
                "a_rfm": _sup_rfm, "a_fidelite": _sup_fidelite, "a_cohortes": _sup_cohortes}
@@ -1736,10 +2141,13 @@ ANALYSES = [
     ("Analyse de la variation", "a_variation", variation, "Rapports", "a_tendance"),
     ("Analyse des paniers", "a_paniers", paniers, "Rapports", "Jour × heure"),
     ("Concentration des ventes", "a_concentration", concentration, "Rapports", "a_paniers"),
+    ("Analyse de la marge", "a_marge", marge, "Finances", "Résumé"),
     ("Matrice des articles", "a_matrice", matrice, "Articles", "Par catégorie"),
+    ("Portefeuille des catégories", "a_portefeuille", portefeuille, "Articles", "Par catégorie"),
     ("Articles achetés ensemble", "a_associations", associations, "Articles", "a_matrice"),
     ("Prix et sensibilité au prix", "a_prix", prix, "Articles", "a_associations"),
     ("Performance des employés", "a_employes", employes, "Employés", "Par employé"),
+    ("Achalandage et effectifs", "a_achalandage", achalandage, "Employés", "a_employes"),
     ("Rabais Direction et administrateurs", "a_rabais_direction", rabais_direction, "Rapports", "Rabais"),
     ("Segmentation RFM", "a_rfm", rfm, "Clients", "Par client"),
     ("Fidélité et rétention", "a_fidelite", fidelite, "Clients", "a_rfm"),

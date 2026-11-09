@@ -78,7 +78,7 @@ def test_chaque_analyse_est_rangee_dans_une_section_existante():
 def test_toutes_les_analyses_rendent_un_rapport_complet():
     for cle, r in _toutes().items():
         assert r.cartes and r.entetes and r.note, cle
-        assert r.lignes or cle == "a_prix", cle  # aucun changement de prix dans ces ventes fictives
+        assert r.lignes or cle in ("a_prix", "a_marge"), cle  # aucun changement de prix ; marge : sans coûts
         assert all(len(l) == len(r.entetes) for l in r.lignes), cle
         assert all(len(v) == len(r.etiquettes) for _n, v in r.series), cle
 
@@ -184,7 +184,7 @@ def test_graphiques_de_plus_sans_vide():
     from mvogmbi_sync import langues
 
     for cle, r in _toutes().items():
-        if cle != "a_prix":  # aucun changement de prix dans ces ventes fictives
+        if cle not in ("a_prix", "a_marge"):  # aucun changement de prix ; marge : sans coûts Sage
             assert r.graphiques, cle
         for g in r.graphiques:
             assert g["elements"] or any(v for _n, vs in g["series"] for v in vs), (cle, g["titre"])
@@ -293,3 +293,32 @@ def test_rabais_direction_et_administrateurs_a_part():
     assert patronne[7] == 0 and patronne[15] == D("5.00")
     syn = an.calculer("a_synthese", d, _avant(), {}, DU, AU, DU2, AU2)
     assert not any("Patronne" in str(l) for l in syn.lignes if l[1] == "Encadrer les rabais accordés")
+
+
+COUTS = {"P": ("A1", D("1.00")), "M": ("A2", D("2.50")), "R": ("A3", D("4.00")), "S": ("A4", D("1"))}
+
+
+def test_pont_de_marge():
+    """Écart du bénéfice = effet prix + effet volume + effet mix + articles nouveaux ou arrêtés."""
+    r = an.calculer("a_marge", _periode(), _avant(), COUTS, DU, AU, DU2, AU2)
+    c = {t: v for t, _g, v in r.cartes}
+    assert c["Écart du bénéfice"] == c["Bénéfice brut"] - c["Période de comparaison"]
+    total = c["Effet prix"] + c["Effet volume"] + c["Effet mix"] + c["Articles nouveaux ou arrêtés"]
+    assert abs(total - c["Écart du bénéfice"]) <= D("0.03")
+    plantain = next(l for l in r.lignes if l[0] == "Plantain")
+    assert plantain[6] == D("1.00") and plantain[12] == D("80.0")  # 5 $ - 1 $ = 80 % de marge
+    assert r.graphiques and all(len(l) == len(r.entetes) for l in r.lignes)
+
+
+def test_portefeuille_et_achalandage():
+    t = {cle: an.calculer(cle, _periode(), _avant(), COUTS, DU, AU, DU2, AU2)
+         for cle in ("a_portefeuille", "a_achalandage", "a_synthese")}
+    quadrants = {l[0]: l[9] for l in t["a_portefeuille"].lignes}
+    assert set(quadrants.values()) <= {"Étoile", "Vache à lait", "Prometteuse", "En recul"}
+    assert quadrants["Riz"] in ("Étoile", "Prometteuse")  # absent de la comparaison : en croissance
+    ach = t["a_achalandage"]
+    samedi = next(l for l in ach.lignes if l[:2] == ["samedi", "11 h"])
+    assert samedi[3] == D("3.2") and samedi[5] == D("1.0")  # (4 × 3 + DIR1) / 4 samedis, une seule employée
+    cartes = {t_: v for t_, _g, v in ach.cartes}
+    assert cartes["Heure de pointe"] == "samedi 11 h"
+    assert any(c[0] == "Marge brute" for c in t["a_synthese"].cartes)

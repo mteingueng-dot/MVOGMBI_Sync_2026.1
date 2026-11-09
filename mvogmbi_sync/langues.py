@@ -2985,3 +2985,100 @@ for _fr, _en in {
         "discounts” report ({n} order(s)).",
 }.items():
     EN.setdefault(_fr, _en)
+
+# analyses de la marge, des catégories et de l'achalandage (2026-11-08)
+for _fr, _en in {
+    "Analyse de la marge": "Margin analysis", "Portefeuille des catégories": "Category portfolio",
+    "Achalandage et effectifs": "Traffic and staffing",
+    "Écart du bénéfice": "Profit variance", "Marge de la comparaison": "Comparison margin",
+    "Effet prix": "Price effect", "Effet volume": "Volume effect", "Effet mix": "Mix effect",
+    "Articles nouveaux ou arrêtés": "New or discontinued items", "Ventes au coût connu": "Sales with known cost",
+    "Quantité (comparaison)": "Quantity (comparison)", "Prix net moyen": "Average net price",
+    "Prix net (comparaison)": "Net price (comparison)", "Bénéfice (comparaison)": "Profit (comparison)",
+    "Effet quantité": "Quantity effect",
+    "Bénéfice brut cumulé : période choisie et comparaison": "Cumulative gross profit: chosen period and comparison",
+    "Ce qui explique l'écart du bénéfice": "What explains the profit variance",
+    "Catégories : écart du bénéfice": "Categories: profit variance",
+    "Marge brute par catégorie": "Gross margin by category",
+    "Pont de marge : effet prix = quantités vendues × variation du prix net (rabais compris) ; effet volume = "
+    "variation des quantités × bénéfice moyen par unité d'avant ; effet mix = plus ou moins d'articles rentables dans "
+    "les ventes. Coût = CUMP actuel de Sage pour les deux périodes.":
+        "Margin bridge: price effect = quantities sold × change in net price (discounts included); volume effect = "
+        "change in quantities × previous average profit per unit; mix effect = more or fewer profitable items in "
+        "sales. Cost = current Sage average cost for both periods.",
+    "Coûts Sage absents : bénéfice et marge non calculables (Sage ne répond pas ou articles non reliés).":
+        "Sage costs missing: profit and margin cannot be calculated (Sage not responding or items not linked).",
+    "Marge brute de {m} % contre {n} % dans la période de comparaison ; bénéfice brut {b} ({e}).":
+        "Gross margin of {m}% against {n}% in the comparison period; gross profit {b} ({e}).",
+    "Principal frein : {n} ({v}).": "Main drag: {n} ({v}).", "Principal moteur : {n} ({v}).": "Main driver: {n} ({v}).",
+    "Seules {p} % des ventes ont un coût connu dans Sage : relier les articles (Articles > Correspondance) pour une "
+    "marge complète.":
+        "Only {p}% of sales have a known cost in Sage: link the items (Items > Mapping) for a complete margin.",
+    "Étoile": "Star", "Vache à lait": "Cash cow", "Prometteuse": "Promising", "En recul": "Declining",
+    "Étoiles": "Stars", "Vaches à lait": "Cash cows", "Prometteuses": "Promising",
+    "Croissance du magasin": "Store growth", "Part des ventes %": "Share of sales %", "Croissance %": "Growth %",
+    "Écart avec la croissance du magasin (points de %)": "Difference from store growth (% points)",
+    "Articles vendus": "Items sold",
+    "Investir : stock, espace et visibilité": "Invest: stock, space and visibility",
+    "Protéger la marge et la disponibilité, sans trop investir":
+        "Protect margin and availability without over-investing",
+    "Développer : tester, promouvoir, élargir l'offre": "Develop: test, promote, widen the range",
+    "Réduire l'espace ou relancer l'offre": "Reduce space or relaunch the range",
+    "Ventes nettes par semaine des principales catégories": "Net sales by week of the main categories",
+    "Ventes nettes par jour des principales catégories": "Net sales by day of the main categories",
+    "Croissance des catégories": "Category growth",
+    "Part forte : au moins la part moyenne d'une catégorie ({m} %) ; croissance forte : au moins la croissance du "
+    "magasin ({c} %). Étoile : forte et en croissance ; vache à lait : forte, croissance faible ; prometteuse : petite "
+    "mais en croissance ; en recul : petite et en perte de vitesse.":
+        "Strong share: at least the average category share ({m}%); strong growth: at least the store growth ({c}%). "
+        "Star: strong and growing; cash cow: strong, low growth; promising: small but growing; declining: small and "
+        "losing ground.",
+    "Étoiles : {e}.": "Stars: {e}.",
+    "Catégorie prometteuse la plus dynamique : {n} (+{p} %).": "Most dynamic promising category: {n} (+{p}%).",
+    "{n} pèse {p} % des ventes mais recule de {q} % : à surveiller.":
+        "{n} makes up {p}% of sales but is down {q}%: to watch.",
+    "Heure de pointe": "Peak hour", "Commandes par heure ouverte": "Orders per open hour",
+    "Employés actifs par heure": "Active employees per hour", "Créneaux sous tension": "Busy time slots",
+    "Créneaux calmes": "Quiet time slots", "Jours observés": "Days observed", "Commandes par jour": "Orders per day",
+    "Ventes nettes par jour": "Net sales per day", "Commandes par employé": "Orders per employee",
+    "Diagnostic": "Diagnosis", "Sous tension": "Busy", "Calme": "Quiet", "Normal": "Normal",
+    "Commandes par heure et employés actifs (moyenne par jour ouvert)":
+        "Orders by hour and active employees (average per open day)",
+    "Créneaux les plus chargés par employé": "Busiest time slots per employee",
+    "Commandes par jour de la semaine (moyenne par jour ouvert)": "Orders by day of the week (average per open day)",
+    "Créneaux calmes : employés actifs": "Quiet time slots: active employees",
+    "Employé actif : employé qui a enregistré au moins une vente dans l'heure (un employé présent sans vente n'est pas "
+    "compté). Sous tension : au moins 1,5 fois la charge habituelle par employé, dans le quart des heures les plus "
+    "achalandées ; calme : 1,5 employé actif ou plus pour peu de commandes chacun.":
+        "Active employee: an employee who entered at least one sale during the hour (an employee present without a "
+        "sale is not counted). Busy: at least 1.5 times the usual load per employee, in the busiest quarter of hours; "
+        "quiet: 1.5 or more "
+        "active employees with few orders each.",
+    "Heure de pointe : {j} {h} h, {n} commandes en moyenne.": "Peak hour: {j} {h}:00, {n} orders on average.",
+    "{n} créneau(x) sous tension : {c}. Renforcer la caisse à ces heures.":
+        "{n} busy time slot(s): {c}. Add cashier staff at those hours.",
+    "{n} créneau(x) calme(s) avec plusieurs employés : {c}. Prévoir d'autres tâches (mise en rayon, inventaire) ou "
+    "alléger l'horaire.":
+        "{n} quiet time slot(s) with several employees: {c}. Plan other tasks (shelving, stock count) or lighten the "
+        "schedule.",
+    "Effectifs en accord avec l'achalandage : aucun créneau sous tension ni calme.":
+        "Staffing matches traffic: no busy or quiet time slot.",
+    "Protéger la marge brute": "Protect the gross margin",
+    "Marge de {a} % contre {b} % ; effet prix {p}, effet mix {x}.":
+        "Margin {a}% against {b}%; price effect {p}, mix effect {x}.",
+    "{c} ; bénéfice {a} contre {b} ; prix net {p} → {q} ; marge {m}":
+        "{c}; profit {a} against {b}; net price {p} → {q}; margin {m}",
+    "Développer les catégories prometteuses (espace, promotion)": "Develop the promising categories (space, promotion)",
+    "{n} catégorie(s) petites mais en croissance.": "{n} small but growing category(ies).",
+    "Croissance {c} ; {p} des ventes ; {v}": "Growth {c}; {p} of sales; {v}",
+    "Renforcer l'équipe aux heures de pointe": "Strengthen the team at peak hours",
+    "{n} créneau(x) avec beaucoup de commandes par employé.": "{n} time slot(s) with many orders per employee.",
+    "{c} commandes par jour ; {e} employé(s) actif(s) ; {p} commandes par employé":
+        "{c} orders per day; {e} active employee(s); {p} orders per employee",
+    "Alléger l'équipe ou planifier d'autres tâches aux heures calmes":
+        "Lighten the team or plan other tasks at quiet hours",
+    "{n} créneau(x) avec plusieurs employés pour peu de commandes.":
+        "{n} time slot(s) with several employees for few orders.",
+    "{c} commandes par jour ; {e} employé(s) actif(s)": "{c} orders per day; {e} active employee(s)",
+}.items():
+    EN.setdefault(_fr, _en)

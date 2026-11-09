@@ -75,7 +75,8 @@ TITRES_GRAPHIQUES = {
     "Jour × heure": "Ventes nettes par jour de la semaine et par heure",
 }
 # colonnes de nombres sans unité (analyses décisionnelles) : jamais affichées en « $ »
-MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z)", "Articles par", "Commandes par", "Jours entre")
+MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z)", "Articles par", "Commandes par", "Jours entre",
+                   "Employés actifs", "Active employees", "Orders per", "Items per")
 NOTES_ETATS: dict[str, str] = {}
 # constats des analyses décisionnelles : (fond, trait à gauche) et icône par niveau
 COULEURS_CONSTATS = {"alerte": ("#fde2e4", "#d7263d"), "attention": ("#fff4d6", "#e0a100"),

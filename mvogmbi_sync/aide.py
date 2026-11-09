@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.25"
+VERSION = "1.0.26"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -717,6 +717,14 @@ FAQ = {
                     "baisse, employés, clients à relancer ou perdus, commandes à fort rabais ou à prix inhabituel (un "
                     "clic sur le n° ouvre la facture Clover). Les 5 premiers sont aussi cités dans le bandeau coloré "
                     "et dans le courriel du matin ; au-delà de 50, la liste complète est dans l'analyse indiquée."),
+        ("question", "Que montrent l'analyse de la marge, le portefeuille des catégories et l'achalandage ?"),
+        ("reponse", "Finances > « Analyse de la marge » explique l'écart du bénéfice brut avec la période de "
+                    "comparaison : effet prix (prix nets et rabais), effet volume (quantités), effet mix (plus ou moins "
+                    "d'articles rentables) et articles nouveaux ou arrêtés, au CUMP de Sage. Articles > « Portefeuille "
+                    "des catégories » classe chaque catégorie selon sa part des ventes et sa croissance : étoile, vache "
+                    "à lait, prometteuse, en recul, avec sa marge. Employés > « Achalandage et effectifs » compare les "
+                    "commandes de chaque jour et heure aux employés qui y vendent : créneaux sous tension (renforcer la "
+                    "caisse) et créneaux calmes (autres tâches). Leurs décisions s'ajoutent à « Synthèse et décisions »."),
         ("question", "Les décisions arrivent-elles aussi par courriel ?"),
         ("reponse", "Oui : le courriel du matin (traitement de nuit) contient les 8 premières décisions de « Synthèse "
                     "et décisions », calculées sur les 4 dernières semaines comparées aux 4 d'avant, en couleur selon "
@@ -1466,6 +1474,14 @@ FAQ = {
                     "items, employees, customers to win back, orders with a big discount or an unusual price (click "
                     "the number to open the Clover invoice). The first 5 also appear in the colored band and in the "
                     "morning email; beyond 50, the full list is in the analysis shown."),
+        ("question", "What do the margin analysis, the category portfolio and the traffic analysis show?"),
+        ("reponse", "Finances > “Margin analysis” explains the change in gross profit against the comparison period: "
+                    "price effect (net prices and discounts), volume effect (quantities), mix effect (more or fewer "
+                    "profitable items) and new or discontinued items, at the Sage average cost. Items > “Category "
+                    "portfolio” ranks each category by share of sales and growth: star, cash cow, promising, "
+                    "declining, with its margin. Employees > “Traffic and staffing” compares the orders of each day "
+                    "and hour with the employees selling then: busy time slots (add cashier staff) and quiet ones "
+                    "(other tasks). Their decisions are added to “Summary and decisions”."),
         ("question", "Do the decisions also arrive by email?"),
         ("reponse", "Yes: the morning email (night processing) lists the first 8 decisions of “Summary and "
                     "decisions”, calculated over the last 4 weeks compared with the 4 before, colored by priority. The "
