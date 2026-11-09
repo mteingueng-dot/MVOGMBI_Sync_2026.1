@@ -3967,6 +3967,16 @@ for _fr, _en in {
 
 
 
+# 1.0.38 : case « Mettre à jour le stock Clover » de chaque facture fournisseur (2026-11-09)
+for _fr, _en in {
+    "Importer {n} facture(s) ?\n\n{liste}": "Import {n} invoice(s)?\n\n{liste}",
+    "Mettre à jour le stock Clover": "Update the Clover stock",
+    "Sage et stock Clover": "Sage and Clover stock",
+    "Sage seulement": "Sage only",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
 EN.setdefault("Détail : {l}", "Detail: {l}")
 EN.setdefault("Cliquer pour masquer ou afficher « {n} »", "Click to hide or show \u201c{n}\u201d")
 

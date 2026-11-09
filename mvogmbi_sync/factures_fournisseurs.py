@@ -34,6 +34,7 @@ class LigneFournisseur:
     code: str = ""                 # code de l'article chez le fournisseur
     taxable: bool = False
     nature: str = "article"        # « article » ou « frais » (consigne, transport…)
+    taxe: str = ""                 # code de taxe lu (« GQ », « G », « Q ») ; vide + taxable = « GQ »
 
 
 @dataclass
@@ -142,7 +143,7 @@ def _produits_des_champs(texte: str, f: FactureLue) -> None:
     lignes = texte.splitlines()
     for i, ligne in enumerate(lignes):
         # « 113 Colombina … 12 un 12 un 27.800$ Ca 27.80$ » ; au poids : « 1109 … 5 kg 5.00 kg 113.050$ Ca 113.05$ »
-        m = re.match(r"^(\d+) (.+?) ([\d.]+) (?:un|kg) ([\d.]+) (?:un|kg) ([\d.,]+)\$ (\w+) ([\d.,]+)\$(TX)?$", ligne)
+        m = re.match(r"^(\d+) (.+?) ([\d.]+) (?:un|kg) ([\d.]+) (?:un|kg) ([\d.,]+)\$ (\w+) ([\d.,]+)\$\s*(TX)?\s*$", ligne.strip())
         if not m:
             continue
         code, description, _, _, prix, unite, total, taxe = m.groups()
@@ -202,10 +203,16 @@ def _amr(texte: str, f: FactureLue) -> None:
     f.numero = chercher(r"Facture #:\s*(\S+)", texte)
     f.date_facture = lire_date(chercher(r"^Date:\s*(.+)$", texte, drapeaux=re.M | re.I))
     for ligne in texte.splitlines():
-        m = re.match(r"^(\d{3,}) (\d+(?:\.\d+)?) (.+?) \$([\d.,]+) \$([\d.,]+)$", ligne)
+        # constat du propriétaire du 2026-11-09 : une ligne marquée « F P » après le montant est taxée (F = TPS,
+        # P = TVQ) ; avant, la ligne n'était pas reconnue et disparaissait de la facture
+        m = re.match(r"^(\d{3,}) (\d+(?:\.\d+)?) (.+?) \$([\d.,]+) \$([\d.,]+)\s*([FP](?:\s*[FP])?)?$",
+                     ligne.strip())
         if m:
-            code, qte, description, prix, total = m.groups()
-            f.lignes.append(LigneFournisseur(description, Decimal(qte), montant(prix), montant(total), code))
+            code, qte, description, prix, total, marque = m.groups()
+            lettres = set((marque or "").replace(" ", "").upper())
+            taxe = ("G" if "F" in lettres else "") + ("Q" if "P" in lettres else "")
+            f.lignes.append(LigneFournisseur(description, Decimal(qte), montant(prix), montant(total), code,
+                                             bool(taxe), taxe=taxe))
     f.sous_total = montant(chercher(r"SOUS-TOTAL:\s*\$([\d.,]+)", texte) or "0") or None
     f.tps = montant(chercher(r"%TPS \([^)]*\)\s*\$([\d.,]+)", texte) or "0")
     f.tvq = montant(chercher(r"%TVQ \([^)]*\)\s*\$([\d.,]+)", texte) or "0")

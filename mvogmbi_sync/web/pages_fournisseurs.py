@@ -182,7 +182,7 @@ COLONNES_LIGNES = ["Code", "Désignation du fournisseur", "Qté", "Prix fourniss
 def factures(ctx: Contexte) -> Reponse:
     """Comme page_fournisseurs.PageFournisseurs : barre (« ➕ Ajouter des factures… », « 📧 Lire le courriel »,
     « ⟳ Actualiser », « 📒 Fournisseurs et articles Sage », « Afficher : », « 📤 Importer toutes les factures
-    prêtes », « Mettre aussi à jour Clover »), résumé, liste colorée ; sous la liste, la facture choisie (`?i=`) :
+    prêtes »), résumé, liste colorée ; sous la liste, la facture choisie (`?i=`) :
     en-tête, montants, contrôle, lignes, et la carte d'édition de la ligne choisie (`&l=`) avec la recherche
     d'article Sage (« Relier et confirmer », « Confirmer la proposition », « 🆕 Créer l'article »). Chaque bouton
     enregistre aussi ce qui est saisi (comme l'enregistrement automatique de Windows)."""
@@ -192,12 +192,19 @@ def factures(ctx: Contexte) -> Reponse:
 
     filtre = ctx.req.query.get("filtre") or ctx.req.champ("filtre") or "Toutes"
     # filtres de la liste gardés quand on choisit une facture (ils changeaient l'affichage, constat du 2026-11-08)
-    q_fichier = (ctx.req.query.get("fichier") or ctx.req.champ("fichier") or "").strip()
-    q_fournisseur = (ctx.req.query.get("fournisseur") or ctx.req.champ("fournisseur") or "").strip()
-    q_numero = (ctx.req.query.get("numero") or ctx.req.champ("numero") or "").strip()
+    # sur un envoi, les champs « fournisseur » et « numero » sont ceux de la facture : les filtres de la liste
+    # arrivent dans q_fichier / q_fournisseur / q_numero (avant, la liste se réduisait à la facture ouverte)
+    def filtre_liste(nom):
+        if ctx.req.methode == "POST":
+            return (ctx.req.champ("q_" + nom) or "").strip()
+        return (ctx.req.query.get(nom) or "").strip()
+
+    q_fichier, q_fournisseur, q_numero = filtre_liste("fichier"), filtre_liste("fournisseur"), filtre_liste("numero")
+    garder = "".join(f"<input type='hidden' name='q_{k}' value='{e(v)}'>" for k, v in
+                     (("fichier", q_fichier), ("fournisseur", q_fournisseur), ("numero", q_numero)) if v)
     rang = _entier(ctx.req.query.get("i") or ctx.req.champ("i"))
     ligne = _entier(ctx.req.query.get("l") or ctx.req.champ("l"))
-    clover = (ctx.req.champ("clover") == "1") if ctx.req.methode == "POST" else True
+    clover = True  # chaque facture a sa case « Mettre à jour le stock Clover » (demande du 2026-11-09)
     message = ""
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
@@ -345,7 +352,7 @@ def factures(ctx: Contexte) -> Reponse:
                        + (" ◀" if n == rang else ""),
                        e(f.fournisseur_sage or f"({f.fournisseur_lu or '?'})"), e(f.numero), e(f.date_facture),
                        argent(f.total) if f.total is not None else "", e(f.depot or "Emplacement par défaut"),
-                       e(f.etat)])
+                       "✔" if getattr(f, "maj_clover", True) else "—", e(f.etat)])
         classes.append(COULEURS.get(f.etat, "termine"))
     compte = {x: sum(1 for f in registre.factures if f.etat == x) for x in fo.ETATS}
     resume = (f"{len(registre.factures)} facture(s) — à saisir : {compte[fo.A_SAISIR]}, à vérifier : "
@@ -355,7 +362,7 @@ def factures(ctx: Contexte) -> Reponse:
                                  "articles Sage »"))
     options = "".join(f"<option{' selected' if x == filtre else ''}>{e(x)}</option>" for x in ["Toutes"] + fo.ETATS)
     barre = (f"<form method='post' enctype='multipart/form-data' class='barre-onglet' id='barre-factures'>{csrf(ctx)}"
-             f"<input type='hidden' name='filtre' value='{e(filtre)}'>"
+             f"<input type='hidden' name='filtre' value='{e(filtre)}'>{garder}"
              + (f"<input type='hidden' name='i' value='{rang}'>" if rang is not None else "")
              + "<input type='file' name='facture' accept='.pdf,image/*' capture='environment'><button name='action' "
                "value='Ajouter des factures'>➕ Ajouter des factures…</button><a class='ouvrir plein' "
@@ -363,9 +370,8 @@ def factures(ctx: Contexte) -> Reponse:
                "value='Lire le courriel'>📧 Lire le courriel</button><button class='second' name='action' "
                "value='Actualiser'>⟳ Actualiser</button><button class='second' name='action' value='Fournisseurs et "
                f"articles Sage'>📒 Fournisseurs et articles Sage</button><a class='ouvrir' href='/dossier-factures'>📂 "
-               "Dossier des factures</a><label class='a-droite'><input type='checkbox' "
-               f"name='clover' value='1'{' checked' if clover else ''}> Mettre aussi à jour Clover</label><button "
-               "class='second' name='action' value='Importer les factures cochées'>☑ Importer les factures cochées"
+               "Dossier des factures</a><button "
+               "class='second a-droite' name='action' value='Importer les factures cochées'>☑ Importer les factures cochées"
                "</button><button class='accent' name='action' value='Importer toutes les factures prêtes'>📤 Importer "
                "toutes les factures prêtes</button></form>"
              f"<form method='get' class='barre-onglet'><div><label>Afficher :</label><select name='filtre'>{options}"
@@ -390,11 +396,15 @@ def factures(ctx: Contexte) -> Reponse:
              + "<div class='factures-deux'><div class='colonne-liste'>"
              + "<div class='zone-liste-factures' id='liste-factures' data-garder='fichier,fournisseur,numero'>"
              + tableau_section(Section("Factures", ["", "Fichier", "Fournisseur Sage", "N°", "Date", "Total", "Dépôt",
-                                                   "État"], lignes, classes=classes, html=set(range(8)))) + "</div>"
+                                                   "Clover", "État"], lignes, classes=classes, html=set(range(9))))
+             + "</div>"
              + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p></div>"
              + "<div class='colonne-saisie'>")
     if rang is not None and rang < len(registre.factures):
-        corps += _detail(ctx, registre.factures[rang], rang, ligne, filtre, noms, articles, clover)
+        if ctx.req.methode == "GET":
+            _proposer(ctx, rang, noms, articles)  # articles Sage proposés aux lignes pas encore reliées
+            registre = fo.Registre(ctx.racine)
+        corps += _detail(ctx, registre.factures[rang], rang, ligne, filtre, noms, articles, clover, garder)
     else:
         corps += _detail_vide()
     corps += "</div></div>"
@@ -458,7 +468,8 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
     Confirmer la proposition), mémoire du fournisseur, état recalculé et enregistrement (comme sauvegarder_auto).
     Rend (ligne affichée ensuite, message)."""
     from .. import fournisseurs as fo
-    from ..correspondance import conflit_format
+    from ..factures_fournisseurs import facteur_propose
+    from ..fournisseurs import conflit_format_achat, facteur_achat
 
     noms, articles = _listes(ctx.racine)
     texte = ""
@@ -467,6 +478,8 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
         f = r.factures[rang]
         f.fournisseur_sage = ctx.req.champ("fournisseur").strip()
         f.numero, f.date_facture = ctx.req.champ("numero").strip(), ctx.req.champ("date").strip()
+        if "maj_clover_vu" in ctx.req.form:  # case de la facture (absente du formulaire quand elle est décochée)
+            f.maj_clover = ctx.req.champ("maj_clover") == "1"
         if "depot" in ctx.req.form:  # dépôt qui reçoit la marchandise (transfert après l'import)
             from ..depots import est_defaut
 
@@ -508,7 +521,7 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
                 (x for x in articles if x.numero == numero), None)
             if a is None:
                 texte = _message(erreur="Choisissez une ligne de la facture, puis un article Sage dans la liste.")
-            elif conflit_format(l.description, a.description) and action != "Relier quand même":
+            elif conflit_format_achat(l.description, a.description) and action != "Relier quand même":
                 texte = (f"<p class='erreur'>Les formats semblent différents (« {e(l.description)} » / "
                          f"« {e(a.description)} »). Deux formats différents sont deux articles différents. "
                          f"<button form='facture' name='action' value='Relier quand même'>Relier quand même "
@@ -517,9 +530,26 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
                 if not l.description:  # ligne ajoutée à la main : désignation de l'article Sage
                     l.description = a.description
                 l.numero_sage, l.description_sage, l.confirme = a.numero, a.description, True
+                if l.facteur == 1 or l.facteur == (facteur_propose(l.description) or 1):  # pas changé à la main
+                    l.facteur = facteur_achat(l.description, a.description) or Decimal(1)
+                texte = _message(f"« {l.description} » relié à {a.numero} — {a.description}.")
+                ligne = _suivante(f, ligne)
         elif action == "Confirmer la proposition" and ligne is not None and ligne < len(f.lignes):
             if f.lignes[ligne].numero_sage:
                 f.lignes[ligne].confirme = True
+                texte = _message(f"Proposition confirmée : {f.lignes[ligne].numero_sage}.")
+                ligne = _suivante(f, ligne)
+            else:
+                texte = _message(erreur="Cette ligne n'a pas encore d'article Sage proposé : choisissez-en un.")
+        elif action == "Confirmer toutes les propositions":
+            faites = 0
+            for x in f.lignes:
+                if x.nature == "article" and x.numero_sage and not x.confirme \
+                        and not conflit_format_achat(x.description, x.description_sage):
+                    x.confirme = True
+                    faites += 1
+            texte = _message(f"{faites} proposition(s) confirmée(s).")
+            ligne = _suivante(f, -1)
         memoire = fo.MemoireCorrespondance(ctx.racine)
         if f.fournisseur_sage and f.fournisseur_lu and (not noms or f.fournisseur_sage in noms):
             memoire.retenir_fournisseur(f.fournisseur_lu, f.fournisseur_sage)
@@ -536,7 +566,39 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
     return ligne, texte
 
 
-def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clover: bool) -> str:
+def _proposer(ctx: Contexte, rang: int, noms, articles) -> None:
+    """À l'ouverture d'une facture : mémoire du fournisseur puis article Sage ressemblant de même taille
+    d'unité proposé à chaque ligne pas encore reliée (fournisseurs.completer) ; enregistré s'il y a du nouveau."""
+    from .. import fournisseurs as fo
+
+    if not articles:
+        return
+    with ctx.app.ecriture:
+        r = fo.Registre(ctx.racine)
+        if rang >= len(r.factures):
+            return
+        f = r.factures[rang]
+        if f.etat == fo.IMPORTEE:
+            return
+        avant = [(l.numero_sage, l.confirme, l.facteur) for l in f.lignes]
+        fo.completer(f, fo.MemoireCorrespondance(ctx.racine), noms, articles)
+        if [(l.numero_sage, l.confirme, l.facteur) for l in f.lignes] != avant:
+            f.etat = fo.etat_apres_controle(f, f.controles(set(noms) or None))
+            r.enregistrer()
+
+
+def _suivante(f, depuis: int):
+    """Ligne d'article suivante pas encore confirmée (après `depuis`, puis depuis le début) ; None s'il n'y en a
+    plus : le traitement passe de lui-même à la ligne à relier suivante."""
+    n = len(f.lignes)
+    for k in list(range(depuis + 1, n)) + list(range(0, depuis + 1)):
+        l = f.lignes[k]
+        if l.nature == "article" and not l.confirme:
+            return k
+    return None
+
+
+def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clover: bool, garder: str = "") -> str:
     """Bas de la page Windows : en-tête, montants, contrôle, lignes, carte d'édition de la ligne choisie."""
     from .. import taxes as tx
     from .consultations import Section, tableau_section
@@ -555,14 +617,16 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
     html = (f"<form method='post' id='facture' class='carte'>{csrf(ctx)}<button class='bouton-entree' name='action' "
             "value='Entrée' data-entree tabindex='-1' aria-hidden='true'>Valider</button><input type='hidden' name='i' "
             f"value='{rang}'>"
-            f"<input type='hidden' name='filtre' value='{e(filtre)}'>"
+            f"<input type='hidden' name='filtre' value='{e(filtre)}'>{garder}"
             + (f"<input type='hidden' name='l' value='{ligne}'>" if ligne is not None else "")
             + f"<input type='hidden' name='clover' value='{'1' if clover else '0'}'>"
             f"<div class='ligne'><div><label>Fournisseur Sage</label><input name='fournisseur' list='fournisseurs' "
             f"value='{e(f.fournisseur_sage)}' size='34'>{liste_f}</div><div><label>N° de facture</label><input "
             f"name='numero' value='{e(f.numero)}' size='12'></div><div><label>Date</label><input type='date' name='date' "
             f"value='{e(f.date_facture)}'></div><div><label>Dépôt</label><select name='depot'>{_options_depots(ctx, f.depot)}"
-            "</select></div><div class='a-droite boutons'><button class='danger' name='action' "
+            "</select></div><div><input type='hidden' name='maj_clover_vu' value='1'><label><input type='checkbox' "
+            f"name='maj_clover' value='1'{' checked' if getattr(f, 'maj_clover', True) else ''}> Mettre à jour le "
+            "stock Clover</label></div><div class='a-droite boutons'><button class='danger' name='action' "
             f"value='Supprimer'>✖ Supprimer</button><a class='ouvrir' href='/facture-fichier?i={rang}' "
             "target='_blank'>👁 Voir la facture</a><button class='danger' name='action' value='Écarter'>🗑 Écarter"
             f"</button></div></div><p class='note'>{e(lu)}</p><div class='ligne'>"
@@ -593,6 +657,14 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
                                     html=set(range(11)),
                                     note=f"Somme des lignes : {argent(f.somme_lignes)}. Cliquez sur une ligne pour la "
                                          "corriger et la relier à un article Sage."))
+    a_confirmer = sum(1 for x in f.lignes if x.nature == "article" and x.numero_sage and not x.confirme)
+    a_relier = sum(1 for x in f.lignes if x.nature == "article" and not x.numero_sage)
+    html += ("<div class='boutons'>"
+             + (f"<button class='accent' name='action' value='Confirmer toutes les propositions'>✔ Confirmer les "
+                f"{a_confirmer} proposition(s)</button>" if a_confirmer else "")
+             + (f"<a class='ouvrir' href='?filtre={e(filtre)}&amp;i={rang}&amp;l={_suivante(f, -1)}'>➡ Ligne suivante à "
+                f"relier ({a_relier + a_confirmer})</a>" if a_relier + a_confirmer and _suivante(f, -1) is not None else "")
+             + "</div>")
     if ligne is None or ligne >= len(f.lignes):
         return html + ("<div class='boutons'><button name='action' value='➕'>➕ Ajouter une ligne</button></div>"
                        "</form>")
@@ -655,17 +727,23 @@ def _chercher(texte: str, articles, l) -> list:
     un article choisi dans l'assistant de saisie vient en premier."""
     from rapidfuzz import fuzz, process
 
-    from ..correspondance import conflit_format, normaliser
+    from ..correspondance import normaliser
+    from ..fournisseurs import conflit_format_achat
 
     choisi = article_choisi(texte, articles)
     if choisi is not None:
-        return [(choisi, "  (autre format)" if conflit_format(l.description, choisi.description) else "")]
+        return [(choisi, "  (autre format)" if conflit_format_achat(l.description, choisi.description) else "")]
     texte = normaliser(texte or "")
     if not texte or not articles:
         return []
     normalises = [normaliser(f"{a.description} {a.numero}") for a in articles]
-    return [(articles[i], "  (autre format)" if conflit_format(l.description, articles[i].description) else "")
-            for _, _, i in process.extract(texte, normalises, scorer=fuzz.token_set_ratio, limit=12)]
+    trouves = [articles[i] for _, _, i in process.extract(texte, normalises, scorer=fuzz.token_set_ratio, limit=12)]
+    # même taille d'unité d'abord, et l'article déjà proposé à la ligne en tête : il est coché d'office
+    trouves.sort(key=lambda a: conflit_format_achat(l.description, a.description))
+    propose = next((a for a in articles if a.numero == l.numero_sage), None) if l.numero_sage else None
+    if propose is not None:
+        trouves = [propose] + [a for a in trouves if a.numero != propose.numero]
+    return [(a, "  (autre format)" if conflit_format_achat(l.description, a.description) else "") for a in trouves[:12]]
 
 
 def facture(ctx: Contexte) -> Reponse:

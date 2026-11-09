@@ -80,6 +80,9 @@ class Facture:
     remarques: list[str] = field(default_factory=list)
     etat: str = A_VERIFIER
     depot: str = ""                  # dépôt (emplacement Sage) qui reçoit la marchandise ; vide = par défaut
+    # stock Clover mis à jour à l'import (demande du propriétaire du 2026-11-09 : « la case dans chaque facture, pas
+    # sur l'ensemble : on traite deux factures ensemble, une met le stock dans Clover et l'autre pas »)
+    maj_clover: bool = True
 
     @property
     def somme_lignes(self) -> Decimal:
@@ -144,7 +147,8 @@ def depuis_lecture(lue: FactureLue, chemin: Path) -> Facture:
                 numero=lue.numero, date_facture=lue.date_facture.isoformat() if lue.date_facture else "",
                 sous_total=lue.sous_total, tps=lue.tps, tvq=lue.tvq, total=lue.total, modele=lue.modele,
                 remarques=list(lue.remarques))
-    f.lignes = [Ligne(l.description, l.quantite, l.prix, l.montant, l.code, l.taxable, l.nature) for l in lue.lignes]
+    f.lignes = [Ligne(l.description, l.quantite, l.prix, l.montant, l.code, l.taxable, l.nature,
+                      taxe=getattr(l, "taxe", "")) for l in lue.lignes]
     if lue.modele == "photo":
         f.etat = A_SAISIR
     return f
@@ -323,6 +327,54 @@ def proposer_fournisseur(nom_lu: str, fournisseurs_sage: list[str]) -> str:
     return fournisseurs_sage[meilleur[2]] if meilleur and meilleur[1] >= 80 else ""
 
 
+_TAILLE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(kg|kgs|g|gr|lb|lbs|ml|cl|l|litres?|oz)\b", re.I)
+_EN_G_OU_ML = {"kg": 1000, "kgs": 1000, "g": 1, "gr": 1, "lb": 453.592, "lbs": 453.592, "oz": 28.3495,
+               "ml": 1, "cl": 10, "l": 1000, "litre": 1000, "litres": 1000}
+
+
+def taille_unite(texte: str) -> tuple[float, str] | None:
+    """Taille d'une unité (en g ou en ml) d'après la désignation : la dernière taille écrite, sans le nombre
+    d'unités de la caisse (« 6/5 Lb » -> 5 lb, « 12x170g » -> 170 g, « 4X6 0,330 L » -> 330 ml)."""
+    trouve = list(_TAILLE.finditer(texte or ""))
+    if not trouve:
+        return None
+    m = trouve[-1]
+    unite = m.group(2).lower()
+    valeur = float(m.group(1).replace(",", ".")) * _EN_G_OU_ML[unite]
+    return (valeur, "volume" if unite in ("ml", "cl", "l", "litre", "litres") else "masse") if valeur else None
+
+
+def conflit_format_achat(description_fournisseur: str, description_sage: str) -> bool:
+    """Formats d'achat différents (demande du propriétaire du 2026-11-09 : « les articles de la facture du
+    fournisseur, je dois les relier à mes articles ») : le fournisseur vend souvent à la caisse (« 6/5 Lb » = 6 sacs
+    de 5 lb, le facteur fait la conversion) ; seule la taille d'une unité compte (3 % d'écart permis : 5 lb = 2,27 kg).
+    Sans taille d'un côté : pas de conflit."""
+    a, b = taille_unite(description_fournisseur), taille_unite(description_sage)
+    if not a or not b:
+        return False
+    if a[1] != b[1]:
+        return True
+    return abs(a[0] - b[0]) > max(a[0], b[0]) * 0.03
+
+
+_AU_POIDS = re.compile(r"\ben\s*(lb|lbs|livres?|kg)\b", re.I)
+
+
+def facteur_achat(description_fournisseur: str, description_sage: str) -> Decimal | None:
+    """Facteur proposé pour un article Sage vendu au poids (« … en Lb », « … en kg ») : poids d'une unité
+    facturée (unités de la caisse × poids de l'unité) dans l'unité de Sage (« Ailes de dinde 10kg » -> 22,046 lb,
+    « 6/5 Lb » -> 30 lb) ; sinon le nombre d'unités de la caisse (factures_fournisseurs.facteur_propose)."""
+    from .factures_fournisseurs import facteur_propose
+
+    m = _AU_POIDS.search(description_sage or "")
+    taille = taille_unite(description_fournisseur)
+    if m and taille and taille[1] == "masse":
+        unite = 1000.0 if m.group(1).lower() == "kg" else 453.592
+        nombre = facteur_propose(description_fournisseur) or Decimal(1)
+        return (nombre * Decimal(str(taille[0] / unite))).quantize(Decimal("0.001"))
+    return facteur_propose(description_fournisseur)
+
+
 def completer(facture: Facture, memoire: MemoireCorrespondance, fournisseurs_sage: list[str], articles_sage: list) -> None:
     """Fournisseur et articles : d'abord la mémoire (confirmé), sinon une proposition à confirmer."""
     if not facture.fournisseur_sage:
@@ -338,10 +390,21 @@ def completer(facture: Facture, memoire: MemoireCorrespondance, fournisseurs_sag
             l.facteur, l.confirme = Decimal(connu["facteur"]), True
             continue
         if not l.numero_sage and normalises:
-            meilleur = process.extractOne(normaliser(l.description), normalises, scorer=fuzz.token_set_ratio)
-            if meilleur and meilleur[1] >= 85 and not conflit_format(l.description, articles_sage[meilleur[2]].description):
-                a = articles_sage[meilleur[2]]
+            # parmi les 8 plus ressemblants dont l'unité a la même taille (la caisse ne compte pas) ; le nom entier
+            # doit aussi se ressembler (« Okra » n'est pas « Shana Okra Whole 300g ») ; à égalité, le plus proche
+            # sur le nom entier (« Light Lime » avant « Light Double Lime »)
+            nom = normaliser(l.description)
+            candidats = []
+            for _n, score, k in process.extract(nom, normalises, scorer=fuzz.token_set_ratio, limit=8):
+                entier = fuzz.token_sort_ratio(nom, normalises[k])
+                if score >= 80 and entier >= 40 and not conflit_format_achat(l.description,
+                                                                             articles_sage[k].description):
+                    candidats.append((score, entier, k))
+            if candidats:
+                a = articles_sage[max(candidats)[2]]
                 l.numero_sage, l.description_sage = a.numero, a.description
+                if l.facteur == 1 or l.facteur == (facteur_propose(l.description) or 1):  # pas changé à la main
+                    l.facteur = facteur_achat(l.description, a.description) or l.facteur
         if l.facteur == 1:
             l.facteur = facteur_propose(l.description) or Decimal(1)
 

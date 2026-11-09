@@ -158,3 +158,27 @@ def test_refaire_clover_depuis_les_archives(tmp_path, monkeypatch):
     r.enregistrer()
     (archive,) = fo.archives(tmp_path)
     assert fo.refaire_clover_archive(tmp_path, {}, archive) == ["f.pdf : ok"] and appels == ["9"]
+
+
+
+
+def test_amr_ligne_taxee_f_p():
+    """Constat du propriétaire du 2026-11-09 : chez A.M.R., « F P » après le montant = TPS et TVQ sur la ligne ;
+    la ligne n'était pas lue. Texte inventé au format du fournisseur."""
+    from mvogmbi_sync.factures_fournisseurs import FactureLue, _amr
+
+    texte = """A.M.R. CASH AND CARRY INC.
+Facture #: A0000001
+Date: 01-Oct-2026
+1111 2 Produit Test Sac 10 X 1kg $50.00 $100.00
+2222222222222 1 Produit Test Boisson 6 X 1L $20.00 $20.00
+3333333333333 1 Produit Test Biscuit 24 X 200g $40.00 $40.00 F P
+4444 1 Produit Test TPS seulement $10.00 $10.00 F
+SOUS-TOTAL: $170.00
+TOTAL: $176.48"""
+    f = FactureLue("essai.pdf")
+    _amr(texte, f)
+    assert len(f.lignes) == 4
+    biscuit = f.lignes[2]
+    assert biscuit.montant == D("40.00") and biscuit.taxable and biscuit.taxe == "GQ"
+    assert f.lignes[3].taxe == "G" and not f.lignes[0].taxable

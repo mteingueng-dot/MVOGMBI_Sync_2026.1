@@ -243,11 +243,14 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
             for m in depots.apres_import(racine, config_toml, f.numero, f.depot, lignes, vente=False,
                                          jour=f.date_facture or None, journal=journal):
                 resultats[f.fichier] += "\n   " + m
-    if importees and not clover:
-        for f in importees:
-            resultats[f.fichier] += "\n   Clover : non mis à jour (import dans Sage seulement)"
-    elif importees:  # Clover suit : stock + quantité reçue, coût = nouveau prix d'achat (règle du 2026-10-28)
-        mettre_a_jour_clover(racine, config_toml, importees, resultats)
+    # Clover suit facture par facture (case de chaque facture) : stock + quantité reçue, coût = nouveau prix
+    # d'achat (règle du 2026-10-28) ; `clover` faux : aucune facture ne touche Clover
+    avec = factures_pour_clover(importees, clover)
+    for f in importees:
+        if f not in avec:
+            resultats[f.fichier] += "\n   Clover : non mis à jour (case décochée sur la facture : Sage seulement)"
+    if avec:
+        mettre_a_jour_clover(racine, config_toml, avec, resultats)
     for f in factures:
         journal(f"{f.fichier} : {resultats[f.fichier]}")
     if courriel:  # import à la demande : compte rendu par courriel (la nuit : dans le compte rendu de la nuit)
@@ -258,6 +261,12 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
         except Exception as exc:  # noqa: BLE001 — l'import est fait ; le courriel manque seulement
             journal(f"Courriel du compte rendu non envoyé : {exc}")
     return resultats
+
+
+def factures_pour_clover(importees: list, clover: bool = True) -> list:
+    """Factures importées dont le stock Clover suit : case « Mettre à jour le stock Clover » de chaque facture
+    (demande du propriétaire du 2026-11-09) ; `clover` faux : aucune."""
+    return [f for f in importees if clover and getattr(f, "maj_clover", True)]
 
 
 def mettre_a_jour_clover(racine: Path, config_toml: dict, importees: list, resultats: dict) -> dict:

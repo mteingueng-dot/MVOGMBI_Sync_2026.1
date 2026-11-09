@@ -13,7 +13,8 @@ from tkinter import messagebox, ttk
 from rapidfuzz import fuzz, process
 
 from .articles_sage import lire_copie
-from .correspondance import conflit_format, normaliser
+from .correspondance import normaliser
+from .fournisseurs import conflit_format_achat
 from .design import action_permise
 from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, apres_frappe, cadre_tableau,
                      entete_page, fond_de, rayer)
@@ -68,11 +69,6 @@ class PageFournisseurs(ttk.Frame):
                              values=[t("Toutes")] + [t(e) for e in ETATS])
         liste.pack(side="left")
         liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher_liste())
-        # coché : la facture met à jour Sage ET Clover ; décoché : Sage seulement (services, facture déjà entrée
-        # dans Clover) — demande du propriétaire du 2026-11-01, coché par défaut
-        self.avec_clover = tk.BooleanVar(value=True)
-        ttk.Checkbutton(barre, text=t("Mettre aussi à jour Clover"), variable=self.avec_clover).pack(side="right",
-                                                                                                    padx=(8, 0))
         # les deux boutons d'import sur la ligne du résumé : dans la barre du haut, trop large, ils sortaient de la
         # fenêtre (constat du propriétaire du 2026-11-05 : « le bouton n'existe pas dans la version Windows »)
         ligne = ttk.Frame(self)
@@ -91,7 +87,7 @@ class PageFournisseurs(ttk.Frame):
         haut = cadre_tableau(volets)
         volets.add(haut, weight=1)
         colonnes = (("case", "☐", 34), ("fichier", "Fichier", 220), ("fournisseur", "Fournisseur Sage", 220), ("numero", "N°", 90),
-                    ("date", "Date", 85), ("total", "Total", 90), ("depot", "Dépôt", 120), ("etat", "État", 130))
+                    ("date", "Date", 85), ("total", "Total", 90), ("depot", "Dépôt", 120), ("clover", "Clover", 60), ("etat", "État", 130))
         self.liste = ttk.Treeview(haut, columns=[c[0] for c in colonnes], show="headings", height=3, selectmode="browse")
         for cle, titre_col, largeur in colonnes:
             self.liste.heading(cle, text=t(titre_col))
@@ -139,6 +135,11 @@ class PageFournisseurs(ttk.Frame):
         ttk.Label(entete, text=t("Dépôt")).pack(side="left")
         ttk.Combobox(entete, textvariable=self.v["depot"], state="readonly", width=22,
                      values=self._noms_depots()).pack(side="left", padx=(4, 12))
+        # case de chaque facture (demande du propriétaire du 2026-11-09) : coché = Sage ET stock Clover ; décoché =
+        # Sage seulement (services, marchandise déjà entrée dans Clover)
+        self.v_clover = tk.BooleanVar(value=True)
+        ttk.Checkbutton(entete, text=t("Mettre à jour le stock Clover"), variable=self.v_clover,
+                        command=lambda: None if self._chargement else self.sauvegarder_auto()).pack(side="left")
         Bouton(entete, "🗑  " + t("Écarter"), self.ecarter, "danger", petit=True).pack(side="right", padx=(6, 0))
         Bouton(entete, "👁  " + t("Voir la facture"), self.voir_facture, "secondaire", petit=True).pack(side="right")
         Bouton(entete, "✖  " + t("Supprimer"), self.supprimer_facture, "danger", petit=True).pack(side="right",
@@ -298,7 +299,8 @@ class PageFournisseurs(ttk.Frame):
 
     def _valeurs_liste(self, f) -> tuple:
         return ("☑" if f.fichier in getattr(self, "cochees", set()) else "☐", f.fichier, f.fournisseur_sage or f"({f.fournisseur_lu or '?'})", f.numero, f.date_facture,
-                f"{f.total:,.2f}" if f.total is not None else "", f.depot or t("Emplacement par défaut"), t(f.etat))
+                f"{f.total:,.2f}" if f.total is not None else "", f.depot or t("Emplacement par défaut"),
+                "✔" if getattr(f, "maj_clover", True) else "—", t(f.etat))
 
     def _afficher_resume(self, suite: str = "") -> None:
         compte = {e: sum(1 for f in self.registre.factures if f.etat == e) for e in ETATS}
@@ -455,11 +457,11 @@ class PageFournisseurs(ttk.Frame):
             messagebox.showwarning(self.titre, t("Fermez Sage : l'import exige que personne ne soit "
                                                  "dans le fichier d'entreprise."))
             return
-        liste = "\n".join(f"  • {f.fournisseur_sage} n° {f.numero} — {f.total:,.2f} $" for f in pretes)
-        clover = self.avec_clover.get()
-        question = (t("Importer {n} facture(s) dans Sage et Clover ?\n\n{liste}", n=len(pretes), liste=liste) if clover
-                    else t("Importer {n} facture(s) dans Sage seulement (Clover ne change pas) ?\n\n{liste}",
-                           n=len(pretes), liste=liste))
+        liste = "\n".join(f"  • {f.fournisseur_sage} n° {f.numero} — {f.total:,.2f} $ — "
+                          + (t("Sage et stock Clover") if getattr(f, "maj_clover", True) else t("Sage seulement"))
+                          for f in pretes)
+        clover = True  # chaque facture dit si elle met à jour Clover (case de la facture)
+        question = t("Importer {n} facture(s) ?\n\n{liste}", n=len(pretes), liste=liste)
         if not messagebox.askyesno(self.titre, question):
             return
         self.resume.configure(text=t("Import dans Sage en cours (contrôles, import, vérification)…"))
@@ -663,6 +665,7 @@ class PageFournisseurs(ttk.Frame):
         self._chargement = True  # affichage seulement : rien à enregistrer
         for cle, valeur in valeurs.items():
             self.v[cle].set(valeur)
+        self.v_clover.set(getattr(f, "maj_clover", True))
         self._chargement = False
         self.lu.configure(text=t("Lu sur la facture : {f}   •   lecture : {m}", f=f.fournisseur_lu or "?", m=f.modele)
                           + (f"   •   {' ; '.join(f.remarques)}" if f.remarques else ""))
@@ -714,6 +717,7 @@ class PageFournisseurs(ttk.Frame):
         from .depots import est_defaut
 
         f.depot = "" if est_defaut(self.v["depot"].get()) else self.v["depot"].get().strip()
+        f.maj_clover = bool(self.v_clover.get())
         f.fournisseur_sage = self.v["fournisseur"].get().strip()
         f.numero, f.date_facture = self.v["numero"].get().strip(), self.v["date"].get().strip()
         f.sous_total = decimal(self.v["sous_total"].get()) if self.v["sous_total"].get().strip() else None
@@ -960,7 +964,7 @@ class PageFournisseurs(ttk.Frame):
         _, l = self.ligne_choisie()
         for _, _, i in process.extract(texte, self.normalises, scorer=fuzz.token_set_ratio, limit=12):
             a = self.articles_sage[i]
-            alerte = t("  (autre format)") if l and conflit_format(l.description, a.description) else ""
+            alerte = t("  (autre format)") if l and conflit_format_achat(l.description, a.description) else ""
             self.choix_sage.append(a)
             self.resultats.insert("end", f"{a.numero:<16} {a.description}{alerte}")
 
@@ -973,13 +977,18 @@ class PageFournisseurs(ttk.Frame):
         a = self.choix_sage[choix[0]]
         if not self.l["description"].get().strip():  # ligne ajoutée à la main : désignation de l'article Sage
             self.l["description"].set(a.description)
-        if conflit_format(l.description, a.description) and not messagebox.askyesno(
+        if conflit_format_achat(l.description, a.description) and not messagebox.askyesno(
                 self.titre, t("Les formats semblent différents (« {f} » / « {s} »). Deux formats différents sont deux "
                               "articles différents. Relier quand même (conditionnement différent) ?",
                               f=l.description, s=a.description)):
             return
         self.appliquer_ligne()
         l.numero_sage, l.description_sage, l.confirme = a.numero, a.description, True
+        from .factures_fournisseurs import facteur_propose
+        from .fournisseurs import facteur_achat
+
+        if l.facteur == 1 or l.facteur == (facteur_propose(l.description) or 1):  # pas changé à la main
+            l.facteur = facteur_achat(l.description, a.description) or l.facteur
         self.afficher_lignes(i)
         self.montrer_conversion(l)
         self.sauvegarder_auto()

@@ -530,6 +530,64 @@ def test_factures_fournisseurs_web(site, tmp_path):
     assert statut == 303 and entetes["Location"] == "/factures-fournisseurs?i=0"
 
 
+def test_factures_fournisseurs_relier_fluide(site, tmp_path):
+    """Demande du propriétaire du 2026-11-09 : relier les articles du fournisseur aux articles Sage facilement. Un
+    article vendu à la caisse (« 6/5 Lb ») est proposé pour l'article Sage à l'unité (« 5lb ») ; « Relier et
+    confirmer » passe à la ligne suivante à relier ; « Confirmer les propositions » ; les filtres de la liste ne
+    sont plus remplacés par le fournisseur et le n° de la facture ouverte. Données inventées."""
+    from mvogmbi_sync import fournisseurs as fo
+
+    base, _, _ = site
+    donnees = tmp_path / "donnees"
+    donnees.mkdir(exist_ok=True)
+    (donnees / "articles_sage.csv").write_text(
+        "numero;description;type;compte_revenus\nESS-01;Manioc Essai Congele 5lb;Inventory;4017\n"
+        "ESS-02;Haricot Essai Noir 900g;Inventory;4013\nESS-03;Poulet Essai Ailes en Lb;Inventory;4015\n",
+        encoding="utf-8")
+    (donnees / "fournisseurs_sage.csv").write_text("Grossiste Essai\n", encoding="utf-8")
+    reg = fo.Registre(tmp_path)
+    f = fo.Facture(fichier="essai.pdf", empreinte="x", fournisseur_lu="Grossiste Essai", numero="E-1",
+                   date_facture="2026-11-01", sous_total=Decimal("190"), tps=Decimal(0), tvq=Decimal(0),
+                   total=Decimal("190"))
+    f.fournisseur_sage = "Grossiste Essai"
+    f.lignes = [fo.Ligne("Manioc Essai Congele 6/5 Lb", Decimal(2), Decimal(50), Decimal(100), "11"),
+                fo.Ligne("Haricot Essai Noir 12/900 g", Decimal(1), Decimal(60), Decimal(60), "22"),
+                fo.Ligne("Poulet Essai Ailes 10kg", Decimal(1), Decimal(30), Decimal(30), "33")]
+    f.etat = fo.A_VERIFIER
+    reg.factures.append(f)
+    reg.factures.append(fo.Facture(fichier="autre-essai.pdf", empreinte="y", fournisseur_lu="Autre Essai",
+                                   numero="A-9", date_facture="2026-10-01"))
+    reg.enregistrer()
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs?i=0")
+    f = fo.Registre(tmp_path).factures[0]
+    assert [l.numero_sage for l in f.lignes] == ["ESS-01", "ESS-02", "ESS-03"]  # proposés à l'ouverture
+    assert f.lignes[0].facteur == 6 and f.lignes[2].facteur == Decimal("22.046")  # 10 kg en lb
+    assert "Confirmer les 3 proposition(s)" in page
+    jeton = jeton_csrf(page)
+    commun = {"csrf": jeton, "i": "0", "fournisseur": "Grossiste Essai", "numero": "E-1", "date": "2026-11-01",
+              "sous_total": "190", "tps": "0", "tvq": "0", "total": "190", "q_fournisseur": "", "q_numero": ""}
+    ligne0 = {"l": "0", "l_code": "11", "l_description": "Manioc Essai Congele 6/5 Lb", "l_quantite": "2",
+              "l_prix": "50", "l_facteur": "6", "l_taxe": "", "article": "ESS-01", "recherche": ""}
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, **ligne0, "action": "Relier et confirmer"})
+    f = fo.Registre(tmp_path).factures[0]
+    assert f.lignes[0].confirme and "Les formats semblent différents" not in page
+    assert "relié à ESS-01" in page and "l=1" in page  # ligne suivante à relier ouverte
+    assert "autre-essai.pdf" in page  # la liste n'est plus filtrée sur la facture ouverte
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "action": "Confirmer toutes les propositions"})
+    f = fo.Registre(tmp_path).factures[0]
+    assert all(l.confirme for l in f.lignes) and f.etat == fo.PRETE, f.controles()
+    assert "2 proposition(s) confirmée(s)" in page
+    # case « Mettre à jour le stock Clover » de la facture : décochée, gardée ; une seule facture va dans Clover
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "maj_clover_vu": "1",
+                                                                  "action": "Enregistrer la facture"})
+    assert fo.Registre(tmp_path).factures[0].maj_clover is False and "Mettre à jour le stock Clover" in page
+    from mvogmbi_sync.import_achats import factures_pour_clover
+
+    deux = fo.Registre(tmp_path).factures
+    assert factures_pour_clover(deux) == [deux[1]] and factures_pour_clover(deux, clover=False) == []
+
+
 def test_achats_web(site, tmp_path):
     from mvogmbi_sync import fournisseurs as fo
     from mvogmbi_sync import retours as rt
