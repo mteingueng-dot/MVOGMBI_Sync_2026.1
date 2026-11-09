@@ -3645,3 +3645,43 @@ for _fr, _en in {
     "sans vente depuis le {d}": "no sales since {d}",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.33 : ventes complémentaires manquées (2026-11-09)
+for _fr, _en in {
+    "Ventes complémentaires manquées": "Missed add-on sales",
+    "Article acheté": "Item bought",
+    "Complément habituel": "Usual add-on",
+    "Commandes avec l'article": "Orders with the item",
+    "Avec le complément %": "With the add-on %",
+    "Commandes sans le complément": "Orders without the add-on",
+    "Prix moyen du complément": "Average price of the add-on",
+    "Gain possible (1 client sur 4)": "Possible gain (1 customer in 4)",
+    "Articles avec un complément habituel": "Items with a usual add-on",
+    "Plus gros gain possible": "Largest possible gain",
+    "Commandes sans le complément habituel, par jour (30 premiers articles)":
+        "Orders without the usual add-on, per day (first 30 items)",
+    "Gain possible par article": "Possible gain by item",
+    "Clients qui prennent le complément (%)": "Customers who take the add-on (%)",
+    "Gain possible par catégorie": "Possible gain by category",
+    "Complément habituel : l'article que les clients d'un article prennent le plus souvent avec lui (au moins 30 % de "
+    "ses commandes, 2 fois plus que le hasard, {m} commandes ensemble au moins ; consignes et sacs écartés). Gain "
+    "possible : commandes sans le complément × son prix moyen, si 1 client sur 4 qui l'oublie le prenait.":
+        "Usual add-on: the item that an item's customers most often take with it (at least 30% of its orders, twice "
+        "as often as chance, {m} orders together at least; deposits and bags left out). Possible gain: orders without the add-on × its average "
+        "price, if 1 customer in 4 who forgets it took it.",
+    "Aucun complément habituel assez fréquent dans la période.": "No usual add-on frequent enough in the period.",
+    "{p} % des clients qui prennent « {a} » prennent aussi « {b} » ; {s} commandes l'ont oublié. Le proposer à la "
+    "caisse rapporterait environ {g}.":
+        "{p}% of customers who take \u201c{a}\u201d also take \u201c{b}\u201d; {s} orders forgot it. Suggesting it "
+        "at the checkout would bring about {g}.",
+    "En tout, environ {g} de ventes de plus si un client sur quatre prenait le complément qu'il oublie.":
+        "In all, about {g} of extra sales if one customer in four took the add-on they forget.",
+    "Proposer à la caisse le complément habituel des articles achetés":
+        "Suggest at the checkout the usual add-on of the items bought",
+    "Environ {g} de ventes de plus si un client sur quatre prenait le complément qu'il oublie.":
+        "About {g} of extra sales if one customer in four took the add-on they forget.",
+    "{p} % le prennent déjà ; {s} commandes sans ; gain possible {g}":
+        "{p}% already take it; {s} orders without; possible gain {g}",
+}.items():
+    EN.setdefault(_fr, _en)

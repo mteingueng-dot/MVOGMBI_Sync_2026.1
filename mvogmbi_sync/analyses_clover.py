@@ -2625,6 +2625,86 @@ def articles_appel(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- compléments manqués
+def complements(c, avant, ctx) -> RapportGestion:
+    """Ventes complémentaires manquées : pour chaque article, l'article que ses clients prennent le plus souvent avec
+    lui (au moins 30 % de ses commandes, 2 fois plus que le hasard, 10 commandes ensemble) ; commandes où le
+    complément manque et gain possible si 1 client sur 4 qui l'oublie le prenait (prix moyen du complément)."""
+    n = len(c)
+    nb, ventes, cats = defaultdict(int), defaultdict(Decimal), {}
+    paires = defaultdict(int)
+    jours_sans = defaultdict(lambda: defaultdict(int))
+    contenus = []
+    for x in c:
+        noms = {l.nom for l in x.lignes}
+        for l in x.lignes:
+            ventes[l.nom] += l.ventes_nettes
+            cats[l.nom] = l.categorie
+        for a in noms:
+            nb[a] += 1
+        if 1 < len(noms) <= LIGNES_MAX_PAIRES:
+            for a, b in combinations(sorted(noms), 2):
+                paires[(a, b)] += 1
+        contenus.append((x.moment.date(), noms))
+    minimum = max(10, min(25, math.ceil(n * 0.002)))  # plafonné : sur un an, 0,2 % ne garderait presque rien
+    meilleurs = {}
+    for (a, b), ab in paires.items():
+        if ab < minimum:
+            continue
+        for x_, y_ in ((a, b), (b, a)):
+            conf = ab / nb[x_]
+            lift = ab * n / (nb[x_] * nb[y_])
+            # consignes, sacs : moins de 1 $ par commande, pas un complément à proposer
+            if (conf >= 0.3 and lift >= 2 and ventes[y_] / nb[y_] >= 1
+                    and (x_ not in meilleurs or conf > meilleurs[x_][1])):
+                meilleurs[x_] = (y_, conf, lift, ab)
+    lignes = []
+    for a, (b, conf, lift, ab) in meilleurs.items():
+        prix_b = ventes[b] / nb[b]
+        sans = nb[a] - ab
+        lignes.append([a, b, cats.get(a, ""), nb[a], _pc(ab, nb[a]), _d(lift, "0.1"), sans, _d(prix_b),
+                       _d(prix_b * sans / 4)])
+    lignes.sort(key=lambda l: -l[8])
+    for j, noms in contenus:
+        for l in lignes[:30]:
+            if l[0] in noms and l[1] not in noms:
+                jours_sans[j][l[0]] += 1
+    gain = sum((l[8] for l in lignes), ZERO)
+    r = RapportGestion()
+    r.entetes = ["Article acheté", "Complément habituel", "Catégorie", "Commandes avec l'article",
+                 "Avec le complément %", "Affinité (fois le hasard)", "Commandes sans le complément",
+                 "Prix moyen du complément", "Gain possible (1 client sur 4)"]
+    r.lignes = lignes
+    r.cartes = [("Articles avec un complément habituel", "n", len(lignes)),
+                ("Commandes sans le complément", "n", sum(l[6] for l in lignes)),
+                ("Gain possible (1 client sur 4)", "$", _d(gain)),
+                ("Plus gros gain possible", "t", f"{lignes[0][0]} + {lignes[0][1]}" if lignes else "—")]
+    jours = _jours(ctx["du"], ctx["au"])
+    r.titre_evolution = "Commandes sans le complément habituel, par jour (30 premiers articles)"
+    r.genre_evolution = "barres"
+    r.unite_evolution = ""
+    r.etiquettes = [_etiquette(j) for j in jours]
+    r.series = [(_t("Commandes sans le complément"), [Decimal(sum(jours_sans[j].values())) for j in jours])]
+    r.titre_repartition = "Gain possible par article"
+    r.genre_repartition = "classement"
+    r.repartition = [(f"{l[0]} + {l[1]}", l[8]) for l in lignes[:8]]
+    constats = [_k(None, "Complément habituel : l'article que les clients d'un article prennent le plus souvent avec "
+                   "lui (au moins 30 % de ses commandes, 2 fois plus que le hasard, {m} commandes ensemble au moins ; "
+                   "consignes et sacs écartés). Gain possible : commandes sans le complément × son prix moyen, si 1 client sur 4 qui l'oublie le "
+                   "prenait.", m=minimum)]
+    if not lignes:
+        constats.append(_k("info", "Aucun complément habituel assez fréquent dans la période."))
+    else:
+        l = lignes[0]
+        constats.append(_k("info", "{p} % des clients qui prennent « {a} » prennent aussi « {b} » ; {s} commandes "
+                                   "l'ont oublié. Le proposer à la caisse rapporterait environ {g}.",
+                           p=_nb(l[4], 0), a=l[0], b=l[1], s=l[6], g=_argent(l[8])))
+        constats.append(_k("info", "En tout, environ {g} de ventes de plus si un client sur quatre prenait le "
+                                   "complément qu'il oublie.", g=_argent(_d(gain))))
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -3276,6 +3356,13 @@ def _decisions(sous: dict) -> list[tuple]:
                     _t("{n} article(s) qui font venir les clients ne se vendent plus : chaque jour coûte aussi les "
                        "autres achats de ces clients.", n=len(manquants)), "a_appel",
                     [(l[0], _t("sans vente depuis le {d}", d=l[5]), "") for l in manquants])
+    com = sous.get("a_complements", vide)
+    if com.lignes and _carte(com, "Gain possible (1 client sur 4)", 0) >= 100:
+        ajouter(3, "Proposer à la caisse le complément habituel des articles achetés",
+                _t("Environ {g} de ventes de plus si un client sur quatre prenait le complément qu'il oublie.",
+                   g=_argent(_carte(com, "Gain possible (1 client sur 4)"))), "a_complements",
+                [(f"{l[0]} + {l[1]}", _t("{p} % le prennent déjà ; {s} commandes sans ; gain possible {g}",
+                                         p=_nb(l[4], 0), s=l[6], g=_argent(l[8])), "") for l in com.lignes])
     bai = sous.get("a_baisse", vide)
     fortes = [l for l in bai.lignes if l[7] == _t("Forte baisse")]
     if fortes:
@@ -3406,7 +3493,7 @@ DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure
                "Jour normal :", "Moyenne par jour ouvert de chaque jour", "Articles importants :", "Ventes moyennes par jour "
                "ouvert", "Prévision :", "Les taxes perçues par Clover",
                "Valeur sur un an =", "Seuil de rentabilité :", "Quantité prévue =", "Pour la semaine qui vient",
-               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :")
+               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -3760,7 +3847,17 @@ def _sup_appel(r):
                     elements=[(k, Decimal(v)) for k, v in sorted(par_cat.items(), key=lambda kv: -kv[1])])]
 
 
-SUPPLEMENTS = {"a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
+def _sup_complements(r):
+    par_cat = defaultdict(Decimal)
+    for l in r.lignes:
+        par_cat[l[2]] += l[8]
+    return [_graphe("classement", "Clients qui prennent le complément (%)", "%",
+                    elements=[(f"{l[0]} + {l[1]}", l[4]) for l in sorted(r.lignes[:30], key=lambda l: -l[4])[:8]]),
+            _graphe("anneau", "Gain possible par catégorie",
+                    elements=sorted(par_cat.items(), key=lambda kv: -kv[1]))]
+
+
+SUPPLEMENTS = {"a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
                "a_categories_jour": _sup_categories_jour, "a_prevu": _sup_prevu, "a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
@@ -3807,6 +3904,7 @@ ANALYSES = [
     ("Ventes au poids", "a_poids", ventes_poids, "Articles", "a_saison"),
     ("Ruptures probables", "a_ruptures", ruptures, "Articles", "a_baisse"),
     ("Articles d'appel", "a_appel", articles_appel, "Articles", "a_associations"),
+    ("Ventes complémentaires manquées", "a_complements", complements, "Articles", "a_appel"),
     ("Achalandage prévu", "a_prevu", achalandage_prevu, "Prévisions", "prev_ventes"),
     ("Quantités prévues par article", "a_quantites", quantites_prevues, "Prévisions", "a_prevu"),
     ("Performance des employés", "a_employes", employes, "Employés", "Par employé"),

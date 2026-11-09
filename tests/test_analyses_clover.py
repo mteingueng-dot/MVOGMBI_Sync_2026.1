@@ -506,3 +506,18 @@ def test_articles_d_appel():
     viande = next(l for l in r.lignes if l[0] == "Viande")
     assert viande[4] == D("65.00") and viande[8] == D("35.00") and viande[7] == 0
     assert r.graphiques and r.appel
+
+
+def test_ventes_complementaires_manquees():
+    """Eru presque toujours avec Fufu (20 fois sur 30) : complément habituel, 10 commandes sans, gain = 10 × 5 $ / 4."""
+    cmds = []
+    for k in range(30):
+        j = date(2026, 9, 1) + timedelta(days=k)
+        cmds.append(_commande(f"CM-A{k}", j, [("Eru", "E", 1000), ("Fufu", "F", 500)] if k < 20 else [("Eru", "E", 1000)]))
+        for e in range(4):
+            cmds.append(_commande(f"CM-B{k}-{e}", j, [("Pain", "P", 300)]))
+    d, a = _donnees(cmds), _donnees([])
+    r = an.calculer("a_complements", d, a, {}, date(2026, 9, 1), date(2026, 9, 30), date(2026, 8, 1), date(2026, 8, 31))
+    eru = next(l for l in r.lignes if l[0] == "Eru")
+    assert eru[1] == "Fufu" and eru[6] == 10 and eru[8] == D("12.50")
+    assert r.graphiques
