@@ -2815,6 +2815,240 @@ def prix_format(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- tranches de prix
+TRANCHES_PRIX = ((0, 2, "Moins de 2 $"), (2, 5, "2 à 5 $"), (5, 10, "5 à 10 $"), (10, 20, "10 à 20 $"),
+                 (20, 50, "20 à 50 $"), (50, 10 ** 9, "50 $ et plus"))
+
+
+def _tranche_prix(prix) -> str:
+    return next(n for a, b, n in TRANCHES_PRIX if a <= prix < b)
+
+
+def tranches_prix(c, avant, ctx) -> RapportGestion:
+    """Ventes selon le prix affiché d'un article (ventes avant rabais / quantité, prix d'une unité ou d'une livre) :
+    nombre d'articles, quantités et ventes de chaque tranche, comparées à la période d'avant."""
+    def cumul(cmds):
+        art = defaultdict(lambda: [ZERO, ZERO, ZERO])  # quantité, brut, net
+        for x in cmds:
+            for l in x.lignes:
+                if l.quantite_vendue > 0 and l.ventes_brutes > 0:
+                    a = art[l.nom]
+                    a[0] += l.quantite_vendue
+                    a[1] += l.ventes_brutes
+                    a[2] += l.ventes_nettes
+        g = {n: {"art": 0, "qte": ZERO, "net": ZERO} for _a, _b, n in TRANCHES_PRIX}
+        for q, brut, net in art.values():
+            t_ = g[_tranche_prix(brut / q)]
+            t_["art"] += 1
+            t_["qte"] += q
+            t_["net"] += net
+        return g
+
+    g1, g0 = cumul(c), cumul(avant)
+    total = sum((t_["net"] for t_ in g1.values()), ZERO)
+    total0 = sum((t_["net"] for t_ in g0.values()), ZERO)
+    qte = sum((t_["qte"] for t_ in g1.values()), ZERO)
+    lignes = []
+    for _a, _b, n in TRANCHES_PRIX:
+        t_, t0 = g1[n], g0[n]
+        lignes.append([_t(n), t_["art"], _d(t_["qte"], "0.001"), _d(t_["net"]), _pc(t_["net"], total) if total else ZERO,
+                       _d(t0["net"]), _pc(t_["net"] - t0["net"], t0["net"]) if t0["net"] else None,
+                       _d(t_["net"] / t_["qte"]) if t_["qte"] else ZERO])
+    meilleure = max(lignes, key=lambda l: l[3])
+    moins5 = sum((g1[n]["net"] for _a, b, n in TRANCHES_PRIX if b <= 5), ZERO)
+    r = RapportGestion()
+    r.entetes = ["Tranche de prix", "Articles", "Quantité vendue", "Ventes nettes", "Part des ventes %",
+                 "Ventes nettes avant", "Variation %", "Ventes nettes par unité"]
+    r.lignes = lignes
+    r.cartes = [("Articles vendus", "n", sum(l[1] for l in lignes)),
+                ("Prix moyen d'une unité vendue", "$", _d(total / qte) if qte else 0),
+                ("Tranche qui vend le plus", "t", meilleure[0]),
+                ("Part des articles à moins de 5 $", "%", _pc(moins5, total) if total else 0)]
+    r.titre_evolution = "Ventes nettes par tranche de prix : période et période d'avant"
+    r.genre_evolution = "barres"
+    r.etiquettes = [l[0] for l in lignes]
+    r.series = [(_t("Période choisie"), [l[3] for l in lignes]), (_t("Période d'avant"), [l[5] for l in lignes])]
+    r.titre_repartition = "Articles différents par tranche de prix"
+    r.genre_repartition = "anneau"
+    r.argent_repartition = False
+    r.repartition = [(l[0], Decimal(l[1])) for l in lignes if l[1]]
+    constats = [_k(None, "Tranche de prix : prix affiché d'une unité (ou d'une livre pour un article au poids) = ventes "
+                   "avant rabais / quantité vendue, sur la période.")]
+    if total:
+        constats.append(_k("info", "La tranche « {t} » fait le plus de ventes ({p} %) ; les articles à moins de 5 $ "
+                                   "font {q} % des ventes.", t=meilleure[0], p=_nb(meilleure[4]),
+                           q=_nb(_pc(moins5, total))))
+        variees = [l for l in lignes if l[6] is not None and l[5] >= total0 * Decimal("0.05")]
+        if variees:
+            haut, bas = max(variees, key=lambda l: l[6]), min(variees, key=lambda l: l[6])
+            if haut[6] >= 10:
+                constats.append(_k("bon", "Tranche en hausse : « {t} » ({p} %).", t=haut[0], p="+" + _nb(haut[6])))
+            if bas[6] <= -10:
+                constats.append(_k("attention", "Tranche en baisse : « {t} » ({p} %) : vérifier l'offre et les prix de "
+                                                "ces articles.", t=bas[0], p=_nb(bas[6])))
+            r.baisse = bas if bas[6] <= -15 else None
+    r.note = _note(constats)
+    return r
+
+
+# --------------------------------------------------------------------------------------------- contribution à l'écart
+def contribution(c, avant, ctx) -> RapportGestion:
+    """Écart des ventes nettes avec la période d'avant expliqué en dollars par catégorie, puis par article (les 10
+    qui font le plus monter et les 10 qui font le plus baisser)."""
+    def cumul(cmds, cle):
+        g = defaultdict(Decimal)
+        for x in cmds:
+            for l in x.lignes:
+                g[cle(l)] += l.ventes_nettes
+        return g
+
+    cat1, cat0 = cumul(c, lambda l: l.categorie), cumul(avant, lambda l: l.categorie)
+    art1, art0 = cumul(c, lambda l: l.nom), cumul(avant, lambda l: l.nom)
+    categorie = {l.nom: l.categorie for x in list(avant) + list(c) for l in x.lignes}
+    total1, total0 = sum(cat1.values(), ZERO), sum(cat0.values(), ZERO)
+    ecart = total1 - total0
+    base = sum((abs(cat1.get(k, ZERO) - cat0.get(k, ZERO)) for k in set(cat1) | set(cat0)), ZERO)
+
+    def ligne(niveau, nom, cat, v1, v0):
+        e_ = v1 - v0
+        return [_t(niveau), nom, cat, _d(v0), _d(v1), _d(e_), _pc(e_, base) if base else ZERO,
+                _pc(e_, v0) if v0 else None]
+
+    cats = sorted((ligne("Catégories", k, "", cat1.get(k, ZERO), cat0.get(k, ZERO)) for k in set(cat1) | set(cat0)),
+                  key=lambda l: -l[5])
+    ecarts_art = sorted(((k, art1.get(k, ZERO) - art0.get(k, ZERO)) for k in set(art1) | set(art0)),
+                        key=lambda kv: -kv[1])
+    hausses = [k for k, e_ in ecarts_art[:10] if e_ > 0]
+    baisses = [k for k, e_ in reversed(ecarts_art[-10:]) if e_ < 0]
+    arts = [ligne("Articles", k, categorie.get(k, ""), art1.get(k, ZERO), art0.get(k, ZERO)) for k in hausses + baisses]
+    r = RapportGestion()
+    r.entetes = ["Niveau", "Catégorie ou article", "Catégorie", "Ventes nettes avant", "Ventes nettes",
+                 "Écart", "Part des écarts %", "Variation %"]
+    r.lignes = cats + arts
+    monte = [l for l in cats if l[5] > 0]
+    baisse = [l for l in cats if l[5] < 0]
+    r.cartes = [("Écart des ventes nettes", "$", _d(ecart)), ("Variation", "%", _pc(ecart, total0) if total0 else 0),
+                ("Catégories en hausse", "n", len(monte)), ("Catégories en baisse", "n", len(baisse)),
+                ("Fait le plus monter", "t", monte[0][1] if monte else "—"),
+                ("Fait le plus baisser", "t", baisse[-1][1] if baisse else "—")]
+    r.titre_evolution = "Écart des ventes nettes par catégorie (en $)"
+    r.genre_evolution = "barres"
+    choisies = (monte[:6] + baisse[-6:])
+    r.etiquettes = [l[1] for l in choisies]
+    r.series = [(_t("Écart"), [l[5] for l in choisies])]
+    r.titre_repartition = "Articles qui font le plus monter ou baisser les ventes"
+    r.genre_repartition = "classement"
+    r.repartition = [_signe(l[1], l[5]) for l in (arts[:4] + arts[len(hausses):len(hausses) + 4])]
+    constats = [_k(None, "Écart : ventes nettes de la période moins celles de la période d'avant. Part des écarts : "
+                   "poids de chaque catégorie dans l'ensemble des hausses et des baisses.")]
+    if not total0:
+        constats.append(_k("info", "Pas de ventes dans la période d'avant : rien à comparer."))
+    else:
+        constats.append(_k("bon" if ecart >= 0 else "attention", "Les ventes nettes {s} de {v} ({p} %).",
+                           s=_t("montent") if ecart >= 0 else _t("baissent"), v=_argent(abs(_d(ecart))),
+                           p=_nb(_pc(ecart, total0))))
+        if monte:
+            constats.append(_k("bon", "« {c} » fait le plus monter les ventes ({v}).", c=monte[0][1],
+                               v="+" + _argent(monte[0][5])))
+        if baisse:
+            constats.append(_k("attention", "« {c} » fait le plus baisser les ventes ({v}).", c=baisse[-1][1],
+                               v=_argent(baisse[-1][5])))
+        if arts and baisses:
+            pire = next(l for l in arts if l[1] == baisses[0])
+            constats.append(_k("attention", "Article qui fait le plus baisser les ventes : « {a} » ({v}).", a=pire[1],
+                               v=_argent(pire[5])))
+    r.freins = [l for l in baisse if base and abs(l[5]) >= base * Decimal("0.15")] if ecart < 0 else []
+    r.note = _note(constats)
+    return r
+
+
+# --------------------------------------------------------------------------------------------- effet des rabais
+def effet_rabais(c, avant, ctx) -> RapportGestion:
+    """Les rabais font-ils acheter plus ? Commandes avec un rabais (hors rabais Direction et comptes administrateurs,
+    mis à part) contre commandes sans rabais : panier moyen après rabais, articles par commande, rabais moyen ; puis
+    chaque rabais par son nom."""
+    a_part = mises_a_part(ctx)
+    noms = {}
+    donnees = ctx.get("donnees")
+    for o in (donnees.commandes if donnees is not None else []):
+        n_ = [x.get("name") or "" for x in (o.get("discounts") or {}).get("elements", [])]
+        for li in (o.get("lineItems") or {}).get("elements", []):
+            n_ += [x.get("name") or "" for x in (li.get("discounts") or {}).get("elements", [])]
+        n_ = sorted({x.strip() for x in n_ if x.strip()})
+        if n_:
+            noms[o["id"]] = n_[0] if len(n_) == 1 else _t("Plusieurs rabais")
+    groupes = {"avec": [], "sans": []}
+    par_nom = defaultdict(lambda: [0, ZERO, ZERO])  # commandes, rabais, ventes nettes
+    jours_avec, jours_tous = defaultdict(int), defaultdict(int)
+    for x in c:
+        if x.id in a_part:
+            continue
+        rabais = -sum((l.rabais for l in x.lignes), ZERO)
+        jours_tous[x.moment.date()] += 1
+        if rabais > 0:
+            groupes["avec"].append((x, rabais))
+            jours_avec[x.moment.date()] += 1
+            s_ = par_nom[noms.get(x.id, _t("Rabais sans nom"))]
+            s_[0] += 1
+            s_[1] += rabais
+            s_[2] += x.nettes
+        else:
+            groupes["sans"].append((x, ZERO))
+
+    def resume(g):
+        n_ = len(g)
+        if not n_:
+            return 0, ZERO, ZERO, ZERO
+        return (n_, _d(sum((x.nettes for x, _r in g), ZERO) / n_), _d(sum((r_ for _x, r_ in g), ZERO) / n_),
+                _d(Decimal(sum(len({l.nom for l in x.lignes}) for x, _r in g)) / n_, "0.1"))
+
+    total = len(groupes["avec"]) + len(groupes["sans"])
+    av, sa = resume(groupes["avec"]), resume(groupes["sans"])
+    lignes = [[_t("Commandes avec un rabais"), av[0], _pc(av[0], total) if total else ZERO, av[1], av[2], av[3]],
+              [_t("Commandes sans rabais"), sa[0], _pc(sa[0], total) if total else ZERO, sa[1], sa[2], sa[3]]]
+    for nom, (n_, rab, net) in sorted(par_nom.items(), key=lambda kv: -kv[1][1]):
+        lignes.append([nom, n_, _pc(n_, total) if total else ZERO, _d(net / n_), _d(rab / n_), None])
+    rabais_total = sum((r_ for _x, r_ in groupes["avec"]), ZERO)
+    ventes = sum((x.nettes for x, _r in groupes["avec"] + groupes["sans"]), ZERO)
+    r = RapportGestion()
+    r.entetes = ["Commandes ou rabais", "Commandes", "% des commandes", "Panier moyen après rabais",
+                 "Rabais moyen par commande", "Articles différents par commande"]
+    r.lignes = lignes
+    r.cartes = [("Commandes avec un rabais", "%", _pc(av[0], total) if total else 0),
+                ("Panier avec rabais", "$", av[1]), ("Panier sans rabais", "$", sa[1]),
+                ("Rabais moyen par commande", "$", av[2]),
+                ("Rabais accordés (hors Direction)", "$", _d(rabais_total))]
+    jours = _jours(ctx["du"], ctx["au"])
+    r.titre_evolution = "Part des commandes avec un rabais, par jour (%)"
+    r.genre_evolution = "barres"
+    r.unite_evolution = "%"
+    r.etiquettes = [_etiquette(j) for j in jours]
+    r.series = [(_t("Commandes avec un rabais"), [_pc(jours_avec.get(j, 0), jours_tous[j]) if jours_tous.get(j)
+                                                  else ZERO for j in jours])]
+    r.titre_repartition = "Rabais accordés par nom de rabais"
+    r.genre_repartition = "classement"
+    r.repartition = [(nom, _d(rab)) for nom, (_n, rab, _v) in sorted(par_nom.items(), key=lambda kv: -kv[1][1])[:8]]
+    constats = [_k(None, "Effet des rabais : commandes avec au moins un rabais (de ligne ou de commande) comparées aux "
+                   "commandes sans rabais ; les rabais Direction et les commandes des comptes administrateurs sont "
+                   "dans leur propre état.")]
+    if not av[0]:
+        constats.append(_k("info", "Aucun rabais accordé dans la période (hors Direction et administrateurs)."))
+    elif sa[0]:
+        if av[1] > sa[1]:
+            constats.append(_k("bon", "Les commandes avec un rabais valent {a} contre {b} sans rabais, après le rabais "
+                                      "({c} de rabais en moyenne) : les rabais accompagnent de plus gros achats.",
+                               a=_argent(av[1]), b=_argent(sa[1]), c=_argent(av[2])))
+        else:
+            constats.append(_k("attention", "Les commandes avec un rabais valent {a} contre {b} sans rabais, après le "
+                                            "rabais : les rabais ne font pas acheter plus.", a=_argent(av[1]),
+                               b=_argent(sa[1])))
+        constats.append(_k("info", "{p} % des commandes ont un rabais ; les rabais représentent {q} % des ventes.",
+                           p=_nb(_pc(av[0], total)), q=_nb(_pc(rabais_total, ventes + rabais_total))))
+    r.inefficace = bool(av[0] and sa[0] and av[1] <= sa[1] and ventes and rabais_total >= ventes / 100)
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -3480,6 +3714,23 @@ def _decisions(sous: dict) -> list[tuple]:
                    n=len(pfo.mal)), "a_prix_format",
                 [(l[1], _t("{f} : {v} {u}, {p} % de plus que le plus petit format", f=l[3], v=_argent(l[6]), u=l[7],
                            p=_nb(l[8])), "") for l in pfo.mal])
+    tra = sous.get("a_tranches", vide)
+    if getattr(tra, "baisse", None):
+        l = tra.baisse
+        ajouter(3, _t("Revoir l'offre des articles de la tranche « {t} »", t=l[0]),
+                _t("Leurs ventes baissent de {p} % par rapport à la période d'avant.", p=_nb(abs(l[6]))), "a_tranches")
+    con = sous.get("a_contribution", vide)
+    if getattr(con, "freins", None):
+        ajouter(2, "Comprendre la baisse des catégories qui freinent les ventes",
+                _t("{n} catégorie(s) expliquent à elles seules une grande part de la baisse des ventes.",
+                   n=len(con.freins)), "a_contribution",
+                [(l[1], _t("{v} par rapport à la période d'avant", v=_argent(l[5])), "") for l in con.freins])
+    efr = sous.get("a_effet_rabais", vide)
+    if getattr(efr, "inefficace", False):
+        ajouter(3, "Revoir les rabais qui ne font pas acheter plus",
+                _t("Les commandes avec un rabais ne sont pas plus grosses que les autres, après le rabais."),
+                "a_effet_rabais", [(l[0], _t("{n} commande(s) ; {r} de rabais en moyenne", n=l[1], r=_argent(l[4])), "")
+                                   for l in efr.lignes[2:]])
     bai = sous.get("a_baisse", vide)
     fortes = [l for l in bai.lignes if l[7] == _t("Forte baisse")]
     if fortes:
@@ -3610,7 +3861,7 @@ DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure
                "Jour normal :", "Moyenne par jour ouvert de chaque jour", "Articles importants :", "Ventes moyennes par jour "
                "ouvert", "Prévision :", "Les taxes perçues par Clover",
                "Valeur sur un an =", "Seuil de rentabilité :", "Quantité prévue =", "Pour la semaine qui vient",
-               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue")
+               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -3989,7 +4240,31 @@ def _sup_prix_format(r):
                     elements=[(k, Decimal(v)) for k, v in sorted(par_cat.items(), key=lambda kv: -kv[1])])]
 
 
-SUPPLEMENTS = {"a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
+def _sup_tranches(r):
+    return [_graphe("barres", "Quantité vendue par tranche de prix", "", [l[0] for l in r.lignes],
+                    [("Quantité vendue", [l[2] for l in r.lignes])]),
+            _graphe("classement", "Variation des ventes par tranche de prix (%)", "%",
+                    elements=[_signe(l[0], l[6]) for l in r.lignes if l[6] is not None])]
+
+
+def _sup_contribution(r):
+    cats = [l for l in r.lignes if l[0] == _t("Catégories")]
+    return [_graphe("classement", "Variation des ventes par catégorie (%)", "%",
+                    elements=[_signe(l[1], l[7]) for l in sorted((l for l in cats if l[7] is not None and l[3] > 0),
+                                                                 key=lambda l: -abs(l[7]))[:8]]),
+            _graphe("anneau", "Ventes nettes par catégorie", "$",
+                    elements=sorted(((l[1], l[4]) for l in cats if l[4] > 0), key=lambda kv: -kv[1]))]
+
+
+def _sup_effet_rabais(r):
+    noms = r.lignes[2:]
+    return [_graphe("classement", "Panier moyen après rabais selon le rabais", "$",
+                    elements=[(l[0], l[3]) for l in r.lignes[:2]] + [(l[0], l[3]) for l in noms[:6]]),
+            _graphe("classement", "Rabais moyen par commande selon le rabais", "$",
+                    elements=sorted(((l[0], l[4]) for l in noms), key=lambda kv: -kv[1])[:8])]
+
+
+SUPPLEMENTS = {"a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
                "a_categories_jour": _sup_categories_jour, "a_prevu": _sup_prevu, "a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
@@ -4015,6 +4290,7 @@ ANALYSES = [
     ("Remboursements à surveiller", "a_remboursements", remboursements, "Activités de vente", "a_anomalies"),
     ("Tendance des ventes", "a_tendance", tendance, "Rapports", "evolution_annees"),
     ("Pourquoi les ventes changent", "a_variation", variation, "Rapports", "a_tendance"),
+    ("Ce qui fait monter ou baisser les ventes", "a_contribution", contribution, "Rapports", "a_variation"),
     ("Rythme et objectif", "a_rythme", rythme, "Rapports", "a_variation"),
     ("Jours fériés", "a_feries", feries, "Rapports", "a_rythme"),
     ("Ventes selon le jour du mois", "a_jour_mois", jour_du_mois, "Rapports", "a_feries"),
@@ -4035,6 +4311,7 @@ ANALYSES = [
     ("Articles de saison", "a_saison", articles_saison, "Articles", "a_categories_jour"),
     ("Ventes au poids", "a_poids", ventes_poids, "Articles", "a_saison"),
     ("Prix selon le format", "a_prix_format", prix_format, "Articles", "a_poids"),
+    ("Ventes par tranche de prix", "a_tranches", tranches_prix, "Articles", "a_prix_format"),
     ("Ruptures probables", "a_ruptures", ruptures, "Articles", "a_baisse"),
     ("Articles d'appel", "a_appel", articles_appel, "Articles", "a_associations"),
     ("Ventes complémentaires manquées", "a_complements", complements, "Articles", "a_appel"),
@@ -4043,6 +4320,7 @@ ANALYSES = [
     ("Performance des employés", "a_employes", employes, "Employés", "Par employé"),
     ("Achalandage et personnel", "a_achalandage", achalandage, "Employés", "a_employes"),
     ("Rabais Direction et administrateurs", "a_rabais_direction", rabais_direction, "Rapports", "Rabais"),
+    ("Effet des rabais", "a_effet_rabais", effet_rabais, "Rapports", "a_rabais_direction"),
     ("Groupes de clients", "a_rfm", rfm, "Clients", "Par client"),
     ("Clients qui reviennent", "a_fidelite", fidelite, "Clients", "a_rfm"),
     ("Valeur des clients", "a_valeur", valeur_clients, "Clients", "a_fidelite"),

@@ -540,3 +540,48 @@ def test_prix_selon_le_format():
     assert riz5[6] == D("5.00") and riz5[8] == D("25.0") and riz5[9] == "Plus cher qu'un format plus petit"
     assert all(l[9] == "Correct" for l in r.lignes if l[0] == "sucre")
     assert [l[1] for l in r.mal] == ["Riz Parfumé 5kg"] and r.graphiques
+
+
+def test_ventes_par_tranche_de_prix():
+    cmds = [_commande(f"TP-A{k}", date(2026, 9, 1) + timedelta(days=k), [("Sel", "S", 150), ("Riz 5kg", "R", 2500)])
+            for k in range(10)]
+    avant = [_commande(f"TP-B{k}", date(2026, 8, 1) + timedelta(days=k), [("Sel", "S", 150)]) for k in range(10)]
+    r = an.calculer("a_tranches", _donnees(cmds), _donnees(avant), {}, date(2026, 9, 1), date(2026, 9, 30),
+                    date(2026, 8, 1), date(2026, 8, 31))
+    par = {l[0]: l for l in r.lignes}
+    assert par["Moins de 2 $"][1] == 1 and par["Moins de 2 $"][3] == D("15.00")
+    assert par["20 à 50 $"][3] == D("250.00") and par["20 à 50 $"][6] is None
+    assert dict((t_, v) for t_, _g, v in r.cartes)["Tranche qui vend le plus"] == "20 à 50 $"
+    assert r.graphiques
+
+
+def test_ce_qui_fait_monter_ou_baisser_les_ventes():
+    cmds = [_commande(f"CO-A{k}", date(2026, 9, 1) + timedelta(days=k), [("Riz", "R", 2000), ("Pomme", "P", 100)])
+            for k in range(10)]
+    avant = [_commande(f"CO-B{k}", date(2026, 8, 1) + timedelta(days=k), [("Riz", "R", 1000), ("Pomme", "P", 500)])
+             for k in range(10)]
+    r = an.calculer("a_contribution", _donnees(cmds), _donnees(avant), {}, date(2026, 9, 1), date(2026, 9, 30),
+                    date(2026, 8, 1), date(2026, 8, 31))
+    cartes = dict((t_, v) for t_, _g, v in r.cartes)
+    assert cartes["Écart des ventes nettes"] == D("60.00")
+    assert cartes["Fait le plus monter"] == "Riz" and cartes["Fait le plus baisser"] == "Fruits"
+    riz = next(l for l in r.lignes if l[0] == "Articles" and l[1] == "Riz")
+    assert riz[5] == D("100.00")
+    assert r.graphiques
+
+
+def test_effet_des_rabais():
+    cmds = []
+    for k in range(10):
+        j = date(2026, 9, 1) + timedelta(days=k)
+        cmds.append(_commande(f"ER-A{k}", j, [("Riz", "R", 4000), ("Pain", "P", 1000)], rabais=10,
+                              nom_rabais="Rabais 10%"))
+        cmds.append(_commande(f"ER-B{k}", j, [("Pain", "P", 1000)]))
+        cmds.append(_commande(f"ER-C{k}", j, [("Riz", "R", 4000)], rabais=100, nom_rabais="Direction"))
+    d = _donnees(cmds)
+    r = an.calculer("a_effet_rabais", d, _donnees([]), {}, date(2026, 9, 1), date(2026, 9, 30), date(2026, 8, 1),
+                    date(2026, 8, 31))
+    avec, sans = r.lignes[0], r.lignes[1]
+    assert avec[1] == 10 and sans[1] == 10  # les rabais Direction sont mis à part
+    assert avec[3] == D("45.00") and avec[4] == D("5.00") and sans[3] == D("10.00")
+    assert r.lignes[2][0] == "Rabais 10%" and not r.inefficace

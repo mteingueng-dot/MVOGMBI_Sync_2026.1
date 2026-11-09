@@ -3858,3 +3858,109 @@ for _fr, _en in {
     "Écart entre le plus fort et le plus faible": "Gap between the strongest and the weakest",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.36 : ventes par tranche de prix (2026-11-09)
+for _fr, _en in {
+    "Ventes par tranche de prix": "Sales by price band",
+    "Moins de 2 $": "Under $2", "2 à 5 $": "$2 to $5", "5 à 10 $": "$5 to $10", "10 à 20 $": "$10 to $20",
+    "20 à 50 $": "$20 to $50", "50 $ et plus": "$50 and more",
+    "Tranche de prix": "Price band",
+    "Ventes nettes avant": "Net sales before",
+    "Ventes nettes par unité": "Net sales per unit",
+    "Prix moyen d'une unité vendue": "Average price of a unit sold",
+    "Tranche qui vend le plus": "Band that sells the most",
+    "Part des articles à moins de 5 $": "Share of items under $5",
+    "Ventes nettes par tranche de prix : période et période d'avant": "Net sales by price band: period and previous period",
+    "Période choisie": "Chosen period",
+    "Période d'avant": "Previous period",
+    "Articles différents par tranche de prix": "Different items by price band",
+    "Quantité vendue par tranche de prix": "Quantity sold by price band",
+    "Variation des ventes par tranche de prix (%)": "Change in sales by price band (%)",
+    "Tranche de prix : prix affiché d'une unité (ou d'une livre pour un article au poids) = ventes avant rabais / "
+    "quantité vendue, sur la période.":
+        "Price band: shelf price of a unit (or a pound for an item sold by weight) = sales before discounts / "
+        "quantity sold, over the period.",
+    "La tranche « {t} » fait le plus de ventes ({p} %) ; les articles à moins de 5 $ font {q} % des ventes.":
+        "The \u201c{t}\u201d band makes the most sales ({p}%); items under $5 make {q}% of sales.",
+    "Tranche en hausse : « {t} » ({p} %).": "Band up: \u201c{t}\u201d ({p}%).",
+    "Tranche en baisse : « {t} » ({p} %) : vérifier l'offre et les prix de ces articles.":
+        "Band down: \u201c{t}\u201d ({p}%): check the offer and prices of these items.",
+    "Revoir l'offre des articles de la tranche « {t} »": "Review the offer of items in the \u201c{t}\u201d band",
+    "Leurs ventes baissent de {p} % par rapport à la période d'avant.": "Their sales drop {p}% compared with the previous period.",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
+# 1.0.36 : ce qui fait monter ou baisser les ventes (2026-11-09)
+for _fr, _en in {
+    "Ce qui fait monter ou baisser les ventes": "What drives sales up or down",
+    "Catégorie ou article": "Category or item",
+    "Écart": "Difference",
+    "Part des écarts %": "Share of differences %",
+    "Écart des ventes nettes": "Net sales difference",
+    "Catégories en hausse": "Categories up",
+    "Catégories en baisse": "Categories down",
+    "Fait le plus monter": "Drives up the most",
+    "Fait le plus baisser": "Drives down the most",
+    "Écart des ventes nettes par catégorie (en $)": "Net sales difference by category ($)",
+    "Articles qui font le plus monter ou baisser les ventes": "Items driving sales up or down the most",
+    "Variation des ventes par catégorie (%)": "Change in sales by category (%)",
+    "Écart : ventes nettes de la période moins celles de la période d'avant. Part des écarts : poids de chaque "
+    "catégorie dans l'ensemble des hausses et des baisses.":
+        "Difference: net sales of the period minus those of the previous period. Share of differences: weight of "
+        "each category in all rises and drops.",
+    "Pas de ventes dans la période d'avant : rien à comparer.": "No sales in the previous period: nothing to compare.",
+    "Les ventes nettes {s} de {v} ({p} %).": "Net sales {s} by {v} ({p}%).",
+    "montent": "rise", "baissent": "drop",
+    "« {c} » fait le plus monter les ventes ({v}).": "\u201c{c}\u201d drives sales up the most ({v}).",
+    "« {c} » fait le plus baisser les ventes ({v}).": "\u201c{c}\u201d drives sales down the most ({v}).",
+    "Article qui fait le plus baisser les ventes : « {a} » ({v}).": "Item driving sales down the most: \u201c{a}\u201d ({v}).",
+    "Comprendre la baisse des catégories qui freinent les ventes": "Understand the drop of the categories holding sales back",
+    "{n} catégorie(s) expliquent à elles seules une grande part de la baisse des ventes.":
+        "{n} category(ies) alone explain a large part of the sales drop.",
+    "{v} par rapport à la période d'avant": "{v} compared with the previous period",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
+# 1.0.36 : effet des rabais (2026-11-09)
+for _fr, _en in {
+    "Effet des rabais": "Effect of discounts",
+    "Plusieurs rabais": "Several discounts",
+    "Rabais sans nom": "Unnamed discount",
+    "Commandes avec un rabais": "Orders with a discount",
+    "Commandes sans rabais": "Orders without a discount",
+    "Commandes ou rabais": "Orders or discount",
+    "Panier moyen après rabais": "Average basket after discount",
+    "Rabais moyen par commande": "Average discount per order",
+    "Articles différents par commande": "Different items per order",
+    "Panier avec rabais": "Basket with discount",
+    "Panier sans rabais": "Basket without discount",
+    "Rabais accordés (hors Direction)": "Discounts given (excluding management)",
+    "Part des commandes avec un rabais, par jour (%)": "Share of orders with a discount, per day (%)",
+    "Rabais accordés par nom de rabais": "Discounts given by discount name",
+    "Panier moyen après rabais selon le rabais": "Average basket after discount by discount",
+    "Rabais moyen par commande selon le rabais": "Average discount per order by discount",
+    "Effet des rabais : commandes avec au moins un rabais (de ligne ou de commande) comparées aux commandes sans "
+    "rabais ; les rabais Direction et les commandes des comptes administrateurs sont dans leur propre état.":
+        "Effect of discounts: orders with at least one discount (line or order) compared with orders without; "
+        "management discounts and orders by administrator accounts are in their own report.",
+    "Aucun rabais accordé dans la période (hors Direction et administrateurs).":
+        "No discount given in the period (excluding management and administrators).",
+    "Les commandes avec un rabais valent {a} contre {b} sans rabais, après le rabais ({c} de rabais en moyenne) : les "
+    "rabais accompagnent de plus gros achats.":
+        "Orders with a discount are worth {a} against {b} without, after the discount ({c} of discount on average): "
+        "discounts go with larger purchases.",
+    "Les commandes avec un rabais valent {a} contre {b} sans rabais, après le rabais : les rabais ne font pas acheter "
+    "plus.":
+        "Orders with a discount are worth {a} against {b} without, after the discount: discounts do not make "
+        "customers buy more.",
+    "{p} % des commandes ont un rabais ; les rabais représentent {q} % des ventes.":
+        "{p}% of orders have a discount; discounts represent {q}% of sales.",
+    "Revoir les rabais qui ne font pas acheter plus": "Review discounts that do not make customers buy more",
+    "Les commandes avec un rabais ne sont pas plus grosses que les autres, après le rabais.":
+        "Orders with a discount are not larger than the others, after the discount.",
+    "{n} commande(s) ; {r} de rabais en moyenne": "{n} order(s); {r} of discount on average",
+}.items():
+    EN.setdefault(_fr, _en)
