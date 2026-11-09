@@ -4092,3 +4092,41 @@ for _fr, _en in {
     "Prix {p} % ; volume {q} %.": "Prices {p}%; volume {q}%.",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.42 : articles qui se remplacent (2026-11-09)
+for _fr, _en in {
+    "Articles qui se remplacent": "Items replacing each other",
+    "Article délaissé": "Item dropped",
+    "Prix avant": "Price before",
+    "Prix maintenant": "Price now",
+    "Article choisi à la place": "Item chosen instead",
+    "Quantité avant (remplaçant)": "Quantity before (replacement)",
+    "Quantité maintenant (remplaçant)": "Quantity now (replacement)",
+    "Prix du remplaçant": "Replacement price",
+    "Unités déplacées": "Units shifted",
+    "Ressemblance des noms %": "Name similarity %",
+    "Paires d'articles qui se remplacent": "Pairs of items replacing each other",
+    "Après une hausse de prix": "After a price increase",
+    "Quantités par semaine : article délaissé et remplaçant": "Quantities per week: dropped item and replacement",
+    "Unités déplacées par paire": "Units shifted per pair",
+    "Variation du prix des articles délaissés (%)": "Price change of dropped items (%)",
+    "Unités gagnées par les remplaçants": "Units gained by replacements",
+    "Paire qui se remplace : même catégorie, noms ressemblants (60 % au moins) ; l'un perd 40 % ou plus de ses unités "
+    "(20 au moins avant) et l'autre gagne entre la moitié et le double de ce que le premier perd.":
+        "Replacing pair: same category, similar names (60% at least); one loses 40% or more of its units (20 at least "
+        "before) and the other gains between half and twice what the first one loses.",
+    "Aucun article délaissé au profit d'un article semblable.": "No item dropped in favour of a similar item.",
+    "« {a} » est délaissé après une hausse de prix de {p} % ({x} → {y}) : les clients prennent « {b} » à {z}.":
+        "\u201c{a}\u201d is dropped after a {p}% price increase ({x} → {y}): customers take \u201c{b}\u201d at {z}.",
+    "{n} autre(s) paire(s) sans hausse de prix : goût, rupture ou mise en rayon (ex. « {a} » → « {b} »).":
+        "{n} other pair(s) without a price increase: taste, stockout or shelf placement (e.g. \u201c{a}\u201d → "
+        "\u201c{b}\u201d).",
+    "Les clients passent de « {a} » ({x}) à « {b} », moins cher ({z}).":
+        "Customers move from “{a}” ({x}) to “{b}”, cheaper ({z}).",
+    "Revoir le prix des articles délaissés après une hausse de prix": "Review the price of items dropped after a price increase",
+    "{n} article(s) perdent leurs clients au profit d'un article semblable depuis leur hausse de prix.":
+        "{n} item(s) lose their customers to a similar item since their price increase.",
+    "{x} → {y} ({p} %) ; les clients prennent « {b} »": "{x} → {y} ({p}%); customers take \u201c{b}\u201d",
+}.items():
+    EN.setdefault(_fr, _en)

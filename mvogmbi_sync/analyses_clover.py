@@ -3210,6 +3210,118 @@ def prix_volume(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- articles qui se remplacent
+def substitutions(c, avant, ctx) -> RapportGestion:
+    """Articles qui se remplacent : dans une même catégorie, un article délaissé (quantité en baisse de 40 % ou plus,
+    20 unités au moins avant) et un article semblable (noms ressemblants) qui gagne à peu près ce que l'autre perd
+    (entre la moitié et le double) ; l'écart de prix dit si une hausse de prix a poussé les clients vers l'autre."""
+    from rapidfuzz import fuzz
+
+    from .correspondance import normaliser
+
+    def cumul(cmds):
+        g = defaultdict(lambda: [ZERO, ZERO, ""])  # quantité, ventes brutes, catégorie
+        for x in cmds:
+            for l in x.lignes:
+                if l.quantite_vendue > 0:
+                    a = g[l.nom]
+                    a[0] += l.quantite_vendue
+                    a[1] += l.ventes_brutes
+                    a[2] = l.categorie
+        return g
+
+    g1, g0 = cumul(c), cumul(avant)
+
+    def prix(g, n):
+        return g[n][1] / g[n][0] if n in g and g[n][0] else None
+
+    delaisses, gagnants = [], []
+    for n in set(g0) | set(g1):
+        q0 = g0[n][0] if n in g0 else ZERO
+        q1 = g1[n][0] if n in g1 else ZERO
+        cat = (g1[n][2] if n in g1 else "") or (g0[n][2] if n in g0 else "")
+        if q0 >= 20 and q1 <= q0 * Decimal("0.6"):
+            delaisses.append((n, cat, q0, q1))
+        elif q1 >= 20 and q1 >= max(q0, Decimal(1)) * Decimal("1.4"):
+            gagnants.append((n, cat, q0, q1))
+    lignes, pris = [], set()
+    for n, cat, q0, q1 in sorted(delaisses, key=lambda x: -(x[2] - x[3])):
+        perdu = q0 - q1
+        meilleur = None
+        for m, cat_m, r0, r1 in gagnants:
+            if cat_m != cat or m in pris:
+                continue
+            gain = r1 - r0
+            if not perdu / 2 <= gain <= perdu * 2:
+                continue
+            ressemblance = fuzz.token_set_ratio(normaliser(n), normaliser(m))
+            if ressemblance >= 60 and (meilleur is None or ressemblance > meilleur[0]):
+                meilleur = (ressemblance, m, r0, r1)
+        if meilleur is None:
+            continue
+        ressemblance, m, r0, r1 = meilleur
+        pris.add(m)
+        pa0, pa1, pb1 = prix(g0, n), prix(g1, n) or prix(g0, n), prix(g1, m)
+        hausse = _pc(pa1 - pa0, pa0) if pa0 and pa1 else None
+        lignes.append([n, cat, _d(q0, "0.001"), _d(q1, "0.001"), _d(pa0) if pa0 else None, _d(pa1) if pa1 else None,
+                       hausse, m, _d(r0, "0.001"), _d(r1, "0.001"), _d(pb1) if pb1 else None,
+                       _d(perdu, "0.001"), Decimal(int(ressemblance))])
+    deplaces = sum((l[11] for l in lignes), ZERO)
+    par_prix = [l for l in lignes if l[6] is not None and l[6] >= 5]
+    r = RapportGestion()
+    r.entetes = ["Article délaissé", "Catégorie", "Quantité avant", "Quantité maintenant", "Prix avant",
+                 "Prix maintenant", "Variation du prix %", "Article choisi à la place", "Quantité avant (remplaçant)",
+                 "Quantité maintenant (remplaçant)", "Prix du remplaçant", "Unités déplacées", "Ressemblance des noms %"]
+    r.lignes = lignes
+    r.cartes = [("Paires d'articles qui se remplacent", "n", len(lignes)), ("Unités déplacées", "n", _d(deplaces, "1")),
+                ("Après une hausse de prix", "n", len(par_prix))]
+    # semaines : la première paire, article délaissé et remplaçant
+    au = min(ctx["au"], date.today())
+    blocs = []
+    debut = au - timedelta(days=6)
+    while debut >= ctx["du"]:
+        blocs.insert(0, debut)
+        debut -= timedelta(days=7)
+    r.titre_evolution = "Quantités par semaine : article délaissé et remplaçant"
+    r.unite_evolution = ""
+    r.etiquettes = [_etiquette(b) for b in blocs]
+    if lignes and blocs:
+        a, b = lignes[0][0], lignes[0][7]
+        sem = {a: defaultdict(Decimal), b: defaultdict(Decimal)}
+        for x in c:
+            j = x.moment.date()
+            bloc = next((b_ for b_ in reversed(blocs) if b_ <= j), None)
+            for l in x.lignes:
+                if bloc is not None and l.nom in sem:
+                    sem[l.nom][bloc] += l.quantite_nette
+        r.series = [(a, [_d(sem[a].get(x_, ZERO), "0.001") for x_ in blocs]),
+                    (b, [_d(sem[b].get(x_, ZERO), "0.001") for x_ in blocs])]
+    r.titre_repartition = "Unités déplacées par paire"
+    r.genre_repartition = "classement"
+    r.argent_repartition = False
+    r.repartition = [(f"{l[0]} → {l[7]}", l[11]) for l in lignes[:8]]
+    constats = [_k(None, "Paire qui se remplace : même catégorie, noms ressemblants (60 % au moins) ; l'un perd 40 % ou "
+                   "plus de ses unités (20 au moins avant) et l'autre gagne entre la moitié et le double de ce que le "
+                   "premier perd.")]
+    if not lignes:
+        constats.append(_k("bon", "Aucun article délaissé au profit d'un article semblable."))
+    for l in par_prix[:3]:
+        constats.append(_k("attention", "« {a} » est délaissé après une hausse de prix de {p} % ({x} → {y}) : les "
+                                        "clients prennent « {b} » à {z}.", a=l[0], p=_nb(l[6], 0), x=_argent(l[4]),
+                           y=_argent(l[5]), b=l[7], z=_argent(l[10]) if l[10] else "—"))
+    moins_cher = [l for l in lignes if l not in par_prix and l[5] and l[10] and l[10] <= l[5] * Decimal("0.9")]
+    for l in moins_cher[:3]:
+        constats.append(_k("info", "Les clients passent de « {a} » ({x}) à « {b} », moins cher ({z}).", a=l[0],
+                           x=_argent(l[5]), b=l[7], z=_argent(l[10])))
+    autres = [l for l in lignes if l not in par_prix and l not in moins_cher]
+    if autres:
+        constats.append(_k("info", "{n} autre(s) paire(s) sans hausse de prix : goût, rupture ou mise en rayon "
+                                   "(ex. « {a} » → « {b} »).", n=len(autres), a=autres[0][0], b=autres[0][7]))
+    r.par_prix = par_prix
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -3905,6 +4017,13 @@ def _decisions(sous: dict) -> list[tuple]:
                    q=_nb(_carte(pvo, "Croissance en volume (hors prix)"))), "a_prix_volume",
                 [(l[0], _t("{a} → {b} ({p} %)", a=_argent(l[2]), b=_argent(l[3]), p=_nb(l[4])), "")
                  for l in pvo.lignes if l[4] >= 5][:50])
+    sub = sous.get("a_substitutions", vide)
+    if getattr(sub, "par_prix", None):
+        ajouter(2, "Revoir le prix des articles délaissés après une hausse de prix",
+                _t("{n} article(s) perdent leurs clients au profit d'un article semblable depuis leur hausse de prix.",
+                   n=len(sub.par_prix)), "a_substitutions",
+                [(l[0], _t("{x} → {y} ({p} %) ; les clients prennent « {b} »", x=_argent(l[4]), y=_argent(l[5]),
+                           p=_nb(l[6], 0), b=l[7]), "") for l in sub.par_prix])
     bai = sous.get("a_baisse", vide)
     fortes = [l for l in bai.lignes if l[7] == _t("Forte baisse")]
     if fortes:
@@ -4035,7 +4154,7 @@ DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure
                "Jour normal :", "Moyenne par jour ouvert de chaque jour", "Articles importants :", "Ventes moyennes par jour "
                "ouvert", "Prévision :", "Les taxes perçues par Clover",
                "Valeur sur un an =", "Seuil de rentabilité :", "Quantité prévue =", "Pour la semaine qui vient",
-               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes", "Article peu vendu : 2 commandes", "Indice des prix : prix affichés")
+               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes", "Article peu vendu : 2 commandes", "Indice des prix : prix affichés", "Paire qui se remplace :")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -4456,7 +4575,14 @@ def _sup_prix_volume(r):
                               if v])]
 
 
-SUPPLEMENTS = {"a_prix_volume": _sup_prix_volume, "a_assortiment": _sup_assortiment, "a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
+def _sup_substitutions(r):
+    return [_graphe("classement", "Variation du prix des articles délaissés (%)", "%",
+                    elements=[_signe(l[0], l[6]) for l in r.lignes[:8] if l[6]]),
+            _graphe("classement", "Unités gagnées par les remplaçants", "",
+                    elements=[(l[7], l[9] - l[8]) for l in r.lignes[:8]])]
+
+
+SUPPLEMENTS = {"a_substitutions": _sup_substitutions, "a_prix_volume": _sup_prix_volume, "a_assortiment": _sup_assortiment, "a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
                "a_categories_jour": _sup_categories_jour, "a_prevu": _sup_prevu, "a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
@@ -4506,6 +4632,7 @@ ANALYSES = [
     ("Prix selon le format", "a_prix_format", prix_format, "Articles", "a_poids"),
     ("Ventes par tranche de prix", "a_tranches", tranches_prix, "Articles", "a_prix_format"),
     ("Productivité de l'assortiment", "a_assortiment", assortiment, "Articles", "a_tranches"),
+    ("Articles qui se remplacent", "a_substitutions", substitutions, "Articles", "a_prix"),
     ("Ruptures probables", "a_ruptures", ruptures, "Articles", "a_baisse"),
     ("Articles d'appel", "a_appel", articles_appel, "Articles", "a_associations"),
     ("Ventes complémentaires manquées", "a_complements", complements, "Articles", "a_appel"),

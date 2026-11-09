@@ -86,7 +86,7 @@ def test_chaque_analyse_est_rangee_dans_une_section_existante():
 def test_toutes_les_analyses_rendent_un_rapport_complet():
     for cle, r in _toutes().items():
         assert r.cartes and r.entetes and r.note, cle
-        assert r.lignes or cle in ("a_prix", "a_marge", "a_baisse", "a_poids", "a_ruptures", "a_prix_format"), cle  # aucun changement de prix ; marge : sans coûts
+        assert r.lignes or cle in ("a_prix", "a_marge", "a_baisse", "a_poids", "a_ruptures", "a_prix_format", "a_substitutions"), cle  # aucun changement de prix ; marge : sans coûts
         assert all(len(l) == len(r.entetes) for l in r.lignes), cle
         assert all(len(v) == len(r.etiquettes) for _n, v in r.series), cle
 
@@ -192,7 +192,7 @@ def test_graphiques_de_plus_sans_vide():
     from mvogmbi_sync import langues
 
     for cle, r in _toutes().items():
-        if cle not in ("a_prix", "a_marge", "a_baisse", "a_seuil", "a_poids", "a_ruptures", "a_prix_format"):  # pas de changement de prix ni de baisse ; marge : sans coûts
+        if cle not in ("a_prix", "a_marge", "a_baisse", "a_seuil", "a_poids", "a_ruptures", "a_prix_format", "a_substitutions"):  # pas de changement de prix ni de baisse ; marge : sans coûts
             assert r.graphiques, cle
         for g in r.graphiques:
             assert g["elements"] or any(v for _n, vs in g["series"] for v in vs), (cle, g["titre"])
@@ -611,3 +611,20 @@ def test_prix_et_volume():
     assert cartes["Indice des prix (100 = période d'avant)"] == D("120.0")
     assert cartes["Croissance des ventes"] == D("8.0") and cartes["Croissance en volume (hors prix)"] == D("-10.0")
     assert r.volume_en_baisse and r.graphiques
+
+
+def test_articles_qui_se_remplacent():
+    """Sardine pimentée : 30 vendues avant à 2 $, 5 maintenant à 2,50 $ ; Sardine nature : 2 avant, 28 maintenant."""
+    avant = [_commande(f"SU-A{k}", date(2026, 8, 1) + timedelta(days=k % 28), [("Sardine Piment", "S", 200)])
+             for k in range(30)]
+    avant += [_commande(f"SU-B{k}", date(2026, 8, 2), [("Sardine Nature", "S", 200)]) for k in range(2)]
+    cmds = [_commande(f"SU-C{k}", date(2026, 9, 1) + timedelta(days=k), [("Sardine Piment", "S", 250)])
+            for k in range(5)]
+    cmds += [_commande(f"SU-D{k}", date(2026, 9, 1) + timedelta(days=k % 28), [("Sardine Nature", "S", 250)])
+             for k in range(28)]
+    r = an.calculer("a_substitutions", _donnees(cmds), _donnees(avant), {}, date(2026, 9, 1), date(2026, 9, 30),
+                    date(2026, 8, 1), date(2026, 8, 31))
+    assert len(r.lignes) == 1
+    l = r.lignes[0]
+    assert l[0] == "Sardine Piment" and l[7] == "Sardine Nature" and l[6] == D("25.0") and l[11] == D("25.000")
+    assert r.par_prix and r.graphiques
