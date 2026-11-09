@@ -86,7 +86,7 @@ def test_chaque_analyse_est_rangee_dans_une_section_existante():
 def test_toutes_les_analyses_rendent_un_rapport_complet():
     for cle, r in _toutes().items():
         assert r.cartes and r.entetes and r.note, cle
-        assert r.lignes or cle in ("a_prix", "a_marge", "a_baisse", "a_poids", "a_ruptures"), cle  # aucun changement de prix ; marge : sans coûts
+        assert r.lignes or cle in ("a_prix", "a_marge", "a_baisse", "a_poids", "a_ruptures", "a_prix_format"), cle  # aucun changement de prix ; marge : sans coûts
         assert all(len(l) == len(r.entetes) for l in r.lignes), cle
         assert all(len(v) == len(r.etiquettes) for _n, v in r.series), cle
 
@@ -192,7 +192,7 @@ def test_graphiques_de_plus_sans_vide():
     from mvogmbi_sync import langues
 
     for cle, r in _toutes().items():
-        if cle not in ("a_prix", "a_marge", "a_baisse", "a_seuil", "a_poids", "a_ruptures"):  # pas de changement de prix ni de baisse ; marge : sans coûts
+        if cle not in ("a_prix", "a_marge", "a_baisse", "a_seuil", "a_poids", "a_ruptures", "a_prix_format"):  # pas de changement de prix ni de baisse ; marge : sans coûts
             assert r.graphiques, cle
         for g in r.graphiques:
             assert g["elements"] or any(v for _n, vs in g["series"] for v in vs), (cle, g["titre"])
@@ -521,3 +521,22 @@ def test_ventes_complementaires_manquees():
     eru = next(l for l in r.lignes if l[0] == "Eru")
     assert eru[1] == "Fufu" and eru[6] == 10 and eru[8] == D("12.50")
     assert r.graphiques
+
+
+def test_prix_selon_le_format():
+    """Riz 1kg à 4 $ (4 $ / kg) et Riz 5kg à 25 $ (5 $ / kg) : le grand format est plus cher au kg."""
+    assert an.format_article("Attieke 1kg Sun")[1:] == (1000.0, "kg")
+    assert an.format_article("Jus Oasis 6x330ml")[1:] == (1980.0, "L")
+    assert an.format_article("Plantain Jaune en lb") is None
+    cmds = []
+    for k in range(5):
+        j = date(2026, 9, 1) + timedelta(days=k)
+        cmds.append(_commande(f"PF-A{k}", j, [("Riz Parfumé 1kg", "R1", 400)]))
+        cmds.append(_commande(f"PF-B{k}", j, [("Riz Parfumé 5kg", "R5", 2500)]))
+        cmds.append(_commande(f"PF-C{k}", j, [("Sucre 1kg", "S1", 300), ("Sucre 2kg", "S2", 500)]))
+    d, a = _donnees(cmds), _donnees([])
+    r = an.calculer("a_prix_format", d, a, {}, date(2026, 9, 1), date(2026, 9, 30), date(2026, 8, 1), date(2026, 8, 31))
+    riz5 = next(l for l in r.lignes if l[1] == "Riz Parfumé 5kg")
+    assert riz5[6] == D("5.00") and riz5[8] == D("25.0") and riz5[9] == "Plus cher qu'un format plus petit"
+    assert all(l[9] == "Correct" for l in r.lignes if l[0] == "sucre")
+    assert [l[1] for l in r.mal] == ["Riz Parfumé 5kg"] and r.graphiques

@@ -56,7 +56,8 @@ PREVISIONS = ("prev_ventes", "prev_achats", "prev_commande")
 HORIZONS = (7, 10, 14, 21, 28, 30, 45, 60, 90)  # jours : horizon des prévisions et période des articles à commander
 # graphique au-dessus de chaque état : (genre, colonne de l'étiquette, colonne de la valeur)
 GRAPHIQUES_ETATS = {
-    "Par jour": ("courbe", 0, 3),  # colonnes : date, jour, commandes, ventes nettes… "Par heure": ("barres", 0, 2), "Par jour de la semaine": ("barres", 0, 2),
+    "Par jour": ("courbe", 0, 3),  # colonnes : date, jour, commandes, ventes nettes…
+    "Par heure": ("barres", 0, 2), "Par jour de la semaine": ("barres", 0, 2),
     "Par mode de paiement": ("anneau", 0, 2), "Par type de carte": ("anneau", 0, 2),
     "Par mode de saisie de la carte": ("anneau", 0, 2), "Par catégorie": ("anneau", 0, 2),
     "Par appareil": ("anneau", 0, 2), "Par article": ("classement", 0, 6), "Par employé": ("classement", 0, 2),
@@ -176,6 +177,57 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
             valeurs.append("" if v is None else v)
         tableau.insert("", "end", iid=str(i), values=valeurs, tags=tags(i) if tags else ())
     rayer(tableau)
+
+
+def dessiner_cartes(cadre, cartes) -> None:
+    """Cartes d'indicateurs à feu de couleur (rapports, analyses, états enrichis)."""
+    from .analyses_clover import etat_carte
+
+    for enfant in cadre.winfo_children():
+        enfant.destroy()
+    for k in range(12):  # colonnes d'un rapport précédent remises à zéro
+        cadre.columnconfigure(k, weight=0, uniform="")
+    par_rangee = len(cartes) if len(cartes) <= 6 else 4  # au-delà de 6 cartes : 2 rangées lisibles
+    for i, (titre, genre, valeur) in enumerate(cartes):
+        etat = etat_carte(titre, valeur)
+        couleur_etat = {"bon": "#1b7f3b", "attention": "#e0a100", "alerte": ROUGE}.get(etat)
+        carte = tk.Frame(cadre, background=CARTE, highlightthickness=1,
+                         highlightbackground=couleur_etat or "#e2e8e4")
+        carte.grid(row=i // par_rangee, column=i % par_rangee, sticky="nsew", padx=3, pady=3)
+        cadre.columnconfigure(i % par_rangee, weight=1, uniform="cg")
+        if couleur_etat:
+            tk.Frame(carte, background=couleur_etat, height=4).pack(fill="x")
+        texte = (montant(valeur) if genre == "$" else f"{valeur} %".replace(".", ",") if genre == "%"
+                 else f"{valeur} h".replace(".", ",") if genre == "h"
+                 else str(valeur).replace(".", ",") if genre == "n" else str(valeur))
+        tk.Label(carte, text=t(titre), background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 9),
+                 anchor="w", justify="left", wraplength=220).pack(fill="x", padx=8, pady=(6, 0))
+        tk.Label(carte, text=("▲ " if etat == "bon" else "▼ " if etat == "alerte" else "") + texte
+                 if genre in ("$", "%") and etat in ("bon", "alerte") and titre in ("Variation", "Écart")
+                 else texte, background=CARTE, foreground=couleur_etat or VERT_FONCE, anchor="w", justify="left",
+                 font=("Segoe UI Semibold", 11 if genre == "t" else 15), wraplength=230 if genre == "t" else 0
+                 ).pack(fill="x", padx=8, pady=(0, 6))
+
+
+def dessiner_constats(cadre, note: str, largeur: int) -> bool:
+    """Un bandeau coloré par constat (✔ ⚠ ✖ ℹ) ; faux si la note n'a pas de constats."""
+    from .analyses_clover import niveau_constat
+
+    for enfant in cadre.winfo_children():
+        enfant.destroy()
+    lignes_note = (note or "").splitlines()
+    if not any(l[:1] in "✔⚠✖ℹ" for l in lignes_note):
+        return False
+    for ligne in lignes_note:
+        niveau, texte = niveau_constat(ligne)
+        fond, trait = COULEURS_CONSTATS[niveau]
+        bandeau = tk.Frame(cadre, background=fond)
+        bandeau.pack(fill="x", pady=(3, 0))
+        tk.Frame(bandeau, background=trait, width=5).pack(side="left", fill="y")
+        tk.Label(bandeau, text=ICONES_CONSTATS[niveau] + "  " + texte, background=fond, foreground=TEXTE,
+                 anchor="w", justify="left", font=("Segoe UI", 9), wraplength=largeur
+                 ).pack(side="left", fill="x", expand=True, padx=(8, 6), pady=3)
+    return True
 
 
 def dessiner_graphe(g, d: dict, vide: str) -> None:
@@ -801,10 +853,30 @@ class PageRapports(ttk.Frame):
                                values=[t("{n} jours", n=n) for n in HORIZONS])
         horizon.pack(side="left")
         horizon.bind("<<ComboboxSelected>>", lambda _e: self._changer_horizon())
+        # états enrichis (demande du propriétaire du 2026-11-09 : « développe tous les états ») : cartes, constats et
+        # graphiques de plus, qu'on replie pour laisser toute la place au tableau
+        # sous-pages Résumé / Graphiques / Détail comme les analyses (la page d'un état ne défile pas)
+        self.partie_etat = "resume"
+        self.case_resume = tk.Frame(filtres, background=fond_de(cadre))
+        self.boutons_etat: dict = {}
+        for cle, nom_p in PARTIES_GESTION:
+            b_ = tk.Label(self.case_resume, text=t(nom_p), font=("Segoe UI", 10), padx=12, pady=3, cursor="hand2",
+                          background="#ececec", foreground=TEXTE)
+            b_.pack(side="left", padx=(0, 2))
+            b_.bind("<Button-1>", lambda _e, c=cle: self._choisir_partie_etat(c))
+            self.boutons_etat[cle] = b_
         self.note_etat = ttk.Label(self.page_tableau, text="", foreground=TEXTE_DOUX, wraplength=900, justify="left")
         self.note_etat.pack(fill="x", pady=(4, 0))
+        self.resume_etat = tk.Frame(self.page_tableau, background=fond_de(cadre))
+        self.cartes_etat = tk.Frame(self.resume_etat, background=fond_de(cadre))
+        self.cartes_etat.pack(fill="x")
+        self.constats_etat = tk.Frame(self.resume_etat, background=fond_de(cadre))
+        self.constats_etat.pack(fill="x")
         self.g_etat = Graphique(self.page_tableau, 170)
         self.g_etat.pack(fill="x", pady=(6, 0))
+        self.sup_etat = tk.Frame(self.page_tableau, background=fond_de(cadre))
+        self.sup_etat.columnconfigure(0, weight=1, uniform="se")
+        self.sup_etat.columnconfigure(1, weight=1, uniform="se")
         self.titre_tableau = tk.Label(self.page_tableau, text="", font=("Segoe UI Semibold", 10), foreground=TEXTE,
                                       background=fond_de(cadre), anchor="w")
         self.titre_tableau.pack(fill="x", pady=(8, 0))
@@ -1219,6 +1291,28 @@ class PageRapports(ttk.Frame):
                 images.append(capture(self.graphiques_sup, "graphiques"))
             self.partie_gestion(partie)
             entetes, lignes = contenu(self.tableau_gestion)
+        elif self.case_resume.winfo_manager():  # état enrichi : chaque sous-page le temps de sa capture
+            partie = self.partie_etat
+            recherche, par_jour = self.recherche_etat.get(), self.par_jour.get()
+            self.recherche_etat.set("")
+            self.par_jour.set(False)
+            for cle_p in ("resume", "graphiques"):
+                self.partie_etat = cle_p
+                self.afficher_statistiques()
+                self.update()
+                if cle_p == "resume" and self.resume_etat.winfo_ismapped():
+                    images.append(image_widget(self.resume_etat))
+                if cle_p == "graphiques":
+                    if self.g_etat.winfo_ismapped():
+                        self.g_etat.delete("bulle")
+                        images.append(image_widget(self.g_etat))
+                    if self.sup_etat.winfo_ismapped():
+                        images.append(image_widget(self.sup_etat))
+            entetes, lignes = contenu(self.tableau_stats)  # tableau complet, même caché
+            self.partie_etat = partie
+            self.recherche_etat.set(recherche)
+            self.par_jour.set(par_jour)
+            self.afficher_statistiques()
         else:
             if self.kpi_cadre.winfo_ismapped():
                 images.append(image_widget(self.kpi_cadre))
@@ -1439,50 +1533,14 @@ class PageRapports(ttk.Frame):
 
         from .analyses_clover import etat_carte, niveau_constat
 
-        for enfant in self.constats_gestion.winfo_children():
-            enfant.destroy()
-        lignes_note = (r.note or "").splitlines()
-        if any(l[:1] in "✔⚠✖ℹ" for l in lignes_note):  # analyse : un bandeau coloré par constat
+        # largeur de la page (la sous-page « Résumé » peut être cachée pendant le calcul)
+        if dessiner_constats(self.constats_gestion, r.note, max(400, self.toile_gestion.winfo_width() - 60)):
             self.note_gestion.configure(text="")
-            # largeur de la page (la sous-page « Résumé » peut être cachée pendant le calcul)
-            largeur = max(400, self.toile_gestion.winfo_width() - 60)
-            for ligne in lignes_note:
-                niveau, texte = niveau_constat(ligne)
-                fond, trait = COULEURS_CONSTATS[niveau]
-                bandeau = tk.Frame(self.constats_gestion, background=fond)
-                bandeau.pack(fill="x", pady=(3, 0))
-                tk.Frame(bandeau, background=trait, width=5).pack(side="left", fill="y")
-                tk.Label(bandeau, text=ICONES_CONSTATS[niveau] + "  " + texte, background=fond, foreground=TEXTE,
-                         anchor="w", justify="left", font=("Segoe UI", 9), wraplength=largeur
-                         ).pack(side="left", fill="x", expand=True, padx=(8, 6), pady=3)
         else:
             self.note_gestion.configure(text=t(r.note) if r.note else "")
         if hasattr(self, "toile_gestion"):
             self.toile_gestion.yview_moveto(0)  # nouveau rapport : retour en haut
-        for enfant in self.cartes_gestion.winfo_children():
-            enfant.destroy()
-        for k in range(12):  # colonnes d'un rapport précédent remises à zéro
-            self.cartes_gestion.columnconfigure(k, weight=0, uniform="")
-        par_rangee = len(r.cartes) if len(r.cartes) <= 6 else 4  # au-delà de 6 cartes : 2 rangées lisibles
-        for i, (titre, genre, valeur) in enumerate(r.cartes):  # cartes d'indicateurs, feu de couleur
-            etat = etat_carte(titre, valeur)
-            couleur_etat = {"bon": "#1b7f3b", "attention": "#e0a100", "alerte": ROUGE}.get(etat)
-            carte = tk.Frame(self.cartes_gestion, background=CARTE, highlightthickness=1,
-                             highlightbackground=couleur_etat or "#e2e8e4")
-            carte.grid(row=i // par_rangee, column=i % par_rangee, sticky="nsew", padx=3, pady=3)
-            self.cartes_gestion.columnconfigure(i % par_rangee, weight=1, uniform="cg")
-            if couleur_etat:
-                tk.Frame(carte, background=couleur_etat, height=4).pack(fill="x")
-            texte = (montant(valeur) if genre == "$" else f"{valeur} %".replace(".", ",") if genre == "%"
-                     else f"{valeur} h".replace(".", ",") if genre == "h"
-                     else str(valeur).replace(".", ",") if genre == "n" else str(valeur))
-            tk.Label(carte, text=t(titre), background=CARTE, foreground=TEXTE_DOUX, font=("Segoe UI", 9),
-                     anchor="w", justify="left", wraplength=220).pack(fill="x", padx=8, pady=(6, 0))
-            tk.Label(carte, text=("▲ " if etat == "bon" else "▼ " if etat == "alerte" else "") + texte
-                     if genre in ("$", "%") and etat in ("bon", "alerte") and titre in ("Variation", "Écart")
-                     else texte, background=CARTE, foreground=couleur_etat or VERT_FONCE, anchor="w", justify="left",
-                     font=("Segoe UI Semibold", 11 if genre == "t" else 15), wraplength=230 if genre == "t" else 0
-                     ).pack(fill="x", padx=8, pady=(0, 6))
+        dessiner_cartes(self.cartes_gestion, r.cartes)
         vide = t("Aucune donnée pour la période")
         # graphique d'évolution (courbe ; barres pour un seul jour)
         self.g_gestion_evolution.titre = t(r.titre_evolution)
@@ -1594,6 +1652,8 @@ class PageRapports(ttk.Frame):
         if nom not in source:
             self.tableau_stats.delete(*self.tableau_stats.get_children())
             self.g_etat.pack_forget()
+            self.resume_etat.pack_forget()
+            self.sup_etat.pack_forget()
             self.note_etat.configure(text="")
             return
         entetes, lignes = source[nom]
@@ -1601,6 +1661,7 @@ class PageRapports(ttk.Frame):
         # graphique : totaux de la période, même avec le détail par jour (colonne Date en plus dans le tableau)
         self._graphique_etat(nom, self.vues_stats[nom][1] if source is not self.vues_stats and nom in self.vues_stats
                              and nom in VUES_PAR_JOUR else lignes)
+        self._etat_enrichi(nom)  # après le graphique principal : cartes au-dessus, graphiques de plus en dessous
         texte = self.recherche_etat.get().strip().casefold()
         if texte:
             lignes = [l for l in lignes if any(texte in str(v).casefold() for v in l)]
@@ -1620,6 +1681,77 @@ class PageRapports(ttk.Frame):
             "Indicateur": 175 if nom == "Résumé" else 320, "Valeur": 105, "Article": 280, "Client": 240,
             "Employé": 190, "Appareil": 300, "Date et heure": 130},
             tags=lambda i: ("a_commander",) if t(A_COMMANDER_TEXTE) in lignes[i] else ())
+
+    def _vues_avant(self) -> dict:
+        """États de la période de comparaison avec les filtres choisis (calculés une fois)."""
+        from .statistiques_clover import filtrer, statistiques
+
+        brut = getattr(self, "brut_stats", None) or {}
+        if brut.get("autres") is None:
+            return {}
+        f = self._filtres_actifs()
+        memoire = brut.setdefault("_vues_avant", {})
+        cle = tuple(sorted(f.items()))
+        if cle not in memoire:
+            try:
+                memoire[cle] = statistiques(filtrer(brut["autres"], f) if f else brut["autres"], brut.get("couts"))
+            except Exception:  # noqa: BLE001 — sans comparaison, l'état s'affiche quand même
+                memoire[cle] = {}
+        return memoire[cle]
+
+    def _etat_enrichi(self, nom: str) -> None:
+        """Cartes, constats et deux graphiques de plus de l'état (etats_enrichis), sous la case « Résumé et
+        graphiques »."""
+        from .etats_enrichis import ETATS, enrichir
+
+        self.resume_etat.pack_forget()
+        self.sup_etat.pack_forget()
+        for enfant in self.sup_etat.winfo_children():
+            enfant.destroy()
+        if nom not in ETATS or not self.vues_stats:
+            self.case_resume.pack_forget()
+            return
+        brut = getattr(self, "brut_stats", None) or {}
+        r = enrichir(nom, self.vues_stats, self._vues_avant(), {"du": brut.get("du"), "au": brut.get("au")})
+        if r is None:
+            self.case_resume.pack_forget()
+            return
+        self.case_resume.pack(side="left", padx=(12, 0))
+        if self.recherche_etat.get().strip() or self.par_jour.get():
+            self.partie_etat = "detail"  # chercher ou détailler par jour : le tableau
+        partie = self.partie_etat
+        for c, b_ in self.boutons_etat.items():
+            b_.configure(background="#ffffff" if c == partie else "#ececec",
+                         foreground=VERT_FONCE if c == partie else TEXTE,
+                         font=("Segoe UI", 10, "bold") if c == partie else ("Segoe UI", 10))
+        cadre_table = self.tableau_stats.master
+        if partie != "detail":  # Résumé ou Graphiques : le tableau est dans « Détail »
+            cadre_table.pack_forget()
+            self.titre_tableau.pack_forget()
+        if partie != "graphiques":
+            self.g_etat.pack_forget()
+        if partie == "resume":
+            dessiner_cartes(self.cartes_etat, r.cartes)
+            dessiner_constats(self.constats_etat, r.note, max(700, self.winfo_toplevel().winfo_width() - 360))
+            self.resume_etat.pack(fill="x", pady=(4, 0), after=self.note_etat)
+        elif partie == "graphiques":
+            from .graphiques import Graphique
+
+            vide = t("Aucune donnée pour la période")
+            hauteur = max(160, (self.page_tableau.winfo_height() - 420) // max(1, (len(r.graphiques) + 1) // 2))
+            for k, d in enumerate(r.graphiques):
+                g = Graphique(self.sup_etat, min(hauteur, 260))
+                g.grid(row=k // 2, column=k % 2, sticky="nsew", padx=(0, 4) if k % 2 == 0 else (4, 0), pady=(6, 0))
+                dessiner_graphe(g, d, vide)
+            self.sup_etat.pack(fill="x", pady=(6, 0), after=self.g_etat if self.g_etat.winfo_manager() else
+                               self.note_etat)
+
+    def _choisir_partie_etat(self, cle: str) -> None:
+        self.partie_etat = cle
+        if cle != "detail":  # quitter « Détail » efface la recherche (sinon on y reviendrait aussitôt)
+            self.recherche_etat.set("")
+            self.par_jour.set(False)
+        self.afficher_statistiques()
 
     def _afficher_kpi(self, montrer: bool) -> None:
         """Aperçu financier : tableau étroit à gauche, le plus de KPI possible en cartes à droite."""

@@ -95,8 +95,20 @@ def _calculer(b: dict, f: dict) -> dict:
                         "series": sc.series(donnees, b["du"], b["au"]), "series_avant": sc.series(autres, b["du2"],
                                                                                                    b["au2"]),
                         "moyens": sc.montants_par_moyen(donnees), "du": b["du"], "au": b["au"], "du2": b["du2"],
-                        "filtres": f}
+                        "filtres": f, "_autres": autres, "_couts": b["couts"]}
     return memoire[cle]
+
+
+def _vues_avant(r: dict) -> dict:
+    """États de la période de comparaison (états enrichis), calculés au premier besoin."""
+    from .. import statistiques_clover as sc
+
+    if "vues_avant" not in r:
+        try:
+            r["vues_avant"] = sc.statistiques(r["_autres"], r["_couts"])
+        except Exception:  # noqa: BLE001 — sans comparaison, l'état s'affiche quand même
+            r["vues_avant"] = {}
+    return r["vues_avant"]
 
 
 # --------------------------------------------------------------------------------------------- rendu
@@ -458,9 +470,8 @@ def _sous_pages(q: dict, actuelle: str) -> str:
     return f"<nav class='onglets sous-pages'>{liens}</nav>"
 
 
-def _rendu_rapport(libelle: str, r, q: dict | None = None) -> str:
-    """Rapport de gestion ou analyse : cartes, évolution, répartition, constats, tableau (comme _remplir_gestion) ;
-    avec `q`, une sous-page à la fois (Résumé : cartes et constats ; Graphiques ; Détail : tableau)."""
+def _resume_html(r) -> str:
+    """Cartes à feu de couleur puis constats en bandeaux colorés (rapports, analyses et états enrichis)."""
     from ..analyses_clover import etat_carte, niveau_constat
 
     cartes = ""
@@ -482,6 +493,17 @@ def _rendu_rapport(libelle: str, r, q: dict | None = None) -> str:
             for n, texte in (niveau_constat(l) for l in lignes_note)) + "</div>"
     else:
         note = f"<p class='note'>{'<br>'.join(e(x) for x in lignes_note)}</p>" if r.note else ""
+    return f"<div class='kpis ligne-kpi'>{cartes}</div>" + note
+
+
+def _sup_html(r, vide: str = "Aucune donnée pour la période") -> str:
+    sup = "".join(_graph(_graphe_sup(d, vide)) for d in getattr(r, "graphiques", []) or [])
+    return f"<div class='grille2'>{sup}</div>" if sup else ""
+
+
+def _rendu_rapport(libelle: str, r, q: dict | None = None) -> str:
+    """Rapport de gestion ou analyse : cartes, évolution, répartition, constats, tableau (comme _remplir_gestion) ;
+    avec `q`, une sous-page à la fois (Résumé : cartes et constats ; Graphiques ; Détail : tableau)."""
     vide = "Aucune donnée pour la période"
     couleurs = [BLEU, "#f6b81a", *PALETTE]
     evolution = Graphique(480, 210, r.titre_evolution)
@@ -496,14 +518,10 @@ def _rendu_rapport(libelle: str, r, q: dict | None = None) -> str:
         repartition.anneau(r.repartition, vide, format_valeur=format_)
     else:
         repartition.classement(r.repartition, vide=vide, format_valeur=format_, couleur=BLEU_PALE)
-    sup = ""
-    for d in getattr(r, "graphiques", []) or []:  # graphiques de plus (analyses décisionnelles), deux par rangée
-        sup += _graph(_graphe_sup(d, vide))
-    if sup:
-        sup = f"<div class='grille2'>{sup}</div>"
+    sup = _sup_html(r, vide)  # graphiques de plus (analyses décisionnelles), deux par rangée
     # les chiffres d'abord, puis les constats (comme Windows)
     titre = f"<h2 class='titre-etat'>{e(libelle)}</h2>"
-    resume = f"<div class='kpis ligne-kpi'>{cartes}</div>" + note
+    resume = _resume_html(r)
     graphiques = f"<div class='grille2'>{_graph(evolution)}{_graph(repartition)}</div>" + sup
     if q is None:
         return titre + resume + graphiques + _tableau_detaille(r)
@@ -732,8 +750,9 @@ def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> 
         lignes = [l for l in lignes if any(texte in str(v).casefold() for v in l)]
     if vue not in PREVISIONS:
         lignes = list(reversed(lignes)) if vue in ("Par jour", "Commandes", "Paiements", "Remboursements") else lignes
+    # chercher ou détailler par jour montre le tableau (sous-page « Détail » des états enrichis)
     cache = "".join(f"<input type='hidden' name='{k}' value='{e(v)}'>" for k, v in q.items()
-                    if k not in ("recherche", "par_jour", "horizon"))
+                    if k not in ("recherche", "par_jour", "horizon", "partie")) +         "<input type='hidden' name='partie' value='detail'>"
     options = ""
     if vue in sc.VUES_PAR_JOUR:
         options += (f"<div><label><input type='checkbox' name='par_jour' value='1'"
@@ -747,6 +766,9 @@ def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> 
              "class='second'>Afficher</button></form>" + (f"<p class='note'>{e(note)}</p>" if note else ""))
     if vue == "Résumé":  # aperçu financier : les indicateurs en cartes
         return corps + _kpi(r)
+    from ..etats_enrichis import enrichir
+
+    enrichi = enrichir(vue, r["vues"], _vues_avant(r), {"du": r.get("du"), "au": r.get("au")})         if vue in r["vues"] else None
     titre = f"Tableau : {libelle} — {len(lignes)} ligne(s)"
     html = set()
     if vue in sc.COLONNES_COMMANDE and b and b.get("donnees") is not None and not q.get("par_jour"):
@@ -758,7 +780,15 @@ def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> 
             l[col_num] = (f"<a href='/facture-clover?{e(urlencode({'id': ident}))}' target='_blank' "
                           f"title='Ouvrir la facture Clover'>🧾 {texte}</a>") if ident else texte
         html = {col_num}
-    return corps + graph + tableau_section(Section(titre, entetes, lignes, html=html), limite=3000)
+    tableau = tableau_section(Section(titre, entetes, lignes, html=html), limite=3000)
+    if enrichi is None:
+        return corps + graph + tableau
+    if q.get("pdf"):
+        return corps + _resume_html(enrichi) + graph + _sup_html(enrichi) + tableau
+    partie = q.get("partie") if q.get("partie") in dict(PARTIES) else "resume"
+    contenu = {"resume": lambda: _resume_html(enrichi), "graphiques": lambda: graph + _sup_html(enrichi),
+               "detail": lambda: tableau}[partie]()
+    return corps + _sous_pages(q, partie) + f"<div class='onglet-corps'>{contenu}</div>"
 
 
 STYLE_STATS = """

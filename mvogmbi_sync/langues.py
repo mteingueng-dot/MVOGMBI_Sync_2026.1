@@ -3685,3 +3685,176 @@ for _fr, _en in {
         "{p}% already take it; {s} orders without; possible gain {g}",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.34 : prix selon le format (2026-11-09)
+for _fr, _en in {
+    "Prix selon le format": "Price by package size",
+    "Produit": "Product",
+    "Format": "Size",
+    "Prix moyen affiché": "Average shelf price",
+    "Prix au kg ou au litre": "Price per kg or litre",
+    "Unité": "Unit",
+    "au kg": "per kg",
+    "au litre": "per litre",
+    "Écart avec le plus petit format %": "Difference with the smallest size %",
+    "Contrôle": "Check",
+    "Plus cher qu'un format plus petit": "Dearer than a smaller size",
+    "Correct": "Correct",
+    "Produits en plusieurs formats": "Products in several sizes",
+    "Formats suivis": "Sizes tracked",
+    "Produits aux prix incohérents": "Products with inconsistent prices",
+    "Formats à vérifier": "Sizes to check",
+    "Prix au kg ou au litre selon le format : {a}": "Price per kg or litre by size: {a}",
+    "Prix au kg ou au litre selon le format": "Price per kg or litre by size",
+    "Formats plus chers au kg qu'un format plus petit (écart %)": "Sizes dearer per kg than a smaller size (difference %)",
+    "Écart entre le format le plus cher et le moins cher au kg (%)": "Difference between the dearest and cheapest size per kg (%)",
+    "Formats à vérifier par catégorie": "Sizes to check by category",
+    "Format : taille lue dans le nom de l'article (« 1kg », « 500g », « 6x330ml ») ; prix moyen affiché = ventes avant "
+    "rabais / quantité ; un format plus grand doit coûter au kg (ou au litre) au plus 2 % de plus qu'un format plus "
+    "petit du même produit.":
+        "Size: read from the item name (\u201c1kg\u201d, \u201c500g\u201d, \u201c6x330ml\u201d); average shelf "
+        "price = sales before discounts / quantity; a larger size must cost per kg (or litre) at most 2% more than a "
+        "smaller size of the same product.",
+    "Aucun produit vendu en plusieurs formats dans la période.": "No product sold in several sizes in the period.",
+    "{n} format(s) coûtent plus cher au kg qu'un format plus petit du même produit, dont {a} : les clients ont intérêt "
+    "à acheter le petit format. Revoir le prix.":
+        "{n} size(s) cost more per kg than a smaller size of the same product, including {a}: customers are better "
+        "off buying the small size. Review the price.",
+    "Les grands formats sont tous moins chers au kg que les petits.": "All large sizes are cheaper per kg than the small ones.",
+    "Revoir les prix des grands formats plus chers au kg que les petits":
+        "Review the prices of large sizes dearer per kg than small ones",
+    "{n} format(s) coûtent plus cher au kg (ou au litre) qu'un format plus petit du même produit.":
+        "{n} size(s) cost more per kg (or litre) than a smaller size of the same product.",
+    "{f} : {v} {u}, {p} % de plus que le plus petit format": "{f}: {v} {u}, {p}% more than the smallest size",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
+# 1.0.35 : états enrichis (2026-11-09, « développe tous les états »)
+for _fr, _en in {
+    "Appareils dans la période": "Devices in the period",
+    "Article le plus remisé : {n} ({v} de rabais).": "Most discounted item: {n} ({v} of discounts).",
+    "Articles au coût connu": "Items with a known cost",
+    "Articles dans la période": "Items in the period",
+    "Articles différents par catégorie": "Different items by category",
+    "Articles les plus remisés": "Most discounted items",
+    "Articles qui font 80 % des ventes": "Items making 80% of sales",
+    "Articles sans coût Sage": "Items without a Sage cost",
+    "Articles vendus à perte": "Items sold at a loss",
+    "Bénéfice par catégorie": "Profit by category",
+    "Catégories dans la période": "Categories in the period",
+    "Clients dans la période": "Customers in the period",
+    "Clients venus 3 fois ou plus": "Customers who came 3 times or more",
+    "Clients venus le plus souvent": "Customers who came most often",
+    "Commandes par heure": "Orders per hour",
+    "Commandes par jour": "Orders per day",
+    "Commandes par jour de la semaine": "Orders per day of the week",
+    "Commandes par mode de paiement": "Orders by payment method",
+    "Commandes par employé": "Orders per employee",
+    "Commandes selon le nombre d'articles": "Orders by number of items",
+    "Employés dans la période": "Employees in the period",
+    "Heure la plus faible": "Weakest hour",
+    "Heure la plus forte": "Strongest hour",
+    "Heures avec des ventes": "Hours with sales",
+    "Heure la plus forte : {a} ({p} % des ventes) ; la plus faible : {b} ({q} %).":
+        "Strongest hour: {a} ({p}% of sales); weakest: {b} ({q}%).",
+    "Jour le plus fort": "Strongest day",
+    "Jour le plus faible": "Weakest day",
+    "Jour le plus fort : {a} ({p} % des ventes) ; le plus faible : {b} ({q} %).":
+        "Strongest day: {a} ({p}% of sales); weakest: {b} ({q}%).",
+    "Jours avec des ventes": "Days with sales",
+    "Ventes moyennes par jour": "Average sales per day",
+    "Meilleur jour": "Best day",
+    "Jour le plus faible ": "Weakest day",
+    "La meilleure heure est le {j} à {h} ({v}) ; la plus faible, le {a} à {b} ({w}).":
+        "The best hour is {j} at {h} ({v}); the weakest, {a} at {b} ({w}).",
+    "La moitié des commandes font moins de {m} ; le panier moyen ({p}) est tiré vers le haut par les grosses commandes.":
+        "Half of the orders are under {m}; the average basket ({p}) is pulled up by large orders.",
+    "Panier médian {m}, proche du panier moyen.": "Median basket {m}, close to the average basket.",
+    "Le premier": "The first",
+    "Les 10 meilleures heures de la semaine font {p} % des ventes.": "The 10 best hours of the week make {p}% of sales.",
+    "Les rabais représentent {p} % des ventes brutes.": "Discounts represent {p}% of gross sales.",
+    "Marge brute des articles au coût connu : {p} % ({b} de bénéfice).":
+        "Gross margin of items with a known cost: {p}% ({b} of profit).",
+    "Marges les plus faibles (%)": "Lowest margins (%)",
+    "Meilleur jour : {j} ({v}, {p} % de plus qu'un jour moyen).": "Best day: {j} ({v}, {p}% more than an average day).",
+    "Meilleure heure de la semaine": "Best hour of the week",
+    "Mode principal": "Main method",
+    "Modes de paiement dans la période": "Payment methods in the period",
+    "Modes de saisie dans la période": "Entry modes in the period",
+    "Types de carte dans la période": "Card types in the period",
+    "Montant encaissé par employé": "Amount collected per employee",
+    "Montant moyen d'un paiement": "Average payment amount",
+    "Montant moyen d'un rabais": "Average discount amount",
+    "Montant par mode de paiement": "Amount by payment method",
+    "Montant remboursé": "Amount refunded",
+    "Montant remboursé par employé": "Amount refunded per employee",
+    "Montant remboursé par jour": "Amount refunded per day",
+    "Nombre de paiements": "Number of payments",
+    "Nombre de remboursements": "Number of refunds",
+    "Panier moyen des meilleurs clients": "Average basket of the best customers",
+    "Panier moyen le plus élevé": "Highest average basket",
+    "Panier moyen le plus élevé : {n} ({v}).": "Highest average basket: {n} ({v}).",
+    "Panier moyen par heure": "Average basket per hour",
+    "Panier moyen par jour": "Average basket per day",
+    "Panier moyen par jour de la semaine": "Average basket per day of the week",
+    "Panier moyen par employé": "Average basket per employee",
+    "Panier médian": "Median basket",
+    "Part de chacun": "Share of each",
+    "Part des 10 premiers": "Share of the top 10",
+    "Part des 3 plus forts": "Share of the top 3",
+    "Part des ventes brutes": "Share of gross sales",
+    "Part du premier": "Share of the first",
+    "Plus forte baisse : {n} ({p} % par rapport à la période d'avant).":
+        "Largest drop: {n} ({p}% compared with the previous period).",
+    "Plus forte hausse : {n} ({p} % par rapport à la période d'avant).":
+        "Largest rise: {n} ({p}% compared with the previous period).",
+    "Plus fortes hausses et baisses par rapport à la période d'avant":
+        "Largest rises and drops compared with the previous period",
+    "Plus grosse commande": "Largest order",
+    "Paiement moyen": "Average payment",
+    "Rabais accordés par employé": "Discounts given per employee",
+    "Rabais dans la période": "Discounts in the period",
+    "Rabais les plus utilisés": "Most used discounts",
+    "Remboursement moyen": "Average refund",
+    "Remises en argent": "Cash back",
+    "Utilisations": "Uses",
+    "Aucun remboursement dans la période.": "No refund in the period.",
+    "Seulement {p} % des ventes ont un client identifié ({n} client(s)) : demander le nom ou le téléphone à la caisse "
+    "permettrait de suivre les clients fidèles.":
+        "Only {p}% of sales have an identified customer ({n} customer(s)): asking for the name or phone at the "
+        "checkout would make it possible to follow loyal customers.",
+    "{p} % des ventes ont un client identifié ({n} client(s)).": "{p}% of sales have an identified customer ({n} customer(s)).",
+    "Un seul appareil a servi à encaisser pendant la période.": "A single device was used to take payments in the period.",
+    "Variation des rabais": "Change in discounts",
+    "Ventes avec un client identifié": "Sales with an identified customer",
+    "Ventes de la meilleure heure": "Sales of the best hour",
+    "Ventes moyennes par article de la catégorie": "Average sales per item of the category",
+    "Ventes nettes par catégorie": "Net sales by category",
+    "Ventes nettes par heure": "Net sales per hour",
+    "Ventes nettes par jour de la semaine": "Net sales per day of the week",
+    "{b} client(s) sont venus 3 fois ou plus dans la période.": "{b} customer(s) came 3 times or more in the period.",
+    "{l} : {a} contre {b} la période d'avant ({p} %).": "{l}: {a} against {b} the previous period ({p}%).",
+    "{l} : {a}, stable par rapport à la période d'avant ({b}).": "{l}: {a}, stable compared with the previous period ({b}).",
+    "{n} article(s) sur {t} font 80 % des ventes.": "{n} item(s) out of {t} make 80% of sales.",
+    "{n} article(s) vendus à perte, dont {a} ({b}) : vérifier le prix ou le coût Sage.":
+        "{n} item(s) sold at a loss, including {a} ({b}): check the price or the Sage cost.",
+    "{n} article(s) sans coût dans Sage : leur bénéfice n'est pas compté.":
+        "{n} item(s) without a cost in Sage: their profit is not counted.",
+    "{n} jour(s) font moins de la moitié d'un jour moyen, dont le {j} ({v}) : fermeture, panne ou météo ?":
+        "{n} day(s) make less than half of an average day, including {j} ({v}): closing, outage or weather?",
+    "{n} nouveau(x) par rapport à la période d'avant, dont « {a} ».":
+        "{n} new compared with the previous period, including \u201c{a}\u201d.",
+    "{n} présent(s) la période d'avant mais plus maintenant, dont « {a} ».":
+        "{n} present in the previous period but not anymore, including \u201c{a}\u201d.",
+    "{n} remboursement(s) pour {v} ({p} % des ventes) ; la période d'avant : {m}.":
+        "{n} refund(s) for {v} ({p}% of sales); previous period: {m}.",
+    "{v} remis en argent aux clients (retrait à la caisse).": "{v} given back in cash to customers (checkout withdrawal).",
+    "« {m} » représente {p} % des montants payés.": "\u201c{m}\u201d represents {p}% of amounts paid.",
+    "« {n} » fait {p} % du total ; les 10 premiers en font {q} %.":
+        "\u201c{n}\u201d makes {p}% of the total; the top 10 make {q}%.",
+    "« {n} » fait {p} % du total.": "\u201c{n}\u201d makes {p}% of the total.",
+    "Écart entre le plus fort et le plus faible": "Gap between the strongest and the weakest",
+}.items():
+    EN.setdefault(_fr, _en)

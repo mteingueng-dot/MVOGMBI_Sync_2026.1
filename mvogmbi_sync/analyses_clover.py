@@ -38,6 +38,8 @@ globaux appliqués (`statistiques_clover.filtrer`) : aucune lecture de plus dans
 from __future__ import annotations
 
 import math
+import unicodedata
+import re
 import statistics as st
 from collections import Counter, defaultdict
 from datetime import date, timedelta
@@ -2705,6 +2707,114 @@ def complements(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- prix selon le format
+_FORMAT = re.compile(r"(?:(\d+)\s*[x×]\s*)?(\d+(?:[.,]\d+)?)\s*(kg|kgs|g|gr|lb|lbs|ml|cl|l|litres?)\b", re.I)
+_UNITES = {"kg": 1000, "kgs": 1000, "g": 1, "gr": 1, "lb": 453.592, "lbs": 453.592, "ml": 1, "cl": 10, "l": 1000,
+           "litre": 1000, "litres": 1000}
+
+
+def format_article(nom: str):
+    """(produit sans le format, taille en g ou en ml, « kg » ou « L ») d'après le nom (« Attieke 1kg Sun »,
+    « Jus 6x330ml ») ; None si le nom n'a pas de format chiffré (article vendu au poids « en lb »)."""
+    m = None
+    for m in _FORMAT.finditer(nom):
+        pass
+    if not m:
+        return None
+    nombre = float(m.group(2).replace(",", "."))
+    unite = m.group(3).lower()
+    taille = nombre * _UNITES[unite] * (int(m.group(1)) if m.group(1) else 1)
+    if taille <= 0:
+        return None
+    base = _FORMAT.sub(" ", nom)
+    base = unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode().lower()
+    base = " ".join(re.sub(r"[^a-z0-9]+", " ", base).split())
+    return base, taille, "L" if unite in ("ml", "cl", "l", "litre", "litres") else "kg"
+
+
+def prix_format(c, avant, ctx) -> RapportGestion:
+    """Produits vendus en plusieurs formats (même nom, format chiffré différent) : prix affiché moyen (ventes avant
+    rabais / quantité) ramené au kg ou au litre ; un format plus grand doit coûter moins cher (ou autant) au kg qu'un
+    plus petit. Écart de plus de 2 % = prix à vérifier."""
+    g = defaultdict(lambda: {"qte": ZERO, "brut": ZERO, "cat": ""})
+    for x in c:
+        for l in x.lignes:
+            if l.quantite_vendue > 0 and l.ventes_brutes > 0:
+                s_ = g[l.nom]
+                s_["qte"] += l.quantite_vendue
+                s_["brut"] += l.ventes_brutes
+                s_["cat"] = l.categorie
+    produits = defaultdict(list)
+    for nom, s_ in g.items():
+        f = format_article(nom)
+        if f and s_["qte"] >= 3:
+            base, taille, unite = f
+            produits[(base, unite)].append((taille, nom, s_))
+    lignes, incoherents, graphe = [], [], None
+    for (base, unite), formats in produits.items():
+        if len({t for t, _n, _s in formats}) < 2:
+            continue
+        formats.sort(key=lambda f: (f[0], f[1]))
+        petit = None
+        groupe, probleme = [], False
+        for taille, nom, s_ in formats:
+            prix = s_["brut"] / s_["qte"]
+            au_kg = prix / Decimal(str(taille)) * 1000
+            if petit is None:
+                petit = au_kg
+            ecart = _pc(au_kg - petit, petit) if petit else ZERO
+            plus_cher = any(au_kg > p_ * Decimal("1.02") for t_, p_ in groupe if t_ < taille)
+            probleme |= plus_cher
+            groupe.append((taille, au_kg))
+            taille_txt = (_nb(Decimal(str(taille)) / 1000, 2) if taille >= 1000 else _nb(Decimal(str(taille)), 0)) + \
+                (" " + ("kg" if unite == "kg" else "L") if taille >= 1000 else " " + ("g" if unite == "kg" else "ml"))
+            lignes.append([base, nom, s_["cat"], taille_txt, _d(s_["qte"], "0.001"), _d(prix), _d(au_kg),
+                           _t("au kg") if unite == "kg" else _t("au litre"), ecart,
+                           _t("Plus cher qu'un format plus petit") if plus_cher else _t("Correct")])
+        if probleme:
+            incoherents.append(base)
+            u_txt = _t("au kg") if unite == "kg" else _t("au litre")
+            pire = max(l[8] for l in lignes if l[0] == base and l[7] == u_txt)
+            if graphe is None or pire > graphe[2]:
+                choix = [l for l in lignes if l[0] == base and l[7] == u_txt]
+                graphe = (_FORMAT.sub("", choix[0][1]).strip(), [(l[3], l[6]) for l in choix], pire)
+    pire = {b: max(l[8] for l in lignes if l[0] == b) for b in incoherents}
+    ordre = {b: k for k, b in enumerate(sorted(incoherents, key=lambda b: -pire[b]))}
+    lignes.sort(key=lambda l: (ordre.get(l[0], len(ordre)), l[0]))
+    mal = [l for l in lignes if l[9] == _t("Plus cher qu'un format plus petit")]
+    r = RapportGestion()
+    r.entetes = ["Produit", "Article", "Catégorie", "Format", "Quantité vendue", "Prix moyen affiché",
+                 "Prix au kg ou au litre", "Unité", "Écart avec le plus petit format %", "Contrôle"]
+    r.lignes = lignes
+    r.cartes = [("Produits en plusieurs formats", "n", len({l[0] for l in lignes})), ("Formats suivis", "n", len(lignes)),
+                ("Produits aux prix incohérents", "n", len(incoherents)), ("Formats à vérifier", "n", len(mal))]
+    if graphe:
+        r.titre_evolution = _t("Prix au kg ou au litre selon le format : {a}", a=graphe[0])
+        r.genre_evolution = "barres"
+        r.etiquettes = [f for f, _v in graphe[1]]
+        r.series = [(_t("Prix au kg ou au litre"), [v for _f, v in graphe[1]])]
+    else:
+        r.titre_evolution = "Prix au kg ou au litre selon le format"
+    r.titre_repartition = "Formats plus chers au kg qu'un format plus petit (écart %)"
+    r.genre_repartition = "classement"
+    r.argent_repartition = False
+    r.repartition = [(l[1], l[8]) for l in sorted(mal, key=lambda l: -l[8])[:8]]
+    constats = [_k(None, "Format : taille lue dans le nom de l'article (« 1kg », « 500g », « 6x330ml ») ; prix moyen "
+                   "affiché = ventes avant rabais / quantité ; un format plus grand doit coûter au kg (ou au litre) au "
+                   "plus 2 % de plus qu'un format plus petit du même produit.")]
+    if not lignes:
+        constats.append(_k("info", "Aucun produit vendu en plusieurs formats dans la période."))
+    elif mal:
+        constats.append(_k("attention", "{n} format(s) coûtent plus cher au kg qu'un format plus petit du même produit, "
+                                        "dont {a} : les clients ont intérêt à acheter le petit format. Revoir le prix.",
+                           n=len(mal), a=mal[0][1]))
+    else:
+        constats.append(_k("bon", "Les grands formats sont tous moins chers au kg que les petits."))
+    r.mal = mal
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -3363,6 +3473,13 @@ def _decisions(sous: dict) -> list[tuple]:
                    g=_argent(_carte(com, "Gain possible (1 client sur 4)"))), "a_complements",
                 [(f"{l[0]} + {l[1]}", _t("{p} % le prennent déjà ; {s} commandes sans ; gain possible {g}",
                                          p=_nb(l[4], 0), s=l[6], g=_argent(l[8])), "") for l in com.lignes])
+    pfo = sous.get("a_prix_format", vide)
+    if getattr(pfo, "mal", None):
+        ajouter(2, "Revoir les prix des grands formats plus chers au kg que les petits",
+                _t("{n} format(s) coûtent plus cher au kg (ou au litre) qu'un format plus petit du même produit.",
+                   n=len(pfo.mal)), "a_prix_format",
+                [(l[1], _t("{f} : {v} {u}, {p} % de plus que le plus petit format", f=l[3], v=_argent(l[6]), u=l[7],
+                           p=_nb(l[8])), "") for l in pfo.mal])
     bai = sous.get("a_baisse", vide)
     fortes = [l for l in bai.lignes if l[7] == _t("Forte baisse")]
     if fortes:
@@ -3493,7 +3610,7 @@ DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure
                "Jour normal :", "Moyenne par jour ouvert de chaque jour", "Articles importants :", "Ventes moyennes par jour "
                "ouvert", "Prévision :", "Les taxes perçues par Clover",
                "Valeur sur un an =", "Seuil de rentabilité :", "Quantité prévue =", "Pour la semaine qui vient",
-               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ")
+               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -3857,7 +3974,22 @@ def _sup_complements(r):
                     elements=sorted(par_cat.items(), key=lambda kv: -kv[1]))]
 
 
-SUPPLEMENTS = {"a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
+def _sup_prix_format(r):
+    par_cat = defaultdict(int)
+    for l in r.mal:
+        par_cat[l[2]] += 1
+    produits = defaultdict(list)
+    for l in r.lignes:
+        produits[l[0]].append(l[6])
+    econ = sorted(((p_, (max(v) - min(v)) / max(v) * 100) for p_, v in produits.items() if max(v) > 0),
+                  key=lambda kv: -kv[1])[:8]
+    return [_graphe("classement", "Écart entre le format le plus cher et le moins cher au kg (%)", "%",
+                    elements=[(p_, _d(e, "0.1")) for p_, e in econ]),
+            _graphe("anneau", "Formats à vérifier par catégorie", "",
+                    elements=[(k, Decimal(v)) for k, v in sorted(par_cat.items(), key=lambda kv: -kv[1])])]
+
+
+SUPPLEMENTS = {"a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
                "a_categories_jour": _sup_categories_jour, "a_prevu": _sup_prevu, "a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
@@ -3902,6 +4034,7 @@ ANALYSES = [
     ("Catégories selon le jour", "a_categories_jour", categories_jour, "Articles", "a_baisse"),
     ("Articles de saison", "a_saison", articles_saison, "Articles", "a_categories_jour"),
     ("Ventes au poids", "a_poids", ventes_poids, "Articles", "a_saison"),
+    ("Prix selon le format", "a_prix_format", prix_format, "Articles", "a_poids"),
     ("Ruptures probables", "a_ruptures", ruptures, "Articles", "a_baisse"),
     ("Articles d'appel", "a_appel", articles_appel, "Articles", "a_associations"),
     ("Ventes complémentaires manquées", "a_complements", complements, "Articles", "a_appel"),
