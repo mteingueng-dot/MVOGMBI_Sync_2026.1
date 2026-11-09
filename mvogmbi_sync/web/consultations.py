@@ -27,7 +27,7 @@ DUREE = 300  # s
 MOTS_QUANTITE = ("Quantité", "Cumul", "Vendu", "Stock", "Besoin", "À acheter", "Sold", "Factures", "Jours",
                  # analyses décisionnelles : nombres sans unité (page_rapports.MOTS_SANS_UNITE)
                  "Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z)", "Articles par", "Commandes par",
-                 "Employés actifs", "Active employees", "Orders per", "Items per",
+                 "Employés actifs", "Active employees", "Orders per", "Items per", "Commandes moyennes", "Average orders",
                    "Affinité", "Sensibilité", "Irrégularité", "Écart inhabituel", "Note du client", "Inégalité", "Dépendance (")
 
 

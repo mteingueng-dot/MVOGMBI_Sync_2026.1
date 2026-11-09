@@ -20,6 +20,8 @@ details.choix-multiple label.tout { font-weight: 600; border-bottom: 1px solid v
 .js form:not([method='post']) .sans-js { display: none !important; }
 .filtres-tableau { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0 0; }
 .filtres-tableau input { width: 16em; }
+/* bouton de la touche Entrée : présent (1er bouton du formulaire) mais invisible */
+.bouton-entree { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 /* « Photographier une facture » : gros bouton pour le téléphone */
 .photo-facture label.bouton-photo { display: block; text-align: center; background: #1a9b3c; color: #fff;
   border-radius: 10px; padding: 22px 12px; font-size: 20px; font-weight: 600; margin: 12px 0; cursor: pointer; }

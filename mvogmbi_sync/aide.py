@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.29"
+VERSION = "1.0.32"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -733,6 +733,19 @@ FAQ = {
                     "projeté et les ventes à faire par jour restant. Sous 95 % projetés, la décision « Rattraper "
                     "l'objectif de la période » s'ajoute à la synthèse. L'achalandage signale aussi les heures "
                     "d'ouverture et de fermeture qui vendent moins du quart d'une heure moyenne."),
+        ("question", "Quelles analyses aident à préparer la semaine (personnel, stock, commandes) ?"),
+        ("reponse", "Prévisions > « Achalandage prévu » : commandes attendues par jour et par heure la semaine qui "
+                    "suit, et employés conseillés. Prévisions > « Quantités prévues par article » : quantité à prévoir "
+                    "chaque jour pour les articles importants (exportez le tableau pour les commandes). Articles > "
+                    "« Catégories selon le jour » : quel jour chaque catégorie se vend le plus. Rapports > « Jours "
+                    "fériés » : effet d'un jour férié et de sa veille. Choisissez « 30 derniers jours » pour une "
+                    "prévision de la semaine qui vient."),
+        ("question", "Quelles analyses suivent l'argent et la rentabilité ?"),
+        ("reponse", "Finances : « Pourquoi le bénéfice change », « Quand le magasin gagne le plus » (bénéfice par jour "
+                    "et par heure), « Seuil de rentabilité » (ventes nécessaires par jour pour couvrir les frais : "
+                    "saisissez le poste « Autres charges » dans Comptabilité > Budget et écarts), « Espèces et "
+                    "cartes », « Taxes et pourboires ». Articles : « Articles qui baissent », « Nouveaux articles ». "
+                    "Clients : « Valeur des clients »."),
         ("question", "Les décisions arrivent-elles aussi par courriel ?"),
         ("reponse", "Oui : le courriel du matin (traitement de nuit) contient les 8 premières décisions de « Synthèse "
                     "et décisions », calculées sur les 4 dernières semaines comparées aux 4 d'avant, en couleur selon "
@@ -1499,6 +1512,17 @@ FAQ = {
                     "remaining day. Below 95% projected, the decision “Catch up with the period target” is added to the "
                     "summary. The traffic analysis also flags opening and closing hours that sell less than a quarter "
                     "of an average hour."),
+        ("question", "Which analyses help prepare the week (staff, stock, orders)?"),
+        ("reponse", "Forecasts > “Expected traffic”: expected orders by day and hour for the following week, and "
+                    "recommended employees. Forecasts > “Expected quantities by item”: quantity to plan each day for "
+                    "key items (export the table for orders). Items > “Categories by day”: which day each category "
+                    "sells most. Reports > “Public holidays”: effect of a public holiday and the day before. Choose "
+                    "“Last 30 days” for a forecast of the coming week."),
+        ("question", "Which analyses follow money and profitability?"),
+        ("reponse", "Finances: “Why profit changes”, “When the store earns the most” (profit by day and hour), "
+                    "“Break-even point” (sales needed per day to cover expenses: enter the “Other expenses” line in "
+                    "Accounting > Budget and variances), “Cash and cards”, “Taxes and tips”. Items: “Declining "
+                    "items”, “New items”. Customers: “Customer value”."),
         ("question", "Do the decisions also arrive by email?"),
         ("reponse", "Yes: the morning email (night processing) lists the first 8 decisions of “Summary and "
                     "decisions”, calculated over the last 4 weeks compared with the 4 before, colored by priority. The "

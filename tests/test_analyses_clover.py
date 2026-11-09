@@ -22,6 +22,8 @@ def _commande(ident, jour: date, articles: list[tuple[str, str, int]], client=No
             "customers": {"elements": [{"id": client}] if client else []},
             "payments": {"elements": [{"result": "SUCCESS", "createdTime": moment,
                                        "amount": sum(p for _n, _i, p in articles),
+                                       "taxAmount": sum(p for _n, _i, p in articles) * 15 // 100,
+                                       "tipAmount": 100 if employe == "E1" else 0,
                                        "tender": {"label": "Espèces" if employe == "E2" else "Carte"}}]},
             "lineItems": {"elements": lignes}}
 
@@ -84,7 +86,7 @@ def test_chaque_analyse_est_rangee_dans_une_section_existante():
 def test_toutes_les_analyses_rendent_un_rapport_complet():
     for cle, r in _toutes().items():
         assert r.cartes and r.entetes and r.note, cle
-        assert r.lignes or cle in ("a_prix", "a_marge"), cle  # aucun changement de prix ; marge : sans coûts
+        assert r.lignes or cle in ("a_prix", "a_marge", "a_baisse", "a_poids", "a_ruptures"), cle  # aucun changement de prix ; marge : sans coûts
         assert all(len(l) == len(r.entetes) for l in r.lignes), cle
         assert all(len(v) == len(r.etiquettes) for _n, v in r.series), cle
 
@@ -190,7 +192,7 @@ def test_graphiques_de_plus_sans_vide():
     from mvogmbi_sync import langues
 
     for cle, r in _toutes().items():
-        if cle not in ("a_prix", "a_marge"):  # aucun changement de prix ; marge : sans coûts Sage
+        if cle not in ("a_prix", "a_marge", "a_baisse", "a_seuil", "a_poids", "a_ruptures"):  # pas de changement de prix ni de baisse ; marge : sans coûts
             assert r.graphiques, cle
         for g in r.graphiques:
             assert g["elements"] or any(v for _n, vs in g["series"] for v in vs), (cle, g["titre"])
@@ -377,3 +379,130 @@ def test_nouveaux_articles_et_jours_feries():
     fer = t["a_feries"]
     assert fer.lignes[0][0] == "2026-09-07" and fer.lignes[0][1] == "Fête du Travail"  # 1er lundi de septembre
     assert dict((t_, v) for t_, _g, v in fer.cartes)["Jours fériés dans la période"] == 1
+
+
+def test_analyses_de_la_soiree():
+    """Taxes et pourboires, gains par moment, articles qui baissent, catégories selon le jour, achalandage prévu."""
+    t = {cle: an.calculer(cle, _periode(), _avant(), COUTS, DU, AU, DU2, AU2)
+         for cle in ("a_taxes", "a_gains", "a_baisse", "a_categories_jour", "a_prevu")}
+    gains = {t_: v for t_, _g, v in t["a_gains"].cartes}
+    assert gains["Jour qui rapporte le plus"] == "samedi" and gains["Mesure"] == "Bénéfice brut"
+    cj = t["a_categories_jour"]
+    assert cj.entetes[1] == "lundi" and {l[0] for l in cj.lignes} == {"Fruits", "Riz"}
+    prevu = t["a_prevu"]
+    assert prevu.lignes and all(l[3] >= 1 for l in prevu.lignes)
+    assert {t_: v for t_, _g, v in t["a_baisse"].cartes}["Semaines comparées"] == 4
+    assert t["a_taxes"].cartes[0][0] == "Taxes perçues"
+
+
+def test_article_qui_baisse():
+    """Riz vendu 4 fois par jour la 1re semaine, puis 3, 2, 1 : forte baisse."""
+    cmds, n = [], 0
+    for i in range(28):
+        j = DU + timedelta(days=i)
+        for _k in range(4 - i // 7):
+            n += 1
+            cmds.append(_commande(f"R{n}", j, [("Riz", "R", 1000)]))
+    r = an.calculer("a_baisse", _donnees(cmds), _donnees([]), {}, DU, AU, DU2, AU2)
+    assert r.lignes and r.lignes[0][0] == "Riz" and r.lignes[0][7] == "Forte baisse"
+
+
+def test_valeur_seuil_et_quantites(tmp_path):
+    from mvogmbi_sync.budget import Budget, POSTES
+
+    Budget(tmp_path).definir(2026, 9, {POSTES[2]: D("100")})
+    Budget(tmp_path).definir(2026, 10, {POSTES[2]: D("100")})
+    d, a = _periode(), _avant()
+    seuil = an.calculer("a_seuil", d, a, COUTS, DU, AU, DU2, AU2, racine=tmp_path)
+    c = {t_: v for t_, _g, v in seuil.cartes}
+    assert c["Frais du mois (budget)"] == D("100.00") and c["Ventes nécessaires par jour ouvert"] > 0
+    valeur = an.calculer("a_valeur", d, a, {}, DU, AU, DU2, AU2)
+    assert valeur.lignes[0][0] in ("Client Un", "Client Deux", "Client Trois")
+    q = an.calculer("a_quantites", d, a, {}, DU, AU, DU2, AU2)
+    samedi = {l[0]: l[7] for l in q.lignes}  # le samedi vend 3 fois plus
+    assert samedi and max(samedi.values()) >= D("3.0")
+
+
+def test_jour_du_mois_saison_et_poids():
+    """Début de mois plus fort ; mangue vendue surtout en août ; plantain au poids plus cher qu'avant."""
+    cmds, n = [], 0
+    debut = date(2026, 6, 1)
+    for i in range(122):  # juin à septembre
+        j = debut + timedelta(days=i)
+        for _k in range(3 if j.day <= 5 else 1):
+            n += 1
+            cmds.append(_commande(f"J{n}", j, [("Riz", "R", 1000)]))
+        if j.month == 8:
+            n += 1
+            cmds.append(_commande(f"J{n}", j, [("Mangue", "M", 1500)]))
+        elif j.day == 15:
+            n += 1
+            cmds.append(_commande(f"J{n}", j, [("Mangue", "M", 1500)]))
+    poids = _commande("P1", date(2026, 9, 20), [("Plantain lb", "P", 500)])
+    poids["lineItems"]["elements"][0]["unitQty"] = 1500
+    cmds.append(poids)
+    d = _donnees(cmds)
+    avant = _commande("P0", date(2026, 5, 20), [("Plantain lb", "P", 400)])
+    avant["lineItems"]["elements"][0]["unitQty"] = 2000
+    a = _donnees([avant])
+    du, au = date(2026, 6, 1), date(2026, 9, 30)
+    jdm = an.calculer("a_jour_mois", d, a, {}, du, au, date(2026, 2, 1), date(2026, 5, 31))
+    c = {t_: v for t_, _g, v in jdm.cartes}
+    assert c["Meilleur moment du mois"] == "du 1er au 5" and c["Indice du meilleur moment"] > 150
+    sai = an.calculer("a_saison", d, a, {}, du, au, date(2026, 2, 1), date(2026, 5, 31),
+                      aujourd_hui=date(2026, 7, 10))
+    mangue = next(l for l in sai.lignes if l[0] == "Mangue")
+    assert mangue[2] == "août 2026" and mangue[8] == "Article de saison"
+    assert [l[0] for l in sai.prochains] == ["Mangue"]  # août = mois prochain
+    poi = an.calculer("a_poids", d, a, {}, du, au, date(2026, 2, 1), date(2026, 5, 31))
+    ligne = poi.lignes[0]
+    assert ligne[0] == "Plantain lb" and ligne[3] == D("1.500") and ligne[5] == D("5.00") and ligne[7] == D("25.0")
+    assert poi.hausses_prix and poi.graphiques
+    syn = an.calculer("a_synthese", d, a, {}, du, au, date(2026, 2, 1), date(2026, 5, 31), aujourd_hui=date(2026, 7, 10))
+    assert any("saison" in str(l[1]) for l in syn.lignes)
+
+
+def test_ruptures_probables():
+    """Article vendu chaque jour puis plus du tout depuis 4 jours : rupture en cours ; trou de 2 jours : rien."""
+    cmds, n = [], 0
+    debut = date(2026, 9, 1)
+    for k in range(30):
+        j = debut + timedelta(days=k)
+        n += 1
+        cmds.append(_commande(f"T{n}", j, [("Pain", "P", 300)]))
+        if k < 26:
+            cmds.append(_commande(f"R{n}", j, [("Riz", "R", 1000)]))
+        if k not in (10, 11):
+            cmds.append(_commande(f"L{n}", j, [("Lait", "L", 500)]))
+        if k >= 10:  # lancé en cours de période : pas une rupture avant sa 1re vente
+            cmds.append(_commande(f"N{n}", j, [("Neuf", "N", 800)]))
+    d = _donnees(cmds)
+    a = _donnees([])
+    du, au = debut, debut + timedelta(days=29)
+    r = an.calculer("a_ruptures", d, a, {}, du, au, date(2026, 8, 1), date(2026, 8, 31), aujourd_hui=au + timedelta(days=1))
+    noms = {l[0]: l for l in r.lignes}
+    assert "Lait" not in noms and "Pain" not in noms and "Neuf" not in noms
+    riz = noms["Riz"]
+    assert riz[4] == 4 and riz[7] == "Oui" and riz[9] == D("40.00")
+    assert r.graphiques
+    syn = an.calculer("a_synthese", d, a, {}, du, au, date(2026, 8, 1), date(2026, 8, 31), aujourd_hui=au + timedelta(days=1))
+    assert any("ne se vendent plus" in str(l[1]) for l in syn.lignes)
+
+
+def test_articles_d_appel():
+    """Viande toujours avec d'autres articles dans de grosses commandes : article d'appel ; Eau achetée seule : achat
+    rapide."""
+    cmds = []
+    for k in range(30):
+        j = date(2026, 9, 1) + timedelta(days=k)
+        cmds.append(_commande(f"AP-V{k}", j, [("Viande", "V", 3000), ("Riz", "R", 1500), ("Huile", "H", 2000)]))
+        for e in range(3):
+            cmds.append(_commande(f"AP-E{k}-{e}", j, [("Eau", "E", 200)]))
+        cmds.append(_commande(f"AP-F{k}", j, [("Riz", "R", 1500)]))
+    d, a = _donnees(cmds), _donnees([])
+    r = an.calculer("a_appel", d, a, {}, date(2026, 9, 1), date(2026, 9, 30), date(2026, 8, 1), date(2026, 8, 31))
+    profils = {l[0]: l[10] for l in r.lignes}
+    assert profils["Viande"] == "Article d'appel" and profils["Eau"] == "Achat rapide"
+    viande = next(l for l in r.lignes if l[0] == "Viande")
+    assert viande[4] == D("65.00") and viande[8] == D("35.00") and viande[7] == 0
+    assert r.graphiques and r.appel

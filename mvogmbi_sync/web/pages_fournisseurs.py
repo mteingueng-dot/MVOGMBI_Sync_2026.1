@@ -194,6 +194,7 @@ def factures(ctx: Contexte) -> Reponse:
     # filtres de la liste gardés quand on choisit une facture (ils changeaient l'affichage, constat du 2026-11-08)
     q_fichier = (ctx.req.query.get("fichier") or ctx.req.champ("fichier") or "").strip()
     q_fournisseur = (ctx.req.query.get("fournisseur") or ctx.req.champ("fournisseur") or "").strip()
+    q_numero = (ctx.req.query.get("numero") or ctx.req.champ("numero") or "").strip()
     rang = _entier(ctx.req.query.get("i") or ctx.req.champ("i"))
     ligne = _entier(ctx.req.query.get("l") or ctx.req.champ("l"))
     clover = (ctx.req.champ("clover") == "1") if ctx.req.methode == "POST" else True
@@ -201,7 +202,8 @@ def factures(ctx: Contexte) -> Reponse:
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
         retour = (f"/factures-fournisseurs?filtre={filtre}" + (f"&i={rang}" if rang is not None else "")
-                  + "".join(f"&{k}={quote(v)}" for k, v in (("fichier", q_fichier), ("fournisseur", q_fournisseur))
+                  + "".join(f"&{k}={quote(v)}" for k, v in (("fichier", q_fichier), ("fournisseur", q_fournisseur),
+                                                                ("numero", q_numero))
                             if v))
         if action == "Ajouter des factures":
             if "facture" not in ctx.req.fichiers:
@@ -320,7 +322,8 @@ def factures(ctx: Contexte) -> Reponse:
     registre = fo.Registre(ctx.racine)
     noms, articles = _listes(ctx.racine)
     lien = e(urlencode({"filtre": filtre, **({"fichier": q_fichier} if q_fichier else {}),
-                        **({"fournisseur": q_fournisseur} if q_fournisseur else {})}))
+                        **({"fournisseur": q_fournisseur} if q_fournisseur else {}),
+                        **({"numero": q_numero} if q_numero else {})}))
     cocher_pretes = bool(ctx.req.query.get("cocher"))
     lignes, classes = [], []
 
@@ -333,6 +336,8 @@ def factures(ctx: Contexte) -> Reponse:
         if q_fichier and _simple(q_fichier) not in _simple(f.fichier):
             continue
         if q_fournisseur and nom_fournisseur(f) != q_fournisseur:
+            continue
+        if q_numero and _simple(q_numero) not in _simple(f.numero):
             continue
         coche = ("<input type='checkbox' name='coche' value='{n}' form='barre-factures' aria-label='Cocher'"
                  + (" checked" if f.etat == fo.PRETE and cocher_pretes else "") + ">").format(n=n)
@@ -375,13 +380,15 @@ def factures(ctx: Contexte) -> Reponse:
              + "<label>Fournisseur :</label><select name='fournisseur' autocomplete='off'>"
                "<option value=''>Tous les fournisseurs</option>" + "".join(
                  f"<option{' selected' if nom == q_fournisseur else ''}>{e(nom)}</option>" for nom in sorted(
-                     {nom_fournisseur(f) for f in registre.factures}, key=str.casefold)) + "</select></div>"
+                     {nom_fournisseur(f) for f in registre.factures}, key=str.casefold)) + "</select>"
+             + "<label>N° de facture :</label><input type='search' data-filtre='liste-factures' data-colonnes='3' "
+               f"placeholder='numéro' name='numero' value='{e(q_numero)}' size='12' autocomplete='off'></div>"
              + ("<a class='ouvrir' href='?" + lien + "'>☐ Tout décocher</a>" if cocher_pretes else
                 "<a class='ouvrir' href='?" + lien + "&amp;cocher=1'>☑ Cocher les factures prêtes</a>") + "</form>")
     corps = ("<p class='sous-titre'>🧾 Factures fournisseurs — lecture des factures, articles Sage et import dans Sage"
              "</p>" + message + barre + f"<p class='note'>{e(resume)}</p>"
              + "<div class='factures-deux'><div class='colonne-liste'>"
-             + "<div class='zone-liste-factures' id='liste-factures' data-garder='fichier,fournisseur'>"
+             + "<div class='zone-liste-factures' id='liste-factures' data-garder='fichier,fournisseur,numero'>"
              + tableau_section(Section("Factures", ["", "Fichier", "Fournisseur Sage", "N°", "Date", "Total", "Dépôt",
                                                    "État"], lignes, classes=classes, html=set(range(8)))) + "</div>"
              + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p></div>"
@@ -477,6 +484,13 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
             l.montant = (l.quantite * l.prix).quantize(Decimal("0.01"))  # Montant = Qté × Prix fournisseur
             taxe = ctx.req.champ("l_taxe")
             l.taxe, l.taxable = (taxe, True) if taxe in ("GQ", "G", "Q") else ("", False)
+        # touche Entrée (demande du propriétaire du 2026-11-08) : la ligne en cours est validée (reportée ci-dessus),
+        # puis la ligne suivante ; à la dernière ligne, une nouvelle ligne est créée. Sans ligne : facture enregistrée.
+        if action == "Entrée" and ligne is not None and ligne < len(f.lignes):
+            if ligne + 1 < len(f.lignes):
+                ligne += 1
+            else:
+                action = "➕"
         if action == "➕":
             f.lignes.append(fo.Ligne("", Decimal(1), Decimal(0), Decimal(0)))
             if f.etat == fo.A_SAISIR:
@@ -515,7 +529,7 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
         f.etat = fo.etat_apres_controle(f, f.controles(set(noms) or None))
         memoire.enregistrer()
         r.enregistrer()
-    if not texte and action == "Enregistrer la facture":
+    if not texte and (action == "Enregistrer la facture" or (action == "Entrée" and ligne is None)):
         texte = _message("Facture enregistrée.")
         if f.fournisseur_sage and noms and f.fournisseur_sage not in noms:
             texte += _message(erreur="Choisissez le fournisseur dans la liste des fournisseurs Sage.")
@@ -537,7 +551,10 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
                 "<p class='ok-texte'>✔ Facture cohérente et entièrement reliée : prête à importer.</p>")
     lu = (f"Lu sur la facture : {f.fournisseur_lu or '?'}   •   lecture : {f.modele}"
           + (f"   •   {' ; '.join(f.remarques)}" if f.remarques else ""))
-    html = (f"<form method='post' id='facture' class='carte'>{csrf(ctx)}<input type='hidden' name='i' value='{rang}'>"
+    # 1er bouton du formulaire = celui de la touche Entrée (avant : « Supprimer », la facture était supprimée)
+    html = (f"<form method='post' id='facture' class='carte'>{csrf(ctx)}<button class='bouton-entree' name='action' "
+            "value='Entrée' data-entree tabindex='-1' aria-hidden='true'>Valider</button><input type='hidden' name='i' "
+            f"value='{rang}'>"
             f"<input type='hidden' name='filtre' value='{e(filtre)}'>"
             + (f"<input type='hidden' name='l' value='{ligne}'>" if ligne is not None else "")
             + f"<input type='hidden' name='clover' value='{'1' if clover else '0'}'>"

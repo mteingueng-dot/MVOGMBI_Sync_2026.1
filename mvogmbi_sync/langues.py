@@ -3317,3 +3317,331 @@ for _fr, _en in {
                                          "during the first 4 weeks of the period.",
 }.items():
     EN.setdefault(_fr, _en)
+
+# soirée BI du 2026-11-08 : taxes et pourboires, gains, articles qui baissent, catégories selon le jour, achalandage prévu
+for _fr, _en in {
+    "Taxes et pourboires": "Taxes and tips", "Quand le magasin gagne le plus": "When the store earns the most",
+    "Articles qui baissent": "Declining items", "Catégories selon le jour": "Categories by day",
+    "Achalandage prévu": "Expected traffic",
+    "Taxes perçues": "Taxes collected", "Taxes perçues la période d'avant": "Taxes collected in the previous period",
+    "Taxes en % des ventes": "Taxes as % of sales", "Pourboires": "Tips",
+    "Pourboires la période d'avant": "Tips in the previous period", "Commandes avec pourboire": "Orders with a tip",
+    "Pourboire moyen": "Average tip", "Taxes et pourboires par jour": "Taxes and tips by day",
+    "Pourboires par employé": "Tips by employee", "Taxes en % des ventes par jour": "Taxes as % of sales by day",
+    "Commandes avec pourboire par employé": "Orders with a tip by employee",
+    "{t} de taxes perçues ({p} % des ventes nettes) ; période d'avant : {u}.":
+        "{t} of taxes collected ({p}% of net sales); previous period: {u}.",
+    "Les taxes perçues par Clover servent de contrôle à la déclaration de TPS / TVQ (Comptabilité > Déclaration "
+    "TPS/TVQ) ; les taxes de Sage sont calculées sur la facture du jour.":
+        "The taxes collected by Clover are a check for the GST / QST return (Accounting > GST/QST return); Sage taxes "
+        "are calculated on the daily invoice.",
+    "{p} de pourboires sur {n} commande(s), {m} en moyenne.": "{p} of tips on {n} order(s), {m} on average.",
+    "Aucun pourboire dans la période.": "No tip in the period.",
+    "Ventes nettes par jour": "Net sales per day", "Bénéfice brut par jour": "Gross profit per day",
+    "Commandes par jour": "Orders per day", "Rapporte par jour": "Earns per day", "Mesure": "Measure",
+    "Moment qui rapporte le plus": "Most profitable time", "Jour qui rapporte le plus": "Most profitable day",
+    "Heure qui rapporte le plus": "Most profitable hour",
+    "Bénéfice brut moyen selon l'heure": "Average gross profit by hour",
+    "Ventes nettes moyennes selon l'heure": "Average net sales by hour",
+    "Bénéfice brut moyen selon le jour": "Average gross profit by day",
+    "Ventes nettes moyennes selon le jour": "Average net sales by day",
+    "Les 8 moments qui rapportent le plus": "The 8 most profitable times",
+    "Les 8 moments qui rapportent le moins": "The 8 least profitable times",
+    "Moyenne par jour ouvert de chaque jour de la semaine ; « rapporte » = bénéfice brut au coût moyen de Sage quand au "
+    "moins la moitié des ventes a un coût connu, sinon les ventes nettes.":
+        "Average per open day of each weekday; “earns” = gross profit at the Sage average cost when at least half of "
+        "sales have a known cost, otherwise net sales.",
+    "Le moment qui rapporte le plus : {j} {h} ({v} en moyenne).": "Most profitable time: {j} {h} ({v} on average).",
+    "{n} moment(s) rapportent moins du dixième du meilleur : {c}.":
+        "{n} time(s) earn less than a tenth of the best: {c}.",
+    "Ventes par semaine au début": "Weekly sales at the start", "Ventes par semaine à la fin": "Weekly sales at the end",
+    "Baisse par semaine %": "Weekly decline %", "Baisse par semaine": "Weekly decline", "Niveau": "Level",
+    "Forte baisse": "Steep decline", "Baisse": "Decline", "Articles importants suivis": "Key items followed",
+    "Fortes baisses": "Steep declines", "Semaines complètes": "Full weeks",
+    "Ventes par semaine des articles qui baissent le plus": "Weekly sales of the most declining items",
+    "Baisse par semaine (en % des ventes moyennes)": "Weekly decline (as % of average sales)",
+    "Ventes par semaine : début et fin": "Weekly sales: start and end",
+    "Articles qui baissent par catégorie": "Declining items by category",
+    "Articles importants : les 20 % qui vendent le plus dans la période, vendus presque chaque semaine (25 $ par "
+    "semaine au moins). Baisse : la droite des ventes semaine par semaine perd au moins 5 % de la moyenne chaque "
+    "semaine ; forte : 15 % ou plus.":
+        "Key items: the top 20% sellers of the period, sold almost every week ($25 per week at least). Decline: the "
+        "weekly sales line loses at least 5% of the average each week; steep: 15% or more.",
+    "Choisissez au moins 4 semaines (par exemple « 30 derniers jours » ou un mois).":
+        "Choose at least 4 weeks (for example “Last 30 days” or a month).", "Semaines comparées": "Weeks compared",
+    "Pour la semaine qui vient, choisissez « 30 derniers jours » ou « Ce mois-ci » : la prévision part de la fin de la "
+    "période choisie.": "For the coming week, choose “Last 30 days” or “This month”: the forecast starts from the end "
+                        "of the chosen period.",
+    "{n} article(s) important(s) baissent semaine après semaine ; le plus touché : {a} ({p} % par semaine).":
+        "{n} key item(s) decline week after week; most affected: {a} ({p}% per week).",
+    "Aucun article important ne baisse de façon régulière.": "No key item is steadily declining.",
+    "Comprendre la baisse des articles importants (prix, rupture, concurrence, qualité)":
+        "Understand the decline of key items (price, stock-out, competition, quality)",
+    "{n} article(s) parmi les plus vendus perdent 15 % ou plus de leurs ventes chaque semaine.":
+        "{n} best-selling item(s) lose 15% or more of their sales each week.",
+    "{c} ; {a} par semaine au début, {b} à la fin ; {p} % par semaine":
+        "{c}; {a} per week at the start, {b} at the end; {p}% per week",
+    "Meilleur jour": "Best day", "Indice du meilleur jour (100 = moyenne)": "Best day index (100 = average)",
+    "Jours ouverts dans la période": "Open days in the period",
+    "Ventes moyennes des principales catégories selon le jour": "Average sales of the main categories by day",
+    "Catégories les plus liées à un jour (indice du meilleur jour)": "Categories most tied to one day (best day index)",
+    "Ventes moyennes de tout le magasin selon le jour": "Average store sales by day",
+    "Catégories qui vendent le plus (moyenne par jour)": "Best-selling categories (average per day)",
+    "Ventes moyennes par jour ouvert de chaque jour de la semaine ; indice = meilleur jour / jour moyen × 100 (200 = "
+    "deux fois plus ce jour-là).": "Average sales per open day of each weekday; index = best day / average day × 100 "
+                                    "(200 = twice as much that day).",
+    "{c} se vend surtout le {j} (indice {i}) : prévoir plus de stock la veille.":
+        "{c} sells mostly on {j} (index {i}): plan more stock the day before.",
+    "Commandes prévues": "Expected orders", "Employés conseillés": "Recommended employees",
+    "Commandes prévues la semaine prochaine": "Orders expected next week",
+    "Charge habituelle d'un employé (commandes par heure)": "Usual employee load (orders per hour)",
+    "Heure la plus chargée prévue": "Busiest expected hour", "Employés au plus fort": "Employees at the peak",
+    "Commandes prévues par jour la semaine prochaine": "Expected orders by day next week",
+    "Heures les plus chargées prévues": "Busiest expected hours",
+    "Commandes prévues selon l'heure (toute la semaine)": "Expected orders by hour (whole week)",
+    "Employés conseillés au plus fort de chaque jour": "Recommended employees at each day's peak", "Employés": "Employees",
+    "Aucune vente pour calculer la prévision.": "No sales to calculate the forecast.",
+    "Prévision : moyenne des commandes du même jour et de la même heure sur les 4 dernières semaines ({d} au {f}). "
+    "Employés conseillés : commandes prévues / charge habituelle d'un employé ({c} commandes par heure), arrondi "
+    "au-dessus.": "Forecast: average orders of the same day and hour over the last 4 weeks ({d} to {f}). Recommended "
+                  "employees: expected orders / usual employee load ({c} orders per hour), rounded up.",
+    "Semaine du {l} : {n} commandes prévues ; plus forte heure : {p} ({v} commandes, {e} employé(s)).":
+        "Week of {l}: {n} expected orders; busiest hour: {p} ({v} orders, {e} employee(s)).",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# soirée BI du 2026-11-08 (2) : valeur des clients, seuil de rentabilité, quantités prévues
+for _fr, _en in {
+    "Valeur des clients": "Customer value", "Seuil de rentabilité": "Break-even point",
+    "Quantités prévues par article": "Expected quantities by item",
+    "Visites par mois": "Visits per month", "Dépense par mois": "Spending per month", "Valeur sur un an": "Value over a year",
+    "Valeur moyenne d'un client sur un an": "Average customer value over a year",
+    "Valeur sur un an des 10 meilleurs": "Value over a year of the top 10", "Part des 10 meilleurs": "Share of the top 10",
+    "Clients selon leur valeur sur un an": "Customers by value over a year",
+    "Les clients qui valent le plus (sur un an)": "Most valuable customers (over a year)",
+    "Clients qui viennent le plus souvent (visites par mois)": "Most frequent customers (visits per month)",
+    "Plus gros paniers des clients identifiés": "Largest baskets of identified customers",
+    "Valeur sur un an = dépense par mois de présence (du premier achat connu à la fin de la période, période d'avant "
+    "comprise) × 12 ; seuls les clients identifiés à la caisse sont comptés.":
+        "Value over a year = spending per month of presence (from the first known purchase to the end of the period, "
+        "previous period included) × 12; only customers identified at the till are counted.",
+    "Les 10 meilleurs clients valent {v} par an, {p} % de la valeur de tous les clients identifiés.":
+        "The top 10 customers are worth {v} a year, {p}% of the value of all identified customers.",
+    "Aucun client identifié dans la période.": "No identified customer in the period.",
+    "Marge brute réelle": "Actual gross margin", "Frais du mois (budget)": "Monthly expenses (budget)",
+    "Ventes nécessaires par mois": "Sales needed per month",
+    "Ventes nécessaires par jour ouvert": "Sales needed per open day",
+    "Ventes moyennes par jour ouvert": "Average sales per open day", "Jours au-dessus du seuil": "Days above break-even",
+    "Ventes par jour et ventes nécessaires pour couvrir les frais": "Sales by day and sales needed to cover expenses",
+    "Ventes nécessaires": "Sales needed", "Jours au-dessus et au-dessous du seuil": "Days above and below break-even",
+    "Au-dessus du seuil": "Above break-even", "Au-dessous du seuil": "Below break-even",
+    "Couvre les frais": "Covers expenses", "Oui": "Yes", "Non": "No",
+    "Jours les plus au-dessus du seuil": "Days furthest above break-even",
+    "Jours les plus au-dessous du seuil": "Days furthest below break-even",
+    "Seuil de rentabilité : ventes dont la marge brute couvre les autres frais du mois (loyer, salaires, etc.) saisis "
+    "dans Comptabilité > Budget et écarts (poste « Autres charges »).":
+        "Break-even point: sales whose gross margin covers the other monthly expenses (rent, wages, etc.) entered in "
+        "Accounting > Budget and variances (“Other expenses” line).",
+    "Coûts Sage absents : marge inconnue, seuil non calculable.":
+        "Sage costs missing: margin unknown, break-even cannot be calculated.",
+    "Aucun montant « Autres charges » au budget de la période : saisissez-le dans Comptabilité > Budget et écarts pour "
+    "connaître le seuil.": "No “Other expenses” amount in the budget for the period: enter it in Accounting > Budget "
+                           "and variances to know the break-even point.",
+    "Il faut {s} de ventes par jour ouvert pour couvrir {f} de frais par mois avec une marge de {m} % ; le magasin fait "
+    "{v} en moyenne.": "{s} of sales per open day are needed to cover {f} of monthly expenses with a {m}% margin; the "
+                       "store makes {v} on average.",
+    "Les ventes ne couvrent pas les frais : augmenter les ventes ou la marge, ou réduire les frais":
+        "Sales do not cover expenses: increase sales or margin, or cut expenses",
+    "Il faut {s} par jour ouvert ; le magasin fait {v}.": "{s} per open day is needed; the store makes {v}.",
+    "Total de la semaine": "Weekly total", "Articles prévus": "Items forecast", "Semaine du": "Week of",
+    "Semaines utilisées": "Weeks used", "Quantités prévues": "Expected quantities",
+    "Quantités prévues par jour (articles importants)": "Expected quantities by day (key items)",
+    "Articles à prévoir en plus grande quantité (semaine)": "Items to plan in largest quantity (week)",
+    "Quantités prévues par catégorie": "Expected quantities by category",
+    "Articles à prévoir surtout le samedi": "Items to plan mostly on Saturday",
+    "Quantité prévue = moyenne vendue le même jour de la semaine sur les 4 semaines du {d} au {f} (articles importants : "
+    "les 20 % qui vendent le plus). Pour la semaine qui vient, choisissez « 30 derniers jours ».":
+        "Expected quantity = average sold on the same weekday over the 4 weeks from {d} to {f} (key items: the top 20% "
+        "sellers). For the coming week, choose “Last 30 days”.",
+    "Semaine du {l} : quantités prévues pour {n} article(s) ; exportez le tableau pour préparer les commandes.":
+        "Week of {l}: expected quantities for {n} item(s); export the table to prepare orders.",
+}.items():
+    EN.setdefault(_fr, _en)
+
+# 1.0.31 : ventes selon le jour du mois, articles de saison, ventes au poids (2026-11-09)
+for _fr, _en in {
+    "Ventes selon le jour du mois": "Sales by day of the month", "Articles de saison": "Seasonal items",
+    "Ventes au poids": "Sales by weight",
+    "du 1er au 5": "1st to 5th", "du 6 au 10": "6th to 10th", "du 11 au 15": "11th to 15th",
+    "du 16 au 20": "16th to 20th", "du 21 au 25": "21st to 25th", "du 26 à la fin du mois": "26th to end of month",
+    "janvier": "January", "février": "February", "mars": "March", "avril": "April", "mai": "May", "juin": "June",
+    "juillet": "July", "août": "August", "septembre": "September", "octobre": "October", "novembre": "November",
+    "décembre": "December",
+    "Jours du mois": "Days of the month", "Jours ouverts": "Open days", "Ventes moyennes par jour": "Average sales per day",
+    "Indice (100 = jour normal)": "Index (100 = normal day)", "Commandes moyennes par jour": "Average orders per day",
+    "Jours analysés": "Days analysed", "Meilleur moment du mois": "Best time of the month",
+    "Indice du meilleur moment": "Index of the best time", "Moment le plus faible du mois": "Weakest time of the month",
+    "Indice du moment le plus faible": "Index of the weakest time",
+    "Indice des ventes selon le jour du mois (100 = jour normal)": "Sales index by day of the month (100 = normal day)",
+    "Ventes moyennes par jour selon le moment du mois": "Average sales per day by time of the month",
+    "Commandes moyennes par jour selon le moment du mois": "Average orders per day by time of the month",
+    "Panier moyen selon le moment du mois": "Average basket by time of the month",
+    "Indice : ventes du jour comparées à un jour normal du même jour de la semaine (100 = normal, 120 = 20 % de plus) ; "
+    "la période choisie et la période d'avant sont réunies.":
+        "Index: the day's sales compared with a normal day of the same weekday (100 = normal, 120 = 20% more); the "
+        "chosen period and the previous period are combined.",
+    "Seulement {n} jours analysés : choisissez une période de 2 mois ou plus pour un résultat fiable.":
+        "Only {n} days analysed: choose a period of 2 months or more for a reliable result.",
+    "Les jours {t} du mois vendent {p} % de plus qu'un jour normal : prévoir stock et personnel.":
+        "Days {t} of the month sell {p}% more than a normal day: plan stock and staff.",
+    "Les jours {t} du mois vendent {p} % de moins qu'un jour normal : bon moment pour une promotion.":
+        "Days {t} of the month sell {p}% less than a normal day: a good time for a promotion.",
+    "Ventes régulières tout au long du mois : aucun moment du mois ne s'écarte de plus de 10 % d'un jour normal.":
+        "Steady sales throughout the month: no time of the month differs by more than 10% from a normal day.",
+    "Prévoir plus de stock et de personnel les jours {t} du mois": "Plan more stock and staff on days {t} of the month",
+    "Ces jours vendent {p} % de plus qu'un jour normal.": "These days sell {p}% more than a normal day.",
+    "Mois le plus fort": "Strongest month", "Ventes par jour (mois le plus fort)": "Sales per day (strongest month)",
+    "Ventes par jour (moyenne des mois)": "Sales per day (average of months)", "Mois le plus faible": "Weakest month",
+    "Ventes par jour (mois le plus faible)": "Sales per day (weakest month)",
+    "Indice de saison (100 = régulier)": "Seasonal index (100 = steady)", "Profil": "Profile",
+    "À confirmer (moins de 3 mois)": "To be confirmed (under 3 months)", "Article de saison": "Seasonal item",
+    "Régulier": "Steady", "Vendu certains mois seulement": "Sold in some months only", "Mois analysés": "Months analysed", "Articles réguliers": "Steady items",
+    "À préparer le mois prochain": "To prepare next month",
+    "Ventes par jour ouvert de chaque mois (tout le magasin)": "Sales per open day each month (whole store)",
+    "Ventes nettes par jour ouvert": "Net sales per open day",
+    "Articles les plus saisonniers (indice de saison)": "Most seasonal items (seasonal index)",
+    "Articles de saison par catégorie": "Seasonal items by category",
+    "Meilleur mois des articles de saison (nombre d'articles)": "Best month of seasonal items (number of items)",
+    "Indice de saison : ventes par jour du mois le plus fort / moyenne de tous les mois × 100 (150 = 50 % de plus au "
+    "meilleur mois). Seuls les mois d'au moins 20 jours ouverts comptent ; choisissez « Cette année » pour voir toutes "
+    "les saisons.": "Seasonal index: sales per day in the strongest month / average of all months × 100 (150 = 50% "
+                    "more in the best month). Only months with at least 20 open days count; choose “This year” to see "
+                    "all seasons.",
+    "Seulement {n} mois complets : choisissez une période d'au moins 3 mois pour reconnaître les articles de saison.":
+        "Only {n} full months: choose a period of at least 3 months to recognise seasonal items.",
+    "{n} article(s) de saison parmi les plus vendus : commander plus avant leur meilleur mois et moins ensuite.":
+        "{n} seasonal item(s) among the best sellers: order more before their best month and less afterwards.",
+    "Aucun article important ne dépend d'une saison : ventes stables d'un mois à l'autre.":
+        "No key item depends on a season: sales are stable from month to month.",
+    "À préparer pour {m} : {a}.": "To prepare for {m}: {a}.",
+    "Préparer les articles de saison de {m} (commande, place en rayon)":
+        "Prepare the seasonal items of {m} (orders, shelf space)",
+    "{n} article(s) importants vendent le plus en {m}.": "{n} key item(s) sell the most in {m}.",
+    "{c} ; indice de saison {i} ; {v} par jour au meilleur mois": "{c}; seasonal index {i}; {v} per day in the best month",
+    "Quantité vendue (poids)": "Quantity sold (weight)", "Quantité moyenne par commande": "Average quantity per order",
+    "Prix moyen par unité de poids": "Average price per unit of weight", "Prix moyen avant": "Average price before",
+    "Écart de prix %": "Price change %", "Part des ventes %": "Share of sales %",
+    "Part des ventes au poids": "Share of sales by weight", "Articles vendus au poids": "Items sold by weight",
+    "Commandes avec un article au poids": "Orders with an item sold by weight",
+    "Ventes au poids par jour": "Sales by weight per day",
+    "Articles au poids qui vendent le plus": "Best-selling items sold by weight",
+    "Quantité moyenne par commande (poids)": "Average quantity per order (weight)",
+    "Écart du prix moyen au poids avec la période d'avant (%)": "Change in average price by weight vs previous period (%)",
+    "Article vendu au poids : au moins une vente avec une quantité non entière (kg, lb) ; prix moyen = ventes nettes / "
+    "quantité vendue.": "Item sold by weight: at least one sale with a non-whole quantity (kg, lb); average price = net "
+                        "sales / quantity sold.",
+    "Aucun article vendu au poids dans la période.": "No item sold by weight in the period.",
+    "Les articles au poids font {p} % des ventes et se trouvent dans {q} % des commandes.":
+        "Items sold by weight make {p}% of sales and are in {q}% of orders.",
+    "{n} : le prix moyen au poids passe de {a} à {b} ({p} %) : vérifier le prix affiché et la balance.":
+        "{n}: the average price by weight goes from {a} to {b} ({p}%): check the displayed price and the scale.",
+    "{n} : le prix moyen au poids baisse de {a} à {b} ({p} %) : rabais ou prix mal saisi ?":
+        "{n}: the average price by weight drops from {a} to {b} ({p}%): discount or wrongly entered price?",
+    "Vérifier les prix au poids qui augmentent (prix affiché, balance)":
+        "Check rising prices by weight (displayed price, scale)",
+    "{n} article(s) au poids coûtent 10 % ou plus qu'avant.": "{n} item(s) sold by weight cost 10% or more than before.",
+    "{a} → {b} ({p} %)": "{a} → {b} ({p}%)",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
+# 1.0.31 : ruptures probables (2026-11-09)
+for _fr, _en in {
+    "Ruptures probables": "Probable stockouts",
+    "Article": "Item",
+    "Jours de vente %": "Days with sales %",
+    "Plus longue absence (jours)": "Longest absence (days)",
+    "Absence du": "Absence from",
+    "Absence au": "Absence to",
+    "Absence en cours": "Ongoing absence",
+    "Jours sans vente": "Days without sales",
+    "Ventes perdues estimées": "Estimated lost sales",
+    "Articles réguliers suivis": "Regular items tracked",
+    "Ruptures en cours": "Ongoing stockouts",
+    "Part des ventes perdues": "Share of lost sales",
+    "Articles réguliers sans vente, par jour": "Regular items without sales, per day",
+    "Articles sans vente": "Items without sales",
+    "Ventes perdues estimées par article": "Estimated lost sales by item",
+    "Plus longue absence (jours ouverts)": "Longest absence (open days)",
+    "Ventes perdues estimées par catégorie": "Estimated lost sales by category",
+    "Rupture probable : article vendu au moins 7 jours ouverts sur 10 (parmi ceux qui font la moitié des ventes) qui "
+    "ne se vend pas pendant assez de jours ouverts de suite pour que ce soit presque sûrement un manque de stock (3 "
+    "jours au moins). La journée en cours n'est pas comptée.":
+        "Probable stockout: an item sold on at least 7 open days out of 10 (among those making half of sales) that "
+        "does not sell for enough open days in a row to be almost surely out of stock (3 days at least). The current "
+        "day is not counted.",
+    "Choisissez une période d'au moins 15 jours ouverts (par exemple « 30 derniers jours »).":
+        "Choose a period of at least 15 open days (for example \u201cLast 30 days\u201d).",
+    "Aucune rupture probable : les articles réguliers se sont vendus sans interruption.":
+        "No probable stockout: regular items sold without interruption.",
+    "{n} article(s) régulier(s) ont manqué ; environ {v} de ventes perdues ({p} % des ventes).":
+        "{n} regular item(s) ran out; about {v} of lost sales ({p}% of sales).",
+    "{n} article(s) ne se vendent plus depuis plusieurs jours, dont {a} depuis le {d} : vérifier le stock et commander.":
+        "{n} item(s) have not sold for several days, including {a} since {d}: check the stock and reorder.",
+    "Vérifier le stock et commander les articles réguliers qui ne se vendent plus":
+        "Check the stock and reorder regular items that no longer sell",
+    "{n} article(s) vendus presque chaque jour ne se vendent plus depuis plusieurs jours : rupture probable.":
+        "{n} item(s) sold almost every day have not sold for several days: probable stockout.",
+    "{c} ; sans vente depuis le {d} ; {v} par jour d'habitude": "{c}; no sales since {d}; usually {v} per day",
+}.items():
+    EN.setdefault(_fr, _en)
+
+
+# 1.0.32 : articles d'appel (2026-11-09)
+for _fr, _en in {
+    "Articles d'appel": "Draw items",
+    "Article d'appel": "Draw item",
+    "Achat rapide": "Quick purchase",
+    "Achats rapides": "Quick purchases",
+    "Articles suivis": "Items tracked",
+    "Courant": "Regular",
+    "Panier moyen avec l'article": "Average basket with the item",
+    "Indice du panier (100 = panier moyen)": "Basket index (100 = average basket)",
+    "Articles différents par commande": "Different items per order",
+    "Acheté seul %": "Bought alone %",
+    "Autres achats par commande": "Other purchases per order",
+    "Autres achats entraînés": "Other purchases brought in",
+    "Panier moyen des commandes avec l'article": "Average basket of orders with the item",
+    "Panier moyen par jour : commandes avec un article d'appel et autres commandes":
+        "Average basket per day: orders with a draw item and other orders",
+    "Avec un article d'appel": "With a draw item",
+    "Autres commandes": "Other orders",
+    "Panier avec l'article": "Basket with the item",
+    "Panier moyen du magasin": "Store average basket",
+    "Autres achats entraînés par l'article": "Other purchases brought in by the item",
+    "Articles achetés seuls le plus souvent (%)": "Items most often bought alone (%)",
+    "Articles suivis par profil": "Items tracked by profile",
+    "Article d'appel : ses clients achètent en plus, à côté de lui, au moins 1,75 fois le panier moyen et il est "
+    "presque toujours acheté avec autre chose (moins de 15 % seul). Achat rapide : acheté seul dans 40 % des commandes "
+    "ou plus. Articles suivis : les 20 % présents dans le plus de commandes, 20 commandes au moins, 1 $ au moins par "
+    "commande (sacs et consignes écartés).":
+        "Draw item: its customers buy, besides it, at least 1.75 times the average basket, and it is almost always "
+        "bought with something else (under 15% alone). Quick purchase: bought alone in 40% of orders or more. Items "
+        "tracked: the 20% found in the most orders, 20 orders at least, 1 $ at least per order (bags and deposits "
+        "left out).",
+    "Pas assez de commandes dans la période pour cette analyse.": "Not enough orders in the period for this analysis.",
+    "{n} article(s) d'appel, dont {a} : les clients qui le prennent dépensent {v} en moyenne ({i} % du panier moyen). "
+    "Ne jamais en manquer ; prudence sur leur prix.":
+        "{n} draw item(s), including {a}: customers who take it spend {v} on average ({i}% of the average basket). "
+        "Never run out; be careful with their price.",
+    "{n} achat(s) rapide(s), dont {a} (acheté seul {p} % du temps) : le placer près de la caisse ou proposer un 2e "
+    "article.":
+        "{n} quick purchase(s), including {a} (bought alone {p}% of the time): place it near the checkout or suggest "
+        "a 2nd item.",
+    "Remettre en stock d'abord les articles d'appel qui manquent": "Restock first the draw items that are missing",
+    "{n} article(s) qui font venir les clients ne se vendent plus : chaque jour coûte aussi les autres achats de ces "
+    "clients.":
+        "{n} item(s) that bring customers in no longer sell: each day also costs these customers' other purchases.",
+    "sans vente depuis le {d}": "no sales since {d}",
+}.items():
+    EN.setdefault(_fr, _en)

@@ -514,6 +514,18 @@ def test_factures_fournisseurs_web(site, tmp_path):
     assert f.lignes[0].confirme and f.etat == fo.PRETE, f.controles()
     _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "action": "Enregistrer la facture"})
     assert "Facture enregistrée" in page and "prête à importer" in page
+    # touche Entrée : 1er bouton du formulaire = « Entrée » (jamais « Supprimer ») ; dernière ligne -> nouvelle ligne
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs?i=0&l=0")
+    formulaire = page[page.index("id='facture'"):]
+    assert formulaire.index("value='Entrée'") < formulaire.index("Supprimer")
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "action": "Entrée"})
+    f = fo.Registre(tmp_path).factures[0]
+    assert len(f.lignes) == 2 and "l=1" in page  # ligne validée, nouvelle ligne ouverte
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, "action": "Entrée"})
+    assert len(fo.Registre(tmp_path).factures[0].lignes) == 2 and "l=1" in page  # passe à la ligne suivante
+    reg = fo.Registre(tmp_path)
+    del reg.factures[0].lignes[1]
+    reg.enregistrer()
     statut, _, entetes = ouvrir(patron, base + "/facture-fournisseur?i=0")
     assert statut == 303 and entetes["Location"] == "/factures-fournisseurs?i=0"
 

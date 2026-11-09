@@ -76,7 +76,7 @@ TITRES_GRAPHIQUES = {
 }
 # colonnes de nombres sans unité (analyses décisionnelles) : jamais affichées en « $ »
 MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z)", "Articles par", "Commandes par", "Jours entre",
-                   "Employés actifs", "Active employees", "Orders per", "Items per",
+                   "Employés actifs", "Active employees", "Orders per", "Items per", "Commandes moyennes", "Average orders",
                    "Affinité", "Sensibilité", "Irrégularité", "Écart inhabituel", "Note du client", "Inégalité", "Dépendance (")
 NOTES_ETATS: dict[str, str] = {}
 PARTIES_GESTION = (("resume", "Résumé"), ("graphiques", "Graphiques"), ("detail", "Détail"))

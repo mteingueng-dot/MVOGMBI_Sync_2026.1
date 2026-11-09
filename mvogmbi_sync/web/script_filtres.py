@@ -3,6 +3,8 @@
 - filtres automatiques (demande du propriétaire du 2026-11-08 : « pas besoin de cliquer sur le bouton Afficher ») :
   dans un formulaire de consultation (method="get"), changer une liste, une case ou une date relance la recherche ;
   le bouton reste pour un navigateur sans script et est caché sinon (classe « sans-js ») ;
+- touche Entrée : clique le bouton [data-entree] du formulaire s'il existe, et n'actionne jamais un bouton qui
+  supprime ou écarte ;
 - filtres de tableau pendant la frappe : <input> ou <select> data-filtre="id du tableau" data-colonnes="1,2" cache les lignes
   qui ne contiennent pas le texte tapé (majuscules et accents ignorés) ; plusieurs champs se cumulent.
 """
@@ -48,9 +50,16 @@ SCRIPT = r"""
     var c = ev.target;
     if (c && c.hasAttribute && c.hasAttribute('data-filtre')) { filtrer(c.getAttribute('data-filtre')); }
   });
-  document.addEventListener('keydown', function (ev) {  // Entrée dans un filtre de tableau : pas d'envoi du formulaire
+  document.addEventListener('keydown', function (ev) {
     var c = ev.target;
-    if (ev.key === 'Enter' && c && c.hasAttribute && c.hasAttribute('data-filtre')) { ev.preventDefault(); }
+    if (ev.key !== 'Enter' || !c || !c.form || c.tagName === 'TEXTAREA' || c.tagName === 'BUTTON') { return; }
+    if (c.hasAttribute('data-filtre')) { ev.preventDefault(); return; }  // filtre de tableau : pas d'envoi
+    var entree = c.form.querySelector('button[data-entree]');
+    if (entree) { ev.preventDefault(); entree.click(); return; }  // action prévue pour la touche Entrée
+    // sécurité : Entrée n'actionne jamais un bouton qui supprime ou écarte
+    var premier = c.form.querySelector('button:not([type=button]):not([type=reset]), input[type=submit]');
+    var texte = premier ? (premier.value + ' ' + premier.textContent + ' ' + premier.className) : '';
+    if (/supprim|écart|ecart|danger|delete|🗑/i.test(texte)) { ev.preventDefault(); }
   });
   document.addEventListener('click', function (ev) {  // les liens d'une liste gardent les filtres tapés
     var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
