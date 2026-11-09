@@ -524,18 +524,26 @@ def _rendu_rapport(libelle: str, r, q: dict | None = None) -> str:
     resume = _resume_html(r)
     graphiques = f"<div class='grille2'>{_graph(evolution)}{_graph(repartition)}</div>" + sup
     if q is None:
-        return titre + resume + graphiques + _tableau_detaille(r)
+        return titre + resume + graphiques + _tableau_detaille(r, libelle)
     partie = q.get("partie") if q.get("partie") in dict(PARTIES) else "resume"
-    corps = {"resume": lambda: resume, "graphiques": lambda: graphiques, "detail": lambda: _tableau_detaille(r)}
+    corps = {"resume": lambda: resume, "graphiques": lambda: graphiques, "detail": lambda: _tableau_detaille(r, libelle)}
     return titre + _sous_pages(q, partie) + f"<div class='onglet-corps'>{corps[partie]()}</div>"
 
 
-def _tableau_detaille(r) -> str:
+def _titre_detail(libelle: str) -> str:
+    """Titre du tableau d'un rapport : son nom plutôt que « Rapport détaillé » (demande du propriétaire du
+    2026-11-09 : « met de bons titres dans les détails »)."""
+    from ..langues import t
+
+    return t("Détail : {l}", l=t(libelle)) if libelle else t("Rapport détaillé")
+
+
+def _tableau_detaille(r, libelle: str = "") -> str:
     """Tableau du rapport ; le n° d'une commande (anomalies) ouvre sa vraie facture Clover dans un nouvel onglet."""
     ids = getattr(r, "ids_commandes", None) or []
     colonne = next((c for c in ("Commande ou jour", "Concerné") if c in r.entetes), None)
     if not any(ids) or colonne is None:
-        return tableau_section(Section("Rapport détaillé", r.entetes, r.lignes))
+        return tableau_section(Section(_titre_detail(libelle), r.entetes, r.lignes))
     col = r.entetes.index(colonne)
     lignes = []
     for ligne, ident in zip(r.lignes, ids + [""] * len(r.lignes)):
@@ -544,7 +552,7 @@ def _tableau_detaille(r) -> str:
         ligne[col] = (f"<a href='/facture-clover?{e(urlencode({'id': ident}))}' target='_blank' "
                       f"title='Ouvrir la facture Clover'>🧾 {texte}</a>") if ident else texte
         lignes.append(ligne)
-    return tableau_section(Section("Rapport détaillé", r.entetes, lignes, html={col}))
+    return tableau_section(Section(_titre_detail(libelle), r.entetes, lignes, html={col}))
 
 
 def _graphe_sup(d: dict, vide: str) -> Graphique:
@@ -681,7 +689,7 @@ def statistiques(ctx: Contexte) -> Reponse:
 
     if q.get("pdf") and ctx.reg.peut_exporter(ctx.u):  # PageRapports.pdf_page : état affiché, période et filtres
         return _pdf_page(ctx, vue, du, au, filtres, etat + contenu)
-    corps = (onglets("Statistiques Clover", ctx) + barre + message + etat + "<div class='corps-stats'>" + _navigation(q_nav, vue, section, limite)
+    corps = (onglets("Statistiques Clover", ctx) + barre + message + etat + "<div class='corps-stats' data-pleine-hauteur>" + _navigation(q_nav, vue, section, limite)
              + f"<div class='contenu-stats'>{contenu}</div></div>")
     html = page(ctx, "Statistiques Clover", corps)
     if auto and au >= date.today():
@@ -769,7 +777,7 @@ def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> 
     from ..etats_enrichis import enrichir
 
     enrichi = enrichir(vue, r["vues"], _vues_avant(r), {"du": r.get("du"), "au": r.get("au")})         if vue in r["vues"] else None
-    titre = f"Tableau : {libelle} — {len(lignes)} ligne(s)"
+    titre = _titre_detail(libelle)  # le nombre de lignes est déjà dans la pastille
     html = set()
     if vue in sc.COLONNES_COMMANDE and b and b.get("donnees") is not None and not q.get("par_jour"):
         col_date, col_num = sc.COLONNES_COMMANDE[vue]  # n° de commande : lien vers la vraie facture Clover
@@ -802,6 +810,28 @@ nav.nav-stats a { display: block; text-decoration: none; color: var(--texte); bo
 nav.nav-stats a.actif { background: var(--menu-actif); color: var(--vert); font-weight: 600; }
 nav.nav-stats a:hover { background: var(--menu-survol); }
 .contenu-stats { flex: 1; min-width: 0; }
+/* graphiques dynamiques : élément survolé surligné, série masquée d'un clic sur sa légende, bulle immédiate */
+svg .g-zone:hover { fill: rgba(31, 111, 235, .08); }
+svg .g-part:hover { opacity: .78; }
+svg rect.g-serie:hover { opacity: .78; }
+svg .g-courbe { transition: opacity .15s; }
+svg .g-leg { cursor: pointer; }
+svg .g-leg:hover text { text-decoration: underline; }
+svg .g-leg.masque { opacity: .35; }
+svg .g-serie.masque { opacity: .06; }
+.bulle-graph { position: fixed; z-index: 1000; pointer-events: none; background: #1f2a24; color: #fff;
+  font-size: 12.5px; line-height: 1.4; padding: 6px 9px; border-radius: 6px; white-space: pre-line;
+  box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 340px; }
+/* PC : la zone des statistiques a la hauteur de la fenêtre (mesurée par /filtres.js, sinon 100vh − 230 px) ; le menu
+   des états et le rapport défilent chacun ; le tableau d'une sous-page « Détail » remplit toute la place */
+@media (min-width: 821px) {
+  .corps-stats { height: calc(100vh - 230px); min-height: 420px; align-items: stretch; }
+  .corps-stats > nav.nav-stats { overflow-y: auto; }
+  .corps-stats > .contenu-stats { overflow-y: auto; display: flex; flex-direction: column; padding-right: 4px; }
+  .contenu-stats > .onglet-corps { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+  .contenu-stats > .onglet-corps > * { flex: none; }
+  .contenu-stats > .onglet-corps > .defile { flex: 1 1 0; min-height: 200px; max-height: none; }
+}
 .cartes-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
 .carte-stat { background: var(--carte); border: 1px solid var(--bord); padding: 6px 10px; }
 .carte-stat .t { font-size: 13px; color: var(--texte); }

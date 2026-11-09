@@ -80,6 +80,13 @@ class Graphique(tk.Canvas):
         self.titre = titre
         self._dessin = None
         self._survol = None   # positions et valeurs des points, pour l'infobulle
+        # séries masquées d'un clic sur leur nom dans la légende (demande du propriétaire du 2026-11-09 : « rends
+        # les interactions dynamiques dans les graphiques ») ; la dernière série visible ne se masque pas
+        self._masquees: set[str] = set()
+        self._series_legende: list[str] = []
+        self.tag_bind("legende", "<Button-1>", self._clic_legende)
+        self.tag_bind("legende", "<Enter>", lambda _e: self.configure(cursor="hand2"))
+        self.tag_bind("legende", "<Leave>", lambda _e: self.configure(cursor=""))
         self.bind("<Configure>", lambda _e: self.redessiner())
         self.bind("<Motion>", self._bulle)
         self.bind("<Leave>", lambda _e: self.delete("bulle"))
@@ -104,6 +111,23 @@ class Graphique(tk.Canvas):
         image = image_widget(self)
         demander_et_ecrire(self, nom, format_, lambda chemin: image.save(chemin) if format_ == "png"
                            else ecrire_pdf(chemin, nom, [], [], [image]))
+
+    def _clic_legende(self, _evenement) -> None:
+        courant = self.find_withtag("current")
+        rang = next((int(t_[3:]) for t_ in self.gettags(courant[0]) if t_.startswith("leg") and t_[3:].isdigit()),
+                    None) if courant else None
+        if rang is None or rang >= len(self._series_legende):
+            return
+        nom = self._series_legende[rang]
+        if nom in self._masquees:
+            self._masquees.discard(nom)
+        elif len(set(self._series_legende) - self._masquees) > 1:
+            self._masquees.add(nom)
+        self.redessiner()
+
+    def _visibles(self, series: list) -> list:
+        """Les séries masquées gardent leur nom (légende grisée) mais plus de valeurs."""
+        return [(x[0], x[1] if x[0] not in self._masquees else [None] * len(x[1]), *x[2:]) for x in series]
 
     def _bulle(self, evenement) -> None:
         """Infobulle au survol : repère vertical, étiquette du point (date, heure…) et valeur de chaque série."""
@@ -160,15 +184,24 @@ class Graphique(tk.Canvas):
         if courante:
             rangees.append((courante, largeur_rangee))
         y = 37 if self.titre else 14
+        self._series_legende = [nom for nom, _c, _p in elements]
+        rang = 0
         for rangee, total in rangees:
             x = (largeur - total + 16) / 2
             for nom, couleur, pointilles, l in rangee:
+                masquee = nom in self._masquees
+                couleur = "#c9cfcb" if masquee else couleur
+                tags = ("legende", f"leg{rang}")
+                self.create_rectangle(x - 3, y - 9, x + l - 13, y + 9, fill="", outline="", tags=tags)
                 if ligne:
-                    self.create_line(x, y, x + 16, y, fill=couleur, width=2, dash=(4, 3) if pointilles else None)
+                    self.create_line(x, y, x + 16, y, fill=couleur, width=2, dash=(4, 3) if pointilles else None,
+                                     tags=tags)
                 else:
-                    self.create_rectangle(x, y - 5, x + 10, y + 5, fill=couleur, outline=couleur)
-                self.create_text(x + marque, y, text=nom, anchor="w", font=POLICE, fill=TEXTE)
+                    self.create_rectangle(x, y - 5, x + 10, y + 5, fill=couleur, outline=couleur, tags=tags)
+                self.create_text(x + marque, y, text=nom, anchor="w", font=POLICE,
+                                 fill="#9aa5a0" if masquee else TEXTE, tags=tags)
                 x += l
+                rang += 1
             y += 17
         return int(y + 6)
 
@@ -185,7 +218,11 @@ class Graphique(tk.Canvas):
     # ------------------------------------------------------------------ barres verticales (2 séries)
     def barres(self, etiquettes: list[str], series: list[tuple[str, list, str]], vide: str = "") -> None:
         """`series` : [(nom, valeurs, couleur)] — la 1re est la période choisie, la 2e la comparaison."""
+        origine = series
+        self._masquees = set()  # nouveau graphique : toutes les séries visibles
+
         def dessiner(largeur, hauteur):
+            series = self._visibles(origine)
             bas, gauche, droite = 30, 52, 12
             valeurs = [float(v or 0) for _, vs, _ in series for v in vs]
             if not etiquettes or not any(valeurs):
@@ -321,7 +358,11 @@ class Graphique(tk.Canvas):
     # ------------------------------------------------------------------ courbes d'évolution
     def courbes(self, etiquettes: list[str], series: list[tuple[str, list, str, bool]], vide: str = "") -> None:
         """`series` : [(nom, valeurs (None = pas de point), couleur, pointillés)] sur les mêmes étiquettes."""
+        origine = series
+        self._masquees = set()  # nouveau graphique : toutes les séries visibles
+
         def dessiner(largeur, hauteur):
+            series = self._visibles(origine)
             bas, gauche, droite = 30, 52, 14
             valeurs = [float(v) for _, vs, _, _ in series for v in vs if v is not None]
             if not etiquettes or not any(valeurs):

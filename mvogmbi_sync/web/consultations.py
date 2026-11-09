@@ -168,7 +168,10 @@ def tableau_section(s: Section, limite: int = 2000) -> str:
                 + (f"<tr>{th}</tr>" if th else "") + f"{vide}</table></div>"
                 + (f"<p class='note'>{e(s.note)}</p>" if s.note else ""))
     nombres = {i for i in range(len(s.entetes)) if _numerique(s.lignes, i)}
-    th = "".join(f"<th class='{'n' if i in nombres else ''}'>{e(c)}</th>" for i, c in enumerate(s.entetes))
+    from ..langues import entetes_courts
+
+    th = "".join(f"<th class='{'n' if i in nombres else ''}'" + (f" title='{e(c)}'" if court != c else "")
+                 + f">{e(court)}</th>" for i, (c, court) in enumerate(zip(s.entetes, entetes_courts(s.entetes))))
     corps = []
     for rang, ligne in enumerate(s.lignes[:limite]):
         total = str(ligne[0]).startswith("Total")

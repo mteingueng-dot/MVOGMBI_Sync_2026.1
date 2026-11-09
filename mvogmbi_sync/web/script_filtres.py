@@ -72,7 +72,54 @@ SCRIPT = r"""
     });
     a.href = url.toString();
   }, true);
+  // zones à la hauteur de la fenêtre (statistiques : menu des états et rapport défilent chacun, le tableau remplit
+  // la place ; demande du propriétaire du 2026-11-09 : « il faut ajuster les tableaux à la taille de la fenêtre »)
+  function ajuster() {
+    document.querySelectorAll('[data-pleine-hauteur]').forEach(function (z) {
+      if (window.innerWidth <= 820) { z.style.height = ''; return; }
+      var haut = z.getBoundingClientRect().top + window.scrollY;
+      z.style.height = Math.max(420, window.innerHeight - haut - 12) + 'px';
+    });
+  }
+  window.addEventListener('resize', ajuster);
+  // graphiques dynamiques (demande du propriétaire du 2026-11-09) : bulle immédiate qui suit la souris (texte du
+  // <title> de l'élément), élément survolé surligné, clic sur un nom de la légende = série masquée ou réaffichée
+  var bulle = null;
+  function preparerGraphiques() {
+    document.querySelectorAll('svg .g-zone, svg .g-part, svg .g-serie').forEach(function (el) {
+      var titre = el.querySelector('title');
+      if (titre) { el.setAttribute('data-bulle', titre.textContent); titre.remove(); }
+    });
+  }
+  function montrerBulle(texte, ev) {
+    if (!bulle) { bulle = document.createElement('div'); bulle.className = 'bulle-graph'; document.body.appendChild(bulle); }
+    bulle.textContent = texte;
+    bulle.hidden = false;
+    var x = ev.clientX + 14, y = ev.clientY + 14;
+    var l = bulle.offsetWidth, h = bulle.offsetHeight;
+    if (x + l > window.innerWidth - 8) { x = ev.clientX - l - 14; }
+    if (y + h > window.innerHeight - 8) { y = ev.clientY - h - 14; }
+    bulle.style.left = x + 'px';
+    bulle.style.top = y + 'px';
+  }
+  document.addEventListener('mousemove', function (ev) {
+    var el = ev.target && ev.target.closest ? ev.target.closest('svg [data-bulle]') : null;
+    if (el) { montrerBulle(el.getAttribute('data-bulle'), ev); } else if (bulle) { bulle.hidden = true; }
+  });
+  document.addEventListener('mouseleave', function () { if (bulle) { bulle.hidden = true; } });
+  document.addEventListener('click', function (ev) {
+    var leg = ev.target && ev.target.closest ? ev.target.closest('svg .g-leg') : null;
+    if (!leg) { return; }
+    var svg = leg.closest('svg'), serie = leg.getAttribute('data-serie');
+    var masque = !leg.classList.contains('masque');
+    leg.classList.toggle('masque', masque);
+    svg.querySelectorAll('.g-serie[data-serie="' + serie + '"]').forEach(function (el) {
+      el.classList.toggle('masque', masque);
+    });
+  });
   document.addEventListener('DOMContentLoaded', function () {
+    ajuster();
+    preparerGraphiques();
     var choisie = document.querySelector('[data-choisie]');  // facture choisie : visible dans la liste
     if (choisie && choisie.scrollIntoView) { choisie.scrollIntoView({block: 'nearest'}); }
     var vus = {};

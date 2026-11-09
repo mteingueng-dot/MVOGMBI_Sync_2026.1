@@ -2,7 +2,7 @@
 graphiques soient identiques à ceux de l'application Windows (demande du propriétaire du 2026-11-03 : « identiques en
 tout point, graphiques et fonctions »). Mêmes calculs (axe `_arrondi_haut`, graduations, moyenne pointillée rouge,
 point le plus haut, valeurs sur les barres, aire sous la courbe, anneau avec « Autres », carte de chaleur), mêmes
-couleurs et polices. L'infobulle au survol est la bulle native du navigateur (<title>), sans script.
+couleurs et polices. L'infobulle au survol est le <title> de chaque élément ; le script du site (/filtres.js) en fait une bulle immédiate, surligne l'élément survolé et masque une série d'un clic sur sa légende.
 """
 
 from __future__ import annotations
@@ -96,10 +96,11 @@ class Graphique:
         self.elements.append(f"<polyline points='{coords}' fill='none' stroke='{couleur}' stroke-width='{epaisseur}'"
                              f"{dash} stroke-linejoin='round' stroke-linecap='round'/>")
 
-    def rect(self, x0, y0, x1, y1, couleur, contour="none", infobulle: str = "") -> None:
+    def rect(self, x0, y0, x1, y1, couleur, contour="none", infobulle: str = "", serie: int | None = None) -> None:
         titre = f"<title>{escape(infobulle)}</title>" if infobulle else ""
+        attr = f" class='g-serie' data-serie='{serie}'" if serie is not None else ""
         self.elements.append(f"<rect x='{min(x0, x1):.1f}' y='{min(y0, y1):.1f}' width='{abs(x1 - x0):.1f}' "
-                             f"height='{abs(y1 - y0):.1f}' fill='{couleur}' stroke='{contour}'>{titre}</rect>")
+                             f"height='{abs(y1 - y0):.1f}' fill='{couleur}' stroke='{contour}'{attr}>{titre}</rect>")
 
     def texte(self, x, y, texte, ancre="", couleur=TEXTE, taille=12, gras=False, longueur=None) -> None:
         h, v = _ancre(ancre) if ancre else ("middle", "middle")
@@ -114,15 +115,16 @@ class Graphique:
             longueur = place if largeur_texte(l, taille) > place else None
             self.texte(x, y + dy, l, ancre, couleur, taille, longueur=longueur)
 
-    def ovale(self, x0, y0, x1, y1, couleur, contour=None, epaisseur=1) -> None:
+    def ovale(self, x0, y0, x1, y1, couleur, contour=None, epaisseur=1, serie: int | None = None) -> None:
+        attr = f" class='g-serie' data-serie='{serie}'" if serie is not None else ""
         self.elements.append(f"<ellipse cx='{(x0 + x1) / 2:.1f}' cy='{(y0 + y1) / 2:.1f}' rx='{(x1 - x0) / 2:.1f}' "
                              f"ry='{(y1 - y0) / 2:.1f}' fill='{couleur}' stroke='{contour or couleur}' "
-                             f"stroke-width='{epaisseur}'/>")
+                             f"stroke-width='{epaisseur}'{attr}/>")
 
     def zone(self, x0, y0, x1, y1, infobulle: str) -> None:
         """Zone de survol invisible (infobulle d'un point de courbe ou d'une colonne de barres)."""
-        self.elements.append(f"<rect x='{x0:.1f}' y='{y0:.1f}' width='{max(1, x1 - x0):.1f}' height='{y1 - y0:.1f}' "
-                             f"fill='transparent'><title>{escape(infobulle)}</title></rect>")
+        self.elements.append(f"<rect class='g-zone' x='{x0:.1f}' y='{y0:.1f}' width='{max(1, x1 - x0):.1f}' "
+                             f"height='{y1 - y0:.1f}' fill='transparent'><title>{escape(infobulle)}</title></rect>")
 
     # ---------------------------------------------------------------- rendu
     def svg(self, classe: str = "graphique") -> str:
@@ -144,6 +146,7 @@ class Graphique:
         haut de la zone de dessin."""
         marque = 22 if ligne else 16
         rangees, courante, largeur_rangee = [], [], 0.0
+        rang_legende = 0
         for nom, couleur, pointilles in elements:
             taille, longueur = TEXTE_TAILLE, (largeur - 24 - marque if largeur_texte(nom) > largeur - 24 - marque
                                               else None)
@@ -151,20 +154,28 @@ class Graphique:
             if courante and largeur_rangee + l > largeur - 24:
                 rangees.append((courante, largeur_rangee))
                 courante, largeur_rangee = [], 0.0
-            courante.append((nom, couleur, pointilles, taille, longueur, l))
+            courante.append((rang_legende, (nom, couleur, pointilles, taille, longueur, l)))
+            rang_legende += 1
             largeur_rangee += l
         if courante:
             rangees.append((courante, largeur_rangee))
         y = 37 if self.titre else 14
         for rangee, total in rangees:
             x = (largeur - total + 16) / 2
-            for nom, couleur, pointilles, taille, longueur, l in rangee:
+            for k_serie, (nom, couleur, pointilles, taille, longueur, l) in rangee:  # noqa: B007
+                from ..langues import t as _tr
+
+                self.elements.append(f"<g class='g-leg' data-serie='{k_serie}'><title>"
+                                     f"{escape(_tr('Cliquer pour masquer ou afficher « {n} »', n=nom))}</title>")
+                self.elements.append(f"<rect x='{x - 3:.1f}' y='{y - 9:.1f}' width='{l - 10:.1f}' height='18' "
+                                     "fill='transparent'/>")
                 if ligne:
                     self.ligne(x, y, x + 16, y, couleur=couleur, epaisseur=2,
                                pointilles=(4, 3) if pointilles else None)
                 else:
                     self.rect(x, y - 5, x + 10, y + 5, couleur, couleur)
                 self.texte(x + marque, y, nom, "w", TEXTE, taille, longueur=longueur)
+                self.elements.append("</g>")
                 x += l
             y += 17
         return int(y + 6)
@@ -198,7 +209,7 @@ class Graphique:
                         continue
                     x0 = centre - largeur_barre * len(series) / 2 + k * largeur_barre
                     y0 = hauteur - bas - zone_h * v / maximum
-                    self.rect(x0, y0, x0 + largeur_barre - 1, hauteur - bas, couleur)
+                    self.rect(x0, y0, x0 + largeur_barre - 1, hauteur - bas, couleur, serie=k)
                 if i % saut == 0:
                     self.texte(centre, hauteur - bas + 12, etiquette, "", TEXTE_DOUX)
             premiere = [float(v or 0) for v in series[0][1]]
@@ -311,18 +322,19 @@ class Graphique:
                           for i, v in enumerate(series[0][1]) if v is not None]
             if len(principale) > 1:
                 points = [(principale[0][0], hauteur - bas)] + principale + [(principale[-1][0], hauteur - bas)]
-                self.elements.append("<polygon points='" + " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
-                                     + f"' fill='{AIRE}' stroke='none'/>")
+                self.elements.append("<polygon class='g-serie' data-serie='0' points='"
+                                     + " ".join(f"{x:.1f},{y:.1f}" for x, y in points) + f"' fill='{AIRE}' stroke='none'/>")
             self._moyenne([float(v) for v in series[0][1] if v is not None], gauche, largeur - droite, hauteur - bas,
                           zone_h, maximum)
-            for _, vs, couleur, pointilles in series:
+            for k_serie, (_, vs, couleur, pointilles) in enumerate(series):
                 points = [(gauche + pas * i, hauteur - bas - zone_h * float(v) / maximum)
                           for i, v in enumerate(vs) if v is not None]
                 if len(points) > 1:
-                    self.elements.append(f"<path d='{_lisse(points)}' fill='none' stroke='{couleur}' stroke-width='2'"
+                    self.elements.append(f"<path class='g-serie g-courbe' data-serie='{k_serie}' d='{_lisse(points)}' "
+                                         f"fill='none' stroke='{couleur}' stroke-width='2'"
                                          + (" stroke-dasharray='5,3'" if pointilles else "") + "/>")
                 for px, py in points if len(points) <= 40 else []:
-                    self.ovale(px - 2, py - 2, px + 2, py + 2, couleur)
+                    self.ovale(px - 2, py - 2, px + 2, py + 2, couleur, serie=k_serie)
             valeurs_1 = [(i, float(v)) for i, v in enumerate(series[0][1]) if v is not None]
             if valeurs_1:
                 i, v = max(valeurs_1, key=lambda x: x[1])
@@ -384,7 +396,8 @@ def _part(cx, cy, rayon, interieur, debut, etendue, couleur, infobulle) -> str:
     grand = 1 if etendue > 180 else 0
     d = (f"M{x0:.2f},{y0:.2f} A{rayon:.2f},{rayon:.2f} 0 {grand} 1 {x1:.2f},{y1:.2f} L{x2:.2f},{y2:.2f} "
          f"A{interieur:.2f},{interieur:.2f} 0 {grand} 0 {x3:.2f},{y3:.2f} Z")
-    return (f"<path d='{d}' fill='{couleur}' stroke='{CARTE}' stroke-width='2'><title>{escape(infobulle)}</title>"
+    return (f"<path class='g-part' d='{d}' fill='{couleur}' stroke='{CARTE}' stroke-width='2'>"
+            f"<title>{escape(infobulle)}</title>"
             "</path>")
 
 

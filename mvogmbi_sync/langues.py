@@ -3964,3 +3964,23 @@ for _fr, _en in {
     "{n} commande(s) ; {r} de rabais en moyenne": "{n} order(s); {r} of discount on average",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+
+EN.setdefault("Détail : {l}", "Detail: {l}")
+EN.setdefault("Cliquer pour masquer ou afficher « {n} »", "Click to hide or show \u201c{n}\u201d")
+
+def entetes_courts(entetes: list[str]) -> list[str]:
+    """En-têtes affichés des tableaux (demande du propriétaire du 2026-11-09 : « met de bons titres », « dans tous les
+    rapports ») : un en-tête long qui porte une explication entre parenthèses n'affiche que sa partie principale
+    (« Régularité (X régulier, Y variable, Z irrégulier) » -> « Régularité ») ; le texte complet reste celui des
+    calculs et de l'infobulle. Deux en-têtes qui deviendraient pareils gardent leur texte complet."""
+    courts = []
+    for texte in entetes:
+        texte = str(texte)
+        if len(texte) > 24 and " (" in texte and texte.rstrip().endswith(")"):
+            courts.append(texte[:texte.index(" (")].strip())
+        else:
+            courts.append(texte)
+    doubles = {c for c in courts if courts.count(c) > 1}
+    return [str(t_) if c in doubles else c for t_, c in zip(entetes, courts)]

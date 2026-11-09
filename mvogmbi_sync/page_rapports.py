@@ -146,8 +146,9 @@ def remplir(tableau: ttk.Treeview, entetes: list[str], lignes: list[list], large
     tableau.delete(*tableau.get_children())
     cles = [f"c{i}" for i in range(len(entetes))]
     tableau.configure(columns=cles, displaycolumns=cles)
-    for cle, entete in zip(cles, entetes):
-        texte = t(entete)
+    from .langues import entetes_courts
+
+    for cle, entete, texte in zip(cles, entetes, entetes_courts([t(x) for x in entetes])):
         tableau.heading(cle, text=texte)
         nombre = any(isinstance(l[cles.index(cle)], (Decimal, int)) and not isinstance(l[cles.index(cle)], bool)
                      for l in lignes[:20] if len(l) > cles.index(cle))
@@ -977,8 +978,9 @@ class PageRapports(ttk.Frame):
         self.graphiques_sup.pack(fill="x")
         self.graphiques_sup.columnconfigure(0, weight=3, uniform="gs")  # mêmes proportions que la 1re rangée
         self.graphiques_sup.columnconfigure(1, weight=2, uniform="gs")
-        tk.Label(partie_d, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 11, "bold"), foreground=TEXTE,
-                 background=fond_de(cadre), anchor="center").pack(fill="x", pady=(8, 0))
+        self.titre_detail_gestion = tk.Label(partie_d, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 11, "bold"),
+                                             foreground=TEXTE, background=fond_de(cadre), anchor="center")
+        self.titre_detail_gestion.pack(fill="x", pady=(8, 0))
         self.tableau_gestion = tableau_simple(partie_d, 18)
         self.partie_gestion("resume")
         # anomalies : double-clic (ou Entrée) sur une commande = sa vraie facture Clover, pour vérification
@@ -1420,6 +1422,7 @@ class PageRapports(ttk.Frame):
         cle = self.vue_courante
         libelle = next((l for l, c, *_r in ETATS + ANALYSES if c == cle), cle)
         self.titre_gestion.configure(text=t(libelle))
+        self.titre_detail_gestion.configure(text=t("Détail : {l}", l=t(libelle)))
         if cle in {c for _l, c, *_r in ANALYSES}:
             self._afficher_analyse(cle)
             return
@@ -1523,6 +1526,9 @@ class PageRapports(ttk.Frame):
         for c, b in self.boutons_parties.items():
             b.configure(background="#ffffff" if c == cle else "#ececec", foreground=VERT_FONCE if c == cle else TEXTE,
                         font=("Segoe UI", 10, "bold") if c == cle else ("Segoe UI", 10))
+        if cle == "detail" and hasattr(self, "toile_gestion"):  # tableau à la hauteur de la fenêtre (lignes de 30 px)
+            self.update_idletasks()
+            self.tableau_gestion.configure(height=max(8, (self.toile_gestion.winfo_height() - 120) // 30))
         if hasattr(self, "toile_gestion"):
             self.toile_gestion.yview_moveto(0)
             for g in (self.g_gestion_evolution, self.g_gestion_repartition):
