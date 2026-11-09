@@ -30,7 +30,17 @@ details.choix-multiple label.tout { font-weight: 600; border-bottom: 1px solid v
 @media (min-width: 821px) {
   /* liste des factures plus haute (demande du propriétaire du 2026-11-08) */
   .zone-liste-factures .defile { height: max(300px, calc(100vh - 640px)); min-height: 300px; max-height: none; }
-  .zone-liste-factures ~ * .defile { height: 96px; min-height: 96px; max-height: none; }
+}
+/* liste des factures à gauche, saisie à droite, chacune défile de haut en bas (demande du propriétaire du
+   2026-11-08 : « mettons la liste de factures et la saisie les deux à la verticale ») */
+@media (min-width: 1200px) {
+  .factures-deux { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 12px;
+                   align-items: start; }
+  .factures-deux > div { min-width: 0; }
+  .factures-deux .colonne-saisie { max-height: calc(100vh - 230px); overflow-y: auto; }
+  .factures-deux .zone-liste-factures .defile { height: calc(100vh - 330px); min-height: 300px; }
+  .factures-deux .zone-liste-factures ~ * .defile, .factures-deux .colonne-saisie .defile { height: auto;
+                   min-height: 96px; max-height: 340px; }
 }
 """
 

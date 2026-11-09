@@ -339,6 +339,8 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-STA-31 | **Heures d'ouverture peu achalandées** : pour chaque jour de la semaine ouvert au moins 4 heures, la première et la dernière heure dont les ventes moyennes sont sous le quart d'une heure moyenne de ce jour sont signalées (décision de priorité 3). |
 | RG-STA-32 | **Remboursements à surveiller** : remboursé = ventes brutes nettes de rabais des lignes remboursées dans Clover ; part = remboursé / ventes brutes ; un employé (3 commandes remboursées au moins) qui rembourse plus du double de la moyenne est signalé ; décision quand la part dépasse 2 % et 1,5 fois celle de la période d'avant. |
 | RG-STA-33 | **Espèces et cartes** : une commande est « Espèces » si tous ses paiements sont en espèces, « Espèces et carte » si une partie l'est, sinon « Carte ou autre » ; montants = montant encaissé (pourboires exclus). |
+| RG-STA-34 | **Nouveaux articles** : vendu dans la période mais pas dans la période d'avant (si celle-ci a moins du quart des jours de vente : pas vendu pendant les 4 premières semaines de la période) ; ventes par jour depuis la première vente comparées à la médiane des autres articles : bon départ (au moins autant), lent (moins du quart). |
+| RG-STA-35 | **Jours fériés** : jours fériés du Québec (Vendredi saint et lundi de Pâques compris) ; jour normal = moyenne des jours ouverts du même jour de la semaine hors jours fériés et veilles, période et période d'avant ; décision quand la veille vend en moyenne 20 % de plus et qu'un jour férié est à venir. |
 
 ---
 

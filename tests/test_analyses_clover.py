@@ -368,3 +368,12 @@ def test_remboursements_et_especes():
     assert an._genre_paiement("Carte de crédit") == "Carte ou autre"
     esp = t["a_especes"]
     assert len(esp.lignes) == 28 and esp.cartes[0][0] == "Payé en espèces"
+
+
+def test_nouveaux_articles_et_jours_feries():
+    t = {cle: an.calculer(cle, _periode(), _avant(), {}, DU, AU, DU2, AU2) for cle in ("a_nouveaux", "a_feries")}
+    nouveaux = {l[0] for l in t["a_nouveaux"].lignes}
+    assert "Plantain" not in nouveaux and {"Manioc", "Riz", "Sel"} <= nouveaux  # le plantain se vendait déjà
+    fer = t["a_feries"]
+    assert fer.lignes[0][0] == "2026-09-07" and fer.lignes[0][1] == "Fête du Travail"  # 1er lundi de septembre
+    assert dict((t_, v) for t_, _g, v in fer.cartes)["Jours fériés dans la période"] == 1

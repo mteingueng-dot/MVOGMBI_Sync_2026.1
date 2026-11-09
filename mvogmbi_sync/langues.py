@@ -3257,3 +3257,63 @@ for _fr, _en in {
     "Aucun paiement lu pour la période.": "No payment read for the period.",
 }.items():
     EN.setdefault(_fr, _en)
+
+# nouveaux articles, jours fériés (2026-11-08)
+for _fr, _en in {
+    "Nouveaux articles": "New items", "Jours fériés": "Public holidays", "Première vente": "First sale",
+    "Jours en vente": "Days on sale", "Ventes par jour": "Sales per day", "Rang parmi tous les articles":
+        "Rank among all items", "Démarrage": "Start", "Bon départ": "Good start", "Départ moyen": "Average start",
+    "Démarrage lent": "Slow start", "Ventes des nouveaux articles": "New item sales", "Part des ventes": "Share of sales",
+    "Bons départs": "Good starts", "Démarrages lents": "Slow starts",
+    "Ventes des nouveaux articles par jour": "New item sales by day",
+    "Nouveaux articles qui vendent le plus": "Best-selling new items",
+    "Nouveaux articles : ventes par jour depuis leur première vente": "New items: sales per day since their first sale",
+    "Nouveaux articles par catégorie": "New items by category",
+    "Nouvel article : vendu dans la période mais pas dans la période d'avant (article nouveau ou revenu). Démarrage "
+    "comparé à un article habituel ({v} de ventes par jour) : bon départ = autant ou plus, lent = moins du quart.":
+        "New item: sold in the period but not in the previous one (new or returning item). Start compared with a usual "
+        "item ({v} of sales per day): good start = as much or more, slow = less than a quarter.",
+    "{n} nouvel(aux) article(s) : {v} de ventes, {p} % du total.": "{n} new item(s): {v} of sales, {p}% of the total.",
+    "Meilleur départ : {a} ({v} par jour, rang {r}).": "Best start: {a} ({v} per day, rank {r}).",
+    "{n} nouvel(aux) article(s) démarrent lentement : mieux les exposer, les faire goûter, ou ne pas les recommander.":
+        "{n} new item(s) start slowly: display them better, offer tastings, or do not reorder them.",
+    "Aucun nouvel article dans la période.": "No new item in the period.",
+    "Jour férié": "Public holiday", "Jour normal (même jour de la semaine)": "Normal day (same weekday)",
+    "Veille : ventes nettes": "Day before: net sales", "Veille : écart %": "Day before: difference %",
+    "Jours fériés dans la période": "Public holidays in the period",
+    "Effet moyen d'un jour férié": "Average effect of a public holiday",
+    "Effet moyen de la veille": "Average effect of the day before",
+    "Jours fériés : ventes du jour et d'un jour normal": "Public holidays: sales of the day and of a normal day",
+    "Veilles de jours fériés : ventes de la veille": "Days before public holidays: sales",
+    "Jour normal": "Normal day", "Écart des jours fériés avec un jour normal (%)":
+        "Public holidays compared with a normal day (%)",
+    "Écart des veilles avec un jour normal (%)": "Days before compared with a normal day (%)",
+    "Jour normal : moyenne des ventes du même jour de la semaine, hors jours fériés et veilles, sur la période et la "
+    "période d'avant. Choisissez « Cette année » pour voir tous les jours fériés.":
+        "Normal day: average sales of the same weekday, excluding public holidays and the days before, over the period "
+        "and the previous one. Choose “This year” to see all public holidays.",
+    "Aucun jour férié dans la période.": "No public holiday in the period.",
+    "Un jour férié vend en moyenne {p} % {s} qu'un jour normal.": "A public holiday sells on average {p}% {s} than a "
+                                                                   "normal day.",
+    "La veille d'un jour férié vend en moyenne {p} % {s} qu'un jour normal{c}.":
+        "The day before a public holiday sells on average {p}% {s} than a normal day{c}.",
+    "de plus": "more", "de moins": "less", " : prévoir du personnel et du stock": ": plan staff and stock",
+    "Prochain jour férié : {n} le {d}.": "Next public holiday: {n} on {d}.",
+    "Mettre en avant ou ne plus recommander les nouveaux articles qui démarrent lentement":
+        "Promote or stop reordering new items that start slowly",
+    "{n} nouvel(aux) article(s) vendent peu depuis plus de 2 semaines.":
+        "{n} new item(s) have sold little for more than 2 weeks.",
+    "{c} ; première vente {d} ; {v} par jour": "{c}; first sale {d}; {v} per day",
+    "Prévoir personnel et stock la veille du prochain jour férié ({n}, {d})":
+        "Plan staff and stock the day before the next public holiday ({n}, {d})",
+    "La veille d'un jour férié vend {p} % de plus qu'un jour normal.":
+        "The day before a public holiday sells {p}% more than a normal day.",
+    "Jour de l'An": "New Year's Day", "Vendredi saint": "Good Friday", "Lundi de Pâques": "Easter Monday",
+    "Journée nationale des patriotes": "National Patriots' Day", "Fête nationale du Québec": "Quebec National Holiday",
+    "Fête du Canada": "Canada Day", "Fête du Travail": "Labour Day", "Action de grâces": "Thanksgiving",
+    "Noël": "Christmas", "Écart %": "Difference %",
+    "Trop peu de ventes dans la période d'avant : un nouvel article est ici un article qui ne s'est pas vendu pendant les 4 "
+    "premières semaines de la période.": "No sale in the previous period: a new item here is one that did not sell "
+                                         "during the first 4 weeks of the period.",
+}.items():
+    EN.setdefault(_fr, _en)

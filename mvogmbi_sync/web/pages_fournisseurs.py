@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from .consultations import Section, tableau_section
 from .pages import Contexte, Fonction, argent, csrf, page
@@ -191,13 +191,18 @@ def factures(ctx: Contexte) -> Reponse:
     from .pages_compta import action_permise
 
     filtre = ctx.req.query.get("filtre") or ctx.req.champ("filtre") or "Toutes"
+    # filtres de la liste gardés quand on choisit une facture (ils changeaient l'affichage, constat du 2026-11-08)
+    q_fichier = (ctx.req.query.get("fichier") or ctx.req.champ("fichier") or "").strip()
+    q_fournisseur = (ctx.req.query.get("fournisseur") or ctx.req.champ("fournisseur") or "").strip()
     rang = _entier(ctx.req.query.get("i") or ctx.req.champ("i"))
     ligne = _entier(ctx.req.query.get("l") or ctx.req.champ("l"))
     clover = (ctx.req.champ("clover") == "1") if ctx.req.methode == "POST" else True
     message = ""
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
-        retour = f"/factures-fournisseurs?filtre={filtre}" + (f"&i={rang}" if rang is not None else "")
+        retour = (f"/factures-fournisseurs?filtre={filtre}" + (f"&i={rang}" if rang is not None else "")
+                  + "".join(f"&{k}={quote(v)}" for k, v in (("fichier", q_fichier), ("fournisseur", q_fournisseur))
+                            if v))
         if action == "Ajouter des factures":
             if "facture" not in ctx.req.fichiers:
                 message = _message(erreur="Choisissez une facture (PDF ou photo).")
@@ -314,15 +319,25 @@ def factures(ctx: Contexte) -> Reponse:
                     message = _message(erreur=str(erreur) or "Nombre invalide.")
     registre = fo.Registre(ctx.racine)
     noms, articles = _listes(ctx.racine)
-    lien = f"filtre={e(filtre)}"
+    lien = e(urlencode({"filtre": filtre, **({"fichier": q_fichier} if q_fichier else {}),
+                        **({"fournisseur": q_fournisseur} if q_fournisseur else {})}))
     cocher_pretes = bool(ctx.req.query.get("cocher"))
     lignes, classes = [], []
+
+    def nom_fournisseur(f):
+        return f.fournisseur_sage or f"({f.fournisseur_lu or '?'})"
+
     for n, f in sorted(enumerate(registre.factures), key=lambda x: (x[1].date_facture or "", x[0]), reverse=True):
         if filtre != "Toutes" and f.etat != filtre:
             continue
+        if q_fichier and _simple(q_fichier) not in _simple(f.fichier):
+            continue
+        if q_fournisseur and nom_fournisseur(f) != q_fournisseur:
+            continue
         coche = ("<input type='checkbox' name='coche' value='{n}' form='barre-factures' aria-label='Cocher'"
                  + (" checked" if f.etat == fo.PRETE and cocher_pretes else "") + ">").format(n=n)
-        lignes.append([coche, f"<a href='?{lien}&amp;i={n}'>{e(f.fichier)}</a>" + (" ◀" if n == rang else ""),
+        lignes.append([coche, f"<a href='?{lien}&amp;i={n}'{' data-choisie' if n == rang else ''}>{e(f.fichier)}</a>"
+                       + (" ◀" if n == rang else ""),
                        e(f.fournisseur_sage or f"({f.fournisseur_lu or '?'})"), e(f.numero), e(f.date_facture),
                        argent(f.total) if f.total is not None else "", e(f.depot or "Emplacement par défaut"),
                        e(f.etat)])
@@ -353,27 +368,36 @@ def factures(ctx: Contexte) -> Reponse:
              # filtres de la liste pendant la frappe (nom du fichier, fournisseur)
              # (liste déroulante des fournisseurs de la liste, noms de fichiers proposés pendant la frappe)
              "<div class='filtres-tableau'><label>Fichier :</label><input type='search' data-filtre='liste-factures' "
-             "data-colonnes='1' placeholder='nom du fichier' list='fichiers-factures'>"
+             f"data-colonnes='1' placeholder='nom du fichier' list='fichiers-factures' name='fichier' "
+             f"value='{e(q_fichier)}' autocomplete='off'>"
              + "<datalist id='fichiers-factures'>" + "".join(
                  f"<option value='{e(f.fichier)}'>" for f in registre.factures) + "</datalist>"
-             + "<label>Fournisseur :</label><select data-filtre='liste-factures' data-colonnes='2'>"
+             + "<label>Fournisseur :</label><select name='fournisseur' autocomplete='off'>"
                "<option value=''>Tous les fournisseurs</option>" + "".join(
-                 f"<option>{e(nom)}</option>" for nom in sorted(
-                     {f.fournisseur_sage or f"({f.fournisseur_lu or '?'})" for f in registre.factures},
-                     key=str.casefold)) + "</select></div>"
+                 f"<option{' selected' if nom == q_fournisseur else ''}>{e(nom)}</option>" for nom in sorted(
+                     {nom_fournisseur(f) for f in registre.factures}, key=str.casefold)) + "</select></div>"
              + ("<a class='ouvrir' href='?" + lien + "'>☐ Tout décocher</a>" if cocher_pretes else
                 "<a class='ouvrir' href='?" + lien + "&amp;cocher=1'>☑ Cocher les factures prêtes</a>") + "</form>")
     corps = ("<p class='sous-titre'>🧾 Factures fournisseurs — lecture des factures, articles Sage et import dans Sage"
              "</p>" + message + barre + f"<p class='note'>{e(resume)}</p>"
-             + "<div class='zone-liste-factures' id='liste-factures'>"
+             + "<div class='factures-deux'><div class='colonne-liste'>"
+             + "<div class='zone-liste-factures' id='liste-factures' data-garder='fichier,fournisseur'>"
              + tableau_section(Section("Factures", ["", "Fichier", "Fournisseur Sage", "N°", "Date", "Total", "Dépôt",
                                                    "État"], lignes, classes=classes, html=set(range(8)))) + "</div>"
-             + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p>")
+             + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p></div>"
+             + "<div class='colonne-saisie'>")
     if rang is not None and rang < len(registre.factures):
         corps += _detail(ctx, registre.factures[rang], rang, ligne, filtre, noms, articles, clover)
     else:
         corps += _detail_vide()
+    corps += "</div></div>"
     return Reponse(corps=page(ctx, "Factures fournisseurs", corps))
+
+
+def _simple(texte: str) -> str:
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFD", texte or "") if not unicodedata.combining(c)).casefold()
 
 
 def _options_depots(ctx: Contexte, actuel: str) -> str:

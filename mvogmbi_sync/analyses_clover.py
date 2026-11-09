@@ -1552,6 +1552,171 @@ def especes(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- nouveaux articles
+def nouveaux_articles(c, avant, ctx) -> RapportGestion:
+    """Articles vendus dans la période mais pas dans la période d'avant (nouveaux ou revenus) : première vente, ventes
+    par jour depuis, rang parmi tous les articles et démarrage (bon, moyen, lent) comparé à un article habituel."""
+    avant_ids = {l.id_article or l.nom for x in avant for l in x.lignes}
+    # période d'avant sans ventes ou presque (ex. « Cette année » : Clover commence en 2026) : les articles vendus dans les 4
+    # premières semaines de la période servent de référence
+    jours_avant, jours_c = {x.moment.date() for x in avant}, {x.moment.date() for x in c}
+    debut_seul = not avant_ids or len(jours_avant) < len(jours_c) / 4  # période d'avant presque vide
+    if debut_seul:
+        limite = ctx["du"] + timedelta(days=27)
+        avant_ids = {l.id_article or l.nom for x in c if x.moment.date() <= limite for l in x.lignes}
+    au = min(ctx["au"], date.today())
+    tous = defaultdict(lambda: {"nom": "", "cat": "", "qte": ZERO, "nettes": ZERO, "premier": None, "cmds": set(),
+                                "jours": defaultdict(Decimal)})
+    for x in c:
+        j = x.moment.date()
+        for l in x.lignes:
+            a = tous[l.id_article or l.nom]
+            a["nom"], a["cat"] = l.nom, l.categorie
+            a["qte"] += l.quantite_nette
+            a["nettes"] += l.ventes_nettes
+            a["cmds"].add(x.id)
+            a["jours"][j] += l.ventes_nettes
+            a["premier"] = j if a["premier"] is None or j < a["premier"] else a["premier"]
+    jours_periode = max(1, (au - ctx["du"]).days + 1)
+    habituels = sorted(float(a["nettes"]) / jours_periode for k, a in tous.items() if k in avant_ids)
+    reference = _quantile(habituels, 0.5) if habituels else 0.0
+    rangs = {k: i + 1 for i, (k, _a) in enumerate(sorted(tous.items(), key=lambda kv: -kv[1]["nettes"]))}
+    total = sum((a["nettes"] for a in tous.values()), ZERO)
+    lignes, par_jour = [], defaultdict(Decimal)
+    compte = Counter()
+    for k, a in sorted(tous.items(), key=lambda kv: -kv[1]["nettes"]):
+        if k in avant_ids:
+            continue
+        jours_en_vente = max(1, (au - a["premier"]).days + 1)
+        par_j = a["nettes"] / jours_en_vente
+        if reference and float(par_j) >= reference:
+            demarrage = "Bon départ"
+        elif reference and float(par_j) < reference / 4:
+            demarrage = "Démarrage lent"
+        else:
+            demarrage = "Départ moyen"
+        compte[demarrage] += 1
+        for j, v in a["jours"].items():
+            par_jour[j] += v
+        lignes.append([a["nom"], a["cat"], a["premier"].isoformat(), jours_en_vente, _d(a["qte"], "0.001"),
+                       _d(a["nettes"]), _d(par_j), len(a["cmds"]), f"{rangs[k]} / {len(tous)}", _t(demarrage)])
+    ventes_n = sum((l[5] for l in lignes), ZERO)
+    r = RapportGestion()
+    r.entetes = ["Article", "Catégorie", "Première vente", "Jours en vente", "Quantité nette", "Ventes nettes",
+                 "Ventes par jour", "Commandes", "Rang parmi tous les articles", "Démarrage"]
+    r.lignes = lignes
+    r.cartes = [("Nouveaux articles", "n", len(lignes)), ("Ventes des nouveaux articles", "$", _d(ventes_n)),
+                ("Part des ventes", "%", _pc(ventes_n, total) if total else ZERO),
+                ("Bons départs", "n", compte["Bon départ"]), ("Démarrages lents", "n", compte["Démarrage lent"])]
+    jours = _jours(ctx["du"], ctx["au"])
+    r.titre_evolution = "Ventes des nouveaux articles par jour"
+    r.genre_evolution = "barres"
+    r.etiquettes = [_etiquette(j) for j in jours]
+    r.series = [("Ventes nettes", [_d(par_jour.get(j, ZERO)) for j in jours])]
+    r.titre_repartition = "Nouveaux articles qui vendent le plus"
+    r.genre_repartition = "classement"
+    r.repartition = [(l[0], l[5]) for l in lignes[:8]]
+    constats = [_k(None, "Nouvel article : vendu dans la période mais pas dans la période d'avant (article nouveau ou "
+                   "revenu). Démarrage comparé à un article habituel ({v} de ventes par jour) : bon départ = autant "
+                   "ou plus, lent = moins du quart.", v=_argent(_d(reference)))]
+    if debut_seul:
+        constats.append(_k(None, "Trop peu de ventes dans la période d'avant : un nouvel article est ici un article qui ne "
+                                 "s'est pas vendu pendant les 4 premières semaines de la période."))
+    if lignes:
+        constats.append(_k("info", "{n} nouvel(aux) article(s) : {v} de ventes, {p} % du total.", n=len(lignes),
+                           v=_argent(ventes_n), p=_nb(_pc(ventes_n, total) if total else 0)))
+        meilleur = max(lignes, key=lambda l: l[6])
+        constats.append(_k("bon", "Meilleur départ : {a} ({v} par jour, rang {r}).", a=meilleur[0],
+                           v=_argent(meilleur[6]), r=meilleur[8]))
+        if compte["Démarrage lent"]:
+            constats.append(_k("attention", "{n} nouvel(aux) article(s) démarrent lentement : mieux les exposer, les "
+                                            "faire goûter, ou ne pas les recommander.", n=compte["Démarrage lent"]))
+    else:
+        constats.append(_k(None, "Aucun nouvel article dans la période."))
+    r.note = _note(constats)
+    return r
+
+
+# --------------------------------------------------------------------------------------------- jours fériés
+def _feries(du: date, au: date) -> list[tuple[date, str]]:
+    from .conges import jours_feries
+
+    vus = {}
+    for annee in range(du.year, au.year + 1):
+        for choix in ("vendredi", "lundi"):  # Vendredi saint et lundi de Pâques : les deux comptent pour un marché
+            for j, nom in jours_feries(annee, choix):
+                vus[j] = nom
+    return sorted((j, n) for j, n in vus.items() if du <= j <= au)
+
+
+def feries(c, avant, ctx) -> RapportGestion:
+    """Ventes des jours fériés et de leur veille, comparées à un jour normal du même jour de la semaine (moyenne des
+    autres jours ouverts de la période et de la période d'avant) : prévoir le personnel et le stock."""
+    par_jour, cmds = defaultdict(Decimal), Counter()
+    for x in list(c) + list(avant):
+        par_jour[x.moment.date()] += x.nettes
+        cmds[x.moment.date()] += 1
+    feries_ = _feries(ctx["du"], ctx["au"])
+    speciaux = {j for j, _n in feries_} | {j - timedelta(days=1) for j, _n in feries_}
+    normaux = defaultdict(list)
+    for j, v in par_jour.items():
+        if j not in speciaux and v > 0:
+            normaux[j.weekday()].append(v)
+    normal = {k: sum(v, ZERO) / len(v) for k, v in normaux.items()}
+
+    def ecart(j):
+        base = normal.get(j.weekday())
+        return _pc(par_jour.get(j, ZERO) - base, base) if base else None
+
+    lignes, effets, effets_veille = [], [], []
+    for j, nom in feries_:
+        veille = j - timedelta(days=1)
+        e_j, e_v = ecart(j), ecart(veille)
+        if j <= date.today():
+            if e_j is not None:
+                effets.append(e_j)
+            if e_v is not None:
+                effets_veille.append(e_v)
+        lignes.append([j.isoformat(), _t(nom), _t(JOURS[j.weekday()]),
+                       _d(par_jour.get(j, ZERO)) if j <= date.today() else None,
+                       _d(normal.get(j.weekday(), ZERO)), e_j if j <= date.today() else None, cmds.get(j, 0),
+                       _d(par_jour.get(veille, ZERO)) if veille <= date.today() else None,
+                       e_v if veille <= date.today() else None])
+    r = RapportGestion()
+    r.entetes = ["Date", "Jour férié", "Jour", "Ventes nettes", "Jour normal (même jour de la semaine)", "Écart %",
+                 "Commandes", "Veille : ventes nettes", "Veille : écart %"]
+    r.lignes = lignes
+    moyen = sum(effets, ZERO) / len(effets) if effets else None
+    moyen_v = sum(effets_veille, ZERO) / len(effets_veille) if effets_veille else None
+    r.cartes = [("Jours fériés dans la période", "n", len(feries_)),
+                ("Effet moyen d'un jour férié", "%", _d(moyen, "0.1") if moyen is not None else ZERO),
+                ("Effet moyen de la veille", "%", _d(moyen_v, "0.1") if moyen_v is not None else ZERO)]
+    r.titre_evolution = "Jours fériés : ventes du jour et d'un jour normal"
+    r.genre_evolution = "barres"
+    r.etiquettes = [f"{l[0][8:10]}/{l[0][5:7]}" for l in lignes]
+    r.series = [("Jour férié", [l[3] or ZERO for l in lignes]), ("Jour normal", [l[4] for l in lignes])]
+    r.titre_repartition = "Veilles de jours fériés : ventes de la veille"
+    r.genre_repartition = "classement"
+    r.repartition = [(f"{l[1]} ({l[0][8:10]}/{l[0][5:7]})", l[7]) for l in lignes if l[7]]
+    constats = [_k(None, "Jour normal : moyenne des ventes du même jour de la semaine, hors jours fériés et veilles, "
+                   "sur la période et la période d'avant. Choisissez « Cette année » pour voir tous les jours fériés.")]
+    if not feries_:
+        constats.append(_k(None, "Aucun jour férié dans la période."))
+    if moyen is not None:
+        constats.append(_k("info", "Un jour férié vend en moyenne {p} % {s} qu'un jour normal.", p=_nb(abs(moyen)),
+                           s=_t("de plus") if moyen >= 0 else _t("de moins")))
+    if moyen_v is not None:
+        constats.append(_k("attention" if moyen_v >= 20 else "info",
+                           "La veille d'un jour férié vend en moyenne {p} % {s} qu'un jour normal{c}.",
+                           p=_nb(abs(moyen_v)), s=_t("de plus") if moyen_v >= 0 else _t("de moins"),
+                           c=_t(" : prévoir du personnel et du stock") if moyen_v >= 20 else ""))
+    a_venir = [l for l in lignes if l[3] is None]
+    if a_venir:
+        constats.append(_k("info", "Prochain jour férié : {n} le {d}.", n=a_venir[0][1], d=a_venir[0][0]))
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -2162,6 +2327,20 @@ def _decisions(sous: dict) -> list[tuple]:
                 "a_fidelite",
                 [(l[0], _t("Dernier achat {d} ; {c} commande(s), {v} dans la période de comparaison", d=l[7], c=l[4],
                            v=_argent(l[5])), "") for l in perdus])
+    nou = sous.get("a_nouveaux", vide)
+    lents = [l for l in nou.lignes if l[9] == _t("Démarrage lent") and l[3] >= 14]
+    if len(lents) >= 3:
+        ajouter(3, "Mettre en avant ou ne plus recommander les nouveaux articles qui démarrent lentement",
+                _t("{n} nouvel(aux) article(s) vendent peu depuis plus de 2 semaines.", n=len(lents)), "a_nouveaux",
+                [(l[0], _t("{c} ; première vente {d} ; {v} par jour", c=l[1], d=l[2], v=_argent(l[6])), "")
+                 for l in sorted(lents, key=lambda l: l[6])])
+    fer = sous.get("a_feries", vide)
+    veille = _carte(fer, "Effet moyen de la veille")
+    a_venir = [l for l in fer.lignes if l[3] is None]
+    if veille is not None and veille >= 20 and a_venir:
+        ajouter(2, _t("Prévoir personnel et stock la veille du prochain jour férié ({n}, {d})", n=a_venir[0][1],
+                      d=a_venir[0][0]),
+                _t("La veille d'un jour férié vend {p} % de plus qu'un jour normal.", p=_nb(veille)), "a_feries")
     rem = sous.get("a_remboursements", vide)
     t1, t0 = _carte(rem, "Part des ventes remboursée"), _carte(rem, "Part remboursée la période d'avant")
     if t1 is not None and t1 > 2 and (not t0 or t1 > t0 * Decimal("1.5")):
@@ -2243,6 +2422,7 @@ ETATS_CARTES = {
     "Étoiles": lambda v: "bon" if v else None, "En recul": lambda v: "attention" if v else "bon",
     "Croissance du magasin": lambda v: "bon" if v >= 0 else "alerte",
     "Part des ventes remboursée": lambda v: "bon" if v <= 1 else "attention" if v <= 3 else "alerte",
+    "Bons départs": lambda v: "bon" if v else None, "Démarrages lents": lambda v: "attention" if v else "bon",
     "Heures chargées": lambda v: "attention" if v else "bon",
     "Heures calmes": lambda v: "attention" if v else "bon",
     "Atteinte projetée": lambda v: "bon" if v >= 100 else "alerte" if v < 95 else "attention",
@@ -2263,7 +2443,8 @@ def etat_carte(titre: str, valeur) -> str | None:
 # début des constats qui sont des définitions (pas repris dans la synthèse)
 DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure active :", "Chaque client est noté",
                "Retenu :", "Changement de prix :", "Chaque ligne suit", "Choisissez au moins", "Explication du bénéfice :",
-               "Part forte :", "Employé actif :", "Objectif :")
+               "Part forte :", "Employé actif :", "Objectif :", "Nouvel article :",
+               "Jour normal :")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -2474,7 +2655,27 @@ def _sup_especes(r):
                     series=[("Espèces", [_d(r.jds_especes[k]) for k in jds])])]
 
 
-SUPPLEMENTS = {"a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
+def _sup_nouveaux(r):
+    par_cat = defaultdict(int)
+    for l in r.lignes:
+        par_cat[l[1]] += 1
+    return [_graphe("classement", "Nouveaux articles : ventes par jour depuis leur première vente",
+                    elements=[(l[0], l[6]) for l in sorted(r.lignes, key=lambda l: -l[6])[:8]]),
+            _graphe("anneau", "Nouveaux articles par catégorie", "",
+                    elements=[(k, Decimal(v)) for k, v in sorted(par_cat.items(), key=lambda kv: -kv[1])])]
+
+
+def _sup_feries(r):
+    effets = [(l[1], abs(l[5])) for l in r.lignes if l[5] is not None]
+    return [_graphe("classement", "Écart des jours fériés avec un jour normal (%)", "%",
+                    elements=[(("▲ " if l[5] >= 0 else "▼ ") + l[1], abs(l[5])) for l in r.lignes
+                              if l[5] is not None]),
+            _graphe("classement", "Écart des veilles avec un jour normal (%)", "%",
+                    elements=[(("▲ " if l[8] >= 0 else "▼ ") + l[1], abs(l[8])) for l in r.lignes
+                              if l[8] is not None])] if effets or any(l[8] is not None for l in r.lignes) else []
+
+
+SUPPLEMENTS = {"a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
                "a_associations": _sup_associations, "a_prix": _sup_prix, "a_employes": _sup_employes,
@@ -2500,6 +2701,7 @@ ANALYSES = [
     ("Tendance des ventes", "a_tendance", tendance, "Rapports", "evolution_annees"),
     ("Pourquoi les ventes changent", "a_variation", variation, "Rapports", "a_tendance"),
     ("Rythme et objectif", "a_rythme", rythme, "Rapports", "a_variation"),
+    ("Jours fériés", "a_feries", feries, "Rapports", "a_rythme"),
     ("Taille des paniers", "a_paniers", paniers, "Rapports", "Jour × heure"),
     ("Dépendance aux meilleurs", "a_concentration", concentration, "Rapports", "a_paniers"),
     ("Pourquoi le bénéfice change", "a_marge", marge, "Finances", "Résumé"),
@@ -2508,6 +2710,7 @@ ANALYSES = [
     ("Catégories qui montent ou baissent", "a_portefeuille", portefeuille, "Articles", "Par catégorie"),
     ("Articles achetés ensemble", "a_associations", associations, "Articles", "a_matrice"),
     ("Effet des changements de prix", "a_prix", prix, "Articles", "a_associations"),
+    ("Nouveaux articles", "a_nouveaux", nouveaux_articles, "Articles", "a_prix"),
     ("Performance des employés", "a_employes", employes, "Employés", "Par employé"),
     ("Achalandage et personnel", "a_achalandage", achalandage, "Employés", "a_employes"),
     ("Rabais Direction et administrateurs", "a_rabais_direction", rabais_direction, "Rapports", "Rabais"),

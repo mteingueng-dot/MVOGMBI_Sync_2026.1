@@ -52,7 +52,20 @@ SCRIPT = r"""
     var c = ev.target;
     if (ev.key === 'Enter' && c && c.hasAttribute && c.hasAttribute('data-filtre')) { ev.preventDefault(); }
   });
+  document.addEventListener('click', function (ev) {  // les liens d'une liste gardent les filtres tapés
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    var zone = a ? a.closest('[data-garder]') : null;
+    if (!zone) { return; }
+    var url = new URL(a.href, location.href);
+    zone.getAttribute('data-garder').split(',').forEach(function (nom) {
+      var champ = document.querySelector('[name="' + nom + '"]');
+      if (champ && champ.value) { url.searchParams.set(nom, champ.value); } else { url.searchParams.delete(nom); }
+    });
+    a.href = url.toString();
+  }, true);
   document.addEventListener('DOMContentLoaded', function () {
+    var choisie = document.querySelector('[data-choisie]');  // facture choisie : visible dans la liste
+    if (choisie && choisie.scrollIntoView) { choisie.scrollIntoView({block: 'nearest'}); }
     var vus = {};
     document.querySelectorAll('[data-filtre]').forEach(function (c) {
       var id = c.getAttribute('data-filtre');
