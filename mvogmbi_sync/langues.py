@@ -4016,3 +4016,39 @@ def entetes_courts(entetes: list[str]) -> list[str]:
             courts.append(texte)
     doubles = {c for c in courts if courts.count(c) > 1}
     return [str(t_) if c in doubles else c for t_, c in zip(entetes, courts)]
+
+
+# 1.0.40 : productivité de l'assortiment (2026-11-09)
+for _fr, _en in {
+    "Productivité de l'assortiment": "Assortment productivity",
+    "Articles vendus avant": "Items sold before",
+    "Ventes par article": "Sales per item",
+    "Articles pour 80 % des ventes": "Items for 80% of sales",
+    "Part des articles pour 80 % %": "Share of items for 80% %",
+    "Articles peu vendus (2 commandes ou moins)": "Slow items (2 orders or fewer)",
+    "Part des articles peu vendus %": "Share of slow items %",
+    "Ventes des articles peu vendus": "Sales of slow items",
+    "Articles peu vendus": "Slow items",
+    "Part des articles peu vendus": "Share of slow items",
+    "Catégories à alléger": "Categories to trim",
+    "Articles différents vendus par semaine": "Different items sold per week",
+    "Articles différents": "Different items",
+    "Ventes par article selon la catégorie": "Sales per item by category",
+    "Part des articles peu vendus par catégorie (%)": "Share of slow items by category (%)",
+    "Articles vendus par catégorie": "Items sold by category",
+    "Article peu vendu : 2 commandes ou moins dans la période. Catégorie à alléger : au moins 15 articles vendus dont "
+    "40 % ou plus se vendent à peine (place en rayon, stock dormant, péremption).":
+        "Slow item: 2 orders or fewer in the period. Category to trim: at least 15 items sold, 70% or more of which "
+        "barely sell (shelf space, dormant stock, expiry).",
+    "{n} article(s) différents vendus ; {f} ({p} %) se vendent à peine et font {v} de ventes.":
+        "{n} different item(s) sold; {f} ({p}%) barely sell and make {v} of sales.",
+    "Catégorie la plus productive : « {c} » ({v} par article vendu).":
+        "Most productive category: \u201c{c}\u201d ({v} per item sold).",
+    "« {c} » : {f} de ses {n} articles se vendent à peine ({p} %) : réduire les références ou les mettre en avant.":
+        "\u201c{c}\u201d: {f} of its {n} items barely sell ({p}%): reduce the range or promote them.",
+    "Alléger les catégories encombrées de références peu vendues": "Trim categories crowded with slow items",
+    "{n} catégorie(s) ont 70 % ou plus d'articles qui se vendent à peine.":
+        "{n} category(ies) have 70% or more items that barely sell.",
+    "{f} article(s) peu vendus sur {n} ; {v} de ventes": "{f} slow item(s) out of {n}; {v} of sales",
+}.items():
+    EN.setdefault(_fr, _en)

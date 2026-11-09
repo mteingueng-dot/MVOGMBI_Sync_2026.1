@@ -3049,6 +3049,93 @@ def effet_rabais(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- assortiment
+def assortiment(c, avant, ctx) -> RapportGestion:
+    """Productivité de l'assortiment par catégorie : articles vendus, ventes par article, nombre d'articles qui font
+    80 % des ventes de la catégorie, références qui se vendent à peine (2 commandes ou moins dans la période) ;
+    nombre d'articles différents vendus chaque semaine."""
+    g = defaultdict(lambda: defaultdict(lambda: [ZERO, 0]))  # catégorie -> article -> [ventes, commandes]
+    for x in c:
+        vus = set()
+        for l in x.lignes:
+            a = g[l.categorie][l.nom]
+            a[0] += l.ventes_nettes
+            if l.nom not in vus:
+                a[1] += 1
+                vus.add(l.nom)
+    avant_g = defaultdict(set)
+    for x in avant:
+        for l in x.lignes:
+            avant_g[l.categorie].add(l.nom)
+    total = sum((v[0] for arts in g.values() for v in arts.values()), ZERO)
+    lignes = []
+    for cat, arts in g.items():
+        ventes = sum((v[0] for v in arts.values()), ZERO)
+        if ventes <= 0:
+            continue
+        tri = sorted((v[0] for v in arts.values()), reverse=True)
+        cumul, n80 = ZERO, 0
+        for v in tri:
+            cumul += v
+            n80 += 1
+            if cumul >= ventes * Decimal("0.8"):
+                break
+        faibles = [n for n, v in arts.items() if v[1] <= 2]
+        part_faibles = _pc(len(faibles), len(arts))
+        lignes.append([cat, len(arts), len(avant_g.get(cat, set())), _d(ventes), _pc(ventes, total),
+                       _d(ventes / len(arts)), n80, _pc(n80, len(arts)), len(faibles), part_faibles,
+                       _d(sum((arts[n][0] for n in faibles), ZERO))])
+    lignes.sort(key=lambda l: -l[3])
+    # semaines (blocs de 7 jours depuis la fin) : articles différents vendus
+    au = min(ctx["au"], date.today())
+    blocs = []
+    debut = au - timedelta(days=6)
+    while debut >= ctx["du"]:
+        blocs.insert(0, debut)
+        debut -= timedelta(days=7)
+    par_bloc = defaultdict(set)
+    for x in c:
+        j = x.moment.date()
+        b = next((b_ for b_ in reversed(blocs) if b_ <= j), None)
+        if b is not None:
+            par_bloc[b].update(l.nom for l in x.lignes)
+    actifs = sum(l[1] for l in lignes)
+    faibles = sum(l[8] for l in lignes)
+    a_alleger = [l for l in lignes if l[1] >= 15 and l[9] >= 70]
+    r = RapportGestion()
+    r.entetes = ["Catégorie", "Articles vendus", "Articles vendus avant", "Ventes nettes", "Part des ventes %",
+                 "Ventes par article", "Articles pour 80 % des ventes", "Part des articles pour 80 % %",
+                 "Articles peu vendus (2 commandes ou moins)", "Part des articles peu vendus %",
+                 "Ventes des articles peu vendus"]
+    r.lignes = lignes
+    r.cartes = [("Articles vendus", "n", actifs), ("Catégories", "n", len(lignes)),
+                ("Articles peu vendus", "n", faibles), ("Part des articles peu vendus", "%", _pc(faibles, actifs)),
+                ("Catégories à alléger", "n", len(a_alleger))]
+    r.titre_evolution = "Articles différents vendus par semaine"
+    r.genre_evolution = "barres"
+    r.unite_evolution = ""
+    r.etiquettes = [_etiquette(b) for b in blocs]
+    r.series = [(_t("Articles différents"), [Decimal(len(par_bloc.get(b, ()))) for b in blocs])]
+    r.titre_repartition = "Ventes par article selon la catégorie"
+    r.genre_repartition = "classement"
+    r.repartition = [(l[0], l[5]) for l in sorted(lignes, key=lambda l: -l[5])[:8]]
+    constats = [_k(None, "Article peu vendu : 2 commandes ou moins dans la période. Catégorie à alléger : au moins 15 "
+                   "articles vendus dont 70 % ou plus se vendent à peine (place en rayon, stock dormant, péremption).")]
+    if lignes:
+        constats.append(_k("info", "{n} article(s) différents vendus ; {f} ({p} %) se vendent à peine et font {v} de "
+                                   "ventes.", n=actifs, f=faibles, p=_nb(_pc(faibles, actifs)),
+                           v=_argent(sum((l[10] for l in lignes), ZERO))))
+        meilleure = max(lignes, key=lambda l: l[5])
+        constats.append(_k("bon", "Catégorie la plus productive : « {c} » ({v} par article vendu).", c=meilleure[0],
+                           v=_argent(meilleure[5])))
+    for l in sorted(a_alleger, key=lambda l: -l[9])[:3]:
+        constats.append(_k("attention", "« {c} » : {f} de ses {n} articles se vendent à peine ({p} %) : réduire les "
+                                        "références ou les mettre en avant.", c=l[0], f=l[8], n=l[1], p=_nb(l[9], 0)))
+    r.alleger = a_alleger
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -3731,6 +3818,12 @@ def _decisions(sous: dict) -> list[tuple]:
                 _t("Les commandes avec un rabais ne sont pas plus grosses que les autres, après le rabais."),
                 "a_effet_rabais", [(l[0], _t("{n} commande(s) ; {r} de rabais en moyenne", n=l[1], r=_argent(l[4])), "")
                                    for l in efr.lignes[2:]])
+    aso = sous.get("a_assortiment", vide)
+    if getattr(aso, "alleger", None):
+        ajouter(3, "Alléger les catégories encombrées de références peu vendues",
+                _t("{n} catégorie(s) ont 70 % ou plus d'articles qui se vendent à peine.", n=len(aso.alleger)),
+                "a_assortiment", [(l[0], _t("{f} article(s) peu vendus sur {n} ; {v} de ventes", f=l[8], n=l[1],
+                                            v=_argent(l[10])), "") for l in aso.alleger])
     bai = sous.get("a_baisse", vide)
     fortes = [l for l in bai.lignes if l[7] == _t("Forte baisse")]
     if fortes:
@@ -3861,7 +3954,7 @@ DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure
                "Jour normal :", "Moyenne par jour ouvert de chaque jour", "Articles importants :", "Ventes moyennes par jour "
                "ouvert", "Prévision :", "Les taxes perçues par Clover",
                "Valeur sur un an =", "Seuil de rentabilité :", "Quantité prévue =", "Pour la semaine qui vient",
-               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes")
+               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes", "Article peu vendu : 2 commandes")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -4264,7 +4357,15 @@ def _sup_effet_rabais(r):
                     elements=sorted(((l[0], l[4]) for l in noms), key=lambda kv: -kv[1])[:8])]
 
 
-SUPPLEMENTS = {"a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
+def _sup_assortiment(r):
+    return [_graphe("classement", "Part des articles peu vendus par catégorie (%)", "%",
+                    elements=[(l[0], l[9]) for l in sorted((l for l in r.lignes if l[1] >= 5),
+                                                           key=lambda l: -l[9])[:8]]),
+            _graphe("classement", "Articles vendus par catégorie", "",
+                    elements=[(l[0], Decimal(l[1])) for l in sorted(r.lignes, key=lambda l: -l[1])[:8]])]
+
+
+SUPPLEMENTS = {"a_assortiment": _sup_assortiment, "a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
                "a_categories_jour": _sup_categories_jour, "a_prevu": _sup_prevu, "a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
@@ -4312,6 +4413,7 @@ ANALYSES = [
     ("Ventes au poids", "a_poids", ventes_poids, "Articles", "a_saison"),
     ("Prix selon le format", "a_prix_format", prix_format, "Articles", "a_poids"),
     ("Ventes par tranche de prix", "a_tranches", tranches_prix, "Articles", "a_prix_format"),
+    ("Productivité de l'assortiment", "a_assortiment", assortiment, "Articles", "a_tranches"),
     ("Ruptures probables", "a_ruptures", ruptures, "Articles", "a_baisse"),
     ("Articles d'appel", "a_appel", articles_appel, "Articles", "a_associations"),
     ("Ventes complémentaires manquées", "a_complements", complements, "Articles", "a_appel"),

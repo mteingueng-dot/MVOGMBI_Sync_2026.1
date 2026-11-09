@@ -585,3 +585,17 @@ def test_effet_des_rabais():
     assert avec[1] == 10 and sans[1] == 10  # les rabais Direction sont mis à part
     assert avec[3] == D("45.00") and avec[4] == D("5.00") and sans[3] == D("10.00")
     assert r.lignes[2][0] == "Rabais 10%" and not r.inefficace
+
+
+def test_productivite_de_l_assortiment():
+    cmds = []
+    for k in range(20):
+        j = date(2026, 9, 1) + timedelta(days=k)
+        cmds.append(_commande(f"AS-A{k}", j, [("Riz", "R", 1000)]))
+    for k in range(16):  # 16 articles « Fruits » vendus une seule fois
+        cmds.append(_commande(f"AS-B{k}", date(2026, 9, 2), [(f"Fruit {k}", "P", 100)]))
+    r = an.calculer("a_assortiment", _donnees(cmds), _donnees([]), {}, date(2026, 9, 1), date(2026, 9, 30),
+                    date(2026, 8, 1), date(2026, 8, 31))
+    fruits = next(l for l in r.lignes if l[0] == "Fruits")
+    assert fruits[1] == 16 and fruits[8] == 16 and fruits[9] == D("100.0")
+    assert [l[0] for l in r.alleger] == ["Fruits"] and r.graphiques
