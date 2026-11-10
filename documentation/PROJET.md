@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 200 versions livrées en 17 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 30 octobre, le 5 novembre et le 9 novembre 2026.
+Version 1.0.1 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 200 versions livrées en 17 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 30 octobre, le 5 novembre et le 9 novembre 2026.
 
 ---
 

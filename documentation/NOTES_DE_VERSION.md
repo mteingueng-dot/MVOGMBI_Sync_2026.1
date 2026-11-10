@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.1 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -11,6 +11,13 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 | 9 novembre 2026 | 1.0.0 → 1.0.44 |
 
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
+
+---
+
+## Version 1.0.1 (9 novembre 2026)
+
+- **Factures fournisseurs en deux onglets**, sous Windows et sur le web : « 📋 Liste des factures » (filtres Afficher, Fichier, Fournisseur, N° de facture ; cases à cocher et imports) et « ✏ Saisie de la facture » (liste déroulante « Facture à traiter », ◀ ▶, enregistrement automatique).
+- **Documentation mise à jour** : captures d'écran du manuel refaites avec la version en service (Reporting, Synthèse et décisions, Articles rentables ou non, Opérations journalières, factures fournisseurs en onglets) ; **page d'accueil** en tête de chaque document ; chaque document fourni aussi au **format Word** (.docx).
 
 ---
 

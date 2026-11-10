@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Catalogue des rapports (Reporting)
 
-Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.1 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce catalogue présente tous les rapports de la page **État > Reporting** (ancien onglet « Statistiques Clover »). Il dit, pour chacun, la question à laquelle il répond et la décision qu'il aide à prendre. Le document ne contient aucune donnée réelle.
 

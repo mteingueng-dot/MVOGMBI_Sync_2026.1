@@ -1,4 +1,4 @@
-// Présentation PowerPoint de MVOGMBI_Sync 1.0.0 du 9 novembre 2026 (aucune donnée de vente : document publié).
+// Présentation PowerPoint de MVOGMBI_Sync 1.0.1 du 9 novembre 2026 (aucune donnée de vente : document publié).
 //   node documentation/creer_presentation.js            (pptxgenjs requis : npm install pptxgenjs)
 // Sortie : documentation/Presentation_MVOGMBI_Sync.pptx
 
@@ -110,7 +110,7 @@ s.addText("Les ventes Clover dans Sage 50, chaque nuit, sans ressaisie — et le
   "Marché MVOG-MBI Sherbrooke · 9 novembre 2026", { placeholder: "body" });
 pastille(s, W - M - 1.3, 0.6, 1.3, "✓", P.jaune, P.vertFonce);
 s.addNotes("MVOGMBI_Sync relie la caisse Clover et la comptabilité Sage 50, et ajoute l'aide à la décision. " +
-  "Version 1.0.0 du 9 novembre 2026 : numérotation remise à zéro, tout ce qui suit est en service.");
+  "Version 1.0.1 du 9 novembre 2026 (série remise à 1.0.0 le même jour) : tout ce qui suit est en service.");
 
 // ================================================================== 2. sommaire
 s = contenu("Introduction", "Au programme",

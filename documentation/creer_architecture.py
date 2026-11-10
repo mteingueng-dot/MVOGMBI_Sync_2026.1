@@ -164,16 +164,68 @@ section.tenir { break-inside: avoid; page-break-inside: avoid; }
 section.paysage { page: paysage; }
 section.paysage .diagramme { margin-top: 4px; }
 pre.mermaid { background: none; font-family: inherit; }
+/* page d'accueil et sommaire (demande du propriétaire du 2026-11-09) */
+.couverture { height: 240mm; display: flex; flex-direction: column; justify-content: center; align-items: center;
+              text-align: center; border-top: 10px solid var(--vert); break-after: page; page-break-after: always; }
+.couverture img { width: 150px; margin-bottom: 26px; }
+.couverture .grand { font-size: 28pt; font-weight: 700; color: var(--vert); line-height: 1.2; }
+.couverture .sous { font-size: 14pt; color: var(--doux); margin-top: 8px; }
+.couverture .filet { display: flex; gap: 6px; margin: 22px 0; justify-content: center; }
+.couverture .filet span { display: inline-block; height: 6px; border-radius: 3px; }
+.couverture .infos { margin-top: 40px; font-size: 10pt; color: var(--doux); max-width: 150mm; }
+.sommaire { break-after: page; page-break-after: always; }
+.sommaire h2 { margin-top: 0; }
+.sommaire ol { font-size: 10.5pt; line-height: 1.7; }
 """
+EDITEUR = "Concept Informatique inc."
+LOGO = ICI.parent / "mvogmbi_sync" / "ressources" / "logo.png"
+
+
+def version_application() -> str:
+    texte = (ICI.parent / "mvogmbi_sync" / "aide.py").read_text(encoding="utf-8")
+    m = re.search(r'^VERSION\s*=\s*"([^"]+)"', texte, re.M)
+    return m.group(1) if m else ""
+
+
+def accueil(markdown: str, titre: str) -> tuple[str, str]:
+    """Page d'accueil (logo, titre du document, produit, version, éditeur) et sommaire des sections « ## » ;
+    rend (html, markdown sans le titre « # » ni la ligne de version, repris par la page d'accueil)."""
+    lignes = markdown.splitlines()
+    grand, infos = titre, ""
+    if lignes and lignes[0].startswith("# "):
+        grand = lignes.pop(0)[2:].strip()
+        while lignes and not lignes[0].strip():
+            lignes.pop(0)
+        if lignes and re.match(r"(Version|Concept|\w.* version )", lignes[0]) and len(lignes[0]) < 400:
+            infos = lignes.pop(0).strip()
+    grand = grand.replace("MVOGMBI_Sync — ", "")
+    produit = "MVOGMBI_Sync — Clover → Sage 50"
+    infos = infos or f"Version {version_application()}"
+    sections = [re.sub(r"^\d+(\.\d+)*\.?\s+", "", en_ligne(m.group(1)))
+                for m in re.finditer(r"(?m)^## (.+)$", "\n".join(lignes))]
+    html_ = f"""<section class="couverture">
+  <img src="{LOGO.as_uri()}" alt="Logo">
+  <div class="grand">{en_ligne(grand)}</div>
+  <div class="sous">{e(produit)}</div>
+  <div class="filet"><span style="width:90px;background:#1f7a3a"></span><span style="width:60px;background:#f2b705">
+  </span><span style="width:24px;background:#c62828"></span></div>
+  <div class="infos">{en_ligne(infos)}<br>Version de l'application : {e(version_application())}<br>
+  Conçu et développé par {e(EDITEUR)} — Tous droits réservés.</div>
+</section>"""
+    if len(sections) >= 3:
+        html_ += ("<section class='sommaire'><h2>Sommaire</h2><ol>"
+                  + "".join(f"<li>{t}</li>" for t in sections) + "</ol></section>")
+    return html_, "\n".join(lignes)
 
 
 def creer(sortie: Path | None = None, source: Path = SOURCE, titre: str = "Architecture MVOGMBI_Sync") -> Path:
     """Markdown `source` (titres, listes, tableaux, diagrammes Mermaid) -> PDF `sortie` ; sert aussi aux autres
     documents (creer_documents.py)."""
     sortie = sortie or ICI / "Architecture_MVOGMBI_Sync.pdf"
-    corps = convertir(Path(source).read_text(encoding="utf-8"))
+    page_accueil, markdown = accueil(Path(source).read_text(encoding="utf-8"), titre)
+    corps = page_accueil + convertir(markdown)
     page = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>{e(titre)}</title>
-<style>{STYLE}</style></head><body><div class="bandeau"></div>{corps}
+<style>{STYLE}</style></head><body>{corps}
 <script type="module">
 import mermaid from "{MERMAID}";
 mermaid.initialize({{ startOnLoad: false, theme: "base", flowchart: {{ htmlLabels: false, useMaxWidth: false, nodeSpacing: 28, rankSpacing: 32, padding: 6,

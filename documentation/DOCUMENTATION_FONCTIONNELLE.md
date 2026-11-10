@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.1 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application, **écran par écran**, et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Il entre dans le détail : champs, états, contrôles, cas particuliers, messages. Le détail de chaque règle, avec son code (RG-…), est dans le document des **règles d'affaires** ; le fonctionnement interne est dans le document d'**architecture** ; le mode d'emploi pas à pas, avec captures, est dans le **manuel d'utilisation** ; l'installation, la configuration et le dépannage sont dans le **guide de l'administrateur**.
 
@@ -217,7 +217,10 @@ Table catégorie Clover → préfixe de n° et comptes Sage (actif 15xx, produit
 
 #### Factures fournisseurs
 
-Une page : liste à gauche (état en couleur, case à cocher), facture choisie au centre, ligne choisie en carte d'édition.
+Une page en **deux onglets** (version 1.0.1, Windows et web) :
+
+- **📋 Liste des factures** : barre (Ajouter des factures, Lire le courriel, Actualiser, Fournisseurs et articles Sage, Dossier, Exporter), filtres *Afficher* (par état), *Fichier*, *Fournisseur* et *N° de facture* appliqués pendant la frappe, « ☑ Cocher les factures prêtes », « ☑ Importer les factures cochées », « 📤 Importer toutes les factures prêtes », liste pleine hauteur (état en couleur, case à cocher) ; un clic (web) ou un double-clic / Entrée (Windows) ouvre la facture dans l'onglet de saisie.
+- **✏ Saisie de la facture** : liste déroulante **« Facture à traiter »** (les factures de la liste filtrée : n°, fournisseur, date, état, fichier), boutons ◀ ▶ (facture précédente / suivante), en-tête, lignes et carte d'édition de la ligne choisie ; la facture s'**enregistre d'elle-même** (aussi en changeant de facture ou d'onglet).
 
 | Étape | Règles |
 |---|---|

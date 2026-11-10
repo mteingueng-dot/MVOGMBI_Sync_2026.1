@@ -91,6 +91,8 @@ Source: "..\documentation\Catalogue_reporting_MVOGMBI_Sync.pdf"; DestDir: "{app}
 Source: "..\documentation\Notes_de_version_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Presentation_services_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Presentation_MVOGMBI_Sync.pptx"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+; chaque document aussi au format Word (demande du propriétaire du 2026-11-09)
+Source: "..\documentation\Word\*.docx"; DestDir: "{app}\documentation\Word"; Flags: ignoreversion skipifsourcedoesntexist
 ; manuel du profil : page HTML du manuel et captures (l'application en retire les chapitres non permis)
 Source: "..\documentation\Manuel_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\User_Manual_MVOGMBI_Sync.html"; DestDir: "{app}\manuel"; Flags: ignoreversion skipifsourcedoesntexist

@@ -7,6 +7,8 @@ if exist ..\documentation\captures\00_accueil.png python ..\documentation\creer_
 rem Documents du projet (PDF) : architecture, documentation fonctionnelle, tests, projet, workflows, processus ;
 rem sans Internet (diagrammes), les anciens PDF sont gardes
 python ..\documentation\creer_documents.py
+rem Les memes documents et les manuels au format Word (documentation\Word\*.docx, Microsoft Word requis)
+python ..\documentation\creer_word.py
 python -m PyInstaller --noconfirm --clean --distpath ..\dist --workpath ..\build MVOGMBI_Sync.spec || goto erreur
 rem Client des postes (un seul fichier, copie aussi dans l'installateur)
 python -m PyInstaller --noconfirm --clean --distpath ..\dist --workpath ..\build\client MVOGMBI_Sync_Client.spec || goto erreur

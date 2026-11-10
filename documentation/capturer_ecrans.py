@@ -126,6 +126,7 @@ def main(origine: Path, langue: str = "fr") -> None:
         if p.liste.get_children():
             p.liste.selection_set(p.liste.get_children()[0])
             p.choisir_facture()
+            p.onglets.select(p.onglet_saisie)  # 2e onglet « Saisie de la facture » (1.0.1)
             if p.lignes.get_children():
                 p.lignes.selection_set(p.lignes.get_children()[0])
                 p.choisir_ligne()
@@ -170,8 +171,12 @@ def main(origine: Path, langue: str = "fr") -> None:
                                      ("18_carte_chaleur", "Jour × heure", "Rapports", 4000),
                                      ("19_benefices", "Bénéfices", "Rapports", 15000),
                                      ("20_liste_articles", "liste_articles", "Articles", 25000),
-                                     ("21_previsions", "prev_ventes", "Prévisions", 25000)):
+                                     ("21_previsions", "prev_ventes", "Prévisions", 25000),
+                                     ("31_synthese_decisions", "a_synthese", "Accueil", 25000),
+                                     ("32_articles_rentables", "a_matrice", "Articles", 15000)):
         page(i.RAPPORTS, nom, etat(cle, section), delai=delai)
+    page(i.RAPPORTS, "33_operations_journalieres",
+         lambda: app.page_rapports.onglets.select(app.page_rapports.onglet_operations), delai=15000)
     # fenêtres de travail ajoutées le 2026-10-29 (affichées DANS la fenêtre principale)
     def outil(methode):
         return lambda: app._lancer_action(methode)

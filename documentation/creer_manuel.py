@@ -470,11 +470,11 @@ finds no invoice: record it yourself in Sage.</td></tr>
 deposit has not arrived yet.</td></tr></table>"""))
 
     # ------------------------------------------------------------------ 8. Factures fournisseurs
-    parties.append(titre("fournisseurs") + figure("08_factures_fournisseurs", x("Fournisseur > Factures fournisseurs — Liste des factures fournisseurs",
-                                                                   "Supplier > Supplier invoices — List of supplier invoices"))
+    parties.append(titre("fournisseurs") + figure("08_factures_fournisseurs", x("Fournisseur > Factures fournisseurs — onglet « Liste des factures » : filtres, cases à cocher, import",
+                                                                   "Supplier > Supplier invoices — “Invoice list” tab: filters, check boxes, import"))
                    + blocs("Factures fournisseurs")
-                   + figure("08b_facture_detail", x("Fournisseur > Factures fournisseurs — Une facture ouverte : en-tête, lignes et article Sage",
-                                                    "Supplier > Supplier invoices — An open invoice: header, lines and Sage item"))
+                   + figure("08b_facture_detail", x("Fournisseur > Factures fournisseurs — onglet « Saisie de la facture » : facture à traiter choisie dans la liste déroulante (◀ ▶), en-tête, lignes et article Sage, enregistrée automatiquement",
+                                                    "Supplier > Supplier invoices — “Invoice entry” tab: invoice to process chosen in the drop-down list (◀ ▶), header, lines and Sage item, saved automatically"))
                    + x("""
 <h3>Calcul des quantités et des prix</h3>
 <table class="simple"><tr><th>Champ</th><th>Calcul</th><th>Exemple</th></tr>
@@ -545,9 +545,9 @@ other.</td></tr></table>"""))
     # ------------------------------------------------------------------ 11. Mode opératoire
     parties.append(titre("rapports") + figure("14_rapports", x("État > Suivi des ventes : suivi complet de chaque vente",
                                                         "Reports > Sales tracking: complete tracking of each sale"))
-                   + figure("15_statistiques", x("État > Statistiques Clover : cartes, courbes, anneaux et menu des "
+                   + figure("15_statistiques", x("État > Reporting : cartes, courbes, anneaux et menu des "
                                                  "états, comme le tableau de bord de Clover",
-                                                 "Reports > Clover statistics: cards, curves, rings and the report "
+                                                 "Reports > Reporting: cards, curves, rings and the report "
                                                  "menu, like the Clover dashboard"))
                    + blocs("Rapports (menu")
                    + figure("16_apercu_ventes", x("Aperçu des ventes : courbes, anneaux et classements, infobulle au "
@@ -563,6 +563,20 @@ other.</td></tr></table>"""))
                                                    "Item list: Clover details, Sage number and average cost, margin"))
                    + figure("21_previsions", x("Prévisions : ventes des prochains jours",
                                                "Forecasts: sales of the coming days"))
+                   + figure("31_synthese_decisions", x("Reporting > Accueil > Synthèse et décisions : cartes à feux, "
+                                                       "constats en couleur, décisions classées par priorité ; "
+                                                       "sous-pages Résumé / Graphiques / Détail",
+                                                       "Reporting > Home > Summary and decisions: traffic-light cards, "
+                                                       "coloured findings, decisions ranked by priority; Summary / "
+                                                       "Charts / Detail sub-pages"))
+                   + figure("32_articles_rentables", x("Reporting > Articles > Articles rentables ou non : quatre "
+                                                       "groupes d'articles au coût moyen de Sage",
+                                                       "Reporting > Items > Profitable items or not: four item groups "
+                                                       "at the Sage average cost"))
+                   + figure("33_operations_journalieres", x("État > Opérations journalières : ventes, achats, "
+                                                            "encaissements et paiements, avec la date du traitement",
+                                                            "Reports > Daily operations: sales, purchases, receipts "
+                                                            "and payments, with the processing date"))
                    + "<div class='note'>💡 " + x("Clic droit sur un graphique : PDF ou image PNG. Bouton « 📕 PDF de "
                                                    "la page » : la page entière (indicateurs, graphiques, tableau).",
                                                    "Right-click a chart: PDF or PNG image. “📕 Page PDF” button: the "
