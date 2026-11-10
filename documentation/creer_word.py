@@ -183,7 +183,11 @@ def creer_tout(noms: list[str] | None = None) -> list[Path]:
         if not html.exists():
             print("absent :", html.name)
             continue
-        faits.append(vers_word(html, docx))
+        try:
+            faits.append(vers_word(html, docx))
+        except PermissionError:  # document ouvert dans Word : gardé tel quel, les autres sont faits
+            print("ouvert dans un autre programme, non refait :", docx.name)
+            continue
         print(docx.name)
     return faits
 

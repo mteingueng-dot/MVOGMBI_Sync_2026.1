@@ -1,6 +1,6 @@
 # Présentation de nos services — Clover et Sage 50 enfin reliés
 
-Concept Informatique inc. — Solution MVOGMBI_Sync, version 1.0.1 (novembre 2026)
+Concept Informatique inc. — Solution MVOGMBI_Sync, version 1.0.2 (novembre 2026)
 
 **Votre caisse Clover et votre comptabilité Sage 50 travaillent ensemble, chaque nuit, sans ressaisie.** Vous gardez vos outils ; nous faisons le lien, nous l'installons chez vous, nous formons votre équipe et nous restons à vos côtés.
 

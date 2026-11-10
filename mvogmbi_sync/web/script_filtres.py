@@ -7,6 +7,9 @@
   le bouton reste pour un navigateur sans script et est caché sinon (classe « sans-js ») ;
 - touche Entrée : clique le bouton [data-entree] du formulaire s'il existe, et n'actionne jamais un bouton qui
   supprime ou écarte ;
+- position gardée (demande du propriétaire du 2026-11-10 : « le bouton Chercher ne doit plus ramener la page au
+  début ») : un envoi de formulaire ou un lien vers la même page note le défilement de la page et des zones qui
+  défilent ; la page rechargée y revient (30 s au plus, même adresse sans les paramètres) ;
 - filtres de tableau pendant la frappe : <input> ou <select> data-filtre="id du tableau" data-colonnes="1,2" cache les lignes
   qui ne contiennent pas le texte tapé (majuscules et accents ignorés) ; plusieurs champs se cumulent.
 """
@@ -43,7 +46,44 @@ SCRIPT = r"""
   });
   // la page se relance : bandeau « Chargement… » (une période longue se lit en quelques secondes dans Clover)
   function charger() { document.documentElement.classList.add('chargement'); }
-  document.addEventListener('submit', function (ev) { if (!ev.defaultPrevented) { charger(); } });
+  // position gardée d'un rechargement à l'autre de la même page
+  function cle(el, n) { return el.id ? '#' + el.id : (el.tagName + '.' + el.className + '|' + n); }
+  function noterPosition() {
+    try {
+      var zones = {}, compte = {};
+      document.querySelectorAll('body *').forEach(function (el) {
+        var k = el.tagName + '.' + el.className;
+        var n = compte[k] = (compte[k] || 0) + 1;
+        if (el.scrollTop > 0 || el.scrollLeft > 0) { zones[cle(el, n)] = [el.scrollLeft, el.scrollTop]; }
+      });
+      sessionStorage.setItem('mvogmbi_position', JSON.stringify(
+        {page: location.pathname, moment: Date.now(), x: window.scrollX, y: window.scrollY, zones: zones}));
+    } catch (e) { /* stockage refusé : rien */ }
+  }
+  function reprendrePosition() {
+    var p = null;
+    try { p = JSON.parse(sessionStorage.getItem('mvogmbi_position') || 'null');
+          sessionStorage.removeItem('mvogmbi_position'); } catch (e) { return false; }
+    if (!p || p.page !== location.pathname || Date.now() - p.moment > 30000) { return false; }
+    var compte = {};
+    document.querySelectorAll('body *').forEach(function (el) {
+      var k = el.tagName + '.' + el.className;
+      var n = compte[k] = (compte[k] || 0) + 1;
+      var z = p.zones[cle(el, n)];
+      if (z) { el.scrollLeft = z[0]; el.scrollTop = z[1]; }
+    });
+    window.scrollTo(p.x, p.y);
+    return true;
+  }
+  document.addEventListener('submit', function (ev) {
+    if (!ev.defaultPrevented) { noterPosition(); charger(); }
+  });
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    if (!a || a.target === '_blank' || ev.defaultPrevented) { return; }
+    var url = new URL(a.href, location.href);
+    if (url.origin === location.origin && url.pathname === location.pathname && !url.hash) { noterPosition(); }
+  });
   window.addEventListener('beforeunload', charger);
   window.addEventListener('pageshow', function () { document.documentElement.classList.remove('chargement'); });
   function filtrer(id) {
@@ -154,8 +194,9 @@ SCRIPT = r"""
   document.addEventListener('DOMContentLoaded', function () {
     ajuster();
     preparerGraphiques();
+    var repris = reprendrePosition();
     var choisie = document.querySelector('[data-choisie]');  // facture choisie : visible dans la liste
-    if (choisie && choisie.scrollIntoView) { choisie.scrollIntoView({block: 'nearest'}); }
+    if (!repris && choisie && choisie.scrollIntoView) { choisie.scrollIntoView({block: 'nearest'}); }
     var vus = {};
     document.querySelectorAll('[data-filtre]').forEach(function (c) {
       var id = c.getAttribute('data-filtre');
