@@ -16,7 +16,7 @@ from .articles_sage import lire_copie
 from .correspondance import normaliser
 from .fournisseurs import conflit_format_achat
 from .design import action_permise
-from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, ChampDate, ChampRecherche, apres_frappe, cadre_tableau,
+from .design import (CARTE, ROUGE, TEXTE_DOUX, VERT_FONCE, Bouton, Rangee, ChampDate, ChampRecherche, apres_frappe, cadre_tableau,
                      entete_page, fond_de, rayer)
 from .fournisseurs import (A_SAISIR, A_VERIFIER, ETATS, IMPORTEE, PRETE, Ligne, MemoireCorrespondance, Registre,
                            nombre_archives,
@@ -39,6 +39,13 @@ def decimal(texte: str) -> Decimal:
         raise ValueError(t("Nombre invalide : {v}", v=texte))
 
 
+def _simple(texte) -> str:
+    """Texte sans accents ni majuscules, pour les filtres de la liste."""
+    import unicodedata
+
+    return unicodedata.normalize("NFKD", str(texte or "")).encode("ascii", "ignore").decode().casefold().strip()
+
+
 class PageFournisseurs(ttk.Frame):
     def __init__(self, parent, racine: Path, titre: str):
         super().__init__(parent, padding=10)
@@ -56,22 +63,59 @@ class PageFournisseurs(ttk.Frame):
 
         entete_page(self, "🧾", t("Factures fournisseurs"),
                     t("lecture des factures, articles Sage et import dans Sage")).pack(fill="x")
-        barre = ttk.Frame(self)
+        # même disposition que la page web (demande du propriétaire du 2026-11-09, capture de la page web) : boutons,
+        # filtres Afficher / Fichier / Fournisseur / N° de facture, liste à gauche et saisie à droite
+        barre = Rangee(self)
         barre.pack(fill="x")
-        Bouton(barre, "➕  " + t("Ajouter des factures…"), self.ajouter_factures).pack(side="left")
-        Bouton(barre, "📧  " + t("Lire le courriel"), self.lire_courriel, "secondaire").pack(side="left", padx=(8, 0))
-        Bouton(barre, "⟳  " + t("Actualiser"), self.actualiser, "secondaire").pack(side="left", padx=(8, 0))
-        Bouton(barre, "📂  " + t("Dossier des factures"), self.ouvrir_dossier, "secondaire").pack(side="left", padx=8)
-        Bouton(barre, "📒  " + t("Fournisseurs et articles Sage"), self.mettre_a_jour_sage, "secondaire").pack(side="left")
-        ttk.Label(barre, text=t("Afficher :")).pack(side="left", padx=(16, 4))
+        for texte_b, action, genre in (("➕  " + t("Ajouter des factures…"), self.ajouter_factures, "principal"),
+                                       ("📧  " + t("Lire le courriel"), self.lire_courriel, "secondaire"),
+                                       ("⟳  " + t("Actualiser"), self.actualiser, "secondaire"),
+                                       ("📒  " + t("Fournisseurs et articles Sage"), self.mettre_a_jour_sage, "secondaire"),
+                                       ("📂  " + t("Dossier des factures"), self.ouvrir_dossier, "secondaire")):
+            barre.ajouter(Bouton(barre, texte_b, action, genre))
+        # deux onglets (demande du propriétaire du 2026-11-09 : « la fenêtre est trop chargée ; la liste des factures
+        # dans une table à part et la saisie dans une autre fenêtre ; avec un menu déroulant on sélectionne la
+        # facture à traiter ; la saisie s'enregistre automatiquement »)
+        self.onglets = ttk.Notebook(self)
+        self.onglets.pack(fill="both", expand=True, pady=(8, 0))
+        onglet_liste = ttk.Frame(self.onglets, padding=8)
+        self.onglet_saisie = ttk.Frame(self.onglets, padding=8)
+        self.onglets.add(onglet_liste, text="  📋  " + t("Liste des factures") + "  ")
+        self.onglets.add(self.onglet_saisie, text="  ✏  " + t("Saisie de la facture") + "  ")
+        self.onglets.bind("<<NotebookTabChanged>>", lambda _e: self.sauvegarder_auto())  # rien n'est perdu
+        filtres = Rangee(onglet_liste)
+        filtres.pack(fill="x")
         self.filtre = tk.StringVar(value=t("Toutes"))
-        liste = ttk.Combobox(barre, textvariable=self.filtre, state="readonly", width=20,
+        self.f_fichier, self.f_fournisseur, self.f_numero = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        self.f_fournisseur.set(t("Tous les fournisseurs"))
+        g = filtres.groupe()
+        ttk.Label(g, text=t("Afficher :")).pack(side="left", padx=(0, 4))
+        liste = ttk.Combobox(g, textvariable=self.filtre, state="readonly", width=20,
                              values=[t("Toutes")] + [t(e) for e in ETATS])
         liste.pack(side="left")
         liste.bind("<<ComboboxSelected>>", lambda _e: self.afficher_liste())
+        filtres.ajouter(g)
+        g = filtres.groupe()
+        ttk.Label(g, text=t("Fichier :")).pack(side="left", padx=(0, 4))
+        ttk.Entry(g, textvariable=self.f_fichier, width=28).pack(side="left")
+        filtres.ajouter(g, 14)
+        g = filtres.groupe()
+        ttk.Label(g, text=t("Fournisseur :")).pack(side="left", padx=(0, 4))
+        self.liste_f_fournisseur = ttk.Combobox(g, textvariable=self.f_fournisseur, state="readonly", width=28)
+        self.liste_f_fournisseur.pack(side="left")
+        self.liste_f_fournisseur.bind("<<ComboboxSelected>>", lambda _e: self.afficher_liste())
+        filtres.ajouter(g, 14)
+        g = filtres.groupe()
+        ttk.Label(g, text=t("N° de facture :")).pack(side="left", padx=(0, 4))
+        ttk.Entry(g, textvariable=self.f_numero, width=16).pack(side="left")
+        filtres.ajouter(g, 14)
+        for variable in (self.f_fichier, self.f_numero):  # filtre pendant la frappe
+            variable.trace_add("write", lambda *_a: self.afficher_liste())
+        filtres.ajouter(Bouton(filtres, "☑  " + t("Cocher les factures prêtes"), self.cocher_pretes, "secondaire",
+                               petit=True), 14)
         # les deux boutons d'import sur la ligne du résumé : dans la barre du haut, trop large, ils sortaient de la
         # fenêtre (constat du propriétaire du 2026-11-05 : « le bouton n'existe pas dans la version Windows »)
-        ligne = ttk.Frame(self)
+        ligne = ttk.Frame(onglet_liste)
         ligne.pack(fill="x", pady=(4, 0))
         Bouton(ligne, "📤  " + t("Importer toutes les factures prêtes"), lambda: self.importer(toutes=True),
                "accent", petit=True).pack(side="right", padx=(8, 0))
@@ -82,16 +126,15 @@ class PageFournisseurs(ttk.Frame):
         self.resume = ttk.Label(ligne, text="", foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume.pack(side="left", fill="x", expand=True)
 
-        volets = ttk.PanedWindow(self, orient="vertical")
-        volets.pack(fill="both", expand=True)
-        haut = cadre_tableau(volets)
-        volets.add(haut, weight=1)
-        colonnes = (("case", "☐", 34), ("fichier", "Fichier", 220), ("fournisseur", "Fournisseur Sage", 220), ("numero", "N°", 90),
-                    ("date", "Date", 85), ("total", "Total", 90), ("depot", "Dépôt", 120), ("clover", "Clover", 60), ("etat", "État", 130))
-        self.liste = ttk.Treeview(haut, columns=[c[0] for c in colonnes], show="headings", height=3, selectmode="browse")
+        haut = cadre_tableau(onglet_liste)
+        haut.pack(fill="both", expand=True)
+        colonnes = (("case", "☐", 34), ("fichier", "Fichier", 360), ("fournisseur", "Fournisseur Sage", 220), ("numero", "N°", 90),
+                    ("date", "Date", 85), ("total", "Total", 85), ("depot", "Dépôt", 120), ("clover", "Clover", 55), ("etat", "État", 130))
+        self.liste = ttk.Treeview(haut, columns=[c[0] for c in colonnes], show="headings", height=20, selectmode="browse")
         for cle, titre_col, largeur in colonnes:
             self.liste.heading(cle, text=t(titre_col))
-            self.liste.column(cle, width=largeur, anchor="e" if cle == "total" else "center" if cle == "case" else "w",
+            self.liste.column(cle, width=largeur, minwidth=largeur if cle == "case" else 40,
+                              anchor="e" if cle == "total" else "center" if cle == "case" else "w",
                               stretch=cle == "fichier")
         self.liste.heading("case", text="☐", command=self.cocher_pretes)
         self.liste.bind("<Button-1>", self._clic_case, add="+")
@@ -100,9 +143,16 @@ class PageFournisseurs(ttk.Frame):
         defil = ttk.Scrollbar(haut, orient="vertical", command=self.liste.yview)
         self.liste.configure(yscrollcommand=defil.set)
         defil.pack(side="right", fill="y")  # avant le tableau : toujours visible, même s'il est large
+        defil_x = ttk.Scrollbar(haut, orient="horizontal", command=self.liste.xview)
+        self.liste.configure(xscrollcommand=defil_x.set)
+        defil_x.pack(side="bottom", fill="x")
         self.liste.pack(side="left", fill="both", expand=True)
         self.liste.bind("<<TreeviewSelect>>", lambda _e: self.choisir_facture())
-        placer_a_droite(bouton_exporter(barre, self.liste, t("Factures fournisseurs")))
+        # double-clic ou Entrée : la facture s'ouvre dans l'onglet de saisie
+        self.liste.bind("<Double-Button-1>", lambda e: None if self.liste.identify_column(e.x) == "#1"
+                        else self.ouvrir_saisie())
+        self.liste.bind("<Return>", lambda _e: self.ouvrir_saisie())
+        barre.ajouter(bouton_exporter(barre, self.liste, t("Factures fournisseurs")))
         self.liste.bind("<Delete>", lambda _e: action_permise(self, "Supprimer") and self.ecarter())
         self.bind("<Map>", lambda _e: self.actualiser(silencieux=True))  # retour sur la page : liste à jour
         self.after(3000, self._suivre_disque)  # même état que le web et la nuit, en temps réel
@@ -110,8 +160,23 @@ class PageFournisseurs(ttk.Frame):
         self.bind("<Unmap>", lambda e: self.sauvegarder_auto() if e.widget is self else None)
         self.bind("<Destroy>", lambda e: self.sauvegarder_auto() if e.widget is self else None)
 
-        bas = ttk.Frame(volets)
-        volets.add(bas, weight=3)
+        # onglet de saisie : la facture à traiter se choisit dans une liste déroulante (celles de la liste filtrée)
+        choix = ttk.Frame(self.onglet_saisie)
+        choix.pack(fill="x", pady=(0, 8))
+        ttk.Label(choix, text=t("Facture à traiter :"), font=("Segoe UI Semibold", 10)).pack(side="left", padx=(0, 6))
+        self.v_choix = tk.StringVar()
+        self.liste_choix = ttk.Combobox(choix, textvariable=self.v_choix, state="readonly", width=95)
+        self.liste_choix.pack(side="left", fill="x", expand=True)
+        self.liste_choix.bind("<<ComboboxSelected>>", lambda _e: self._choisir_dans_la_liste())
+        self._ids_choix: list[str] = []
+        Bouton(choix, "◀", lambda: self._facture_voisine(-1), "secondaire", petit=True, largeur=34).pack(
+            side="left", padx=(6, 0))
+        Bouton(choix, "▶", lambda: self._facture_voisine(1), "secondaire", petit=True, largeur=34).pack(
+            side="left", padx=(4, 0))
+        tk.Label(choix, text="💾 " + t("enregistrée automatiquement"), foreground=TEXTE_DOUX,
+                 background=fond_de(choix), font=("Segoe UI", 9)).pack(side="left", padx=(10, 0))
+        bas = ttk.Frame(self.onglet_saisie)
+        bas.pack(fill="both", expand=True)
         self._construire_detail(bas)
         self.afficher_liste()
         if not self.fournisseurs_sage or not self.articles_sage:
@@ -121,46 +186,53 @@ class PageFournisseurs(ttk.Frame):
     def _construire_detail(self, parent) -> None:
         self.v = {cle: tk.StringVar() for cle in ("fournisseur", "numero", "date", "sous_total", "tps", "tvq", "total",
                                                   "depot")}
-        entete = ttk.Frame(parent, padding=(0, 6, 0, 2))
-        entete.pack(fill="x")
-        ttk.Label(entete, text=t("Fournisseur Sage")).pack(side="left")
+        entete = Rangee(parent)
+        entete.pack(fill="x", pady=(0, 2))
+
+        def champ(libelle, fabrique, espace=12):
+            g = entete.groupe()
+            ttk.Label(g, text=t(libelle)).pack(side="left", padx=(0, 4))
+            w = fabrique(g)
+            w.pack(side="left")
+            entete.ajouter(g, espace)
+            return w
+
         # recherche rapide : taper quelques lettres (« basm », « champs ») affiche les fournisseurs Sage correspondants
-        self.liste_fournisseurs = ChampRecherche(entete, self.v["fournisseur"], self.fournisseurs_sage, largeur=34)
-        self.liste_fournisseurs.pack(side="left", padx=(4, 12))
-        ttk.Label(entete, text=t("N° de facture")).pack(side="left")
-        ttk.Entry(entete, textvariable=self.v["numero"], width=12).pack(side="left", padx=(4, 12))
-        ttk.Label(entete, text=t("Date")).pack(side="left")
-        ChampDate(entete, self.v["date"]).pack(side="left", padx=(4, 12))
+        self.liste_fournisseurs = champ("Fournisseur Sage", lambda g: ChampRecherche(g, self.v["fournisseur"],
+                                                                                     self.fournisseurs_sage, largeur=30))
+        champ("N° de facture", lambda g: ttk.Entry(g, textvariable=self.v["numero"], width=12))
+        champ("Date", lambda g: ChampDate(g, self.v["date"]))
         # dépôt qui reçoit la marchandise (demande du propriétaire du 2026-11-05) : transfert fait après l'import
-        ttk.Label(entete, text=t("Dépôt")).pack(side="left")
-        ttk.Combobox(entete, textvariable=self.v["depot"], state="readonly", width=22,
-                     values=self._noms_depots()).pack(side="left", padx=(4, 12))
+        champ("Dépôt", lambda g: ttk.Combobox(g, textvariable=self.v["depot"], state="readonly", width=22,
+                                              values=self._noms_depots()))
         # case de chaque facture (demande du propriétaire du 2026-11-09) : coché = Sage ET stock Clover ; décoché =
         # Sage seulement (services, marchandise déjà entrée dans Clover)
         self.v_clover = tk.BooleanVar(value=True)
-        ttk.Checkbutton(entete, text=t("Mettre à jour le stock Clover"), variable=self.v_clover,
-                        command=lambda: None if self._chargement else self.sauvegarder_auto()).pack(side="left")
-        Bouton(entete, "🗑  " + t("Écarter"), self.ecarter, "danger", petit=True).pack(side="right", padx=(6, 0))
-        Bouton(entete, "👁  " + t("Voir la facture"), self.voir_facture, "secondaire", petit=True).pack(side="right")
-        Bouton(entete, "✖  " + t("Supprimer"), self.supprimer_facture, "danger", petit=True).pack(side="right",
-                                                                                                 padx=(0, 6))
+        entete.ajouter(ttk.Checkbutton(entete, text=t("Mettre à jour le stock Clover"), variable=self.v_clover,
+                                       command=lambda: None if self._chargement else self.sauvegarder_auto()), 12)
         self.lu = ttk.Label(parent, text="", foreground=TEXTE_DOUX)
         self.lu.pack(fill="x")
-        montants = ttk.Frame(parent, padding=(0, 4, 0, 0))
-        montants.pack(fill="x")
+        montants = Rangee(parent)
+        montants.pack(fill="x", pady=(4, 0))
         for cle, libelle in (("sous_total", "Sous-total"), ("tps", "TPS"), ("tvq", "TVQ"), ("total", "Total")):
-            ttk.Label(montants, text=t(libelle)).pack(side="left", padx=(0, 4))
-            ttk.Entry(montants, textvariable=self.v[cle], width=11).pack(side="left", padx=(0, 14))
-        Bouton(montants, "📤  " + t("Importer cette facture"), self.importer, "principal").pack(side="right", padx=(8, 0))
-        Bouton(montants, "🔁  " + t("Refaire la mise à jour Clover"), self.refaire_clover, "secondaire",
-               petit=True).pack(side="right", padx=(8, 0))
-        # impressions (demande du propriétaire du 2026-11-05) : bon de réception sans prix, facture avec prix
-        Bouton(montants, "🖨  " + t("Facture (avec prix)"), lambda: self.imprimer("facture"), "secondaire",
-               petit=True).pack(side="right", padx=(8, 0))
-        Bouton(montants, "🖨  " + t("Bon de réception"), lambda: self.imprimer("bon"), "secondaire",
-               petit=True).pack(side="right", padx=(8, 0))
-        Bouton(montants, "💾  " + t("Enregistrer la facture"), self.enregistrer_facture, "accent").pack(side="right")
-        self.controle = tk.Label(parent, text="", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=900,
+            g = montants.groupe()
+            ttk.Label(g, text=t(libelle)).pack(side="left", padx=(0, 4))
+            ttk.Entry(g, textvariable=self.v[cle], width=11).pack(side="left")
+            montants.ajouter(g, 14)
+        actions = Rangee(parent)
+        actions.pack(fill="x", pady=(6, 0))
+        for texte_b, action, genre in (
+                ("💾  " + t("Enregistrer la facture"), self.enregistrer_facture, "accent"),
+                ("📤  " + t("Importer cette facture"), self.importer, "principal"),
+                # impressions (demande du propriétaire du 2026-11-05) : bon de réception sans prix, facture avec prix
+                ("🖨  " + t("Bon de réception"), lambda: self.imprimer("bon"), "secondaire"),
+                ("🖨  " + t("Facture (avec prix)"), lambda: self.imprimer("facture"), "secondaire"),
+                ("🔁  " + t("Refaire la mise à jour Clover"), self.refaire_clover, "secondaire"),
+                ("👁  " + t("Voir la facture"), self.voir_facture, "secondaire"),
+                ("🗑  " + t("Écarter"), self.ecarter, "danger"),
+                ("✖  " + t("Supprimer"), self.supprimer_facture, "danger")):
+            actions.ajouter(Bouton(actions, texte_b, action, genre, petit=True))
+        self.controle = tk.Label(parent, text="", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=780,
                                  background=fond_de(parent))
         self.controle.pack(fill="x", pady=(4, 0))
         for variable in self.v.values():  # chaque saisie de l'en-tête est enregistrée au fur et à mesure
@@ -264,15 +336,61 @@ class PageFournisseurs(ttk.Frame):
     # ---------------------------------------------------------------- liste des factures
     def afficher_liste(self) -> None:
         choix = self.filtre.get()
+        fichier = _simple(self.f_fichier.get())
+        numero = _simple(self.f_numero.get())
+        fournisseur = self.f_fournisseur.get()
+        noms = sorted({f.fournisseur_sage or f"({f.fournisseur_lu or '?'})" for f in self.registre.factures},
+                      key=str.casefold)
+        self.liste_f_fournisseur.configure(values=[t("Tous les fournisseurs")] + noms)
+        choisie = self.liste.selection()
         self.liste.delete(*self.liste.get_children())
         for i, f in sorted(enumerate(self.registre.factures), key=lambda x: (x[1].date_facture or "", x[0]),
                            reverse=True):  # la plus récente en haut
             if choix != t("Toutes") and t(f.etat) != choix:
                 continue
+            if fichier and fichier not in _simple(f.fichier):
+                continue
+            if numero and numero not in _simple(f.numero):
+                continue
+            if fournisseur not in ("", t("Tous les fournisseurs")) and \
+                    (f.fournisseur_sage or f"({f.fournisseur_lu or '?'})") != fournisseur:
+                continue
             self.liste.insert("", "end", iid=str(i), tags=(f.etat,), values=self._valeurs_liste(f))
         self.cochees &= {f.fichier for f in self.registre.factures}
+        self._ids_choix = list(self.liste.get_children())
+        self.liste_choix.configure(values=[self._libelle_choix(self.registre.factures[int(i)]) for i in self._ids_choix])
+        garder = [i for i in choisie if self.liste.exists(i)]
+        if garder:  # la facture ouverte reste choisie (sans être rechargée) et visible
+            self._reselection = True  # pas de rechargement de la facture ouverte
+            self.liste.selection_set(garder)
+            self.after_idle(lambda: setattr(self, "_reselection", False))
+            self.liste.see(garder[0])
         rayer(self.liste)
         self._afficher_resume()
+
+    def _libelle_choix(self, f) -> str:
+        return "  ·  ".join(v for v in (f.numero or "?", f.fournisseur_sage or f"({f.fournisseur_lu or '?'})",
+                                        f.date_facture or "", t(f.etat), f.fichier) if v)
+
+    def _choisir_dans_la_liste(self) -> None:
+        rang = self.liste_choix.current()
+        if 0 <= rang < len(self._ids_choix):
+            iid = self._ids_choix[rang]
+            self.liste.selection_set(iid)
+            self.liste.see(iid)
+
+    def _facture_voisine(self, pas: int) -> None:
+        if not self._ids_choix:
+            return
+        rang = self.liste_choix.current()
+        rang = 0 if rang < 0 else max(0, min(len(self._ids_choix) - 1, rang + pas))
+        self.liste_choix.current(rang)
+        self._choisir_dans_la_liste()
+
+    def ouvrir_saisie(self) -> None:
+        """Facture choisie dans la liste : ouverte dans l'onglet de saisie."""
+        if self.liste.selection():
+            self.onglets.select(self.onglet_saisie)
 
     def _clic_case(self, evenement):
         """Clic dans la colonne des cases : coche ou décoche la facture, sans l'ouvrir."""
@@ -304,7 +422,7 @@ class PageFournisseurs(ttk.Frame):
 
     def _afficher_resume(self, suite: str = "") -> None:
         compte = {e: sum(1 for f in self.registre.factures if f.etat == e) for e in ETATS}
-        self.resume.configure(text=t("{n} facture(s) — à saisir : {s}, à vérifier : {v}, prêtes : {p}, importées : {i}",
+        self.resume.configure(text=t("{n} facture(s) — à saisir : {s}, à vérifier : {v}, prêtes : {p}, importées (archivées) : {i}",
                                      n=len(self.registre.factures), s=compte[A_SAISIR], v=compte[A_VERIFIER],
                                      p=compte[PRETE], i=nombre_archives(self.racine))
                               + ("" if self.fournisseurs_sage else
@@ -651,12 +769,14 @@ class PageFournisseurs(ttk.Frame):
     # ---------------------------------------------------------------- facture choisie
     def choisir_facture(self) -> None:
         choix = self.liste.selection()
-        if not choix:
+        if not choix or getattr(self, "_reselection", False):
             return
         if self.facture is not self.registre.factures[int(choix[0])]:
             self.sauvegarder_auto()  # la facture quittée est gardée telle que saisie
         self.facture = self.registre.factures[int(choix[0])]
         self._ligne_editee = None
+        if choix[0] in self._ids_choix:
+            self.liste_choix.current(self._ids_choix.index(choix[0]))
         f = self.facture
         valeurs = {"fournisseur": f.fournisseur_sage, "numero": f.numero, "date": f.date_facture,
                    "sous_total": "" if f.sous_total is None else f"{f.sous_total:.2f}", "tps": f"{f.tps:.2f}",

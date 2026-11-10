@@ -4161,3 +4161,15 @@ for _fr, _en in {
         "{c}; {a} per week at the start, {b} at the end; {q} sold last week",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.1 : page Windows des factures fournisseurs comme le web (2026-11-09)
+for _fr, _en in {
+    "Fichier :": "File:", "Fournisseur :": "Supplier:", "N° de facture :": "Invoice no.:",
+    "Tous les fournisseurs": "All suppliers", "Cocher les factures prêtes": "Check ready invoices",
+    "Facture à traiter :": "Invoice to process:", "Liste des factures": "Invoice list",
+    "Saisie de la facture": "Invoice entry", "enregistrée automatiquement": "saved automatically",
+    "{n} facture(s) — à saisir : {s}, à vérifier : {v}, prêtes : {p}, importées (archivées) : {i}":
+        "{n} invoice(s) — to enter: {s}, to check: {v}, ready: {p}, imported (archived): {i}",
+}.items():
+    EN.setdefault(_fr, _en)

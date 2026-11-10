@@ -209,6 +209,7 @@ def factures(ctx: Contexte) -> Reponse:
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
         retour = (f"/factures-fournisseurs?filtre={filtre}" + (f"&i={rang}" if rang is not None else "")
+                  + ("&onglet=liste" if ctx.req.champ("onglet") == "liste" else "")
                   + "".join(f"&{k}={quote(v)}" for k, v in (("fichier", q_fichier), ("fournisseur", q_fournisseur),
                                                                 ("numero", q_numero))
                             if v))
@@ -333,6 +334,7 @@ def factures(ctx: Contexte) -> Reponse:
                         **({"numero": q_numero} if q_numero else {})}))
     cocher_pretes = bool(ctx.req.query.get("cocher"))
     lignes, classes = [], []
+    ordre = []  # factures de la liste filtrée, dans l'ordre affiché (liste déroulante de la saisie)
 
     def nom_fournisseur(f):
         return f.fournisseur_sage or f"({f.fournisseur_lu or '?'})"
@@ -346,6 +348,7 @@ def factures(ctx: Contexte) -> Reponse:
             continue
         if q_numero and _simple(q_numero) not in _simple(f.numero):
             continue
+        ordre.append(n)
         coche = ("<input type='checkbox' name='coche' value='{n}' form='barre-factures' aria-label='Cocher'"
                  + (" checked" if f.etat == fo.PRETE and cocher_pretes else "") + ">").format(n=n)
         lignes.append([coche, f"<a href='?{lien}&amp;i={n}'{' data-choisie' if n == rang else ''}>{e(f.fichier)}</a>"
@@ -362,7 +365,8 @@ def factures(ctx: Contexte) -> Reponse:
                                  "articles Sage »"))
     options = "".join(f"<option{' selected' if x == filtre else ''}>{e(x)}</option>" for x in ["Toutes"] + fo.ETATS)
     barre = (f"<form method='post' enctype='multipart/form-data' class='barre-onglet' id='barre-factures'>{csrf(ctx)}"
-             f"<input type='hidden' name='filtre' value='{e(filtre)}'>{garder}"
+             f"<input type='hidden' name='filtre' value='{e(filtre)}'>{garder}<input type='hidden' name='onglet' "
+             "value='liste'>"
              + (f"<input type='hidden' name='i' value='{rang}'>" if rang is not None else "")
              + "<input type='file' name='facture' accept='.pdf,image/*' capture='environment'><button name='action' "
                "value='Ajouter des factures'>➕ Ajouter des factures…</button><a class='ouvrir plein' "
@@ -391,23 +395,54 @@ def factures(ctx: Contexte) -> Reponse:
                f"placeholder='numéro' name='numero' value='{e(q_numero)}' size='12' autocomplete='off'></div>"
              + ("<a class='ouvrir' href='?" + lien + "'>☐ Tout décocher</a>" if cocher_pretes else
                 "<a class='ouvrir' href='?" + lien + "&amp;cocher=1'>☑ Cocher les factures prêtes</a>") + "</form>")
+    # deux onglets (demande du propriétaire du 2026-11-09 : « la fenêtre est trop chargée ; la liste des factures
+    # dans une table à part et la saisie dans une autre fenêtre ; avec un menu déroulant on sélectionne la facture à
+    # traiter ; la saisie s'enregistre automatiquement ») : un clic sur une facture ouvre l'onglet de saisie
+    valide = rang is not None and rang < len(registre.factures)
+    saisie = valide and (ctx.req.query.get("onglet") or ctx.req.champ("onglet") or "saisie") != "liste"
+    if not valide:
+        rang = None
+    nav = ("<nav class='onglets'>"
+           f"<a class='onglet{'' if saisie else ' actif'}' href='?{lien}"
+           + (f"&amp;i={rang}&amp;onglet=liste" if rang is not None else "") + "'>📋 Liste des factures</a>"
+           f"<a class='onglet{' actif' if saisie else ''}' href='?{lien}"
+           + (f"&amp;i={rang}" if rang is not None else (f"&amp;i={ordre[0]}" if ordre else "")) + "'>✏ Saisie de la "
+           "facture</a></nav>")
     corps = ("<p class='sous-titre'>🧾 Factures fournisseurs — lecture des factures, articles Sage et import dans Sage"
-             "</p>" + message + barre + f"<p class='note'>{e(resume)}</p>"
-             + "<div class='factures-deux'><div class='colonne-liste'>"
-             + "<div class='zone-liste-factures' id='liste-factures' data-garder='fichier,fournisseur,numero'>"
-             + tableau_section(Section("Factures", ["", "Fichier", "Fournisseur Sage", "N°", "Date", "Total", "Dépôt",
-                                                   "Clover", "État"], lignes, classes=classes, html=set(range(9))))
-             + "</div>"
-             + "<p class='note'>Sur téléphone, « Ajouter des factures » ouvre l'appareil photo.</p></div>"
-             + "<div class='colonne-saisie'>")
-    if rang is not None and rang < len(registre.factures):
-        if ctx.req.methode == "GET":
-            _proposer(ctx, rang, noms, articles)  # articles Sage proposés aux lignes pas encore reliées
-            registre = fo.Registre(ctx.racine)
-        corps += _detail(ctx, registre.factures[rang], rang, ligne, filtre, noms, articles, clover, garder)
-    else:
-        corps += _detail_vide()
-    corps += "</div></div>"
+             "</p>" + message + nav)
+    if not saisie:
+        corps += (barre + f"<p class='note'>{e(resume)}</p>"
+                  + "<div class='zone-liste-factures liste-seule' id='liste-factures' "
+                    "data-garder='fichier,fournisseur,numero'>"
+                  + tableau_section(Section("Factures", ["", "Fichier", "Fournisseur Sage", "N°", "Date", "Total", "Dépôt",
+                                                        "Clover", "État"], lignes, classes=classes, html=set(range(9))))
+                  + "</div><p class='note'>Cliquez sur une facture pour l'ouvrir dans « Saisie de la facture ». Sur "
+                    "téléphone, « Ajouter des factures » ouvre l'appareil photo.</p>")
+        return Reponse(corps=page(ctx, "Factures fournisseurs", corps))
+    if ctx.req.methode == "GET":
+        _proposer(ctx, rang, noms, articles)  # articles Sage proposés aux lignes pas encore reliées
+        registre = fo.Registre(ctx.racine)
+    if rang not in ordre:  # facture hors du filtre : gardée en tête de la liste déroulante
+        ordre.insert(0, rang)
+    position = ordre.index(rang)
+
+    def libelle(n):
+        f = registre.factures[n]
+        return "  ·  ".join(v for v in (f.numero or "?", nom_fournisseur(f), f.date_facture or "", f.etat, f.fichier)
+                            if v)
+
+    caches = (f"<input type='hidden' name='filtre' value='{e(filtre)}'>"
+              + "".join(f"<input type='hidden' name='{k}' value='{e(v)}'>" for k, v in
+                        (("fichier", q_fichier), ("fournisseur", q_fournisseur), ("numero", q_numero)) if v))
+    voisines = "".join(
+        f"<a class='ouvrir' href='?{lien}&amp;i={ordre[position + pas]}'>{signe}</a>" if 0 <= position + pas < len(ordre)
+        else f"<span class='ouvrir inactif'>{signe}</span>" for pas, signe in ((-1, "◀"), (1, "▶")))
+    corps += (f"<form method='get' class='barre-onglet choix-facture'>{caches}<div class='large'><label>Facture à "
+              "traiter :</label><select name='i'>" + "".join(
+                  f"<option value='{n}'{' selected' if n == rang else ''}>{e(libelle(n))}</option>" for n in ordre)
+              + f"</select></div><button class='second sans-js'>Ouvrir</button>{voisines}"
+                "<span class='note'>💾 enregistrée automatiquement à chaque action</span></form>"
+              + _detail(ctx, registre.factures[rang], rang, ligne, filtre, noms, articles, clover, garder))
     return Reponse(corps=page(ctx, "Factures fournisseurs", corps))
 
 

@@ -33,6 +33,14 @@ details.choix-multiple label.tout { font-weight: 600; border-bottom: 1px solid v
   /* liste des factures plus haute (demande du propriétaire du 2026-11-08) */
   .zone-liste-factures .defile { height: max(300px, calc(100vh - 640px)); min-height: 300px; max-height: none; }
 }
+/* liste seule dans son onglet : toute la hauteur ; liste déroulante de la saisie large (2026-11-09) */
+@media (min-width: 821px) {
+  .zone-liste-factures.liste-seule .defile { height: calc(100vh - 400px); min-height: 300px; }
+}
+.choix-facture { align-items: center; }
+.choix-facture .large { flex: 1 1 520px; display: flex; align-items: center; gap: 6px; }
+.choix-facture .large select { flex: 1; min-width: 0; max-width: 100%; font-weight: 600; }
+.ouvrir.inactif { opacity: .4; pointer-events: none; }
 /* liste des factures à gauche, saisie à droite, chacune défile de haut en bas (demande du propriétaire du
    2026-11-08 : « mettons la liste de factures et la saisie les deux à la verticale ») */
 @media (min-width: 1200px) {
