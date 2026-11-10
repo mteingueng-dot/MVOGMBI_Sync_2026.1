@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -8,7 +8,7 @@ MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabili
 - encaissement des dépôts ;
 - factures et paiements fournisseurs ;
 - rapprochement bancaire Desjardins et Banque Nationale ;
-- rapports et statistiques ;
+- rapports, statistiques et aide à la décision (Reporting : 18 états enrichis, 44 analyses, synthèse des décisions) ;
 - gestion des articles, des stocks, des ventes et des achats comme dans Sage, avec la chaîne des documents (devis, commande, livraison, facture, retours) ;
 - comptabilité (caisse, dépenses, plan comptable, taxes, remises, budget) ;
 - agence RIA (états de compte, envois et versements, commissions) ;
@@ -106,7 +106,7 @@ flowchart TB
         four["factures_fournisseurs · fournisseurs<br/>factures_courriel · import_achats<br/>paiements_fournisseurs"]
         rap["rapprochement · ria · ria_etats"]
         gest["documents · chaine_documents<br/>plan_comptable · audit · feuillets"]
-        stats["rapports · statistiques_clover<br/>couts_sage · previsions · peremption<br/>analyse_articles · onglets_articles"]
+        stats["rapports · statistiques_clover<br/>couts_sage · previsions · peremption<br/>analyse_articles · onglets_articles<br/>analyses_clover · etats_enrichis<br/>operations_journalieres · traitements"]
         nuit["automatique · courriel · planification"]
     end
     subgraph Intégration
@@ -153,6 +153,8 @@ flowchart TB
 | | `impression_fournisseur.py` | Bon de réception (sans prix, quantité ajoutée dans Clover) et facture complète d'une facture fournisseur. |
 | | `rapports.py` | Suivi des ventes et recherches dans l'historique Sage. |
 | | `statistiques_clover.py`, `couts_sage.py`, `previsions.py`, `peremption.py` | Statistiques Clover, bénéfices au CUMP Sage, prévisions, péremption. |
+| | `analyses_clover.py`, `etats_enrichis.py` | 44 analyses décisionnelles (`ANALYSES`, synthèse et décisions) et sous-pages Résumé / Graphiques des 18 états ; chaque rapport = `rapports_gestion.RapportGestion` (cartes, constats, graphiques, tableau). |
+| | `operations_journalieres.py`, `traitements.py`, `facture_clover.py` | Opérations journalières (quand et par qui) ; registre des traitements ; vraie facture Clover d'une commande. |
 | | `bons_commande.py`, `fenetre_bons_commande.py` | Fournisseur > Bons de commande : articles à commander, fournisseur et prix du dernier achat Sage, un bon PDF par fournisseur, comparaison avec la facture reçue. |
 | | `prix_marges.py`, `fenetre_prix_marges.py` | Articles > Prix et marges : marge au CUMP Sage, prix proposé arrondi, mise à jour des prix Clover cochés. |
 | | `paie_temps.py`, `fenetre_pointage.py`, `fenetre_feuilles_temps.py` | Paie : poste de pointage par NIP (commande `pointage`, raccourci « Pointage des employés »), feuilles de temps de 14 jours, heures supplémentaires, corrections avec motif, approbation, employés et NIP (empreintes seulement). |
@@ -398,11 +400,27 @@ flowchart TD
     M -- oui --> P["Préparation, mémorisée"]
     M -- non --> F["Lecture Clover<br/>blocs de 31 jours, 3 en parallèle"] --> C[("cache_clover/AAAA-MM-JJ.json")] --> P
     K[("couts_sage.json<br/>CUMP du jour")] --> P
-    P --> V["États : Accueil, Aperçu des ventes, Rapport des ventes,<br/>Évolution par année, Carte de chaleur, Bénéfices,<br/>Aperçu financier (KPI), Articles, Employés, Clients"]
+    P --> V["18 états enrichis : Résumé / Graphiques / Détail<br/>Aperçu des ventes, Aperçu financier (KPI),<br/>Évolution par jour et par mois"]
+    P --> AN["44 analyses (analyses_clover)<br/>comparées à la période d'avant"] --> SY["Synthèse et décisions<br/>+ courriel du matin"]
     P --> PR["Prévisions et péremption"]
     V --> G["Tableaux : date la plus récente en haut<br/>Graphiques : infobulles, axe ajusté"]
     G --> X["Exports : Excel, CSV, PDF du tableau,<br/>PDF de la page, PDF ou PNG d'un graphique"]
 ```
+
+#### Reporting décisionnel (version 1.0.0 du 9 novembre 2026)
+
+L'onglet « Reporting » (ancien « Statistiques Clover ») range ses rapports dans les sections du menu de Clover ; une section de plus de 7 rapports les montre dans un ruban horizontal. Chaque rapport est calculé sur les ventes déjà lues de la période et de sa comparaison, sans relire Clover, avec les filtres globaux appliqués.
+
+| Élément | Rôle |
+|---|---|
+| `analyses_clover.ANALYSES` | (libellé, clé, fonction, section, place) : chaque fonction `(ventes, ventes d'avant, contexte) -> RapportGestion` |
+| `RapportGestion` | cartes (feu vert / jaune / rouge, variation), constats marqués ✔ ⚠ ✖ ℹ, évolution, répartition, graphiques de plus, tableau, ids de commandes (facture Clover) |
+| `etats_enrichis.enrichir` | même présentation pour les 18 états de base, à partir de leur tableau et du même état de la période d'avant |
+| `synthese` / `_decisions` | décisions priorisées 1 à 3 avec les éléments concernés ; reprises par `resume_matin` (28 jours) |
+| Sous-pages | Résumé, Graphiques, Détail (filtre texte + liste de la colonne de regroupement) ; Windows et web identiques |
+| Web | graphiques SVG interactifs (`/filtres.js` : bulle, légende cliquable), filtres qui relancent la page d'eux-mêmes, bandeau « Chargement… » ; CSP `script-src 'self'` |
+
+Le catalogue complet des rapports est dans `documentation/CATALOGUE_REPORTING.md`.
 
 ### 4.7 Connexion, profils et verrouillage
 

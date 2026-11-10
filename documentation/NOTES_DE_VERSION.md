@@ -1,0 +1,126 @@
+# MVOGMBI_Sync — Notes de version
+
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+
+Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
+
+| Remise à 1.0.0 | Série précédente |
+|---|---|
+| 30 octobre 2026 | 1.0.0 → 1.46.3 |
+| 5 novembre 2026 | 1.0.0 → 2.24.2 |
+| 9 novembre 2026 | 1.0.0 → 1.0.44 |
+
+Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
+
+---
+
+## Version 1.0.0 (9 novembre 2026)
+
+Point de départ de la nouvelle série, qui reprend tout ce qui est décrit ci-dessous. Il comprend :
+
+- la synchronisation Clover → Sage 50 la nuit ;
+- les encaissements ;
+- les fournisseurs ;
+- le rapprochement Desjardins et BNC ;
+- la paie ;
+- les stocks multi-dépôts ;
+- la comptabilité ;
+- l'agence RIA ;
+- l'application web identique à Windows ;
+- le **Reporting** avec 18 états enrichis, 44 analyses décisionnelles et 7 rapports de gestion.
+
+369 tests automatiques réussis.
+
+---
+
+## Série du 5 au 9 novembre 2026 (anciennes 1.0.0 à 1.0.44)
+
+### Reporting et aide à la décision
+
+| Version | Apport |
+|---|---|
+| 1.0.22 | Analyses décisionnelles dans les statistiques Clover : anomalies, tendance, variation, paniers, concentration, matrice des articles, achats associés, employés, groupes de clients, fidélité |
+| 1.0.23 | La facture Clover s'ouvre depuis tout n° de commande ; textes des graphiques jamais tronqués |
+| 1.0.24 | Décisions de la direction dans le courriel du matin ; PDF complet des analyses |
+| 1.0.25 | Opérations journalières (ventes, achats, encaissements, paiements : quand et par qui) ; récapitulatif des traitements ; éléments concernés sous chaque décision ; rabais Direction et administrateurs mis à part |
+| 1.0.26 | Pourquoi le bénéfice change (pont de marge), catégories qui montent ou baissent, achalandage et personnel |
+| 1.0.27 – 1.0.28 | Rythme et objectif ; sous-pages Résumé / Graphiques / Détail ; mots simples à la place du jargon ; polices uniformes ; remboursements à surveiller ; espèces et cartes |
+| 1.0.29 | Nouveaux articles, jours fériés |
+| 1.0.30 – 1.0.32 | Taxes et pourboires, quand le magasin gagne le plus, seuil de rentabilité, articles qui baissent, catégories selon le jour, valeur des clients, achalandage prévu, quantités prévues, jour du mois, articles de saison, ventes au poids, ruptures probables, articles d'appel |
+| 1.0.33 – 1.0.34 | Ventes complémentaires manquées, prix selon le format |
+| 1.0.35 | Les 18 états de base ont leurs sous-pages Résumé / Graphiques / Détail comparées à la période d'avant |
+| 1.0.36 | Tranches de prix, ce qui fait monter ou baisser les ventes, effet des rabais |
+| 1.0.37 | Rapports à la taille de la fenêtre, titres « Détail : … », graphiques interactifs |
+| 1.0.39 | « Statistiques Clover » devient « Reporting » ; évolution par jour et par mois côte à côte ; ruban horizontal des états |
+| 1.0.40 – 1.0.43 | Productivité de l'assortiment, prix et volume, articles qui se remplacent, articles qui montent ; filtres du Détail |
+| 1.0.44 | Mêmes filtres (texte + groupe) dans le Détail de chaque état |
+
+### Factures fournisseurs
+
+| Version | Apport |
+|---|---|
+| 1.0.16 – 1.0.17 | Import par l'assistant de Sage validé sur le vrai fichier partagé (Sage 2027) ; factures déjà dans Sage archivées sans deuxième import |
+| 1.0.28 | Les factures importées quittent la liste pour les archives ; « Refaire la mise à jour Clover » depuis les archives ; assistant de saisie de l'article Sage |
+| 1.0.29 – 1.0.30 | Liste et saisie côte à côte sur grand écran ; filtres Fichier, Fournisseur, N° de facture gardés ; touche Entrée qui valide la ligne sans jamais supprimer |
+| 1.0.38 | Lignes taxées « F P » (A.M.R.) et « TX » lues ; articles proposés même quand le fournisseur vend à la caisse ; facteur proposé pour les articles au poids ; passage à la ligne suivante à relier ; « Confirmer toutes les propositions » ; case « Mettre à jour le stock Clover » sur chaque facture |
+
+### Sage 50 et encaissements
+
+| Version | Apport |
+|---|---|
+| 1.0.3 – 1.0.5 | Sage ouvert pour les saisies de la journée ; contrôle « Déjà au compte de dépôt ? » ; pages web instantanées |
+| 1.0.4 | Colonne « Montant reçu » trouvée selon la taille réelle de la grille de Sage |
+| 1.0.8 – 1.0.12 | Le Sage d'une personne passe d'abord ; Sage orphelin refermé ; réponses aux questions de Sage à la fermeture ; entreprise fermée pour inactivité |
+| 1.0.13 – 1.0.15 | Encaissements réels validés (Sage 2027) ; fenêtre « Traitement… » attendue sans jamais être touchée |
+| 1.0.19 | Un encaissement ou un paiement en échec ne bloque plus les suivants (229 dépôts en retard encaissés le 7 novembre) |
+| 1.0.20 | Montant reçu relu dans la cellule avant d'être validé |
+
+### Web, sécurité, ergonomie
+
+| Version | Apport |
+|---|---|
+| 1.0.6 | Textes longs coupés dans les tableaux (texte complet au survol) ; rubrique RIA |
+| 1.0.18 | Verrouillage pour inactivité : les traitements continuent, la reconnexion revient à la même page |
+| 1.0.21 | Web toujours en thème clair, lisible sur les téléphones en mode sombre |
+| 1.0.23 | Pointage hors Wi-Fi permis aux administrateurs seulement |
+| 1.0.28 – 1.0.39 | Filtres automatiques sur tout le web (sans bouton « Afficher ») ; bandeau « Chargement… » |
+| 1.0.39 | Suivi des ventes : statut « Remplacée » pour une facture d'un jour couverte par la facture de fin de semaine |
+
+### Documentation
+
+| Version | Apport |
+|---|---|
+| 1.0.1 – 1.0.2 | Guide de l'administrateur ; PDF lisibles (diagrammes à la bonne échelle) |
+| 1.0.7, 1.0.20 | Documentation complète mise à jour |
+| 1.0.0 (9 nov.) | Catalogue des rapports, notes de version, présentation des services, présentation PowerPoint détaillée |
+
+---
+
+## Séries précédentes (résumé)
+
+- **Série 2.x (30 octobre – 5 novembre 2026)**, dans l'ordre :
+  - application web : connexion, pages identiques à Windows, export, HTTPS, client Windows ;
+  - serveur SERVDCSAGE ;
+  - pointage sur le Wi-Fi ;
+  - mot de passe web distinct ;
+  - prix de vente Sage depuis Clover ;
+  - dépôts multi-sites ;
+  - assistant d'importation pour l'entreprise partagée ;
+  - relevés BNC et comptes bancaires ;
+  - modèles d'impression de tous les documents.
+- **Première série (26 – 30 octobre 2026)** :
+  - facturation de nuit, encaissements, factures et paiements fournisseurs ;
+  - rapprochement Desjardins ;
+  - statistiques Clover ;
+  - utilisateurs et droits ;
+  - gestion commerciale (bons de commande, prix et marges) ;
+  - paie complète avec Sage Paie ;
+  - plusieurs points de vente ;
+  - transferts ;
+  - inventaire ;
+  - RIA ;
+  - sauvegarde ;
+  - caisse ;
+  - pertes ;
+  - congés ;
+  - documents de vente, d'achat et de stock comme Sage.

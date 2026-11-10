@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -364,7 +364,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-STA-52 | **Prix et volume** : indice des prix (Laspeyres) = prix affichés moyens de la période (ventes avant rabais / quantité) appliqués aux quantités de la période d'avant, articles vendus dans les deux périodes ; croissance en volume = (ventes / ventes d'avant) / (indice / 100) − 1 ; prix en hausse de 3 % ou plus et volume en baisse de 3 % ou plus = décision de priorité 2. |
 | RG-STA-53 | **Articles qui se remplacent** : même catégorie, noms ressemblants (60 % au moins) ; article délaissé = 20 unités au moins avant et 40 % ou plus de baisse ; remplaçant = 20 unités au moins maintenant, hausse de 40 % ou plus, gain entre la moitié et le double de la perte ; délaissé après une hausse de prix de 5 % ou plus = décision de priorité 2 ; remplaçant 10 % moins cher = constat. |
 | RG-STA-54 | **Articles qui montent** : parmi les articles qui font la moitié des ventes, vendus presque chaque semaine (25 $ par semaine en moyenne) ; droite des ventes hebdomadaires (blocs de 7 jours depuis la fin, 4 semaines au moins) en hausse de 5 % de la moyenne par semaine (forte : 15 %) ; forte hausse = décision de priorité 2 (prévoir le stock). |
-| RG-STA-55 | **Filtres du Détail des rapports** : texte sur la 1re colonne (client, article, catégorie…) et liste de la 1re colonne de regroupement trouvée (Groupe de clients, Groupe, Profil, Niveau, Type, Catégorie…, 2 à 60 valeurs) ; filtrage immédiat sans recharger, Windows et web ; les lignes masquées restent dans le rapport (export, facture Clover). |
+| RG-STA-55 | **Filtres du Détail des rapports** : texte sur la 1re colonne (client, article, catégorie…) et liste de la 1re colonne de regroupement trouvée (Groupe de clients, Groupe, Profil, Niveau, Type, Catégorie…, 2 à 60 valeurs) ; filtrage immédiat sans recharger, Windows et web ; les lignes masquées restent dans le rapport (export, facture Clover). Depuis 1.0.44, le même filtre de groupe vaut pour le Détail de chaque état de Reporting (Jour, Employé, Mode de paiement, Carte, Saisie, Appareil, Catégorie…), à côté de « Rechercher » sous Windows, au-dessus du tableau sur le web. |
 
 ---
 

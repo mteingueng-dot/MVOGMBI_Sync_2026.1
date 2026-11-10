@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 160 versions livrées en 15 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 5 novembre 2026.
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 200 versions livrées en 17 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 30 octobre, le 5 novembre et le 9 novembre 2026.
 
 ---
 
@@ -59,6 +59,14 @@ gantt
     Version 1.0.0, guide de l'administrateur    :done, x4, 2026-11-06, 1d
     Pages web instantanées, Sage de la journée  :done, x5, 2026-11-06, 1d
     Encaissements sur le serveur, tableaux web  :done, x6, 2026-11-06, 1d
+    section Reporting décisionnel
+    Analyses BI, synthèse et décisions          :done, y1, 2026-11-08, 1d
+    Opérations journalières, rabais Direction   :done, y2, 2026-11-08, 1d
+    Marge, objectif, sous-pages, mots simples   :done, y3, 2026-11-08, 1d
+    30 analyses de plus, états enrichis         :done, y4, 2026-11-09, 1d
+    Factures fournisseurs plus simples          :done, y5, 2026-11-09, 1d
+    Reporting, filtres automatiques, ruban      :done, y6, 2026-11-09, 1d
+    Version 1.0.0, documentation, présentation  :done, y7, 2026-11-09, 1d
     section Suite
     Mise en service sur SERVDCSAGE              :g4, 2026-11-06, 2d
     Comptes RIA dans Sage, premières écritures  :g0, 2026-11-06, 2d
@@ -162,6 +170,11 @@ mindmap
 | 7 nov. 2026 | Un encaissement ou un paiement en échec ne bloque plus les suivants | 1.0.19 |
 | 7 nov. 2026 | Dépôts en retard encaissés dans le vrai fichier (229) ; montant reçu relu avant validation | 1.0.20 |
 | 7 nov. 2026 | Documentation enrichie en profondeur (fonctionnelle, administrateur, règles avec exemples chiffrés, fenêtres de Sage pilotées, 9 nouveaux workflows, 3 processus) | 1.0.20 |
+| 8 nov. 2026 | **Aide à la décision** : analyses décisionnelles, synthèse et décisions, décisions dans le courriel du matin, opérations journalières, rabais Direction à part | 1.0.22 à 1.0.25 |
+| 8 nov. 2026 | Pont de marge, catégories, achalandage, rythme et objectif, sous-pages et mots simples, factures importées archivées | 1.0.26 à 1.0.29 |
+| 9 nov. 2026 | 44 analyses en tout, 18 états enrichis, graphiques interactifs, factures fournisseurs plus simples à relier | 1.0.30 à 1.0.38 |
+| 9 nov. 2026 | « Reporting », filtres automatiques sur tout le web, ruban des états, filtres du Détail | 1.0.39 à 1.0.44 |
+| 9 nov. 2026 | **Version 1.0.0** : numérotation remise à zéro ; catalogue des rapports, notes de version, présentation des services, présentation détaillée | 1.0.0 |
 
 ---
 
@@ -194,3 +207,5 @@ Méthode : une demande → une version livrée avec son installateur, ses tests 
 | Un dépôt en erreur qui arrête toute une saisie | Chaque dépôt et chaque paiement dans son propre essai ; fenêtre remise à zéro ; reprise des seuls dépôts « NON encaissé » (1.0.19) |
 | Saisie plus lente que prévu (2e essai à chaque dépôt) | Cellule relue avant validation (1.0.20) ; durées de référence dans le guide de l'administrateur |
 | Sage resté ouvert sans l'application (mise à jour, arrêt brutal) | Gardien qui referme Sage, réponses aux questions connues, marque de pause de l'installateur |
+| Décision prise sur un chiffre faux (coût aberrant dans Sage, rabais de la direction) | Coûts aberrants écartés ; rabais Direction et administrateurs mis à part ; chaque analyse dit ce qu'elle mesure |
+| Rapports trop techniques pour la direction | Mots simples, constats en clair, décisions priorisées avec les éléments concernés |

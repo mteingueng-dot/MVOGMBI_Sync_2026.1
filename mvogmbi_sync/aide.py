@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.43"
+VERSION = "1.0.0"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -679,6 +679,28 @@ FAQ = {
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi. Un administrateur "
                     "peut ouvrir le pointage de partout ; son appareil n'est alors jamais suivi pour la pause "
                     "automatique."),
+        ("sous_titre", "Nouveautés de la version 1.0.0 (9 novembre 2026) : Reporting complet"),
+        ("question", "Que contient la page « État > Reporting » ?"),
+        ("reponse", "L'ancien onglet « Statistiques Clover » s'appelle maintenant « Reporting ». Il réunit 18 états "
+                    "(ventes par jour, par heure, par article, par employé, modes de paiement, commandes…), 44 analyses "
+                    "décisionnelles et 7 rapports de gestion. Chaque rapport a trois sous-pages : Résumé (cartes et "
+                    "constats comparés à la période d'avant), Graphiques et Détail. Les sections de plus de 7 rapports les "
+                    "montrent dans un ruban en haut de la page. Le catalogue de tous les rapports est installé avec les "
+                    "documents (« Catalogue des rapports »)."),
+        ("question", "Comment retrouver vite une ligne dans le Détail d'un rapport ?"),
+        ("reponse", "Au-dessus du tableau (sur le web) ou à côté de « Rechercher » (sous Windows) : un champ filtre la "
+                    "1re colonne pendant la frappe (article, client, employé…) et une liste choisit un groupe (catégorie, "
+                    "groupe de clients, jour, employé, mode de paiement, appareil…). Les lignes masquées restent dans "
+                    "l'export ; un clic sur un n° de commande ouvre toujours la facture Clover."),
+        ("question", "Pourquoi n'y a-t-il plus de bouton « Afficher » sur le web ?"),
+        ("reponse", "Choisir une période, une date, une liste ou une case relance la page d'elle-même ; un bandeau "
+                    "« Chargement… » s'affiche pendant le calcul. Les graphiques sont interactifs : une bulle donne la "
+                    "valeur au survol et un clic sur la légende masque ou réaffiche une série."),
+        ("question", "Comment relier plus vite les lignes d'une facture fournisseur ?"),
+        ("reponse", "À l'ouverture de la facture, les articles Sage sont proposés (même quand le fournisseur vend à "
+                    "la caisse ou au poids, avec le facteur). « Confirmer toutes les propositions » les valide d'un coup ; "
+                    "après chaque liaison, la ligne suivante à relier s'ouvre. Les taxes « F P » et « TX » écrites après "
+                    "le montant sont lues. La case « Mettre à jour le stock Clover » se règle facture par facture."),
         ("sous_titre", "Nouveautés de la version 1.0.22 (8 novembre 2026) : analyses décisionnelles"),
         ("question", "Quelles analyses décisionnelles (BI) contiennent les statistiques Clover ?"),
         ("reponse", "Treize analyses rangées dans les rubriques existantes des statistiques, sans répéter les états "
@@ -1460,6 +1482,28 @@ FAQ = {
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi. An administrator can open clock-in from anywhere; their "
                     "device is then never followed for the automatic break."),
+        ("sous_titre", "What's new in version 1.0.0 (November 9, 2026): complete Reporting"),
+        ("question", "What does “Status > Reporting” contain?"),
+        ("reponse", "The former “Clover statistics” tab is now called “Reporting”. It brings together 18 views (sales "
+                    "by day, by hour, by item, by employee, payment methods, orders…), 44 decision analyses and 7 "
+                    "management reports. Each report has three sub-pages: Summary (cards and findings compared with the "
+                    "previous period), Charts and Detail. Sections with more than 7 reports show them in a ribbon at the "
+                    "top of the page. The catalogue of all reports is installed with the documents (“Report "
+                    "catalogue”)."),
+        ("question", "How do I quickly find a line in a report's Detail?"),
+        ("reponse", "Above the table (on the web) or next to “Search” (on Windows): a field filters the first column "
+                    "while you type (item, customer, employee…) and a list picks a group (category, customer group, "
+                    "day, employee, payment method, device…). Hidden lines stay in the export; clicking an order number "
+                    "still opens the Clover invoice."),
+        ("question", "Why is there no more “Show” button on the web?"),
+        ("reponse", "Choosing a period, a date, a list or a checkbox reloads the page by itself; a “Loading…” banner "
+                    "is shown during the calculation. Charts are interactive: a bubble gives the value on hover and a "
+                    "click on the legend hides or shows a series again."),
+        ("question", "How do I link the lines of a supplier invoice faster?"),
+        ("reponse", "When the invoice opens, Sage items are proposed (even when the supplier sells by the case or by "
+                    "weight, with the factor). “Confirm all proposals” approves them at once; after each link, the next "
+                    "line to link opens. “F P” and “TX” taxes written after the amount are read. The “Update Clover "
+                    "stock” checkbox is set invoice by invoice."),
         ("sous_titre", "What's new in version 1.0.22 (November 8, 2026): business intelligence analyses"),
         ("question", "Which business intelligence (BI) analyses does Reporting include?"),
         ("reponse", "Thirteen analyses placed in the existing sections of the statistics, without repeating existing "

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -387,6 +387,15 @@ Chaque livraison a son numéro et son installateur ; les anciens installateurs r
 
 ---
 
+### 7.6 Reporting et courriel du matin
+
+- Les ventes Clover des jours terminés sont gardées dans `donnees/cache_clover/` ; le traitement de nuit prépare les 7 derniers jours. Une année se lit en moins d'une minute la première fois, puis en quelques secondes.
+- Les coûts viennent de Sage (`donnees/couts_sage.json`, relu une fois par jour) ; sans Sage, les derniers coûts enregistrés servent.
+- Les décisions du courriel du matin sont calculées sur les 28 derniers jours (moins d'une seconde).
+- Les objectifs de « Rythme et objectif » et le « Seuil de rentabilité » viennent du budget (Comptabilité > Budget et écarts : postes « Produits (ventes) » et « Autres charges »).
+- Donner « Reporting » et « Opérations journalières » à un profil : Administration > Utilisateurs, arbre des fonctions (rubrique État).
+- Le catalogue des rapports (`Catalogue_reporting_MVOGMBI_Sync.pdf`) est installé avec les documents.
+
 ## 8. Journaux et fichiers de diagnostic
 
 Tous dans `donnees/` (raccourci « Journal du traitement automatique » au menu Démarrer ; « Administration > Journal des opérations » les réunit avec filtres).
@@ -426,6 +435,14 @@ Registres (état de chaque fonction ; jamais à modifier à la main) :
 | `cache_clover/` | jours de ventes Clover terminés (jamais relus dans Clover) |
 
 ---
+
+Journaux ajoutés depuis la version 1.0.22 :
+
+| Fichier | Contenu |
+|---|---|
+| `donnees/journal_traitements.csv` | Chaque traitement (nuit, import, saisie dans Sage) : début, fin, personne, origine, résultat ; vue « Récapitulatif des traitements » du Journal des opérations |
+| `donnees/journal_operations_traitees.csv` | Qui a importé, encaissé ou payé quoi (page Opérations journalières) |
+| `donnees/cache_clover/administrateurs.json` | Comptes administrateurs de Clover (rabais mis à part), relu toutes les 6 heures |
 
 ## 9. Dépannage
 

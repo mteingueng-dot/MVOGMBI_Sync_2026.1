@@ -81,11 +81,13 @@ MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z
                    "Affinité", "Sensibilité", "Irrégularité", "Écart inhabituel", "Note du client", "Inégalité", "Dépendance (")
 NOTES_ETATS: dict[str, str] = {}
 PARTIES_GESTION = (("resume", "Résumé"), ("graphiques", "Graphiques"), ("detail", "Détail"))
+VALEURS_LISTE_PREMIERE = 20  # 1re colonne du Détail en liste déroulante jusqu'à ce nombre de valeurs
 MAX_ETATS_MENU = 7  # au-delà, les états de la section sont dans un ruban en haut du rapport (comme le web)
 # colonnes de regroupement filtrées par une liste dans le Détail des rapports (demande du propriétaire du 2026-11-09 :
 # « ajoute deux filtres dans le Détail : client et groupe de clients », « pour faciliter la recherche ») ; la 1re trouvée
 COLONNES_GROUPE = ("Groupe de clients", "Groupe", "Profil", "Niveau", "Type", "Catégorie", "Segment", "Classe 20/80",
-                   "Contrôle", "Absence en cours")
+                   "Contrôle", "Absence en cours", "Jour", "Employé", "Mode de paiement", "Mode(s) de paiement", "Carte",
+                   "Saisie", "Appareil")
 
 
 def _simple(texte) -> str:
@@ -862,6 +864,13 @@ class PageRapports(ttk.Frame):
         champ.pack(side="left")
         champ.bind("<KeyRelease>", apres_frappe(champ, self.afficher_statistiques))
         self.par_jour = tk.BooleanVar(value=False)  # vues regroupées : une ligne par jour, colonne Date en premier
+        # liste de la colonne de groupe du Détail (jour, catégorie, employé, mode de paiement… ; demande du
+        # propriétaire du 2026-11-09 : « ajoute ce filtre dans toutes les pages détail »)
+        self.lib_groupe_etat = ttk.Label(filtres, text="")
+        self.f_groupe_etat = tk.StringVar()
+        self.liste_groupe_etat = ttk.Combobox(filtres, textvariable=self.f_groupe_etat, state="readonly", width=22)
+        self.liste_groupe_etat.bind("<<ComboboxSelected>>", lambda _e: self.afficher_statistiques())
+        self._groupe_etat_vue = None
         self.case_par_jour = ttk.Checkbutton(filtres, text=t("Détail par jour"), variable=self.par_jour,
                                              command=self.afficher_statistiques)
         self.cadre_horizon = tk.Frame(filtres, background=fond_de(cadre))
@@ -1012,7 +1021,13 @@ class PageRapports(ttk.Frame):
         self.lib_texte_gestion = ttk.Label(self.filtres_gestion, text="")
         self.lib_texte_gestion.pack(side="left", padx=(0, 4))
         self.f_texte_gestion = tk.StringVar()
-        ttk.Entry(self.filtres_gestion, textvariable=self.f_texte_gestion, width=28).pack(side="left")
+        self.champ_texte_gestion = ttk.Entry(self.filtres_gestion, textvariable=self.f_texte_gestion, width=28)
+        self.champ_texte_gestion.pack(side="left")
+        # 1re colonne à peu de valeurs (Priorité de la synthèse…) : liste déroulante à la place du texte (demande du
+        # propriétaire du 2026-11-09 : « mets plutôt une liste déroulante »)
+        self.liste_texte_gestion = ttk.Combobox(self.filtres_gestion, textvariable=self.f_texte_gestion,
+                                                state="readonly", width=26)
+        self._texte_exact = False
         self.lib_groupe_gestion = ttk.Label(self.filtres_gestion, text="")
         self.f_groupe_gestion = tk.StringVar()
         self.liste_groupe_gestion = ttk.Combobox(self.filtres_gestion, textvariable=self.f_groupe_gestion,
@@ -1655,7 +1670,18 @@ class PageRapports(ttk.Frame):
         """Filtres du Détail remis à zéro pour le rapport affiché."""
         self._ordre_gestion = list(self.tableau_gestion.get_children())
         self.lib_texte_gestion.configure(text=(t(r.entetes[0]) + " :") if r.entetes else "")
-        self.f_texte_gestion.set("")
+        premiers = [str(self.tableau_gestion.item(i, "values")[0]) if self.tableau_gestion.item(i, "values") else ""
+                    for i in self._ordre_gestion]
+        distincts = sorted({v for v in premiers if v.strip()}, key=str.casefold)
+        self._texte_exact = 1 < len(distincts) <= VALEURS_LISTE_PREMIERE
+        for w in (self.champ_texte_gestion, self.liste_texte_gestion, self.lib_groupe_gestion, self.liste_groupe_gestion):
+            w.pack_forget()
+        if self._texte_exact:
+            self.liste_texte_gestion.configure(values=[t("Tous")] + distincts)
+            self.liste_texte_gestion.pack(side="left")
+        else:
+            self.champ_texte_gestion.pack(side="left")
+        self.f_texte_gestion.set(t("Tous") if self._texte_exact else "")
         self._col_groupe_gestion = None
         self.lib_groupe_gestion.pack_forget()
         self.liste_groupe_gestion.pack_forget()
@@ -1676,15 +1702,26 @@ class PageRapports(ttk.Frame):
     def _filtrer_gestion(self) -> None:
         """Lignes du Détail qui contiennent le texte (1re colonne) et sont du groupe choisi ; les autres sont mises de
         côté (detach), jamais supprimées : le double-clic garde la bonne commande."""
-        texte = _simple(self.f_texte_gestion.get())
+        brut = self.f_texte_gestion.get()
+        texte = "" if brut == t("Tous") else _simple(brut)
         groupe = self.f_groupe_gestion.get()
         tout = groupe in ("", t("Tous"))
         rang = 0
+        precedent = True  # une ligne sans 1re colonne (élément d'une décision) suit la ligne qui la précède
         for iid in self._ordre_gestion:
             if not self.tableau_gestion.exists(iid):
                 continue
             valeurs = self.tableau_gestion.item(iid, "values")
-            garder = (not texte or texte in _simple(valeurs[0] if valeurs else "")) and (
+            premier = _simple(valeurs[0] if valeurs else "")
+            if not texte:
+                ok = True
+            elif not premier and self._texte_exact:
+                ok = precedent
+            else:
+                ok = premier == texte if self._texte_exact else texte in premier
+            if premier or not self._texte_exact:
+                precedent = ok
+            garder = ok and (
                 tout or self._col_groupe_gestion is None or str(valeurs[self._col_groupe_gestion]) == groupe)
             if garder:
                 self.tableau_gestion.move(iid, "", rang)
@@ -1777,6 +1814,7 @@ class PageRapports(ttk.Frame):
         self._graphique_etat(nom, self.vues_stats[nom][1] if source is not self.vues_stats and nom in self.vues_stats
                              and nom in VUES_PAR_JOUR else lignes)
         self._etat_enrichi(nom)  # après le graphique principal : cartes au-dessus, graphiques de plus en dessous
+        lignes = self._filtre_groupe_etat(nom, entetes, lignes)
         texte = self.recherche_etat.get().strip().casefold()
         if texte:
             lignes = [l for l in lignes if any(texte in str(v).casefold() for v in l)]
@@ -1796,6 +1834,28 @@ class PageRapports(ttk.Frame):
             "Indicateur": 175 if nom == "Résumé" else 320, "Valeur": 105, "Article": 280, "Client": 240,
             "Employé": 190, "Appareil": 300, "Date et heure": 130},
             tags=lambda i: ("a_commander",) if t(A_COMMANDER_TEXTE) in lignes[i] else ())
+
+    def _filtre_groupe_etat(self, nom: str, entetes: list, lignes: list) -> list:
+        """Liste de la colonne de groupe de l'état (remise à « Tous » quand l'état change) ; lignes de ce groupe."""
+        k = next((entetes.index(c) for c in COLONNES_GROUPE if c in entetes[1:]), None)
+        valeurs = sorted({str(l[k]) for l in lignes if k < len(l) and l[k] not in (None, "")}, key=str.casefold) \
+            if k is not None else []
+        if not 1 < len(valeurs) <= 60:
+            self.lib_groupe_etat.pack_forget()
+            self.liste_groupe_etat.pack_forget()
+            return lignes
+        if self._groupe_etat_vue != (nom, entetes[k]):
+            self._groupe_etat_vue = (nom, entetes[k])
+            self.f_groupe_etat.set(t("Tous"))
+        self.lib_groupe_etat.configure(text=t(entetes[k]) + " :")
+        self.liste_groupe_etat.configure(values=[t("Tous")] + [t(v) for v in valeurs])
+        if not self.liste_groupe_etat.winfo_manager():
+            self.lib_groupe_etat.pack(side="left", padx=(16, 4))
+            self.liste_groupe_etat.pack(side="left")
+        choix = self.f_groupe_etat.get()
+        if choix in ("", t("Tous")):
+            return lignes
+        return [l for l in lignes if k < len(l) and t(str(l[k])) == choix]
 
     def _vues_avant(self) -> dict:
         """États de la période de comparaison avec les filtres choisis (calculés une fois)."""

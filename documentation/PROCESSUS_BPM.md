@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Processus métier (BPM)
 
-Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Notation : chaque couloir est un acteur ou un système ; ( ) = début ou fin, [ ] = activité, { } = décision, flèches = enchaînement. Les processus sont ceux en service.
 
@@ -315,6 +315,41 @@ flowchart TB
 ```
 
 ---
+
+## 8 bis. De la vente à la décision (aide à la décision)
+
+```mermaid
+flowchart TB
+    subgraph CLO["Clover"]
+        C1[Ventes, paiements,<br/>remboursements]
+    end
+    subgraph SAG["Sage 50"]
+        S1[Coût moyen des articles<br/>budget]
+    end
+    subgraph APP["MVOGMBI_Sync"]
+        A1[Ventes du jour<br/>gardées]
+        A2[18 états et<br/>44 analyses]
+        A3[Synthèse :<br/>décisions priorisées]
+        A4[Courriel du matin]
+    end
+    subgraph DIR["Direction"]
+        D1([Lire les décisions])
+        D2[Vérifier dans le Détail]
+        D3([Agir : commande, prix,<br/>horaire, relance])
+    end
+    C1 --> A1 --> A2
+    S1 --> A2
+    A2 --> A3 --> A4 --> D1 --> D2 --> D3
+    D3 -. semaine suivante .-> A2
+```
+
+Le cycle se répète chaque semaine :
+
+1. **Chaque nuit** : les ventes de la veille sont gardées et les coûts sont relus dans Sage.
+2. **Chaque matin** : la direction reçoit par courriel les décisions de la semaine.
+3. **Vérifier** : elle ouvre l'analyse citée et contrôle les éléments dans son Détail.
+4. **Agir** : commande, prix, horaire ou relance.
+5. **Mesurer** : la semaine suivante, les mêmes analyses montrent l'effet de la décision.
 
 ## 9. De l'embauche au premier bulletin
 

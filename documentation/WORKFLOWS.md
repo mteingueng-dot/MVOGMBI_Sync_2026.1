@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 
@@ -320,6 +320,38 @@ flowchart TD
     N --> O([Dépôt suivant saisi])
     N --> P["Vérifier dans Sage<br/>puis relancer"]
 ```
+
+## 8 nonies. Lundi matin : décider avec le Reporting
+
+```mermaid
+flowchart TD
+    A["Courriel du matin :<br/>décisions de la semaine"] --> B["État > Reporting<br/>Accueil > Synthèse et décisions"]
+    B --> C{"Priorité 1 ?"}
+    C -- oui --> D["Ouvrir l'analyse citée<br/>(ex. Ruptures probables)"]
+    D --> E["Détail : filtrer<br/>par catégorie ou groupe"]
+    E --> F["Agir : commander,<br/>changer un prix, relancer"]
+    C -- non --> G["Points positifs<br/>et priorités 2 et 3"]
+    F --> H["Exporter ou PDF<br/>de la page"]
+```
+
+1. Lire les décisions du courriel du matin. Les priorités 1 sont en rouge, avec les 5 premiers éléments concernés.
+2. Ouvrir État > Reporting et choisir la période (par exemple « 30 derniers jours »). Ouvrir ensuite Accueil > Synthèse et décisions.
+3. Pour chaque décision, ouvrir l'analyse citée et lire ses trois sous-pages : Résumé (cartes et constats), Graphiques, Détail.
+4. Dans le Détail, filtrer par texte ou par groupe. Un clic sur un n° de commande ouvre la facture Clover.
+5. Agir (bon de commande, prix, promotion, horaire), puis comparer la semaine suivante.
+
+## 8 decies. Relier les lignes d'une facture fournisseur
+
+1. Fournisseur > Factures fournisseurs : ouvrir la facture. Les articles Sage sont proposés tout de suite.
+2. Si les propositions sont justes, cliquer « Confirmer toutes les propositions ». Sinon :
+   - choisir la ligne ;
+   - chercher l'article Sage (l'assistant de saisie propose les articles pendant la frappe) ;
+   - cliquer « Relier et confirmer ».
+
+   La ligne suivante à relier s'ouvre d'elle-même.
+3. Vérifier le facteur (une caisse en unités, un poids dans l'unité de Sage) et les taxes de chaque ligne (« F P » et « TX » sont lus).
+4. Cocher ou décocher « Mettre à jour le stock Clover » pour cette facture seulement.
+5. Cliquer « Importer cette facture », ou cocher plusieurs factures prêtes puis cliquer « Importer les factures cochées ». La facture importée passe aux archives.
 
 ## 9. Droits d'un profil
 

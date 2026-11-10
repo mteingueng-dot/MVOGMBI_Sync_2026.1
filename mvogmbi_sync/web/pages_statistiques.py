@@ -560,8 +560,19 @@ def _filtres_detail(entetes: list, lignes: list) -> str:
     1re colonne (client, article, catégorie…) et liste déroulante de la colonne de regroupement s'il y en a une."""
     if not entetes or len(lignes) < 2:
         return ""
-    html = (f"<div class='filtres-detail'><label>{e(entetes[0])} :</label><input type='search' data-filtre='detail-rapport' "
-            f"data-colonnes='0' placeholder='{e(entetes[0]).lower()}…' autocomplete='off'>")
+    from ..page_rapports import VALEURS_LISTE_PREMIERE
+
+    premiers = [str(l[0]) if l and l[0] is not None else "" for l in lignes]
+    distincts = sorted({v for v in premiers if v.strip()}, key=str.casefold)
+    if 1 < len(distincts) <= VALEURS_LISTE_PREMIERE:  # peu de valeurs (Priorité…) : liste déroulante
+        suite = " data-suite='1'" if any(not v.strip() for v in premiers) else ""  # éléments sous leur décision
+        html = (f"<div class='filtres-detail'><label>{e(entetes[0])} :</label><select data-filtre='detail-rapport' "
+                f"data-colonnes='0' data-exact='1'{suite}><option value=''>Tous</option>"
+                + "".join(f"<option>{e(v)}</option>" for v in distincts) + "</select>")
+    else:
+        html = (f"<div class='filtres-detail'><label>{e(entetes[0])} :</label><input type='search' "
+                f"data-filtre='detail-rapport' data-colonnes='0' placeholder='{e(entetes[0]).lower()}…' "
+                "autocomplete='off'>")
     for nom in COLONNES_GROUPE:
         if nom in entetes[1:]:
             k = entetes.index(nom)
@@ -845,7 +856,8 @@ def _etat(ctx: Contexte, vue: str, q: dict, b: dict, r: dict, filtres: dict) -> 
             l[col_num] = (f"<a href='/facture-clover?{e(urlencode({'id': ident}))}' target='_blank' "
                           f"title='Ouvrir la facture Clover'>🧾 {texte}</a>") if ident else texte
         html = {col_num}
-    tableau = tableau_section(Section(titre, entetes, lignes, html=html), limite=3000)
+    tableau = (_filtres_detail(entetes, lignes) + "<div id='detail-rapport'>"
+               + tableau_section(Section(titre, entetes, lignes, html=html), limite=3000) + "</div>")
     if enrichi is None:
         return corps + graph + tableau
     if q.get("pdf"):

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.20 (7 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.0 (9 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -38,7 +38,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 315 tests
+## 3. Tests automatiques — 369 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -48,6 +48,7 @@ Règles :
 | Fournisseurs (factures, courriel, paiements, bons, taxes) | test_factures_fournisseurs, test_factures_courriel, test_page_fournisseurs, test_paiements_courriel, test_paiements_fournisseurs, test_robot_paiements, test_bons_commande, test_taxes_facteurs, test_robot_tiers | 30 |
 | Stocks (inventaire, transferts, pertes, prix) | test_inventaire, test_transferts, test_pertes, test_prix_marges, test_planning_documents | 16 |
 | Statistiques, rapports, prévisions | test_statistiques_clover, test_rapports, test_previsions, test_analyse_articles, test_resume_matin | 21 |
+| Reporting décisionnel (analyses, états enrichis) | test_analyses_clover, test_etats_enrichis | 42 |
 | Comptabilité et caisse | test_comptabilite, test_caisse, test_retenues | 9 |
 | Paie | test_paie, test_paie_temps, test_conges | 14 |
 | Fonctions de gestion (paquets 1 à 3) | test_paquet1, test_paquet2, test_paquet3 | 10 |
@@ -73,7 +74,9 @@ Règles :
 | Version 1.0.18 : reconnexion web à la même page, adresse de retour sûre | test_web | 1 |
 | Version 1.0.19 : un encaissement en échec ne bloque pas les suivants | test_encaissements | 1 |
 | Version 1.0.20 : montant reçu relu avant d'être validé | test_encaissements | 1 |
-| **Total** | 60 fichiers | **315** |
+| **Total** | 63 fichiers | **369** |
+
+Résultat du 9 novembre 2026 (version 1.0.44, puis 1.0.0) : **369 réussis** (1 min 55). Les analyses sont aussi vérifiées sur les vraies ventes Clover (lecture seule) : chacune s'affiche sans erreur sur les 30 derniers jours et sur l'année.
 
 Résultat du 7 novembre 2026 (version 1.0.20) : **315 réussis** (1 min 50), compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
 
@@ -235,6 +238,13 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 
 ---
 
+| Lignes « F P » d'A.M.R. ignorées | Le lecteur n'acceptait aucun code de taxe après le montant | « F P », « FP », « F », « P » lus (1.0.38) |
+| Aucune proposition d'article sur une facture vendue à la caisse | Le contrôle des formats comptait la caisse (« 6/5 Lb ») | Taille d'une unité seulement (1.0.38) |
+| La liste des factures se réduisait à la facture ouverte | Les champs de la facture servaient aussi de filtres | Filtres envoyés à part (1.0.38) |
+| La touche Entrée supprimait le document en cours (web) | Le 1er bouton du formulaire était « Supprimer » | Bouton Entrée invisible qui valide la ligne (1.0.30) |
+| Factures importées encore « Prête à importer » | Registre non enregistré après l'import (web et nuit) | Enregistrement dans un `finally` (2.23.0) |
+| « Par heure » sans graphique sous Windows | Un commentaire avalait les lignes du dictionnaire des graphiques | Corrigé (1.0.35) |
+
 ## 6. Recette avant livraison
 
 1. `python -m pytest` : tout réussi.
@@ -281,3 +291,5 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | Sage de la journée, Sage orphelin, questions de Sage | ✔ | ✔ | ✔ |
 | Application web (76 pages) | ✔ | ✔ (tour complet) | ✔ (serveur) |
 | Statistiques Clover | ✔ | — | ✔ (lecture seule) |
+| Reporting : 18 états, 44 analyses, synthèse, filtres du Détail | ✔ | — | ✔ (lecture seule, Windows et web) |
+| Factures fournisseurs : taxes F P / TX, propositions, case Clover par facture | ✔ | — | ✔ (11 vraies factures relues) |

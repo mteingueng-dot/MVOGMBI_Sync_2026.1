@@ -51,13 +51,21 @@ SCRIPT = r"""
     var zone = document.getElementById(id);
     if (!zone) { return; }
     var lignes = zone.querySelectorAll('tbody tr, table tr');
-    var vues = 0;
+    var vues = 0, suites = {};
     lignes.forEach(function (tr) {
       if (tr.querySelector('th')) { return; }
       var garder = true;
-      champs.forEach(function (champ) {
+      champs.forEach(function (champ, n) {
         var texte = simple(champ.value);
         if (!texte) { return; }
+        if (champ.hasAttribute('data-suite')) {  // ligne sans valeur (élément d'une décision) : suit la ligne d'avant
+          var k0 = Number((champ.getAttribute('data-colonnes') || '0').split(',')[0]);
+          var c0 = tr.children[k0] ? simple(tr.children[k0].textContent) : '';
+          if (!c0) { if (suites[n] === false) { garder = false; } return; }
+          suites[n] = (c0 === texte);
+          if (!suites[n]) { garder = false; }
+          return;
+        }
         var cols = (champ.getAttribute('data-colonnes') || '').split(',').filter(Boolean).map(Number);
         var cellules = tr.children, contenu = '';
         if (cols.length) { cols.forEach(function (k) { if (cellules[k]) { contenu += ' ' + cellules[k].textContent; } }); }
