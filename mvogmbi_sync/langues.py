@@ -4130,3 +4130,34 @@ for _fr, _en in {
     "{x} → {y} ({p} %) ; les clients prennent « {b} »": "{x} → {y} ({p}%); customers take \u201c{b}\u201d",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.43 : articles qui montent (2026-11-09)
+for _fr, _en in {
+    "Articles qui montent": "Rising items",
+    "Hausse par semaine %": "Weekly rise %",
+    "Quantité par semaine à la fin": "Quantity per week at the end",
+    "Forte hausse": "Strong rise", "Hausse": "Rise",
+    "Fortes hausses": "Strong rises",
+    "Ventes par semaine des articles qui montent le plus": "Weekly sales of the fastest rising items",
+    "Hausse par semaine (en % des ventes moyennes)": "Weekly rise (as % of average sales)",
+    "Quantité vendue par semaine à la fin": "Quantity sold per week at the end",
+    "Articles qui montent par catégorie": "Rising items by category",
+    "Article qui monte : parmi ceux qui font la moitié des ventes, vendu presque chaque semaine (25 $ par semaine au "
+    "moins), dont la droite des ventes semaine par semaine gagne au moins 5 % de la moyenne chaque semaine ; forte : "
+    "15 % ou plus.":
+        "Rising item: among those making half of sales, sold almost every week (25 $ per week at least), whose weekly "
+        "sales trend line gains at least 5% of the average each week; strong: 15% or more.",
+    "{n} article(s) progressent semaine après semaine ; le plus rapide : {a} (+{p} % par semaine, {q} vendus la "
+    "dernière semaine).":
+        "{n} item(s) grow week after week; the fastest: {a} (+{p}% per week, {q} sold last week).",
+    "Prévoir leur stock : à ce rythme, la demande dépasse les commandes habituelles.":
+        "Plan their stock: at this pace, demand exceeds the usual orders.",
+    "Aucun article important ne progresse de façon régulière.": "No important item grows steadily.",
+    "Prévoir plus de stock pour les articles qui montent": "Plan more stock for rising items",
+    "{n} article(s) importants gagnent 15 % ou plus de ventes chaque semaine.":
+        "{n} important item(s) gain 15% or more sales each week.",
+    "{c} ; {a} par semaine au début, {b} à la fin ; {q} vendus la dernière semaine":
+        "{c}; {a} per week at the start, {b} at the end; {q} sold last week",
+}.items():
+    EN.setdefault(_fr, _en)

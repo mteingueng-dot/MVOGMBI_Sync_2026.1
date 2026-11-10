@@ -86,7 +86,7 @@ def test_chaque_analyse_est_rangee_dans_une_section_existante():
 def test_toutes_les_analyses_rendent_un_rapport_complet():
     for cle, r in _toutes().items():
         assert r.cartes and r.entetes and r.note, cle
-        assert r.lignes or cle in ("a_prix", "a_marge", "a_baisse", "a_poids", "a_ruptures", "a_prix_format", "a_substitutions"), cle  # aucun changement de prix ; marge : sans coûts
+        assert r.lignes or cle in ("a_prix", "a_marge", "a_baisse", "a_poids", "a_ruptures", "a_prix_format", "a_substitutions", "a_hausse"), cle  # aucun changement de prix ; marge : sans coûts
         assert all(len(l) == len(r.entetes) for l in r.lignes), cle
         assert all(len(v) == len(r.etiquettes) for _n, v in r.series), cle
 
@@ -192,7 +192,7 @@ def test_graphiques_de_plus_sans_vide():
     from mvogmbi_sync import langues
 
     for cle, r in _toutes().items():
-        if cle not in ("a_prix", "a_marge", "a_baisse", "a_seuil", "a_poids", "a_ruptures", "a_prix_format", "a_substitutions"):  # pas de changement de prix ni de baisse ; marge : sans coûts
+        if cle not in ("a_prix", "a_marge", "a_baisse", "a_seuil", "a_poids", "a_ruptures", "a_prix_format", "a_substitutions", "a_hausse"):  # pas de changement de prix ni de baisse ; marge : sans coûts
             assert r.graphiques, cle
         for g in r.graphiques:
             assert g["elements"] or any(v for _n, vs in g["series"] for v in vs), (cle, g["titre"])
@@ -628,3 +628,18 @@ def test_articles_qui_se_remplacent():
     l = r.lignes[0]
     assert l[0] == "Sardine Piment" and l[7] == "Sardine Nature" and l[6] == D("25.0") and l[11] == D("25.000")
     assert r.par_prix and r.graphiques
+
+
+def test_articles_qui_montent():
+    """Igname : 1 commande le 1er jour de la semaine 1, puis 2, 3, 4 : ventes qui montent chaque semaine."""
+    cmds = []
+    debut = date(2026, 9, 3)
+    for semaine in range(4):
+        for n in range(semaine + 1):
+            for jour in range(3):
+                cmds.append(_commande(f"AM-{semaine}-{n}-{jour}", debut + timedelta(days=7 * semaine + jour),
+                                      [("Igname", "R", 1000)]))
+    r = an.calculer("a_hausse", _donnees(cmds), _donnees([]), {}, debut, debut + timedelta(days=27),
+                    date(2026, 8, 1), date(2026, 8, 31))
+    igname = next(l for l in r.lignes if l[0] == "Igname")
+    assert igname[7] == "Forte hausse" and igname[4] > igname[3] and r.graphiques

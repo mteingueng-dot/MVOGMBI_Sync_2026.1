@@ -3322,6 +3322,80 @@ def substitutions(c, avant, ctx) -> RapportGestion:
     return r
 
 
+# --------------------------------------------------------------------------------------------- articles qui montent
+def articles_hausse(c, avant, ctx) -> RapportGestion:
+    """Pendant de « Articles qui baissent » : articles vendus presque chaque semaine (25 $ par semaine en moyenne)
+    dont la droite des ventes hebdomadaires monte d'au moins 5 % de la moyenne chaque semaine (forte : 15 %), parmi
+    les articles qui font la moitié des ventes ; il faut au moins 4 semaines."""
+    du, au = ctx["du"], min(ctx["au"], date.today())
+    semaines = []
+    debut_bloc = au - timedelta(days=6)
+    while debut_bloc >= du:
+        semaines.insert(0, debut_bloc)
+        debut_bloc -= timedelta(days=7)
+    semaines_art = defaultdict(lambda: defaultdict(Decimal))
+    quantites = defaultdict(lambda: defaultdict(Decimal))
+    cats, totaux = {}, defaultdict(Decimal)
+    for x in c:
+        j = x.moment.date()
+        bloc = next((b for b in reversed(semaines) if b <= j), None)
+        for l in x.lignes:
+            if bloc is not None:
+                semaines_art[l.nom][bloc] += l.ventes_nettes
+                quantites[l.nom][bloc] += l.quantite_nette
+            cats[l.nom] = l.categorie
+            totaux[l.nom] += l.ventes_nettes
+    ordre = [n for n in sorted(totaux, key=lambda n: -totaux[n]) if totaux[n] > 0]
+    suivis = ordre[:max(1, math.ceil(len(ordre) * PART_B))]
+    lignes = []
+    if len(semaines) >= 4:
+        xs = list(range(len(semaines)))
+        mx = st.mean(xs)
+        sxx = sum((x_ - mx) ** 2 for x_ in xs)
+        for nom in suivis:
+            ys = [float(semaines_art[nom].get(s_, ZERO)) for s_ in semaines]
+            moy = st.mean(ys)
+            if moy < 25 or sum(1 for y in ys if y > 0) < len(ys) - 1:
+                continue
+            pente = sum((x_ - mx) * (y - moy) for x_, y in zip(xs, ys)) / sxx
+            hausse = pente / moy * 100
+            debut, fin = st.mean(ys[:2]), st.mean(ys[-2:])
+            if hausse >= 5 and fin > debut:
+                q_fin = _d(Decimal(str(st.mean([float(quantites[nom].get(s_, ZERO)) for s_ in semaines[-2:]]))),
+                           "0.001")
+                lignes.append([nom, cats.get(nom, ""), _d(totaux[nom]), _d(debut), _d(fin), _d(hausse, "0.1"),
+                               q_fin, _t("Forte hausse") if hausse >= 15 else _t("Hausse")])
+    lignes.sort(key=lambda l: -l[5])
+    r = RapportGestion()
+    r.entetes = ["Article", "Catégorie", "Ventes nettes", "Ventes par semaine au début", "Ventes par semaine à la fin",
+                 "Hausse par semaine %", "Quantité par semaine à la fin", "Niveau"]
+    r.lignes = lignes
+    r.cartes = [("Articles suivis", "n", len(suivis)), ("Articles qui montent", "n", len(lignes)),
+                ("Fortes hausses", "n", sum(1 for l in lignes if l[7] == _t("Forte hausse"))),
+                ("Semaines comparées", "n", len(semaines))]
+    r.titre_evolution = "Ventes par semaine des articles qui montent le plus"
+    r.etiquettes = [_etiquette(s_) for s_ in semaines]
+    r.series = [(l[0], [_d(semaines_art[l[0]].get(s_, ZERO)) for s_ in semaines]) for l in lignes[:4]]
+    r.titre_repartition = "Hausse par semaine (en % des ventes moyennes)"
+    r.genre_repartition = "classement"
+    r.argent_repartition = False
+    r.repartition = [(l[0], l[5]) for l in lignes[:8]]
+    constats = [_k(None, "Article qui monte : parmi ceux qui font la moitié des ventes, vendu presque chaque semaine (25 $ "
+                   "par semaine au moins), dont la droite des ventes semaine par semaine gagne au moins 5 % de la "
+                   "moyenne chaque semaine ; forte : 15 % ou plus.")]
+    if len(semaines) < 4:
+        constats.append(_k(None, "Choisissez au moins 4 semaines (par exemple « 30 derniers jours » ou un mois)."))
+    elif lignes:
+        constats.append(_k("bon", "{n} article(s) progressent semaine après semaine ; le plus rapide : {a} (+{p} % par "
+                                  "semaine, {q} vendus la dernière semaine).", n=len(lignes), a=lignes[0][0],
+                           p=_nb(lignes[0][5]), q=_nb(lignes[0][6], 0)))
+        constats.append(_k("info", "Prévoir leur stock : à ce rythme, la demande dépasse les commandes habituelles."))
+    else:
+        constats.append(_k("info", "Aucun article important ne progresse de façon régulière."))
+    r.note = _note(constats)
+    return r
+
+
 # --------------------------------------------------------------------------------------------- clients
 SEGMENTS = {
     "Champions": "Récompenser, demander un avis, offres en avant-première",
@@ -4024,6 +4098,14 @@ def _decisions(sous: dict) -> list[tuple]:
                    n=len(sub.par_prix)), "a_substitutions",
                 [(l[0], _t("{x} → {y} ({p} %) ; les clients prennent « {b} »", x=_argent(l[4]), y=_argent(l[5]),
                            p=_nb(l[6], 0), b=l[7]), "") for l in sub.par_prix])
+    hau = sous.get("a_hausse", vide)
+    fortes_h = [l for l in hau.lignes if l[7] == _t("Forte hausse")]
+    if fortes_h:
+        ajouter(2, "Prévoir plus de stock pour les articles qui montent",
+                _t("{n} article(s) importants gagnent 15 % ou plus de ventes chaque semaine.", n=len(fortes_h)),
+                "a_hausse", [(l[0], _t("{c} ; {a} par semaine au début, {b} à la fin ; {q} vendus la dernière semaine",
+                                       c=l[1], a=_argent(l[3]), b=_argent(l[4]), q=_nb(l[6], 0)), "")
+                             for l in hau.lignes])
     bai = sous.get("a_baisse", vide)
     fortes = [l for l in bai.lignes if l[7] == _t("Forte baisse")]
     if fortes:
@@ -4154,7 +4236,7 @@ DEFINITIONS = ("Jour inhabituel :", "Popularité :", "Seules les paires", "Heure
                "Jour normal :", "Moyenne par jour ouvert de chaque jour", "Articles importants :", "Ventes moyennes par jour "
                "ouvert", "Prévision :", "Les taxes perçues par Clover",
                "Valeur sur un an =", "Seuil de rentabilité :", "Quantité prévue =", "Pour la semaine qui vient",
-               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes", "Article peu vendu : 2 commandes", "Indice des prix : prix affichés", "Paire qui se remplace :")
+               "Indice : ventes du jour", "Indice de saison :", "Article vendu au poids :", "Rupture probable :", "Article d'appel :", "Complément habituel :", "En tout, environ", "Format : taille lue", "Tranche de prix : prix affiché", "Écart : ventes nettes de la période", "Effet des rabais : commandes", "Article peu vendu : 2 commandes", "Indice des prix : prix affichés", "Paire qui se remplace :", "Article qui monte :", "Prévoir leur stock :")
 
 
 # --------------------------------------------------------------------------------------------- graphiques de plus
@@ -4582,7 +4664,16 @@ def _sup_substitutions(r):
                     elements=[(l[7], l[9] - l[8]) for l in r.lignes[:8]])]
 
 
-SUPPLEMENTS = {"a_substitutions": _sup_substitutions, "a_prix_volume": _sup_prix_volume, "a_assortiment": _sup_assortiment, "a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
+def _sup_hausse(r):
+    par_cat = defaultdict(int)
+    for l in r.lignes:
+        par_cat[l[1]] += 1
+    return [_graphe("classement", "Quantité vendue par semaine à la fin", "", elements=[(l[0], l[6]) for l in r.lignes[:8]]),
+            _graphe("anneau", "Articles qui montent par catégorie", "",
+                    elements=[(k, Decimal(v)) for k, v in sorted(par_cat.items(), key=lambda kv: -kv[1])])]
+
+
+SUPPLEMENTS = {"a_hausse": _sup_hausse, "a_substitutions": _sup_substitutions, "a_prix_volume": _sup_prix_volume, "a_assortiment": _sup_assortiment, "a_effet_rabais": _sup_effet_rabais, "a_contribution": _sup_contribution, "a_tranches": _sup_tranches, "a_prix_format": _sup_prix_format, "a_complements": _sup_complements, "a_appel": _sup_appel, "a_ruptures": _sup_ruptures, "a_jour_mois": _sup_jour_mois, "a_saison": _sup_saison, "a_poids": _sup_poids, "a_valeur": _sup_valeur, "a_seuil": _sup_seuil, "a_quantites": _sup_quantites, "a_taxes": _sup_taxes, "a_gains": _sup_gains, "a_baisse": _sup_baisse,
                "a_categories_jour": _sup_categories_jour, "a_prevu": _sup_prevu, "a_nouveaux": _sup_nouveaux, "a_feries": _sup_feries, "a_remboursements": _sup_remboursements, "a_especes": _sup_especes, "a_rythme": _sup_rythme, "a_marge": _sup_marge, "a_portefeuille": _sup_portefeuille, "a_achalandage": _sup_achalandage,
                "a_rabais_direction": _sup_rabais_direction, "a_variation": _sup_variation, "a_tendance": _sup_tendance, "a_paniers": _sup_paniers,
                "a_concentration": _sup_concentration, "a_anomalies": _sup_anomalies, "a_matrice": _sup_matrice,
@@ -4626,6 +4717,7 @@ ANALYSES = [
     ("Effet des changements de prix", "a_prix", prix, "Articles", "a_associations"),
     ("Nouveaux articles", "a_nouveaux", nouveaux_articles, "Articles", "a_prix"),
     ("Articles qui baissent", "a_baisse", articles_baisse, "Articles", "a_nouveaux"),
+    ("Articles qui montent", "a_hausse", articles_hausse, "Articles", "a_baisse"),
     ("Catégories selon le jour", "a_categories_jour", categories_jour, "Articles", "a_baisse"),
     ("Articles de saison", "a_saison", articles_saison, "Articles", "a_categories_jour"),
     ("Ventes au poids", "a_poids", ventes_poids, "Articles", "a_saison"),

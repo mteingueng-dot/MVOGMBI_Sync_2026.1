@@ -550,8 +550,38 @@ def _titre_detail(libelle: str) -> str:
     return t("Détail : {l}", l=t(libelle)) if libelle else t("Rapport détaillé")
 
 
+# colonnes de regroupement filtrées par une liste déroulante dans le Détail (demande du propriétaire du 2026-11-09 :
+# « ajoute deux filtres dans le Détail : client et groupe de clients »), la première trouvée
+from ..page_rapports import COLONNES_GROUPE  # noqa: E402 — même liste que Windows
+
+
+def _filtres_detail(entetes: list, lignes: list) -> str:
+    """Filtres du Détail, appliqués pendant la frappe sans recharger la page (/filtres.js, data-filtre) : texte sur la
+    1re colonne (client, article, catégorie…) et liste déroulante de la colonne de regroupement s'il y en a une."""
+    if not entetes or len(lignes) < 2:
+        return ""
+    html = (f"<div class='filtres-detail'><label>{e(entetes[0])} :</label><input type='search' data-filtre='detail-rapport' "
+            f"data-colonnes='0' placeholder='{e(entetes[0]).lower()}…' autocomplete='off'>")
+    for nom in COLONNES_GROUPE:
+        if nom in entetes[1:]:
+            k = entetes.index(nom)
+            valeurs = sorted({str(l[k]) for l in lignes if k < len(l) and l[k] not in (None, "")}, key=str.casefold)
+            if 1 < len(valeurs) <= 60:
+                html += (f"<label>{e(nom)} :</label><select data-filtre='detail-rapport' data-colonnes='{k}' "
+                         "data-exact='1'><option value=''>Tous</option>"
+                         + "".join(f"<option>{e(v)}</option>" for v in valeurs) + "</select>")
+            break
+    return html + "</div>"
+
+
 def _tableau_detaille(r, libelle: str = "") -> str:
-    """Tableau du rapport ; le n° d'une commande (anomalies) ouvre sa vraie facture Clover dans un nouvel onglet."""
+    """Tableau du rapport, avec ses filtres ; le n° d'une commande (anomalies) ouvre sa vraie facture Clover dans un
+    nouvel onglet."""
+    filtres = _filtres_detail(r.entetes, r.lignes)
+    return f"{filtres}<div id='detail-rapport'>{_tableau_seul(r, libelle)}</div>"
+
+
+def _tableau_seul(r, libelle: str = "") -> str:
     ids = getattr(r, "ids_commandes", None) or []
     colonne = next((c for c in ("Commande ou jour", "Concerné") if c in r.entetes), None)
     if not any(ids) or colonne is None:
@@ -843,6 +873,9 @@ nav.ruban-etats { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; pa
 nav.ruban-etats a { text-decoration: none; color: var(--texte); font-size: 13px; padding: 5px 10px; border-radius: 6px;
   background: var(--carte); border: 1px solid var(--bord); white-space: nowrap; }
 nav.ruban-etats a:hover { background: var(--menu-survol); }
+.filtres-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 6px; }
+.filtres-detail label { margin: 0; font-weight: 600; }
+.filtres-detail input { width: 220px; }
 nav.ruban-etats a.actif { background: var(--menu-actif); color: var(--vert); font-weight: 600; border-color: #b9dcc3; }
 /* graphiques dynamiques : élément survolé surligné, série masquée d'un clic sur sa légende, bulle immédiate */
 svg .g-zone:hover { fill: rgba(31, 111, 235, .08); }

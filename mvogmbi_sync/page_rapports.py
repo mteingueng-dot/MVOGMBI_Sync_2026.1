@@ -82,6 +82,16 @@ MOTS_SANS_UNITE = ("Lift", "Élasticité", "Indice", "Coefficient", "(1-5)", "(z
 NOTES_ETATS: dict[str, str] = {}
 PARTIES_GESTION = (("resume", "Résumé"), ("graphiques", "Graphiques"), ("detail", "Détail"))
 MAX_ETATS_MENU = 7  # au-delà, les états de la section sont dans un ruban en haut du rapport (comme le web)
+# colonnes de regroupement filtrées par une liste dans le Détail des rapports (demande du propriétaire du 2026-11-09 :
+# « ajoute deux filtres dans le Détail : client et groupe de clients », « pour faciliter la recherche ») ; la 1re trouvée
+COLONNES_GROUPE = ("Groupe de clients", "Groupe", "Profil", "Niveau", "Type", "Catégorie", "Segment", "Classe 20/80",
+                   "Contrôle", "Absence en cours")
+
+
+def _simple(texte) -> str:
+    import unicodedata
+
+    return unicodedata.normalize("NFKD", str(texte)).encode("ascii", "ignore").decode().casefold().strip()
 # constats des analyses décisionnelles : (fond, trait à gauche) et icône par niveau
 COULEURS_CONSTATS = {"alerte": ("#fde2e4", "#d7263d"), "attention": ("#fff4d6", "#e0a100"),
                      "bon": ("#e6f4ea", "#1b7f3b"), "info": ("#eef1ef", "#8a9690")}
@@ -996,6 +1006,21 @@ class PageRapports(ttk.Frame):
         self.titre_detail_gestion = tk.Label(partie_d, text=t("Rapport détaillé"), font=("Segoe UI Semibold", 11, "bold"),
                                              foreground=TEXTE, background=fond_de(cadre), anchor="center")
         self.titre_detail_gestion.pack(fill="x", pady=(8, 0))
+        # filtres du Détail : texte sur la 1re colonne, liste de la colonne de regroupement (comme le web)
+        self.filtres_gestion = tk.Frame(partie_d, background=fond_de(cadre))
+        self.filtres_gestion.pack(fill="x", pady=(4, 0))
+        self.lib_texte_gestion = ttk.Label(self.filtres_gestion, text="")
+        self.lib_texte_gestion.pack(side="left", padx=(0, 4))
+        self.f_texte_gestion = tk.StringVar()
+        ttk.Entry(self.filtres_gestion, textvariable=self.f_texte_gestion, width=28).pack(side="left")
+        self.lib_groupe_gestion = ttk.Label(self.filtres_gestion, text="")
+        self.f_groupe_gestion = tk.StringVar()
+        self.liste_groupe_gestion = ttk.Combobox(self.filtres_gestion, textvariable=self.f_groupe_gestion,
+                                                 state="readonly", width=26)
+        self.f_texte_gestion.trace_add("write", lambda *_a: self._filtrer_gestion())
+        self.liste_groupe_gestion.bind("<<ComboboxSelected>>", lambda _e: self._filtrer_gestion())
+        self._ordre_gestion: list[str] = []
+        self._col_groupe_gestion = None
         self.tableau_gestion = tableau_simple(partie_d, 18)
         self.partie_gestion("resume")
         # anomalies : double-clic (ou Entrée) sur une commande = sa vraie facture Clover, pour vérification
@@ -1620,10 +1645,52 @@ class PageRapports(ttk.Frame):
                                                     and self._ids_gestion[i] else
                                                     t(x) if isinstance(x, str) and x in TEXTES_GESTION else x)
                                                    for j, x in enumerate(l)] for i, l in enumerate(r.lignes)])
+        self._preparer_filtres_gestion(r)
         colonnes = self.tableau_gestion["columns"]
         if colonnes and not any(self.tableau_gestion.column(c, "stretch") for c in colonnes):
             for c in colonnes:  # aucune colonne de texte extensible : toutes s'élargissent (pas de vide à droite)
                 self.tableau_gestion.column(c, stretch=True)
+
+    def _preparer_filtres_gestion(self, r) -> None:
+        """Filtres du Détail remis à zéro pour le rapport affiché."""
+        self._ordre_gestion = list(self.tableau_gestion.get_children())
+        self.lib_texte_gestion.configure(text=(t(r.entetes[0]) + " :") if r.entetes else "")
+        self.f_texte_gestion.set("")
+        self._col_groupe_gestion = None
+        self.lib_groupe_gestion.pack_forget()
+        self.liste_groupe_gestion.pack_forget()
+        for nom in COLONNES_GROUPE:
+            if nom in r.entetes[1:]:
+                k = r.entetes.index(nom)
+                valeurs = sorted({str(self.tableau_gestion.item(i, "values")[k]) for i in self._ordre_gestion
+                                  if str(self.tableau_gestion.item(i, "values")[k])}, key=str.casefold)
+                if 1 < len(valeurs) <= 60:
+                    self._col_groupe_gestion = k
+                    self.lib_groupe_gestion.configure(text=t(nom) + " :")
+                    self.lib_groupe_gestion.pack(side="left", padx=(16, 4))
+                    self.liste_groupe_gestion.configure(values=[t("Tous")] + valeurs)
+                    self.f_groupe_gestion.set(t("Tous"))
+                    self.liste_groupe_gestion.pack(side="left")
+                break
+
+    def _filtrer_gestion(self) -> None:
+        """Lignes du Détail qui contiennent le texte (1re colonne) et sont du groupe choisi ; les autres sont mises de
+        côté (detach), jamais supprimées : le double-clic garde la bonne commande."""
+        texte = _simple(self.f_texte_gestion.get())
+        groupe = self.f_groupe_gestion.get()
+        tout = groupe in ("", t("Tous"))
+        rang = 0
+        for iid in self._ordre_gestion:
+            if not self.tableau_gestion.exists(iid):
+                continue
+            valeurs = self.tableau_gestion.item(iid, "values")
+            garder = (not texte or texte in _simple(valeurs[0] if valeurs else "")) and (
+                tout or self._col_groupe_gestion is None or str(valeurs[self._col_groupe_gestion]) == groupe)
+            if garder:
+                self.tableau_gestion.move(iid, "", rang)
+                rang += 1
+            else:
+                self.tableau_gestion.detach(iid)
 
     def afficher_apercu(self) -> None:
         """Aperçu des ventes : évolution brutes / nettes, composition, jour de la semaine, heure."""

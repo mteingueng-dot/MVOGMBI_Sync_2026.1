@@ -23,8 +23,9 @@ SCRIPT = r"""
   // champs texte (valeur choisie dans la liste proposée, ou champ quitté après la frappe)
   document.addEventListener('change', function (ev) {
     var c = ev.target;
+    // filtre de tableau (data-filtre) : tout de suite, même hors d'un formulaire (filtres du Détail des rapports)
+    if (c && c.hasAttribute && c.hasAttribute('data-filtre')) { filtrer(c.getAttribute('data-filtre')); return; }
     if (!c || !c.form || (c.form.getAttribute('method') || 'get').toLowerCase() !== 'get') { return; }
-    if (c.hasAttribute('data-filtre')) { filtrer(c.getAttribute('data-filtre')); return; }
     if (c.hasAttribute('data-manuel') || c.readOnly) { return; }
     var periode = c.form.querySelector('select[name="periode"]');
     if (periode && c.type === 'date' && (c.name === 'du' || c.name === 'au')) {
@@ -61,7 +62,9 @@ SCRIPT = r"""
         var cellules = tr.children, contenu = '';
         if (cols.length) { cols.forEach(function (k) { if (cellules[k]) { contenu += ' ' + cellules[k].textContent; } }); }
         else { contenu = tr.textContent; }
-        if (simple(contenu).indexOf(texte) < 0) { garder = false; }
+        if (champ.hasAttribute('data-exact')) {  // liste déroulante : la valeur exacte (« Fidèles » n'est pas « Très fidèles »)
+          if (simple(contenu) !== texte) { garder = false; }
+        } else if (simple(contenu).indexOf(texte) < 0) { garder = false; }
       });
       tr.style.display = garder ? '' : 'none';
       if (garder) { vues += 1; }
