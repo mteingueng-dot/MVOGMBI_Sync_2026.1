@@ -357,6 +357,23 @@ def conflit_format_achat(description_fournisseur: str, description_sage: str) ->
     return abs(a[0] - b[0]) > max(a[0], b[0]) * 0.03
 
 
+def article_saisi(numero: str, description: str, articles):
+    """Article Sage tapé directement dans la carte de la ligne (demande du propriétaire du 2026-11-10 : « saisir
+    directement le code de l'article avec assistant et la désignation aussi ») : n° exact (majuscules ignorées, ou
+    « n° — description » de l'assistant), sinon désignation identique (normalisée) d'un seul article."""
+    numero = (numero or "").split(" — ")[0].strip().upper()
+    if numero:
+        a = next((x for x in articles if x.numero.strip().upper() == numero), None)
+        if a is not None:
+            return a
+    cle = normaliser(description or "")
+    if cle:
+        trouves = [x for x in articles if normaliser(x.description) == cle]
+        if len(trouves) == 1:
+            return trouves[0]
+    return None
+
+
 _AU_POIDS = re.compile(r"\ben\s*(lb|lbs|livres?|kg)\b", re.I)
 
 

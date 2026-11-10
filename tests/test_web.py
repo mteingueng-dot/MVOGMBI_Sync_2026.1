@@ -588,6 +588,74 @@ def test_factures_fournisseurs_relier_fluide(site, tmp_path):
     assert factures_pour_clover(deux) == [deux[1]] and factures_pour_clover(deux, clover=False) == []
 
 
+
+def test_factures_fournisseurs_article_sage_tape(site, tmp_path):
+    """Demande du propriétaire du 2026-11-10 : n° Sage et désignation Sage tapés directement dans la carte de la ligne,
+    avec assistant de saisie (listes sage-numeros / sage-designations) ; Entrée relie l'article. Données inventées."""
+    from mvogmbi_sync import fournisseurs as fo
+
+    base, _, _ = site
+    donnees = tmp_path / "donnees"
+    donnees.mkdir(exist_ok=True)
+    (donnees / "articles_sage.csv").write_text(
+        "numero;description;type;compte_revenus\nTAP-01;Jus Essai Orange 330ml;Inventory;4013\n"
+        "TAP-02;Jus Essai Pomme 330ml;Inventory;4013\n", encoding="utf-8")
+    (donnees / "fournisseurs_sage.csv").write_text("Grossiste Essai\n", encoding="utf-8")
+    reg = fo.Registre(tmp_path)
+    f = fo.Facture(fichier="tape.pdf", empreinte="t", fournisseur_lu="Grossiste Essai", numero="T-1",
+                   date_facture="2026-11-01", sous_total=Decimal("68"), tps=Decimal(0), tvq=Decimal(0),
+                   total=Decimal("68"))
+    f.fournisseur_sage = "Grossiste Essai"
+    f.lignes = [fo.Ligne("Boisson Zzz 24x330ml", Decimal(1), Decimal(34), Decimal(34), "1"),
+                fo.Ligne("Autre Zzz 24x330ml", Decimal(1), Decimal(34), Decimal(34), "2")]
+    f.etat = fo.A_VERIFIER
+    reg.factures.append(f)
+    reg.enregistrer()
+    patron = connecter(base, "Patron", "secret123")
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs?i=0&l=0")
+    assert "list='sage-numeros'" in page and "list='sage-designations'" in page
+    assert "<option value='TAP-02' label='Jus Essai Pomme 330ml'>" in page
+    commun = {"csrf": jeton_csrf(page), "i": "0", "fournisseur": "Grossiste Essai", "numero": "T-1",
+              "date": "2026-11-01", "sous_total": "68", "tps": "0", "tvq": "0", "total": "68", "recherche": ""}
+    ligne = {"l_code": "1", "l_description": "Boisson Zzz 24x330ml", "l_quantite": "1", "l_prix": "34",
+             "l_facteur": "24", "l_taxe": ""}
+    # n° tapé (minuscules) puis Entrée : relié, confirmé, ligne suivante
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, **ligne, "l": "0", "l_numero_sage": "tap-02",
+                                                                  "l_description_sage": "", "action": "Entrée"})
+    l0 = fo.Registre(tmp_path).factures[0].lignes[0]
+    assert (l0.numero_sage, l0.description_sage, l0.confirme) == ("TAP-02", "Jus Essai Pomme 330ml", True)
+    assert "relié à TAP-02" in page
+    # désignation seule tapée sur la 2e ligne
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {
+        **commun, **ligne, "l": "1", "l_code": "2", "l_description": "Autre Zzz 24x330ml", "l_numero_sage": "",
+        "l_description_sage": "jus essai orange 330ml", "action": "Appliquer"})
+    assert fo.Registre(tmp_path).factures[0].lignes[1].numero_sage == "TAP-01"
+    # article inconnu : message, rien de changé ; champs vidés : lien retiré
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs", {**commun, **ligne, "l": "0", "l_numero_sage": "NON-99",
+                                                                  "l_description_sage": "", "action": "Appliquer"})
+    assert "Article Sage introuvable" in page and fo.Registre(tmp_path).factures[0].lignes[0].numero_sage == "TAP-02"
+    ouvrir(patron, base + "/factures-fournisseurs", {**commun, **ligne, "l": "0", "l_numero_sage": "",
+                                                     "l_description_sage": "", "action": "Appliquer"})
+    assert fo.Registre(tmp_path).factures[0].lignes[0].numero_sage == ""
+    # constat du 2026-11-10 : la recherche restée dans le champ (choix d'une autre ligne) ne passe plus avant
+    # l'article coché dans la liste ; une recherche que l'on vient de taper, oui
+    vieille = "TAP-01 — Jus Essai Orange 330ml"
+    ouvrir(patron, base + "/factures-fournisseurs", {
+        **commun, **ligne, "l": "0", "l_numero_sage": "", "l_description_sage": "", "recherche": vieille,
+        "recherche_affichee": vieille, "article": "TAP-02", "action": "Relier et confirmer"})
+    assert fo.Registre(tmp_path).factures[0].lignes[0].numero_sage == "TAP-02"
+    ouvrir(patron, base + "/factures-fournisseurs", {
+        **commun, **ligne, "l": "0", "l_numero_sage": "TAP-02", "l_description_sage": "Jus Essai Pomme 330ml",
+        "recherche": vieille, "recherche_affichee": "Boisson", "article": "TAP-02", "action": "Relier et confirmer"})
+    assert fo.Registre(tmp_path).factures[0].lignes[0].numero_sage == "TAP-01"
+    # autre ligne affichée : sa recherche repart de sa désignation ; zone des résultats jamais reprise défilée
+    _, page, _ = ouvrir(patron, base + "/factures-fournisseurs?i=0&l=1")
+    assert "name='recherche_affichee' value='Autre Zzz 24x330ml'" in page and "data-sans-position" in page
+    # session gardée pendant la frappe : /actif (204), sans session 401 ; expiration lue par le script
+    assert "name='mvogmbi-expiration'" in page
+    assert ouvrir(patron, base + "/actif")[0] == 204
+    assert ouvrir(navigateur()[0], base + "/actif")[0] == 401
+
 def test_achats_web(site, tmp_path):
     from mvogmbi_sync import fournisseurs as fo
     from mvogmbi_sync import retours as rt

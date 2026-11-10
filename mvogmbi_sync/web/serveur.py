@@ -128,7 +128,7 @@ def redirection(chemin: str) -> Reponse:
 
 
 PAS_DE_RETOUR = ("/connexion", "/deconnexion", "/mot-de-passe", "/favicon.ico", "/logo.png", "/style.css",
-                 "/filtres.js")
+                 "/filtres.js", "/actif")
 
 
 def adresse_de(req: Requete) -> str:
@@ -244,6 +244,12 @@ class Application:
         if req.chemin == "/deconnexion":
             self.sessions.fermer(req.jeton)
             return redirection("/connexion")
+        if req.chemin == "/actif":
+            # la personne travaille dans la page (frappe, clics) sans rien envoyer : /filtres.js le signale au plus une
+            # fois par minute, la session reste ouverte (constat du 2026-11-10 : déconnexion pendant la saisie d'une
+            # facture fournisseur) ; 5 min sans aucune activité ferment toujours la session
+            vivante = self.sessions.lire(req.jeton) is not None
+            return Reponse(204 if vivante else 401, "", type="text/plain; charset=utf-8")
         session = self.sessions.lire(req.jeton)
         if session is None:
             return vers_connexion(req)
@@ -300,7 +306,7 @@ class Application:
 
 # --------------------------------------------------------------------------------------------- HTTP
 # un seul script, servi par l'application (/filtres.js) : jamais de script dans la page ni venu d'ailleurs
-POLITIQUE = ("default-src 'none'; script-src 'self'; style-src 'self'{inline}; img-src 'self' data:; form-action 'self'; "
+POLITIQUE = ("default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'{inline}; img-src 'self' data:; form-action 'self'; "
              "frame-ancestors 'none'; base-uri 'none'")
 
 

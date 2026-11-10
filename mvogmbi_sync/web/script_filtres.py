@@ -54,7 +54,10 @@ SCRIPT = r"""
       document.querySelectorAll('body *').forEach(function (el) {
         var k = el.tagName + '.' + el.className;
         var n = compte[k] = (compte[k] || 0) + 1;
-        if (el.scrollTop > 0 || el.scrollLeft > 0) { zones[cle(el, n)] = [el.scrollLeft, el.scrollTop]; }
+        // data-sans-position : zone refaite à chaque envoi (résultats d'une recherche) : toujours reprise en haut
+        if ((el.scrollTop > 0 || el.scrollLeft > 0) && !el.closest('[data-sans-position]')) {
+          zones[cle(el, n)] = [el.scrollLeft, el.scrollTop];
+        }
       });
       sessionStorage.setItem('mvogmbi_position', JSON.stringify(
         {page: location.pathname, moment: Date.now(), x: window.scrollX, y: window.scrollY, zones: zones}));
@@ -123,7 +126,19 @@ SCRIPT = r"""
   document.addEventListener('input', function (ev) {
     var c = ev.target;
     if (c && c.hasAttribute && c.hasAttribute('data-filtre')) { filtrer(c.getAttribute('data-filtre')); }
+    if (c && c.hasAttribute && c.hasAttribute('data-paire')) { completerPaire(c); }
   });
+  // assistant de saisie à deux champs (n° Sage / désignation Sage) : la valeur choisie dans la liste remplit l'autre
+  // champ avec le libellé de l'option (demande du propriétaire du 2026-11-10)
+  function completerPaire(c) {
+    var liste = c.list, autre = c.form ? c.form.querySelector('[name="' + c.getAttribute('data-paire') + '"]') : null;
+    if (!liste || !autre) { return; }
+    var v = c.value.trim().toUpperCase();
+    for (var i = 0; i < liste.options.length; i++) {
+      var o = liste.options[i];
+      if (o.value.trim().toUpperCase() === v) { autre.value = o.label || o.textContent; return; }
+    }
+  }
   document.addEventListener('keydown', function (ev) {
     var c = ev.target;
     if (ev.key !== 'Enter' || !c || !c.form || c.tagName === 'TEXTAREA' || c.tagName === 'BUTTON') { return; }
@@ -191,7 +206,31 @@ SCRIPT = r"""
       el.classList.toggle('masque', masque);
     });
   });
+  // session gardée pendant le travail dans la page (constat du 2026-11-10 : la saisie d'une facture fournisseur
+  // passait à « connexion expirée » pendant la frappe) : activité signalée au serveur (/actif) toutes les 20 s au
+  // plus ; la page passe à la connexion seulement après le délai sans aucune activité, ou si la session est fermée
+  var expiration = null, contact = Date.now(), activite = Date.now(), envoi = 0;
+  function signaler() {
+    activite = Date.now();
+    if (!expiration || activite - envoi < 20000) { return; }
+    envoi = activite;
+    fetch('/actif', {credentials: 'same-origin', cache: 'no-store'}).then(function (r) {
+      if (r.status === 204) { contact = Date.now(); } else if (r.status === 401) { location.href = expiration.url; }
+    }).catch(function () {});
+  }
+  ['keydown', 'input', 'click', 'scroll', 'mousemove', 'touchstart'].forEach(function (nom) {
+    document.addEventListener(nom, signaler, {passive: true, capture: true});
+  });
+  function surveillerExpiration() {
+    var m = document.querySelector('meta[name="mvogmbi-expiration"]');
+    if (!m) { return; }
+    expiration = {delai: Number(m.getAttribute('content')) * 1000, url: m.getAttribute('data-url')};
+    setInterval(function () {
+      if (Date.now() - Math.max(contact, activite) > expiration.delai) { location.href = expiration.url; }
+    }, 5000);
+  }
   document.addEventListener('DOMContentLoaded', function () {
+    surveillerExpiration();
     ajuster();
     preparerGraphiques();
     var repris = reprendrePosition();

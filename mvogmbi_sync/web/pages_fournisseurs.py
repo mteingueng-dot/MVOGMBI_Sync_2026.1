@@ -507,7 +507,7 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
     from ..fournisseurs import conflit_format_achat, facteur_achat
 
     noms, articles = _listes(ctx.racine)
-    texte = ""
+    texte, relie_par_saisie = "", False
     with ctx.app.ecriture:
         r = fo.Registre(ctx.racine)
         f = r.factures[rang]
@@ -532,6 +532,8 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
             l.montant = (l.quantite * l.prix).quantize(Decimal("0.01"))  # Montant = Qté × Prix fournisseur
             taxe = ctx.req.champ("l_taxe")
             l.taxe, l.taxable = (taxe, True) if taxe in ("GQ", "G", "Q") else ("", False)
+            if "l_numero_sage" in ctx.req.form:  # n° / désignation Sage tapés directement (assistant de saisie)
+                texte, relie_par_saisie = _article_tape(ctx, l, articles, action)
         # touche Entrée (demande du propriétaire du 2026-11-08) : la ligne en cours est validée (reportée ci-dessus),
         # puis la ligne suivante ; à la dernière ligne, une nouvelle ligne est créée. Sans ligne : facture enregistrée.
         if action == "Entrée" and ligne is not None and ligne < len(f.lignes):
@@ -548,12 +550,18 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
             texte = _message(f"Ligne « {f.lignes[ligne].description} » supprimée.")
             del f.lignes[ligne]
             ligne = None
+        elif relie_par_saisie:
+            ligne = _suivante(f, ligne) if action == "Relier et confirmer" else ligne
         elif action in ("Relier et confirmer", "Relier quand même") and ligne is not None and ligne < len(f.lignes):
             l = f.lignes[ligne]
             numero = ctx.req.champ("article")
-            # l'article choisi dans l'assistant de saisie passe avant le 1er résultat de la dernière recherche
-            a = article_choisi(ctx.req.champ("recherche"), articles) or next(
-                (x for x in articles if x.numero == numero), None)
+            coche = next((x for x in articles if x.numero == numero), None)
+            # l'article choisi dans l'assistant de saisie passe avant la liste SEULEMENT s'il vient d'être tapé
+            # (constat du 2026-11-10 : la recherche de la ligne d'avant, restée dans le champ, reliait la ligne
+            # Fanta à l'article Chip RealTaste au lieu de l'article coché)
+            tape = ctx.req.champ("recherche").strip() != ctx.req.champ("recherche_affichee").strip()
+            choisi = article_choisi(ctx.req.champ("recherche"), articles)
+            a = (choisi or coche) if tape else (coche or choisi)
             if a is None:
                 texte = _message(erreur="Choisissez une ligne de la facture, puis un article Sage dans la liste.")
             elif conflit_format_achat(l.description, a.description) and action != "Relier quand même":
@@ -599,6 +607,45 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
         if f.fournisseur_sage and noms and f.fournisseur_sage not in noms:
             texte += _message(erreur="Choisissez le fournisseur dans la liste des fournisseurs Sage.")
     return ligne, texte
+
+
+def _article_tape(ctx: Contexte, l, articles, action: str):
+    """N° Sage ou désignation Sage tapés dans la carte de la ligne (demande du propriétaire du 2026-11-10) : l'article
+    trouvé est relié et confirmé (formats différents : « Relier quand même ») ; les deux champs vidés = lien retiré.
+    Rend (message, relié)."""
+    from ..correspondance import normaliser
+    from ..factures_fournisseurs import facteur_propose
+    from ..fournisseurs import article_saisi, conflit_format_achat, facteur_achat
+
+    numero = ctx.req.champ("l_numero_sage").split(SEPARATEUR)[0].strip()
+    description = ctx.req.champ("l_description_sage").strip()
+    if not numero and not description:
+        if l.numero_sage:
+            ancien = l.numero_sage
+            l.numero_sage, l.description_sage, l.confirme = "", "", False
+            return _message(f"Lien avec {ancien} retiré."), False
+        return "", False
+    numero_change = numero.upper() != (l.numero_sage or "").strip().upper()
+    description_change = normaliser(description) != normaliser(l.description_sage or "")
+    if not numero_change and not description_change:
+        return "", False
+    a = (article_saisi(numero, "", articles) if numero_change else None) or (
+        article_saisi("", description, articles) if description or not numero_change else None)
+    if a is None:
+        return _message(erreur=f"Article Sage introuvable (« {numero or description} ») : choisissez-le dans la liste "
+                               "proposée pendant la frappe."), False
+    if a.numero == l.numero_sage and l.confirme:
+        return "", False
+    if conflit_format_achat(l.description, a.description) and action != "Relier quand même":
+        return (f"<p class='erreur'>Les formats semblent différents (« {e(l.description)} » / « {e(a.description)} »). "
+                f"Deux formats différents sont deux articles différents. <button form='facture' name='action' "
+                f"value='Relier quand même'>Relier quand même (conditionnement différent)</button></p>"), False
+    if not l.description:
+        l.description = a.description
+    l.numero_sage, l.description_sage, l.confirme = a.numero, a.description, True
+    if l.facteur == 1 or l.facteur == (facteur_propose(l.description) or 1):  # pas changé à la main
+        l.facteur = facteur_achat(l.description, a.description) or Decimal(1)
+    return _message(f"« {l.description} » relié à {a.numero} — {a.description}."), True
 
 
 def _proposer(ctx: Contexte, rang: int, noms, articles) -> None:
@@ -708,8 +755,10 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
     taxe = tx.code(l)
     choix_taxe = "".join(f"<option value='{c}'{' selected' if c == taxe else ''}>{e(lib)}</option>"
                          for c, lib in tx.CHOIX.items())
+    # recherche tapée gardée pour la même ligne seulement : une autre ligne repart de sa propre désignation
+    meme_ligne = ctx.req.champ("l") == str(ligne)
     recherche = ctx.req.query.get("recherche") if "recherche" in ctx.req.query else (
-        ctx.req.champ("recherche") if ctx.req.champ("recherche") else l.description)
+        ctx.req.champ("recherche") if ctx.req.champ("recherche") and meme_ligne else l.description)
     resultats = _chercher(recherche, articles, l)
     radios = "".join(f"<label class='facture'><input type='radio' name='article' value='{e(a.numero)}'"
                      f"{' checked' if n == 0 else ''}> <code>{e(a.numero):<16} {e(a.description)}{e(alerte)}</code>"
@@ -725,8 +774,15 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
              f"<div><label>Facteur</label><input name='l_facteur' value='{l.facteur:g}' size='7'></div><button "
              "class='second' name='action' value='Appliquer'>Appliquer</button><button class='second' name='action' "
              "value='➕'>➕</button><button class='danger' name='action' value='Supprimer la ligne'>🗑</button></div>"
-             "<div class='fiche-bas'><div class='factures'><div class='ligne'><div class='large'><label>Article Sage :"
-             f"</label><input name='recherche' value='{e(recherche)}' size='40' list='articles-sage' "
+             "<div class='ligne'><div><label>N° Sage</label><input name='l_numero_sage' list='sage-numeros' "
+             f"value='{e(l.numero_sage)}' size='14' data-paire='l_description_sage' autocomplete='off' "
+             "placeholder='Tapez le n°'></div><div class='large'><label>Désignation Sage</label><input "
+             f"name='l_description_sage' list='sage-designations' value='{e(l.description_sage)}' size='40' "
+             "data-paire='l_numero_sage' autocomplete='off' placeholder='Tapez quelques lettres de la désignation'>"
+             "</div></div>" + assistants_saisie(articles) + "<div class='fiche-bas'><div class='factures' data-sans-position>"
+             "<div class='ligne'><div class='large'><label>Article Sage :</label><input type='hidden' "
+             f"name='recherche_affichee' value='{e(recherche)}'><input name='recherche' value='{e(recherche)}' "
+             "size='40' list='articles-sage' "
              "placeholder='Tapez le n° ou quelques lettres : les articles Sage apparaissent'></div><button "
              "class='second' name='action' value='Chercher'>Chercher</button></div>" + assistant_articles(articles)
              + (radios or ("<p class='note'>Tapez quelques lettres : choisissez l'article proposé, puis « Relier et "
@@ -755,6 +811,19 @@ def assistant_articles(articles) -> str:
     sans script) qui propose les articles Sage pendant la frappe, par n° ou par description."""
     options = "".join(f"<option value='{e(a.numero + SEPARATEUR + a.description)}'>" for a in articles)
     return f"<datalist id='articles-sage'>{options}</datalist>"
+
+
+def assistants_saisie(articles) -> str:
+    """Listes des champs « N° Sage » et « Désignation Sage » de la carte de la ligne : la valeur est le n° (ou la
+    désignation), le libellé l'autre moitié ; /filtres.js remplit l'autre champ (data-paire) au choix."""
+    numeros = "".join(f"<option value='{e(a.numero)}' label='{e(a.description)}'>" for a in articles)
+    vues, designations = set(), []
+    for a in articles:
+        if a.description not in vues:
+            vues.add(a.description)
+            designations.append(f"<option value='{e(a.description)}' label='{e(a.numero)}'>")
+    return (f"<datalist id='sage-numeros'>{numeros}</datalist>"
+            f"<datalist id='sage-designations'>{''.join(designations)}</datalist>")
 
 
 def _chercher(texte: str, articles, l) -> list:

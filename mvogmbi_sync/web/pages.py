@@ -170,7 +170,11 @@ def _expiration(ctx: Contexte | None, corps: str) -> str:
     delai = int(ctx.app.sessions.inactivite) + 5
     adresse = retour_sur(adresse_de(ctx.req)) if getattr(ctx, "req", None) is not None else "/"
     retour = f"&amp;retour={quote(adresse, safe='')}" if adresse != "/" else ""
-    return f"<meta http-equiv='refresh' content='{delai};url=/connexion?expire=1{retour}'>"
+    # avec le script : la page n'expire qu'après `delai` s SANS activité (frappe, clics, défilement signalés au serveur
+    # par /filtres.js) ; sans script : l'ancienne balise meta
+    cible = f"/connexion?expire=1{retour}"
+    return (f"<meta name='mvogmbi-expiration' content='{delai}' data-url='{cible}'>"
+            f"<noscript><meta http-equiv='refresh' content='{delai};url={cible}'></noscript>")
 
 
 def _document(titre: str, corps: str, ctx: Contexte | None = None, menu: str = "") -> str:

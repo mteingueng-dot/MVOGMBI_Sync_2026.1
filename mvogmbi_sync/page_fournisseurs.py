@@ -261,7 +261,7 @@ class PageFournisseurs(ttk.Frame):
         edition = tk.Frame(parent, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
         edition.pack(fill="x", pady=(6, 0))
         self.l = {cle: tk.StringVar() for cle in ("code", "description", "quantite", "prix", "montant", "facteur",
-                                                  "qte_sage", "recherche")}
+                                                  "qte_sage", "recherche", "numero_sage", "description_sage")}
         self.l_taxe = tk.StringVar(value=t("Aucune"))  # taxes de la ligne : aucune, TPS + TVQ, une seule (taxes.py)
 
         def etiquette(cadre, texte):
@@ -305,6 +305,20 @@ class PageFournisseurs(ttk.Frame):
         Bouton(rang2, t("Appliquer"), self.appliquer_ligne, "secondaire", fond=CARTE, petit=True).pack(side="left")
         Bouton(rang2, "➕", self.ajouter_ligne, "secondaire", fond=CARTE, petit=True, largeur=34).pack(side="left", padx=4)
         Bouton(rang2, "🗑", self.supprimer_ligne, "danger", fond=CARTE, petit=True, largeur=34).pack(side="left")
+
+        # N° et désignation Sage tapés directement, avec assistant (demande du propriétaire du 2026-11-10) : les
+        # articles proposés s'affichent dans la liste sous « Article Sage » ; Entrée relie l'article
+        rang_sage = tk.Frame(edition, background=CARTE)
+        rang_sage.pack(fill="x", padx=12, pady=2)
+        self.champs_sage = {}
+        for cle, libelle, largeur in (("numero_sage", "N° Sage", 14), ("description_sage", "Désignation Sage", 0)):
+            etiquette(rang_sage, libelle)
+            champ = ttk.Entry(rang_sage, textvariable=self.l[cle], **({"width": largeur} if largeur else {}))
+            champ.pack(side="left", padx=(0, 10), **({} if largeur else {"fill": "x", "expand": True}))
+            champ.bind("<KeyRelease>", apres_frappe(champ, lambda c=cle: self.assistant_sage(c)))
+            champ.bind("<Return>", lambda _e: self.relier_saisi())
+            champ.bind("<Down>", lambda _e: (self.resultats.focus_set(), self.resultats.selection_set(0)))
+            self.champs_sage[cle] = champ
 
         rang3 = tk.Frame(edition, background=CARTE)
         rang3.pack(fill="x", padx=12, pady=(4, 8))
@@ -990,7 +1004,8 @@ class PageFournisseurs(ttk.Frame):
         self._chargement = True  # les valeurs de la ligne s'affichent telles quelles
         for cle, valeur in (("code", l.code), ("description", l.description), ("quantite", f"{l.quantite:g}"),
                             ("prix", f"{l.prix}"), ("montant", f"{l.montant}"), ("facteur", f"{l.facteur:g}"),
-                            ("qte_sage", f"{l.en_sage()[0]:g}")):
+                            ("qte_sage", f"{l.en_sage()[0]:g}"), ("numero_sage", l.numero_sage),
+                            ("description_sage", l.description_sage)):
             self.l[cle].set(valeur)
         self.l_taxe.set(t(__import__("mvogmbi_sync.taxes", fromlist=["x"]).libelle(
             __import__("mvogmbi_sync.taxes", fromlist=["x"]).code(l))))
@@ -1088,13 +1103,48 @@ class PageFournisseurs(ttk.Frame):
             self.choix_sage.append(a)
             self.resultats.insert("end", f"{a.numero:<16} {a.description}{alerte}")
 
-    def relier(self) -> None:
+    def assistant_sage(self, cle: str) -> None:
+        """Articles Sage proposés pendant la frappe du n° (début du n°, puis ressemblance) ou de la désignation."""
+        texte = self.l[cle].get().strip()
+        self.resultats.delete(0, "end")
+        self.choix_sage = []
+        if not texte or not self.articles_sage:
+            return
+        _, l = self.ligne_choisie()
+        if cle == "numero_sage":
+            debut = texte.upper()
+            trouves = [a for a in self.articles_sage if a.numero.upper().startswith(debut)][:12]
+        else:
+            trouves = []
+        if not trouves:
+            trouves = [self.articles_sage[i] for _, _, i in process.extract(
+                normaliser(texte), self.normalises, scorer=fuzz.token_set_ratio, limit=12)]
+        for a in trouves:
+            alerte = t("  (autre format)") if l and conflit_format_achat(l.description, a.description) else ""
+            self.choix_sage.append(a)
+            self.resultats.insert("end", f"{a.numero:<16} {a.description}{alerte}")
+
+    def relier_saisi(self) -> str:
+        """Entrée dans « N° Sage » / « Désignation Sage » : l'article tapé (sinon le 1er proposé) est relié."""
+        from .fournisseurs import article_saisi
+
+        a = article_saisi(self.l["numero_sage"].get(), self.l["description_sage"].get(), self.articles_sage)
+        if a is None and self.choix_sage:
+            choix = self.resultats.curselection()
+            a = self.choix_sage[choix[0] if choix else 0]
+        if a is None:
+            messagebox.showinfo(self.titre, t("Article Sage introuvable : choisissez-le dans la liste proposée."))
+            return "break"
+        self.relier(a)
+        return "break"
+
+    def relier(self, article=None) -> None:
         i, l = self.ligne_choisie()
         choix = self.resultats.curselection() or ((0,) if self.choix_sage else ())
-        if l is None or not choix:
+        if l is None or (article is None and not choix):
             messagebox.showinfo(self.titre, t("Choisissez une ligne de la facture, puis un article Sage dans la liste."))
             return
-        a = self.choix_sage[choix[0]]
+        a = article if article is not None else self.choix_sage[choix[0]]
         if not self.l["description"].get().strip():  # ligne ajoutée à la main : désignation de l'article Sage
             self.l["description"].set(a.description)
         if conflit_format_achat(l.description, a.description) and not messagebox.askyesno(
@@ -1109,6 +1159,8 @@ class PageFournisseurs(ttk.Frame):
 
         if l.facteur == 1 or l.facteur == (facteur_propose(l.description) or 1):  # pas changé à la main
             l.facteur = facteur_achat(l.description, a.description) or l.facteur
+        self.l["numero_sage"].set(a.numero)
+        self.l["description_sage"].set(a.description)
         self.afficher_lignes(i)
         self.montrer_conversion(l)
         self.sauvegarder_auto()

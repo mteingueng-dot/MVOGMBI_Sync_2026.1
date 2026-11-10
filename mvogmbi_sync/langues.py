@@ -254,6 +254,7 @@ EN: dict[str, str] = {
     'Prix': 'Price',
     'N° Sage': 'Sage no.',
     'Désignation Sage': 'Sage description',
+    'Article Sage introuvable : choisissez-le dans la liste proposée.': 'Sage item not found: choose it from the suggested list.',
     'Facteur': 'Factor',
     'Qté Sage': 'Sage qty',
     'N° de facture': 'Invoice no.',
