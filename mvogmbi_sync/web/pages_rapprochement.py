@@ -31,7 +31,7 @@ def _periode(ctx: Contexte):
 def _lire(ctx: Contexte, choix, forcer: bool = False):
     """Comme PageRapprochement.actualiser + _fin_lecture ; gardé 5 min (clé : période choisie)."""
     from .. import rapprochement as rp
-    from ..__main__ import lire_sage
+    from .consultations import lire_ou_vide
 
     cle = ("rapprochement", choix, _banque(ctx))
     compte = rp.compte_entier(ctx.config, _banque(ctx))
@@ -358,7 +358,7 @@ def _fiche(ctx: Contexte, etat: dict, cle_m: str, du: str, au: str, filtre: str)
 
 def _factures_ventes(ctx: Contexte):
     """Factures de vente avec leur solde dû (comme PageRapprochement.encaissement_manuel)."""
-    from ..__main__ import lire_sage
+    from .consultations import lire_ou_vide
     from ..encaissements import etat_factures_sage, numero_compte_sage
     from ..facture import CLIENT
     from ..rapprochement import factures_ventes

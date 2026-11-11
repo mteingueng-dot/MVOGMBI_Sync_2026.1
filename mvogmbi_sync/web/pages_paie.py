@@ -892,7 +892,7 @@ def _paies_annee(ctx: Contexte, annee: int):
     """Paies de Sage de l'année (jusqu'à aujourd'hui), gardées DUREE_PAIES secondes ; Sage n'est jamais ouvert par
     une page web (lecture par la base, ou par l'outil d'import si Sage est fermé)."""
     from .. import paie as pa
-    from ..__main__ import lire_sage
+    from .consultations import lire_ou_vide
 
     cle = ("paies", annee)
     gardee = ctx.app.memoire.get(cle)
