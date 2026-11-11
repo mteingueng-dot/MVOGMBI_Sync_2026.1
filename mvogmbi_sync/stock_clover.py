@@ -42,7 +42,8 @@ def receptions(facture) -> list[Reception]:
         r = cumul.setdefault(l.numero_sage, Reception(l.numero_sage, Decimal(0), Decimal(0)))
         r.quantite += quantite
         r.montant += l.montant
-    return [r for r in cumul.values() if r.quantite > 0]
+    # quantité négative = retour fournisseur (retours.py) : le stock Clover diminue
+    return [r for r in cumul.values() if r.quantite != 0]
 
 
 def articles_clover_par_numero(correspondances) -> dict[str, list[str]]:
@@ -111,19 +112,23 @@ def mettre_a_jour(client, facture, correspondances, journal: Journal) -> list[st
             continue
         ids = vivants
         try:
-            for id_clover in ids:
-                client.regler_cout(id_clover, r.cout)
+            retour = r.quantite < 0  # un retour ne change jamais le coût (sinon coût = prix du retour)
+            if not retour:
+                for id_clover in ids:
+                    client.regler_cout(id_clover, r.cout)
             if len(ids) > 1:
-                messages.append(f"{r.numero_sage} : coût {r.cout} $ mis sur {len(ids)} articles Clover ; stock NON "
-                                f"modifié (plusieurs articles Clover reliés : répartir {_q(r.quantite)} à la main)")
+                debut = "retour" if retour else f"coût {r.cout} $ mis sur {len(ids)} articles Clover"
+                messages.append(f"{r.numero_sage} : {debut} ; stock NON modifié (plusieurs articles Clover "
+                                f"reliés : répartir {_q(r.quantite)} à la main)")
                 journal.noter(facture, r, ",".join(ids), "", "")
                 continue
             avant = client.stock(ids[0])
             apres = avant + r.quantite
             client.regler_stock(ids[0], apres)
             journal.noter(facture, r, ids[0], avant, apres)
-            messages.append(f"{r.numero_sage} : stock Clover {_q(avant)} + {_q(r.quantite)} = {_q(apres)}, "
-                            f"coût {r.cout} $")
+            signe = f"− {_q(-r.quantite)}" if retour else f"+ {_q(r.quantite)}"
+            messages.append(f"{r.numero_sage} : stock Clover {_q(avant)} {signe} = {_q(apres)}, "
+                            + ("retour : coût inchangé" if retour else f"coût {r.cout} $"))
         except Exception as exc:
             messages.append(f"{r.numero_sage} : Clover non mis à jour ({exc})")
     return messages

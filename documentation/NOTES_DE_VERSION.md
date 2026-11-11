@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.4 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.5 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -11,6 +11,12 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 | 9 novembre 2026 | 1.0.0 → 1.0.44 |
 
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
+
+---
+
+## Version 1.0.5 (10 novembre 2026)
+
+- **Retours fournisseurs** : un retour importé dans Sage retire maintenant les quantités du stock Clover des articles reliés (avant, le stock Clover ne bougeait pas) ; le coût Clover n'est jamais changé par un retour.
 
 ---
 

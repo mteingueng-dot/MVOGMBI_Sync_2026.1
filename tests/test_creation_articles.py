@@ -128,6 +128,20 @@ def test_stock_et_cout_clover_apres_import(tmp_path):
     assert client.reglages == [("A", D(27))]  # jamais deux fois
 
 
+def test_retour_fournisseur_diminue_le_stock_clover(tmp_path):
+    """Un retour (facture d'achat aux quantités négatives, retours.py) retire du stock Clover, sans changer le coût."""
+    f = Facture("r.pdf", "e", fournisseur_sage="Grossiste", numero="R-14402", lignes=[
+        Ligne("Riz 25 lb", D(-4), D("3"), D("-12.00"), numero_sage="C1", confirme=True)])
+    client = FauxClover()
+    client.stocks["A"] = D(25)
+    messages = mettre_a_jour(client, f, [corr(CONFIRME, "C1", "A")], Journal(tmp_path))
+    assert client.stocks["A"] == D(21) and client.couts == {}
+    assert "retour : coût inchangé" in messages[0] and "− 4" in messages[0]
+    assert mettre_a_jour(client, f, [corr(CONFIRME, "C1", "A")], Journal(tmp_path)) == [
+        "C1 : déjà ajouté au stock Clover"]
+    assert client.stocks["A"] == D(21)
+
+
 def test_comptes_a_corriger_selon_la_table(tmp_path):
     table = TableCategories(tmp_path)
     table.lignes = {"Conserves": ComptesCategorie("Conserves", "C", "1532", "4032", "5032"),
