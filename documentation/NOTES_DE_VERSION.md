@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.4 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -11,6 +11,18 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 | 9 novembre 2026 | 1.0.0 → 1.0.44 |
 
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
+
+---
+
+## Version 1.0.4 (10 novembre 2026)
+
+- **Correctif web** : les pages « Rapprochement » et « Mes paies » pouvaient s'arrêter sur une erreur en lisant Sage (fonction de lecture non importée). Défaut trouvé par une vérification automatique du code.
+
+---
+
+## Version 1.0.3 (10 novembre 2026)
+
+- **Factures fournisseurs** : n° et désignation de l'article Sage tapés directement dans la ligne, avec liste de propositions ; la page web ne se déconnecte plus pendant la saisie ; une ligne n'est plus reliée par erreur à l'article de la ligne précédente.
 
 ---
 
