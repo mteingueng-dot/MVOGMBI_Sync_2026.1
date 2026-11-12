@@ -118,7 +118,7 @@ def encaissements(ctx: Contexte) -> Reponse:
         choisi = a_saisir[0] if a_saisir else None
     lien = f"du={debut}&amp;au={fin}&amp;pv={e(code)}"
     if ctx.req.query.get("copier") and choisi:
-        return Reponse(corps=_texte_saisie(choisi, pdv, compte_depot), type="text/plain; charset=utf-8")
+        return Reponse(corps=_texte_saisie(choisi, pdv, compte_depot, _banque_depot(ctx)), type="text/plain; charset=utf-8")
     lignes, classes = [], []
     for i, d in ordre:
         texte = f"{d.date} ({JOURS[d.date.weekday()]})" + (f"  •  {d.origine}" if d.origine else "") + \
@@ -142,7 +142,7 @@ def encaissements(ctx: Contexte) -> Reponse:
               + (f"<a class='ouvrir a-droite' href='?{lien}&amp;choix={depots.index(choisi)}&amp;copier=1'>📋 Copier"
                  "</a>" if choisi else "<span class='ouvrir a-droite'>📋 Copier</span>")
               + "</div><pre class='saisie'>"
-              + e(_texte_saisie(choisi, pdv, compte_depot) if choisi else "Sélectionnez un dépôt dans le tableau.")
+              + e(_texte_saisie(choisi, pdv, compte_depot, _banque_depot(ctx)) if choisi else "Sélectionnez un dépôt dans le tableau.")
               + "</pre></div><p class='note'>« Encaisser dans Sage » : Sage doit être fermé sur le serveur ; "
                 "l'application l'ouvre elle-même.</p>")
     return Reponse(corps=page(ctx, "Encaissements", corps))
@@ -158,10 +158,16 @@ def _entete_encaissements() -> str:
             "d'espèces appliqués sur les factures de vente</p>")
 
 
-def _texte_saisie(d, pdv, compte_depot: str) -> str:
+def _banque_depot(ctx) -> str:
+    from ..rapprochement import compte_bancaire
+
+    return compte_bancaire(ctx.config).nom
+
+
+def _texte_saisie(d, pdv, compte_depot: str, banque: str = "Desjardins") -> str:
     """Comme PageEncaissements.texte_saisie."""
     client = pdv.client_sage if pdv else "Vente Hebdomadaire"
-    lignes = [f"Encaissements > Payé par : Comptant ; Reçu de : {client}", f"Dépôt : {compte_depot} (compte Desjardins)",
+    lignes = [f"Encaissements > Payé par : Comptant ; Reçu de : {client}", f"Dépôt : {compte_depot} (compte {banque})",
               f"Date : {d.date.isoformat()}", "", "Montant reçu, facture par facture :"]
     lignes += [f"   {l.facture:<20} {argent(l.montant):>14}   ({l.etat})" for l in d.lignes]
     lignes += ["", f"Total du dépôt : {argent(d.montant)}",

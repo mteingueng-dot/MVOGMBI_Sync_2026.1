@@ -37,14 +37,22 @@ IGNORE = "Ignoré"
 EN_CIRCULATION = "Seulement dans Sage"
 A_ENCAISSER = "À encaisser sur les ventes"
 
-INTERAC = re.compile(r"virement\s+interac\s+de\b", re.I)
-DEPOT_ESPECES = re.compile(r"^DGA\b|d.p.t au GA", re.I)  # « DGA Dépôt au GA » : espèces déposées au guichet
+# Virement Interac reçu : « VRW Virement Interac de » (Desjardins), « Virement Interac reçu », « INTERAC e-Transfer
+# from », « E-TRANSFER RECEIVED / AUTODEPOSIT » (autres banques du Canada, demande du propriétaire du 2026-11-12)
+INTERAC = re.compile(r"virement\s+interac\s+(de\b|re[çc]u)|interac\s+e-?transfer\s+(from|received|re[çc]u)|"
+                     r"e-?transfer\s+(received|from|autodeposit|auto-deposit)|auto-?d[ée]p[ôo]t|"
+                     r"virement\s+(?:par\s+)?courriel\s+re[çc]u|transfert\s+interac\s+re[çc]u", re.I)
+# Espèces déposées au guichet : « DGA Dépôt au GA » (Desjardins), « Dépôt au guichet », « ATM DEPOSIT »,
+# « ABM DEPOSIT », « BRANCH DEPOSIT », « Dépôt en succursale », « CASH DEPOSIT »…
+DEPOT_ESPECES = re.compile(r"^DGA\b|d.p.t au GA|d[ée]p[ôo]t\s+(au\s+guichet|guichet|en\s+succursale|au\s+comptoir|"
+                           r"d.esp[èe]ces|comptant)|\b(atm|abm|branch|cash|counter|teller)\s+deposit|"
+                           r"deposit\s+(at\s+)?(atm|abm|branch)", re.I)
 A_PAIE = "Paie absente de Sage"
-SALAIRE = re.compile(r"salaire", re.I)  # « PPW Paiement internet à / Depot Salaire/PAY05012026 »
+SALAIRE = re.compile(r"salaire|payroll|salary|d[ée]p[ôo]t\s+de\s+paie", re.I)  # « PPW Paiement internet à / Depot Salaire/PAY05012026 »
 REFERENCE_PAIE = re.compile(r"PAYE?(\d{8})", re.I)
 DELAI_PAIE = 120  # jours : un salaire peut être versé longtemps après la paie de Sage
 
-MONTANT = re.compile(r"^-?\d{1,3}(?:[   ]?\d{3})*[.,]\d{2}-?$")
+MONTANT = re.compile(r"^-?\d{1,3}(?:[,   ]?\d{3})*[.,]\d{2}-?$")  # « 1,000.00 » : milliers à la virgule (banques anglophones)
 
 
 # --------------------------------------------------------------------------------------------- modèles
@@ -107,6 +115,10 @@ def _montant(texte: str) -> Decimal:
     return -valeur if negatif else valeur
 
 
+_MOIS3 = {"jan": 1, "fév": 2, "fev": 2, "feb": 2, "mar": 3, "avr": 4, "apr": 4, "mai": 5, "may": 5, "jun": 6,
+          "jul": 7, "aoû": 8, "aou": 8, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "déc": 12, "dec": 12}
+
+
 def _date_ligne(texte: str, fin: date | None) -> date | None:
     """« 2026-09-02 », « 02/09 », « 02 SEP », « 2 sept. » ; l'année vient de la période du relevé."""
     t = texte.lower().replace(".", "").strip()
@@ -114,10 +126,14 @@ def _date_ligne(texte: str, fin: date | None) -> date | None:
     if m:
         return date(int(m[1]), int(m[2]), int(m[3]))
     m = re.match(r"(\d{1,2})[/ -]?([a-zéû]{3,9}|\d{1,2})$", t)
-    if not m:
-        return None
-    jour = int(m[1])
-    mois = int(m[2]) if m[2].isdigit() else MOIS.get(m[2])
+    if m:
+        jour = int(m[1])
+        mois = int(m[2]) if m[2].isdigit() else (MOIS.get(m[2]) or _MOIS3.get(m[2][:3]))
+    else:
+        m = re.match(r"([a-zéû]{3,9})[ -]?(\d{1,2})$", t)  # « Sep 02 » (banques anglophones)
+        if not m:
+            return None
+        jour, mois = int(m[2]), MOIS.get(m[1]) or _MOIS3.get(m[1][:3])
     if not mois or not 1 <= mois <= 12:
         return None
     annee = fin.year if fin else date.today().year
@@ -166,13 +182,47 @@ def _periode(texte: str) -> tuple[date | None, date | None]:
         if debut and fin and debut > fin:  # « du 1er décembre au 31 janvier 2027 »
             debut = debut.replace(year=debut.year - 1)
         return debut, fin
+    m = re.search(r"([a-z]{3,9})\.?\s+(\d{1,2}),?\s*(\d{4})?\s*(?:to|-|–)\s*([a-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})",
+                  texte, re.IGNORECASE)  # « From Sep 1, 2026 to Sep 30, 2026 » (banques anglophones)
+    if m and _MOIS3.get(m[1][:3].lower()) and _MOIS3.get(m[4][:3].lower()):
+        try:
+            fin = date(int(m[6]), _MOIS3[m[4][:3].lower()], int(m[5]))
+            debut = date(int(m[3]) if m[3] else fin.year, _MOIS3[m[1][:3].lower()], int(m[2]))
+            return (debut.replace(year=debut.year - 1) if debut > fin else debut), fin
+        except ValueError:
+            pass
     dates = [d for d in (lire_date(x) for x in re.findall(r"\d{4}-\d{2}-\d{2}", texte)) if d]
     return (min(dates), max(dates)) if dates else (None, None)
 
 
 COLONNES = {"frais": "frais", "retrait": "retrait", "retraits": "retrait", "débit": "retrait", "débits": "retrait",
             "debit": "retrait", "dépôt": "depot", "dépôts": "depot", "depot": "depot", "depots": "depot",
-            "crédit": "depot", "crédits": "depot", "credit": "depot", "solde": "solde"}
+            "crédit": "depot", "crédits": "depot", "credit": "depot", "solde": "solde",
+            # autres banques du Canada (en-têtes en anglais ou autrement libellés)
+            "fees": "frais", "withdrawal": "retrait", "withdrawals": "retrait", "withdrawn": "retrait",
+            "debits": "retrait", "deducted": "retrait", "retirés": "retrait", "déduits": "retrait",
+            "chèques": "retrait", "cheques": "retrait", "deposit": "depot", "deposits": "depot",
+            "deposited": "depot", "credits": "depot", "added": "depot", "déposés": "depot", "ajoutés": "depot",
+            "balance": "solde"}
+OUVERTURE = re.compile(r"solde (reporté|précédent|d'ouverture|au début|initial|antérieur)|ancien solde|"
+                       r"opening balance|balance forward|previous balance|starting balance|beginning balance|"
+                       r"balance brought forward", re.I)
+FERMETURE = re.compile(r"nouveau solde|solde de fermeture|solde à la fin|solde final|closing balance|ending balance|"
+                       r"new balance|balance at end|balance carried forward", re.I)
+
+
+def _genre_colonne(mot: dict) -> str | None:
+    return COLONNES.get(mot["text"].lower().strip(".:()$"))
+
+
+def _est_entete(mots: list[dict], bas: str) -> bool:
+    """Ligne d'en-tête des colonnes : « Description … Solde » (Desjardins) ou, pour toute banque, un mot de solde
+    avec au moins une colonne de retrait ou de dépôt (« Withdrawals ($) Deposits ($) Balance ($) »), sans montant."""
+    if "solde" in bas and "description" in bas:
+        return True
+    genres = {_genre_colonne(m) for m in mots}
+    return ("solde" in genres and len({"retrait", "depot", "frais"} & genres) >= 2
+            and not any(MONTANT.match(m["text"]) for m in mots))
 # Fin du compte principal : les sections suivantes du relevé (parts sociales, sommaire des frais) sont ignorées
 FIN_DU_COMPTE = re.compile(r"^(compte d'[ée]pargne et de placement|sommaire des frais|part de qualification)")
 
@@ -227,7 +277,7 @@ def lire_releve_garde(chemin: Path) -> Releve:
     return _releve_depuis_dict(donnees)
 
 
-BANQUES = {"desjardins": "Desjardins", "bnc": "Banque Nationale (BNC)"}
+from .banques_canada import NOMS as BANQUES  # noqa: E402  (toutes les banques et caisses du Canada)
 
 
 def banque_du_texte(texte: str) -> str:
@@ -240,8 +290,17 @@ def banque_du_texte(texte: str) -> str:
 
 
 def lire_releve(chemin: Path) -> Releve:
-    """Relevé PDF : Desjardins ou Banque Nationale (BNC), reconnu d'après son texte."""
+    """Relevé de n'importe quelle banque du Canada : OFX / QFX / QBO, CSV, ou PDF (Desjardins et Banque Nationale
+    ont leur lecteur ; les autres banques : colonnes repérées sur l'en-tête)."""
     import pdfplumber
+
+    from .releves_bancaires import EXTENSIONS_CSV, EXTENSIONS_OFX, lire_csv, lire_ofx
+
+    extension = Path(chemin).suffix.lower()
+    if extension in EXTENSIONS_OFX:
+        return lire_ofx(chemin)
+    if extension in EXTENSIONS_CSV:
+        return lire_csv(chemin)
 
     with pdfplumber.open(chemin) as pdf:
         texte = "\n".join((p.extract_text() or "") for p in pdf.pages)
@@ -343,17 +402,16 @@ def lire_releve_desjardins(chemin: Path) -> Releve:
                 if colonnes and FIN_DU_COMPTE.match(bas):
                     termine = True
                     break
-                if "solde" in bas and "description" in bas:  # en-tête des colonnes (répété sur chaque page)
-                    colonnes = {COLONNES[m["text"].lower().strip(".:")]: m["x1"] for m in mots
-                                if m["text"].lower().strip(".:") in COLONNES}
+                if _est_entete(mots, bas):  # en-tête des colonnes (répété sur chaque page)
+                    colonnes = {_genre_colonne(m): m["x1"] for m in mots if _genre_colonne(m)}
                     continue
                 montants = [m for m in mots if MONTANT.match(m["text"])]
                 autres = [m for m in mots if m not in montants]
-                if re.search(r"solde (reporté|précédent|d'ouverture|au début|initial)|ancien solde", bas) and montants:
+                if OUVERTURE.search(bas) and montants:
                     if releve.solde_ouverture is None:
                         releve.solde_ouverture = solde_courant = _montant(montants[-1]["text"])
                     continue
-                if re.search(r"(nouveau solde|solde de fermeture|solde à la fin|solde final)", bas) and montants:
+                if FERMETURE.search(bas) and montants:
                     releve.solde_fermeture = _montant(montants[-1]["text"])
                     continue
                 if not colonnes:
@@ -397,7 +455,8 @@ def lire_releve_desjardins(chemin: Path) -> Releve:
                     None if solde_courant is None else solde_courant + montant)
                 releve.mouvements.append(mouvement)
         if not colonnes:
-            releve.remarques.append("colonnes Retrait / Dépôt / Solde introuvables (relevé numérisé ?)")
+            releve.remarques.append("colonnes Retrait / Dépôt / Solde introuvables (relevé numérisé ? Téléchargez "
+                                    "plutôt le relevé en OFX / QFX ou CSV sur le site de la banque)")
         if releve.solde_fermeture is None and solde_courant is not None and releve.mouvements:
             releve.solde_fermeture = solde_courant
     return releve
@@ -583,8 +642,11 @@ def resume(banque: list[MouvementBanque], sage: list[MouvementSage], solde_banqu
 @dataclass
 class CompteBancaire:
     """Compte bancaire rapproché (demande du propriétaire du 2026-11-05 : « ajouter la possibilité d'ajouter un
-    compte bancaire ») : `format` = lecteur du relevé (« desjardins », « bnc ») ; `numero` = n° du compte à la
-    banque, pour ranger un relevé quand une banque a plusieurs comptes ; relevés dans donnees/releves_<code>/."""
+    compte bancaire ») : `format` = banque du compte (code de banques_canada : « desjardins », « bnc », « rbc »,
+    « td », « scotia », « bmo », « cibc »… ou « autre » ; demande du propriétaire du 2026-11-12 : toutes les banques
+    du Canada) ; `numero` = n° du compte à la banque, pour ranger un relevé quand une banque a plusieurs comptes ;
+    relevés dans donnees/releves_<code>/. Le 1er compte (code « desjardins », dossier releves_desjardins gardé
+    pour les données déjà chargées) est le compte de dépôt des ventes, quelle que soit sa banque."""
     code: str
     nom: str
     format: str
@@ -597,10 +659,15 @@ class CompteBancaire:
 
 
 def comptes_bancaires(config_toml: dict) -> list[CompteBancaire]:
-    """Desjardins (1055, [encaissements] compte_depot) et BNC (1060, [rapprochement] compte_bnc) d'office, puis
-    les comptes ajoutés ([[comptes_bancaires]] code, nom, format, compte_sage, numero, actif)."""
+    """Compte de dépôt des ventes (1055, [encaissements] compte_depot ; sa banque : [rapprochement] banque_depot,
+    Desjardins par défaut) et BNC (1060, [rapprochement] compte_bnc) d'office, puis les comptes ajoutés
+    ([[comptes_bancaires]] code, nom, format, compte_sage, numero, actif)."""
+    from .banques_canada import PAR_CODE, nom
+
     r = config_toml.get("rapprochement", {})
-    comptes = [CompteBancaire("desjardins", "Desjardins", "desjardins",
+    banque_depot = str(r.get("banque_depot") or "desjardins")
+    banque_depot = banque_depot if banque_depot in PAR_CODE else "desjardins"
+    comptes = [CompteBancaire("desjardins", nom(banque_depot), banque_depot,
                               str(config_toml.get("encaissements", {}).get("compte_depot", "1055") or "1055").strip(),
                               str(r.get("numero_desjardins", "") or "")),
                CompteBancaire("bnc", "Banque Nationale (BNC)", "bnc",  # 1060 : indication du propriétaire du 2026-11-05
@@ -651,7 +718,11 @@ class RegistreReleves:
         provisoire.replace(self.chemin)
 
     def fichiers(self) -> list[Path]:
-        return sorted(p for p in self.dossier.glob("*.pdf")) if self.dossier.exists() else []
+        from .releves_bancaires import EXTENSIONS
+
+        if not self.dossier.exists():
+            return []
+        return sorted(p for p in self.dossier.iterdir() if p.is_file() and p.suffix.lower() in EXTENSIONS)
 
     def lire(self) -> list[Releve]:
         releves = []
@@ -786,6 +857,17 @@ def registre_de(racine: Path, config_toml: dict, banque: str = "desjardins") -> 
     return RegistreReleves(racine, banque, compte_banque(config_toml, banque))
 
 
+def nombre_releves(racine: Path) -> int:
+    """Relevés chargés dans tous les comptes bancaires (PDF, OFX / QFX / QBO, CSV)."""
+    from .releves_bancaires import EXTENSIONS
+
+    donnees = Path(racine) / "donnees"
+    if not donnees.is_dir():
+        return 0
+    return sum(1 for d in donnees.glob("releves_*") if d.is_dir()
+               for p in d.iterdir() if p.is_file() and p.suffix.lower() in EXTENSIONS)
+
+
 def compte_entier(config_toml: dict, banque: str = "desjardins") -> int:
     """Compte Sage de la banque au format de Sage (1055 -> 10550000)."""
     from .encaissements import numero_compte_sage
@@ -793,29 +875,60 @@ def compte_entier(config_toml: dict, banque: str = "desjardins") -> int:
     return numero_compte_sage(compte_banque(config_toml, banque) or "1055")
 
 
-def banque_du_fichier(chemin: Path) -> str:
-    import pdfplumber
+def texte_pour_banque(chemin: Path) -> tuple[str, str]:
+    """(texte de la 1re page ou du fichier, n° d'institution) pour reconnaître la banque et le compte."""
+    from .releves_bancaires import EXTENSIONS_OFX, infos_ofx, texte_du_fichier
 
-    with pdfplumber.open(chemin) as pdf:
-        return banque_du_texte("\n".join((p.extract_text() or "") for p in pdf.pages[:1]))
+    chemin = Path(chemin)
+    if chemin.suffix.lower() == ".pdf":
+        import pdfplumber
+
+        with pdfplumber.open(chemin) as pdf:
+            return "\n".join((p.extract_text() or "") for p in pdf.pages[:1]), ""
+    texte = texte_du_fichier(chemin)
+    if chemin.suffix.lower() in EXTENSIONS_OFX:
+        infos = infos_ofx(texte)
+        return f"{infos['org']} {infos['fid']} {infos['compte']}", infos["banque"]
+    return texte[:6000], ""
+
+
+def banque_du_fichier(chemin: Path) -> str:
+    """Banque du relevé (code de banques_canada ; « autre » si rien ne la reconnaît)."""
+    from .banques_canada import detecter
+
+    texte, institution = texte_pour_banque(chemin)
+    if Path(chemin).suffix.lower() == ".pdf" and banque_du_texte(texte) == "bnc":
+        return "bnc"
+    return detecter(texte, institution)
 
 
 def ranger_releve(racine: Path, source: Path, nom: str | None = None, config_toml: dict | None = None
                   ) -> tuple[str, Path]:
-    """Relevé chargé : sa banque est reconnue d'après le PDF, puis le compte bancaire dont le n° figure sur le
-    relevé (sinon le premier compte de cette banque) ; copié dans donnees/releves_<code>/. Renvoie (code, fichier)."""
+    """Relevé chargé (PDF, OFX / QFX / QBO ou CSV, de n'importe quelle banque du Canada) : le compte bancaire dont
+    le n° figure dans le relevé, sinon le premier compte de la banque reconnue, sinon le seul compte « Autre banque »,
+    sinon le seul compte réglé ; copié dans donnees/releves_<code>/. Renvoie (code, fichier). Aucun compte ne
+    convient : ValueError (ajouter le compte bancaire dans Administration > Sage 50)."""
     import shutil
 
-    import pdfplumber
+    from .banques_canada import nom as nom_banque
+    from .releves_bancaires import EXTENSIONS
 
-    with pdfplumber.open(source) as pdf:
-        texte = "\n".join((p.extract_text() or "") for p in pdf.pages[:1])
-    fmt = banque_du_texte(texte)
+    if Path(source).suffix.lower() not in EXTENSIONS:
+        raise ValueError("Format de relevé non reconnu : choisissez un fichier PDF, OFX, QFX, QBO ou CSV.")
+    texte, _institution = texte_pour_banque(source)
+    fmt = banque_du_fichier(source)
     chiffres = "".join(c for c in texte if c.isdigit())
-    candidats = [c for c in comptes_bancaires(config_toml or {}) if c.format == fmt]
-    choisi = next((c for c in candidats if c.numero and "".join(x for x in c.numero if x.isdigit()) in chiffres),
-                  candidats[0] if candidats else None)
-    banque = choisi.code if choisi else fmt
+    comptes = comptes_bancaires(config_toml or {})
+    par_numero = [c for c in comptes if c.numero and len("".join(x for x in c.numero if x.isdigit())) >= 4
+                  and "".join(x for x in c.numero if x.isdigit()) in chiffres]
+    de_la_banque = [c for c in comptes if c.format == fmt]
+    autres = [c for c in comptes if c.format == "autre"]
+    choisi = next(iter([c for c in par_numero if c.format == fmt] or par_numero or de_la_banque
+                       or (autres if len(autres) == 1 else []) or (comptes if len(comptes) == 1 else [])), None)
+    if choisi is None:
+        raise ValueError(f"Aucun compte bancaire réglé pour {nom_banque(fmt)} : ajoutez-le dans « Administration > "
+                         "Sage 50 », carte « Comptes bancaires (rapprochement) », puis chargez de nouveau le relevé.")
+    banque = choisi.code
     dossier = Path(racine) / "donnees" / f"releves_{banque}"
     dossier.mkdir(parents=True, exist_ok=True)
     cible = dossier / (nom or Path(source).name)

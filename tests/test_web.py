@@ -424,7 +424,7 @@ def test_vague_comptabilite(site, tmp_path):
     req = urllib.request.Request(base + "/rapprochement", data=corps,
                                  headers={"Content-Type": f"multipart/form-data; boundary={limite}"})
     with patron.open(req) as r:
-        assert "relevé de compte (Desjardins ou BNC) en PDF" in r.read().decode("utf-8")
+        assert "relevé de compte (PDF, OFX, QFX, QBO ou CSV)" in r.read().decode("utf-8")
 
 
 def test_documents_saisis(site, tmp_path):

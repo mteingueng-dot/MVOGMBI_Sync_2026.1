@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.6 (11 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.7 (12 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -13,6 +13,10 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
 
 ---
+
+## Version 1.0.7 (12 novembre 2026)
+
+- **Toutes les banques du Canada** : rapprochement, encaissements et paiements ne sont plus limités à Desjardins et à la Banque Nationale. Relevés en OFX / QFX / QBO (téléchargement offert par toutes les banques), en CSV (en-tête français ou anglais, ou sans en-tête, sens des montants contrôlé par le solde) ou en PDF dont l'en-tête nomme ses colonnes (« Withdrawals / Deposits / Balance »). Banque du compte de dépôt des ventes au choix (Administration > Sage 50), comptes ajoutés de n'importe quelle banque ou caisse ; un relevé chargé va dans le compte dont le n° y figure, sinon dans celui de sa banque. Virements Interac reçus, dépôts au guichet et dépôts de paie reconnus en français et en anglais ; avis Interac en anglais lus pour les paiements fournisseurs.
 
 ## Version 1.0.6 (11 novembre 2026)
 

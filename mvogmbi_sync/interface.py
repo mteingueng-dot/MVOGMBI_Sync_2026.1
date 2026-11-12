@@ -992,7 +992,7 @@ class Application(tk.Tk):
         return self.vars[cle]
 
     def _champ(self, parent, ligne: int, libelle: str, cle: str, valeur="", secret: str | None = None,
-               aide: str = "", parcourir: tuple | None = None, calendrier: bool = False):
+               aide: str = "", parcourir: tuple | None = None, calendrier: bool = False, choix: list | None = None):
         sur_carte = fond_de(parent) == CARTE
         ttk.Label(parent, text=libelle, style="Carte.TLabel" if sur_carte else "TLabel").grid(
             row=ligne, column=0, sticky="w", pady=4, padx=(0, 14))
@@ -1001,6 +1001,9 @@ class Application(tk.Tk):
         if calendrier:  # date AAAA-MM-JJ avec calendrier cliquable
             champ = ChampDate(parent, self._var(cle, valeur))
             champ.grid(row=ligne, column=1, sticky="w", pady=4)
+        elif choix:  # liste fermée (ex. banque du compte de dépôt)
+            champ = ttk.Combobox(parent, textvariable=self._var(cle, valeur), values=choix, state="readonly", width=50)
+            champ.grid(row=ligne, column=1, sticky="we", pady=4)
         else:
             champ = ttk.Entry(parent, textvariable=self._var(cle, valeur), width=52, show="•" if secret else "")
             champ.grid(row=ligne, column=1, sticky="we", pady=4)
@@ -1307,8 +1310,9 @@ class Application(tk.Tk):
         saisis = self._etat_registre("paiements_fournisseurs.json", ("Saisi dans Sage", "Déjà dans Sage"),
                                      "{n} paiement(s) saisi(s)")[1]
         etats[PAIEMENTS] = (boite, saisis if boite else "")
-        dossier = self.racine / "donnees" / "releves_desjardins"
-        releves = len(list(dossier.glob("*.pdf"))) if dossier.is_dir() else 0
+        from .rapprochement import nombre_releves
+
+        releves = nombre_releves(self.racine)
         etats[RAPPROCHEMENT] = (releves > 0, t("{n} relevé(s) chargé(s)", n=releves) if releves else "")
         return etats
 
@@ -1377,7 +1381,14 @@ class Application(tk.Tk):
                     aide=t("AAAA-MM-JJ. Utilisé seulement si Sage ne contient encore aucune facture « Vente AAAA-MM-JJ »."))
         self._champ(fichier, 4, t("Compte de dépôt des encaissements"), "enc.compte",
                     str(self.config_toml.get("encaissements", {}).get("compte_depot", "1055")),
-                    aide=t("Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins)."))
+                    aide=t("Compte de banque Sage où Clover dépose les ventes par carte (ex. 1055)."))
+        from .banques_canada import BANQUES as LISTE_BANQUES
+        from .rapprochement import compte_bancaire as _compte_bancaire
+
+        self._champ(fichier, 12, t("Banque du compte de dépôt"), "enc.banque", _compte_bancaire(self.config_toml).nom,
+                    choix=[b.nom for b in LISTE_BANQUES],
+                    aide=t("Banque ou caisse du compte où Clover dépose les ventes (toutes les banques du Canada) : "
+                           "ses relevés servent aux encaissements et au rapprochement."))
         self._champ(fichier, 6, t("Encaisser à partir des ventes du"), "enc.depart",
                     str(self.config_toml.get("encaissements", {}).get("date_depart", date.today().isoformat())),
                     calendrier=True, aide=t("AAAA-MM-JJ. Les dépôts des ventes antérieures ne sont jamais encaissés."))
@@ -1418,8 +1429,9 @@ class Application(tk.Tk):
         config.toml ([[comptes_bancaires]])."""
         zone = self._carte(f, 4, t("Comptes bancaires (rapprochement)"), "4",
                            t("Chaque compte a ses relevés (Comptabilité > Rapprochement) et son compte de banque dans "
-                             "Sage. Un relevé chargé va d'office dans le bon compte : la banque est reconnue d'après "
-                             "le PDF, puis le n° du compte à la banque quand elle en a plusieurs."))
+                             "Sage. Un relevé chargé (PDF, OFX / QFX ou CSV, toutes les banques du Canada) va "
+                             "d'office dans le bon compte : le n° du compte à la banque, puis la banque reconnue "
+                             "d'après le relevé."))
         from .page_rapports import tableau_simple
 
         cadre = ttk.Frame(zone, style="Carte.TFrame")
@@ -1438,7 +1450,8 @@ class Application(tk.Tk):
         from .rapprochement import comptes_bancaires
 
         self._comptes_affiches = comptes_bancaires(self.config_toml)
-        formats = {"desjardins": "Desjardins", "bnc": "Banque Nationale (BNC)"}
+        from .banques_canada import NOMS as formats
+
         remplir(self.tableau_comptes, ["Compte", "Banque (relevé)", "Compte Sage", "N° à la banque", "Dossier"],
                 [[c.nom, formats.get(c.format, c.format), c.compte_sage, c.numero or "—", f"releves_{c.code}"]
                  for c in self._comptes_affiches], {"Compte": 220}, decroissant=False)
@@ -1460,13 +1473,15 @@ class Application(tk.Tk):
         boite.transient(self)
         boite.grab_set()
         valeurs = {k: tk.StringVar() for k in ("nom", "compte", "numero")}
-        fmt = tk.StringVar(value="Desjardins")
+        from .banques_canada import BANQUES as LISTE_BANQUES, code_du_nom
+
+        fmt = tk.StringVar(value=LISTE_BANQUES[0].nom)
         for rang, (libelle, champ) in enumerate(((t("Nom"), valeurs["nom"]), (t("Compte Sage"), valeurs["compte"]),
                                                  (t("N° à la banque (facultatif)"), valeurs["numero"]))):
             tk.Label(boite, text=libelle, background=CARTE).grid(row=rang, column=0, sticky="w", pady=3)
             ttk.Entry(boite, textvariable=champ, width=28).grid(row=rang, column=1, sticky="we", pady=3)
         tk.Label(boite, text=t("Banque (relevé)"), background=CARTE).grid(row=3, column=0, sticky="w", pady=3)
-        ttk.Combobox(boite, textvariable=fmt, values=["Desjardins", "Banque Nationale (BNC)"], state="readonly",
+        ttk.Combobox(boite, textvariable=fmt, values=[b.nom for b in LISTE_BANQUES], state="readonly",
                      width=26).grid(row=3, column=1, sticky="we", pady=3)
         erreur = tk.Label(boite, text="", background=CARTE, foreground=ROUGE)
         erreur.grid(row=4, column=0, columnspan=2, sticky="w")
@@ -1487,7 +1502,7 @@ class Application(tk.Tk):
 
             def ajouter(c):
                 c.setdefault("comptes_bancaires", []).append(
-                    {"code": code, "nom": nom, "format": "bnc" if "BNC" in fmt.get() else "desjardins",
+                    {"code": code, "nom": nom, "format": code_du_nom(fmt.get()),
                      "compte_sage": compte, "numero": valeurs["numero"].get().strip(), "actif": True})
             self._ecrire_comptes_bancaires(ajouter)
             boite.destroy()
@@ -1808,6 +1823,10 @@ class Application(tk.Tk):
         c.setdefault("sage_import", {}).update(fichier_entreprise=fichier)
         for cle, defaut in (("version", "12001"), ("pays", "1"), ("position_numero", 3)):
             c["sage_import"].setdefault(cle, defaut)
+        if str(v.get("enc.banque", "")).strip():  # banque du compte de dépôt (toutes les banques du Canada)
+            from .banques_canada import code_du_nom
+
+            c.setdefault("rapprochement", {})["banque_depot"] = code_du_nom(str(v["enc.banque"]))
         if str(v.get("enc.compte_bnc", "")).strip():  # compte de la Banque Nationale (rapprochement BNC)
             c.setdefault("rapprochement", {})["compte_bnc"] = str(v["enc.compte_bnc"]).strip()
         if "sage.depots" in v:  # dépôts sans Clover (2026-11-05)

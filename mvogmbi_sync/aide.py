@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -679,6 +679,16 @@ FAQ = {
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi. Un administrateur "
                     "peut ouvrir le pointage de partout ; son appareil n'est alors jamais suivi pour la pause "
                     "automatique."),
+        ("sous_titre", "Nouveautés de la version 1.0.7 (12 novembre 2026) : toutes les banques du Canada"),
+        ("question", "Puis-je rapprocher et encaisser avec une autre banque que Desjardins ou la Banque Nationale ?"),
+        ("reponse", "Oui. Toutes les banques et caisses du Canada sont reconnues (RBC, TD, Scotia, BMO, CIBC, "
+                    "Laurentienne, Tangerine, Simplii, EQ, HSBC, ATB, Manuvie, caisses…). Le relevé se charge en OFX / "
+                    "QFX / QBO (téléchargement « Money », « Quicken » ou « QuickBooks » offert par toutes les banques : "
+                    "le plus sûr), en CSV, ou en PDF dont l'en-tête nomme ses colonnes. Choisissez la banque du compte "
+                    "de dépôt des ventes dans « Administration > Sage 50 » et ajoutez vos autres comptes dans la carte "
+                    "« Comptes bancaires » ; un relevé chargé va d'office dans le compte dont le n° y figure, sinon dans "
+                    "celui de sa banque. Les virements Interac reçus et les dépôts au guichet sont reconnus dans les "
+                    "libellés français et anglais, comme les avis Interac des paiements fournisseurs."),
         ("sous_titre", "Nouveautés de la version 1.0.0 (9 novembre 2026) : Reporting complet"),
         ("question", "Que contient la page « État > Reporting » ?"),
         ("reponse", "L'ancien onglet « Statistiques Clover » s'appelle maintenant « Reporting ». Il réunit 18 états "
@@ -1482,6 +1492,16 @@ FAQ = {
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi. An administrator can open clock-in from anywhere; their "
                     "device is then never followed for the automatic break."),
+        ("sous_titre", "What's new in version 1.0.7 (November 12, 2026): every Canadian bank"),
+        ("question", "Can I reconcile and record receipts with a bank other than Desjardins or National Bank?"),
+        ("reponse", "Yes. Every Canadian bank and credit union is recognized (RBC, TD, Scotia, BMO, CIBC, Laurentian, "
+                    "Tangerine, Simplii, EQ, HSBC, ATB, Manulife, credit unions…). Load the statement as OFX / QFX / QBO "
+                    "(the “Money”, “Quicken” or “QuickBooks” download every bank offers: the safest), as CSV, or as a "
+                    "PDF whose header names its columns. Choose the bank of the sales deposit account in "
+                    "“Administration > Sage 50” and add your other accounts in the “Bank accounts” card; a loaded "
+                    "statement goes automatically to the account whose number it shows, otherwise to its bank's. "
+                    "Interac transfers received and ATM deposits are recognized in French and English descriptions, "
+                    "as are the Interac notices of supplier payments."),
         ("sous_titre", "What's new in version 1.0.0 (November 9, 2026): complete Reporting"),
         ("question", "What does “Status > Reporting” contain?"),
         ("reponse", "The former “Clover statistics” tab is now called “Reporting”. It brings together 18 views (sales "

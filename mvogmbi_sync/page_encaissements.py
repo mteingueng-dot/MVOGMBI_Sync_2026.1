@@ -99,6 +99,12 @@ class PageEncaissements(ttk.Frame):
     def compte_depot(self) -> str:
         return str(self._config().get("encaissements", {}).get("compte_depot", "1055"))
 
+    def banque_depot(self) -> str:
+        """Banque du compte de dépôt (toutes les banques du Canada, [rapprochement] banque_depot)."""
+        from .rapprochement import compte_bancaire
+
+        return compte_bancaire(self._config()).nom
+
     def calculer(self) -> None:
         try:
             debut, fin = date.fromisoformat(self.debut.get().strip()), date.fromisoformat(self.fin.get().strip())
@@ -106,7 +112,7 @@ class PageEncaissements(ttk.Frame):
         except (ValueError, AssertionError):
             messagebox.showerror(self.titre, t("Vérifiez les dates (AAAA-MM-JJ)."))
             return
-        self.resume.configure(text=t("Calcul en cours : lots de cartes Clover, relevés Desjardins, puis lecture de Sage…"))
+        self.resume.configure(text=t("Calcul en cours : lots de cartes Clover, relevés bancaires, puis lecture de Sage…"))
 
         pdv = self.point_vente()
         if pdv is None:
@@ -230,7 +236,7 @@ class PageEncaissements(ttk.Frame):
         pdv = self.point_vente()
         client = pdv.client_sage if pdv else "Vente Hebdomadaire"
         lignes = [t("Encaissements > Payé par : Comptant ; Reçu de : {client}", client=client),
-                  t("Dépôt : {compte} (compte Desjardins)", compte=self.compte_depot()),
+                  t("Dépôt : {compte} (compte {banque})", compte=self.compte_depot(), banque=self.banque_depot()),
                   t("Date : {date}", date=d.date.isoformat()), "",
                   t("Montant reçu, facture par facture :")]
         for l in d.lignes:

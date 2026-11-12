@@ -25,7 +25,7 @@ ETAPES = ((1, "1", "Clover", "Identifiant marchand et jeton API"),
           (7, "7", "Encaissements", "Dépôts appliqués sur les factures"),
           (8, "8", "Factures fournisseurs", "Factures d'achat importées dans Sage"),
           (9, "9", "Paiements fournisseurs", "Boîte des avis de paiement reliée"),
-          (10, "10", "Rapprochement bancaire", "Relevés Desjardins chargés"))
+          (10, "10", "Rapprochement bancaire", "Relevés bancaires chargés"))
 
 
 def entete() -> str:
@@ -102,8 +102,9 @@ def etats_etapes(racine: Path, config: dict) -> dict[int, tuple[bool, str]]:
     saisis = _registre(racine, "paiements_fournisseurs.json", ("Saisi dans Sage", "Déjà dans Sage"),
                        "{n} paiement(s) saisi(s)")[1]
     etats[9] = (boite, saisis if boite else "")
-    dossier = racine / "donnees" / "releves_desjardins"
-    releves = len(list(dossier.glob("*.pdf"))) if dossier.is_dir() else 0
+    from ..rapprochement import nombre_releves
+
+    releves = nombre_releves(racine)
     etats[10] = (releves > 0, f"{releves} relevé(s) chargé(s)" if releves else "")
     return etats
 

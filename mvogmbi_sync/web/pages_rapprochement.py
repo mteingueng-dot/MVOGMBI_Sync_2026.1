@@ -108,23 +108,31 @@ def rapprochement(ctx: Contexte) -> Reponse:
         action = ctx.req.champ("action")
         registre = _registre(ctx)
         if action == "Charger":
+            from ..releves_bancaires import EXTENSIONS
+
+            consigne = "Choisissez un relevé de compte (PDF, OFX, QFX, QBO ou CSV) de votre banque."
             if "releves" not in ctx.req.fichiers:
-                message = _message(erreur="Choisissez un relevé de compte (Desjardins ou BNC) en PDF.")
+                message = _message(erreur=consigne)
             else:
                 nom, contenu = ctx.req.fichiers["releves"]
-                if not nom.lower().endswith(".pdf") or not contenu.startswith(b"%PDF"):
-                    message = _message(erreur="Choisissez un relevé de compte (Desjardins ou BNC) en PDF.")
+                extension = Path(nom).suffix.lower()
+                if extension not in EXTENSIONS or (extension == ".pdf" and not contenu.startswith(b"%PDF")):
+                    message = _message(erreur=consigne)
                 else:
                     import tempfile
 
-                    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
-                        provisoire = Path(dossier) / Path(nom).name
-                        provisoire.write_bytes(contenu)
-                        banque, _cible = rp.ranger_releve(ctx.racine, provisoire, config_toml=ctx.config)  # Desjardins ou BNC, d'après le PDF
-                    ctx.req.query["banque"] = banque
-                    message = _message(f"Relevé « {nom} » chargé ({rp.compte_bancaire(ctx.config, banque).libelle}).")
-                    choix, du, au = None, "", ""  # comme Windows : toute la période des relevés
-                    _oublier(ctx)
+                    try:
+                        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as dossier:
+                            provisoire = Path(dossier) / Path(nom).name
+                            provisoire.write_bytes(contenu)
+                            banque, _cible = rp.ranger_releve(ctx.racine, provisoire, config_toml=ctx.config)  # banque et compte reconnus d'après le relevé
+                    except ValueError as exc:
+                        message = _message(erreur=str(exc))
+                    else:
+                        ctx.req.query["banque"] = banque
+                        message = _message(f"Relevé « {nom} » chargé ({rp.compte_bancaire(ctx.config, banque).libelle}).")
+                        choix, du, au = None, "", ""  # comme Windows : toute la période des relevés
+                        _oublier(ctx)
         elif action == "Supprimer le relevé":
             if not releve:
                 message = _message(erreur="Sélectionnez le relevé à supprimer dans la liste du haut.")
@@ -175,7 +183,7 @@ def rapprochement(ctx: Contexte) -> Reponse:
              f"<input type='hidden' name='du' value='{du}'><input type='hidden' name='au' value='{au}'>"
              f"<input type='hidden' name='filtre' value='{e(filtre)}'><input type='hidden' name='banque' "
              f"value='{_banque(ctx)}'><input type='hidden' name='releve' "
-             f"value='{e(releve)}'><input type='file' name='releves' accept='.pdf'><button name='action' "
+             f"value='{e(releve)}'><input type='file' name='releves' accept='.pdf,.ofx,.qfx,.qbo,.csv'><button name='action' "
              "value='Charger'>📂 Charger des relevés…</button>"
              f"<a class='ouvrir' href='?{lien}&amp;actualiser=1'>🔄 Actualiser</a>"
              "<button class='danger' name='action' value='Supprimer le relevé'>🗑 Supprimer le relevé</button>"
@@ -252,7 +260,7 @@ def _corps(ctx: Contexte, etat: dict, filtre: str, du: str, au: str, cle_m: str,
     html += f"<div class='cartes-cinq'>{cartes}</div>"
     if not periode:
         return html + ("<p class='note'>Aucun relevé chargé ne couvre cette période.</p>" if etat["releves"] else
-                       "<p class='note'>Chargez un relevé PDF (Desjardins ou BNC), puis « Actualiser ».</p>")
+                       "<p class='note'>Chargez un relevé (PDF, OFX / QFX ou CSV) de votre banque, puis « Actualiser ».</p>")
     a_traiter = (rp.A_SAISIR, rp.A_ENCAISSER, rp.A_PAIE, rp.CONFIRME)
     etats = [rp.A_SAISIR, rp.A_ENCAISSER, rp.A_PAIE, rp.CONFIRME, rp.RAPPROCHE, rp.SAISI, rp.IGNORE]
     renvois = {rp.A_ENCAISSER: "→ Comptabilité > Encaissements", rp.A_PAIE: "→ module Paie de Sage"}

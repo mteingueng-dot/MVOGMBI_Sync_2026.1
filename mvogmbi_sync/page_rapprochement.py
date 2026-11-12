@@ -45,7 +45,7 @@ class PageRapprochement(ttk.Frame):
         self.mouvement = None
 
         entete_page(self, "🏦", t("Rapprochement bancaire"),
-                    t("relevés Desjardins et BNC rapprochés des écritures de Sage")).pack(fill="x")
+                    t("relevés de toutes les banques du Canada rapprochés des écritures de Sage")).pack(fill="x")
         barre = ttk.Frame(self)
         barre.pack(fill="x")
         Bouton(barre, "📂  " + t("Charger des relevés…"), self.charger).pack(side="left")
@@ -75,7 +75,7 @@ class PageRapprochement(ttk.Frame):
         Bouton(periode, "🔄  " + t("Rapprocher cette période"), self.actualiser, petit=True).pack(side="left", padx=8)
         Bouton(periode, t("Toute la période des relevés"), self.toute_la_periode, "secondaire", petit=True).pack(
             side="left")
-        self.resume = ttk.Label(self, text=t("Chargez un relevé PDF Desjardins, puis « Actualiser »."),
+        self.resume = ttk.Label(self, text=t("Chargez un relevé (PDF, OFX / QFX ou CSV), puis « Actualiser »."),
                                 foreground=TEXTE_DOUX, padding=(0, 6))
         self.resume.pack(fill="x")
 
@@ -139,7 +139,7 @@ class PageRapprochement(ttk.Frame):
         self.tableau.pack(side="left", fill="both", expand=True)
         self.tableau.bind("<<TreeviewSelect>>", lambda _e: self.choisir())
         placer_a_droite(bouton_exporter(barre, self.tableau, t("Rapprochement bancaire")))
-        rendre_exportable(self.liste, t("Relevés Desjardins"))
+        rendre_exportable(self.liste, t("Relevés bancaires"))
 
         # décision pour le mouvement choisi
         carte = tk.Frame(self, background=CARTE, highlightthickness=1, highlightbackground="#e2e8e4")
@@ -190,13 +190,24 @@ class PageRapprochement(ttk.Frame):
 
     # ---------------------------------------------------------------- relevés
     def charger(self) -> None:
-        fichiers = filedialog.askopenfilenames(parent=self, title=t("Relevés de compte Desjardins ou BNC (PDF)"),
-                                               filetypes=[("PDF", "*.pdf")])
+        fichiers = filedialog.askopenfilenames(
+            parent=self, title=t("Relevés de compte (toutes les banques du Canada)"),
+            filetypes=[(t("Relevés (PDF, OFX, QFX, CSV)"), "*.pdf *.ofx *.qfx *.qbo *.csv"), ("PDF", "*.pdf"),
+                       ("OFX / QFX / QBO", "*.ofx *.qfx *.qbo"), ("CSV", "*.csv")])
         if not fichiers:
             return
         from .rapprochement import ranger_releve
 
-        banques = {ranger_releve(self.racine, Path(f), config_toml=self._config())[0] for f in fichiers}  # banque reconnue d'après le PDF
+        banques, refus = set(), []
+        for f in fichiers:  # banque reconnue d'après le relevé, puis le n° du compte
+            try:
+                banques.add(ranger_releve(self.racine, Path(f), config_toml=self._config())[0])
+            except ValueError as exc:
+                refus.append(f"{Path(f).name} : {exc}")
+        if refus:
+            messagebox.showwarning(self.titre, "\n\n".join(refus))
+        if not banques:
+            return
         if len(banques) == 1 and banques != {self.banque_choisie.get()}:
             banque = banques.pop()
             libelle = next((l for l, b in self._libelles_banques.items() if b == banque), None)

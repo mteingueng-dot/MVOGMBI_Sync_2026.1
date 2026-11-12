@@ -124,6 +124,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-RAP-11 | **Espèces des ventes** : un virement Interac reçu (« VRW Virement Interac de ») ou un dépôt d'espèces au guichet (« DGA Dépôt au GA ») est marqué « À encaisser sur les ventes » : il n'est jamais une écriture de journal (il passe par les encaissements). |
 | RG-RAP-12 | Un relevé chargé deux fois n'est gardé qu'une fois ; « Supprimer le relevé » le range à part (jamais effacé), ses décisions avec lui. |
 | RG-RAP-13 | Mouvements à rapprocher dans l'ordre : même montant à la date la plus proche d'abord ; une écriture Sage ne sert qu'à un seul mouvement. |
+| RG-RAP-14 | **Toutes les banques du Canada** (2026-11-12) : un relevé se lit en OFX / QFX / QBO, en CSV ou en PDF par colonnes, quelle que soit la banque ou la caisse ; il va dans le compte bancaire dont le n° y figure, sinon dans le premier compte de la banque reconnue (mots du relevé ou n° d'institution), sinon dans le seul compte « Autre banque » ; aucun compte ne convient = relevé refusé avec la marche à suivre. Le compte de dépôt des ventes peut être dans n'importe quelle banque : ses relevés servent aux encaissements. Virements Interac reçus, dépôts au guichet et dépôts de paie sont reconnus en français et en anglais. |
 
 ---
 

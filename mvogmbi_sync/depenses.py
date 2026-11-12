@@ -139,6 +139,8 @@ def proposer_comptes(base) -> dict[str, str]:
     """Comptes de Sage dont le nom correspond (TPS / TVQ payée, petite caisse, carte de crédit, banque)."""
     import unicodedata
 
+    from .banques_canada import BANQUES
+
     def simple(t):
         return unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
 
@@ -149,7 +151,8 @@ def proposer_comptes(base) -> dict[str, str]:
               "tvq": lambda n: "tvq" in n and "payee" in n,
               "petite_caisse": lambda n: "petite caisse" in n,
               "carte": lambda n: "carte" in n and "credit" in n,
-              "banque": lambda n: "desjardins" in n or n.startswith("banque") or "compte courant" in n}
+              "banque": lambda n: (n.startswith("banque") or "compte courant" in n or "chequing" in n
+                                  or any(m in n for b in BANQUES for m in b.mots))}
     comptes = {cle: next((numero for numero, nom in sorted(noms.items()) if test(nom)), "")
                for cle, test in regles.items()}
     # le compte de taxe sur les achats de la table des taxes de Sage passe avant le nom

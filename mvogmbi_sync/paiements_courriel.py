@@ -88,6 +88,10 @@ def analyser(sujet: str, texte: str, identifiant: str = "", date_courriel: date 
     tout = re.sub(r"[ \t\xa0]+", " ", f"{sujet}\n{texte}")
     m = re.search(r"virement de ([\d\s.,]+)\s*\$\s*(?:\(CAD\)\s*)?(?:que vous avez envoyé )?à (.+?) (?:a été|a expiré|est)",
                   tout, re.I)
+    if not m:  # avis en anglais (toutes les banques du Canada passent par Interac, demande du 2026-11-12) :
+        # « Your transfer of $180.00 (CAD) to LEOPOLD X has been deposited. »
+        m = re.search(r"(?:transfer|money transfer) of \$?\s*([\d\s.,]+)\s*\$?\s*(?:\(CAD\)\s*)?(?:that you sent )?"
+                      r"to (.+?) (?:has been|was|has expired|is)\b", tout, re.I)
     if not m:
         return None
     bas = tout.lower()
@@ -111,13 +115,13 @@ def analyser(sujet: str, texte: str, identifiant: str = "", date_courriel: date 
         return ""
 
     date_virement = lire_date(apres("Date")) or date_courriel
-    reference = apres(r"Num[ée]ro de r[ée]f[ée]rence")
+    reference = apres(r"Num[ée]ro de r[ée]f[ée]rence") or apres(r"Reference (?:Number|#)")
     if not reference:  # date et référence sur la même ligne de tableau : « 20 août 2026 CAbsrsb6 »
         m3 = re.search(r"r[ée]f[ée]rence\s*:?\s*\n?.*?\b([A-Za-z0-9]{6,12})\b", tout, re.I | re.S)
         reference = m3.group(1) if m3 else ""
     return AvisPaiement(identifiant=identifiant, date_courriel=(date_courriel or date.today()).isoformat(),
                         date_virement=(date_virement or date.today()).isoformat(), montant=montant(m.group(1)),
-                        beneficiaire=" ".join(m.group(2).split()), reference=reference, message=apres("Message"),
+                        beneficiaire=" ".join(m.group(2).split()), reference=reference, message=apres("Message") or apres("Memo"),
                         etat=etat)
 
 

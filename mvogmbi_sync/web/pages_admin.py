@@ -413,6 +413,8 @@ def sage(ctx: Contexte) -> Reponse:
                         c.setdefault("sage_import", {}).update(fichier_entreprise=fichier)
                         for cle, defaut in (("version", "12001"), ("pays", "1"), ("position_numero", 3)):
                             c["sage_import"].setdefault(cle, defaut)
+                        if ctx.req.champ("banque_depot") in FORMATS_RELEVES:  # banque du compte de dépôt
+                            c.setdefault("rapprochement", {})["banque_depot"] = ctx.req.champ("banque_depot")
                         if ctx.req.champ("compte_bnc").strip():  # compte de la Banque Nationale
                             c.setdefault("rapprochement", {})["compte_bnc"] = ctx.req.champ("compte_bnc").strip()
                         if "depots" in ctx.req.form:  # dépôts sans Clover
@@ -439,7 +441,10 @@ def sage(ctx: Contexte) -> Reponse:
                           "Utilisé seulement si Sage ne contient encore aucune facture de vente de Clover.")
                  + _ligne("Compte de dépôt des encaissements", _entree("compte", en.get("compte_depot", "1055"),
                                                                         taille=10),
-                          "Compte de banque Sage où Clover dépose les ventes par carte (1055 = Compte Desjardins).")
+                          "Compte de banque Sage où Clover dépose les ventes par carte (ex. 1055).")
+                 + _ligne("Banque du compte de dépôt", _choix_banque(ctx),
+                          "Banque ou caisse du compte où Clover dépose les ventes (toutes les banques du Canada) : ses "
+                          "relevés servent aux encaissements et au rapprochement.")
                  + _ligne("Encaisser à partir des ventes du", _entree("enc_depart", en.get("date_depart") or date.today().isoformat(), "date",
                                                                        12),
                           "Les dépôts des ventes antérieures ne sont jamais encaissés.")
@@ -466,7 +471,16 @@ def sage(ctx: Contexte) -> Reponse:
     return Reponse(corps=page(ctx, "Sage 50", corps))
 
 
-FORMATS_RELEVES = {"desjardins": "Desjardins", "bnc": "Banque Nationale (BNC)"}
+from ..banques_canada import NOMS as FORMATS_RELEVES  # noqa: E402  (toutes les banques et caisses du Canada)
+
+
+def _choix_banque(ctx: Contexte) -> str:
+    from ..rapprochement import compte_bancaire
+
+    actuelle = compte_bancaire(ctx.config).format
+    return "<select name='banque_depot'>" + "".join(
+        f"<option value='{k}'{' selected' if k == actuelle else ''}>{e(v)}</option>"
+        for k, v in FORMATS_RELEVES.items()) + "</select>"
 
 
 def _carte_comptes_bancaires(ctx: Contexte) -> str:
@@ -493,8 +507,8 @@ def _carte_comptes_bancaires(ctx: Contexte) -> str:
                "<button name='action' value='Ajouter le compte bancaire'>➕ Ajouter le compte bancaire</button></form>")
     return _carte("4", "Comptes bancaires (rapprochement)", contenu,
                   "Chaque compte a ses relevés (Comptabilité > Rapprochement) et son compte de banque dans Sage. Un "
-                  "relevé chargé va d'office dans le bon compte : la banque est reconnue d'après le PDF, puis le n° du "
-                  "compte à la banque quand elle en a plusieurs.")
+                  "relevé chargé (PDF, OFX / QFX ou CSV, toutes les banques du Canada) va d'office dans le bon compte : "
+                  "le n° du compte à la banque, puis la banque reconnue d'après le relevé.")
 
 
 def _comptes_bancaires_action(ctx: Contexte) -> str:
@@ -508,7 +522,7 @@ def _comptes_bancaires_action(ctx: Contexte) -> str:
         _ecrire(ctx, retirer)
         return _message(f"Compte bancaire « {code} » retiré (ses relevés restent dans donnees/releves_{code}).")
     nom, compte = ctx.req.champ("nom").strip(), ctx.req.champ("compte_sage").strip()
-    fmt = ctx.req.champ("format") if ctx.req.champ("format") in FORMATS_RELEVES else "desjardins"
+    fmt = ctx.req.champ("format") if ctx.req.champ("format") in FORMATS_RELEVES else "autre"
     if not nom or not compte.isdigit():
         return _message(erreur="Donnez un nom et un n° de compte Sage (chiffres).")
     existants = {c.code for c in comptes_bancaires(ctx.config)}
