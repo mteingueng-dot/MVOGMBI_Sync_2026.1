@@ -210,6 +210,11 @@ class PageFournisseurs(ttk.Frame):
         self.v_clover = tk.BooleanVar(value=True)
         entete.ajouter(ttk.Checkbutton(entete, text=t("Mettre à jour le stock Clover"), variable=self.v_clover,
                                        command=lambda: None if self._chargement else self.sauvegarder_auto()), 12)
+        # document intitulé « CREDIT » / « NOTE DE CRÉDIT » (règle du propriétaire du 2026-11-11) : coché à la lecture ;
+        # quantités et montants passent en négatif, import = facture d'achat négative, stock Clover qui diminue
+        self.v_credit = tk.BooleanVar(value=False)
+        entete.ajouter(ttk.Checkbutton(entete, text=t("Note de crédit"), variable=self.v_credit,
+                                       command=self._changer_credit), 12)
         self.lu = ttk.Label(parent, text="", foreground=TEXTE_DOUX)
         self.lu.pack(fill="x")
         montants = Rangee(parent)
@@ -432,7 +437,8 @@ class PageFournisseurs(ttk.Frame):
     def _valeurs_liste(self, f) -> tuple:
         return ("☑" if f.fichier in getattr(self, "cochees", set()) else "☐", f.fichier, f.fournisseur_sage or f"({f.fournisseur_lu or '?'})", f.numero, f.date_facture,
                 f"{f.total:,.2f}" if f.total is not None else "", f.depot or t("Emplacement par défaut"),
-                "✔" if getattr(f, "maj_clover", True) else "—", t(f.etat))
+                "✔" if getattr(f, "maj_clover", True) else "—",
+                t(f.etat) + (f" ({t('note de crédit')})" if getattr(f, "note_credit", False) else ""))
 
     def _afficher_resume(self, suite: str = "") -> None:
         compte = {e: sum(1 for f in self.registre.factures if f.etat == e) for e in ETATS}
@@ -800,6 +806,7 @@ class PageFournisseurs(ttk.Frame):
         for cle, valeur in valeurs.items():
             self.v[cle].set(valeur)
         self.v_clover.set(getattr(f, "maj_clover", True))
+        self.v_credit.set(getattr(f, "note_credit", False))
         self._chargement = False
         self.lu.configure(text=t("Lu sur la facture : {f}   •   lecture : {m}", f=f.fournisseur_lu or "?", m=f.modele)
                           + (f"   •   {' ; '.join(f.remarques)}" if f.remarques else ""))
@@ -857,6 +864,7 @@ class PageFournisseurs(ttk.Frame):
         f.sous_total = decimal(self.v["sous_total"].get()) if self.v["sous_total"].get().strip() else None
         f.tps, f.tvq = decimal(self.v["tps"].get()), decimal(self.v["tvq"].get())
         f.total = decimal(self.v["total"].get()) if self.v["total"].get().strip() else None
+        f.signer(credit=bool(self.v_credit.get()))  # note de crédit : tout en négatif
 
     def verifier(self) -> list[str]:
         problemes = self.facture.controles(set(self.fournisseurs_sage) or None) if self.facture else []
@@ -940,6 +948,13 @@ class PageFournisseurs(ttk.Frame):
             self.lignes.item(str(i), **self._valeurs_ligne(l))
             rayer(self.lignes)
         self.montrer_conversion(l)
+
+    def _changer_credit(self) -> None:
+        """Case « Note de crédit » : montants refaits en négatif (ou en positif si elle est décochée) et réaffichés."""
+        if self._chargement or self.facture is None:
+            return
+        self.sauvegarder_auto()
+        self.choisir_facture()
 
     def sauvegarder_auto(self) -> None:
         """Enregistre sans question la facture ouverte : chaque saisie est gardée au fur et à mesure (demande du

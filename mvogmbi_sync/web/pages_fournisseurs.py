@@ -355,7 +355,8 @@ def factures(ctx: Contexte) -> Reponse:
                        + (" ◀" if n == rang else ""),
                        e(f.fournisseur_sage or f"({f.fournisseur_lu or '?'})"), e(f.numero), e(f.date_facture),
                        argent(f.total) if f.total is not None else "", e(f.depot or "Emplacement par défaut"),
-                       "✔" if getattr(f, "maj_clover", True) else "—", e(f.etat)])
+                       "✔" if getattr(f, "maj_clover", True) else "—",
+                       e(f.etat) + (" (note de crédit)" if getattr(f, "note_credit", False) else "")])
         classes.append(COULEURS.get(f.etat, "termine"))
     compte = {x: sum(1 for f in registre.factures if f.etat == x) for x in fo.ETATS}
     resume = (f"{len(registre.factures)} facture(s) — à saisir : {compte[fo.A_SAISIR]}, à vérifier : "
@@ -593,6 +594,8 @@ def _enregistrer(ctx: Contexte, rang: int, ligne, action: str = "Enregistrer la 
                     faites += 1
             texte = _message(f"{faites} proposition(s) confirmée(s).")
             ligne = _suivante(f, -1)
+        # note de crédit (règle du propriétaire du 2026-11-11) : quantités et montants en négatif, même saisis en positif
+        f.signer(credit=ctx.req.champ("note_credit") == "1" if "note_credit_vu" in ctx.req.form else None)
         memoire = fo.MemoireCorrespondance(ctx.racine)
         if f.fournisseur_sage and f.fournisseur_lu and (not noms or f.fournisseur_sage in noms):
             memoire.retenir_fournisseur(f.fournisseur_lu, f.fournisseur_sage)
@@ -708,7 +711,9 @@ def _detail(ctx: Contexte, f, rang: int, ligne, filtre: str, noms, articles, clo
             f"value='{e(f.date_facture)}'></div><div><label>Dépôt</label><select name='depot'>{_options_depots(ctx, f.depot)}"
             "</select></div><div><input type='hidden' name='maj_clover_vu' value='1'><label><input type='checkbox' "
             f"name='maj_clover' value='1'{' checked' if getattr(f, 'maj_clover', True) else ''}> Mettre à jour le "
-            "stock Clover</label></div><div class='a-droite boutons'><button class='danger' name='action' "
+            "stock Clover</label></div><div><input type='hidden' name='note_credit_vu' value='1'><label><input "
+            f"type='checkbox' name='note_credit' value='1'{' checked' if getattr(f, 'note_credit', False) else ''}> "
+            "Note de crédit</label></div><div class='a-droite boutons'><button class='danger' name='action' "
             f"value='Supprimer'>✖ Supprimer</button><a class='ouvrir' href='/facture-fichier?i={rang}' "
             "target='_blank'>👁 Voir la facture</a><button class='danger' name='action' value='Écarter'>🗑 Écarter"
             f"</button></div></div><p class='note'>{e(lu)}</p><div class='ligne'>"

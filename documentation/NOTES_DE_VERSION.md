@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.5 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.6 (11 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -11,6 +11,12 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 | 9 novembre 2026 | 1.0.0 → 1.0.44 |
 
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
+
+---
+
+## Version 1.0.6 (11 novembre 2026)
+
+- **Notes de crédit des fournisseurs** : un document intitulé « CREDIT » ou « NOTE DE CRÉDIT » est reconnu à la lecture (case « Note de crédit », Windows et web) ; quantités et montants en négatif ; importé dans Sage en crédit ; le stock Clover diminue, le coût ne change pas. Les notes de crédit déjà dans la liste sont relues d'elles-mêmes.
 
 ---
 

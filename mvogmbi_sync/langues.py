@@ -4174,3 +4174,8 @@ for _fr, _en in {
         "{n} invoice(s) — to enter: {s}, to check: {v}, ready: {p}, imported (archived): {i}",
 }.items():
     EN.setdefault(_fr, _en)
+
+
+# 1.0.6 : notes de crédit des fournisseurs (2026-11-11)
+for _fr, _en in {"Note de crédit": "Credit note", "note de crédit": "credit note"}.items():
+    EN.setdefault(_fr, _en)

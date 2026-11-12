@@ -50,6 +50,9 @@ class FactureLue:
     total: Decimal | None = None
     modele: str = ""               # modèle de lecture utilisé (ou « IA »)
     remarques: list[str] = field(default_factory=list)
+    # document intitulé « CREDIT » ou « NOTE DE CRÉDIT » (règle du propriétaire du 2026-11-11) : quantités et montants
+    # négatifs, importé dans Sage comme une facture d'achat négative (comme un retour fournisseur)
+    note_credit: bool = False
 
     @property
     def somme_lignes(self) -> Decimal:
@@ -75,7 +78,7 @@ class FactureLue:
             if abs(base + self.tps + self.tvq - self.total) > TOLERANCE:
                 problemes.append(f"sous-total {base} + taxes {self.tps + self.tvq} ≠ total {self.total}")
         for l in self.lignes:
-            if l.quantite and abs(l.quantite * l.prix - l.montant) > TOLERANCE + Decimal("0.01") * l.quantite:
+            if l.quantite and abs(l.quantite * l.prix - l.montant) > TOLERANCE + Decimal("0.01") * abs(l.quantite):
                 problemes.append(f"ligne « {l.description} » : {l.quantite} × {l.prix} ≠ {l.montant}")
         return problemes
 
@@ -205,7 +208,8 @@ def _amr(texte: str, f: FactureLue) -> None:
     for ligne in texte.splitlines():
         # constat du propriétaire du 2026-11-09 : une ligne marquée « F P » après le montant est taxée (F = TPS,
         # P = TVQ) ; avant, la ligne n'était pas reconnue et disparaissait de la facture
-        m = re.match(r"^(\d{3,}) (\d+(?:\.\d+)?) (.+?) \$([\d.,]+) \$([\d.,]+)\s*([FP](?:\s*[FP])?)?$",
+        # note de crédit (« CREDIT ») : quantités et totaux négatifs (« -1 … $21.00 -$21.00FP »)
+        m = re.match(r"^(\d{3,}) (-?\d+(?:\.\d+)?) (.+?) (-?\$[\d.,]+) (-?\$[\d.,]+)\s*([FP](?:\s*[FP])?)?$",
                      ligne.strip())
         if m:
             code, qte, description, prix, total, marque = m.groups()
@@ -213,16 +217,16 @@ def _amr(texte: str, f: FactureLue) -> None:
             taxe = ("G" if "F" in lettres else "") + ("Q" if "P" in lettres else "")
             f.lignes.append(LigneFournisseur(description, Decimal(qte), montant(prix), montant(total), code,
                                              bool(taxe), taxe=taxe))
-    f.sous_total = montant(chercher(r"SOUS-TOTAL:\s*\$([\d.,]+)", texte) or "0") or None
-    f.tps = montant(chercher(r"%TPS \([^)]*\)\s*\$([\d.,]+)", texte) or "0")
-    f.tvq = montant(chercher(r"%TVQ \([^)]*\)\s*\$([\d.,]+)", texte) or "0")
-    total = chercher(r"^TOTAL:\s*\$([\d.,]+)", texte, drapeaux=re.M)
+    f.sous_total = montant(chercher(r"SOUS-TOTAL:\s*(-?\$[\d.,]+)", texte) or "0") or None
+    f.tps = montant(chercher(r"%TPS \([^)]*\)\s*(-?\$[\d.,]+)", texte) or "0")
+    f.tvq = montant(chercher(r"%TVQ \([^)]*\)\s*(-?\$[\d.,]+)", texte) or "0")
+    total = chercher(r"^TOTAL:\s*(-?\$[\d.,]+)", texte, drapeaux=re.M)
     f.total = montant(total) if total else None
 
 
 def _basmex(texte: str, f: FactureLue) -> None:
     f.fournisseur = "Basmex"
-    f.numero = chercher(r"N° facture:\s*(\S+)", texte)
+    f.numero = chercher(r"N° facture:\s*(\S+)", texte) or chercher(r"N° note de cr[ée]dit:\s*(\S+)", texte)
     f.date_facture = lire_date(chercher(r"^Date:\s*(\S+)", texte, drapeaux=re.M))
     for ligne in texte.splitlines():
         m = re.match(r"^(\d+(?:[.,]\d+)?) ([A-Z]{1,4}\d+\S*) (.+?) ([\d.,]+) ([\d.,]+)(?: (G|Q|GQ|T))?$", ligne)
@@ -350,15 +354,45 @@ def convertir(ligne: LigneFournisseur, facteur: Decimal) -> tuple[Decimal, Decim
     return quantite, prix
 
 
+# titre d'un document de crédit, seul sur sa ligne en haut du document (« CREDIT » chez A.M.R., « NOTE DE CRÉDIT »
+# chez Basmex) ; « Available Credit: … » plus bas n'est pas un titre
+TITRE_CREDIT = re.compile(r"^\s*(?:NOTE\s+DE\s+CR[ÉE]DIT|CR[ÉE]DIT(?:\s+(?:NOTE|MEMO))?|AVOIR)\s*$", re.I)
+
+
+def est_note_credit(texte: str) -> bool:
+    """Vrai si le document est intitulé « CREDIT » ou « NOTE DE CRÉDIT » (règle du propriétaire du 2026-11-11)."""
+    lignes = [l for l in texte.splitlines() if l.strip()][:8]
+    return any(TITRE_CREDIT.match(l) for l in lignes)
+
+
+def en_negatif(valeur: Decimal | None) -> Decimal | None:
+    return None if valeur is None else -abs(valeur)
+
+
+def signer_credit(f: FactureLue) -> None:
+    """Note de crédit : quantités, montants, taxes et total négatifs (le prix unitaire reste positif), qu'ils soient
+    imprimés négatifs (A.M.R.) ou positifs (Basmex)."""
+    f.note_credit = True
+    for l in f.lignes:
+        l.quantite, l.montant, l.prix = -abs(l.quantite), -abs(l.montant), abs(l.prix)
+    f.sous_total, f.total = en_negatif(f.sous_total), en_negatif(f.total)
+    f.tps, f.tvq = -abs(f.tps), -abs(f.tvq)
+    if not any("note de crédit" in r for r in f.remarques):
+        f.remarques.append("note de crédit : quantités et montants en négatif")
+
+
 def lire_texte(texte: str, fichier: str = "") -> FactureLue:
     facture = FactureLue(fichier)
     for nom, motif, lecteur in MODELES:
         if motif.search(texte):
             facture.modele = nom
             lecteur(texte, facture)
-            return facture
-    facture.modele = "générique"
-    _generique(texte, facture)
+            break
+    else:
+        facture.modele = "générique"
+        _generique(texte, facture)
+    if est_note_credit(texte):
+        signer_credit(facture)
     return facture
 
 

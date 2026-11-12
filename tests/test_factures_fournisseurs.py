@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal as D
+from pathlib import Path
 
 from mvogmbi_sync.factures_fournisseurs import (LigneFournisseur, convertir, facteur_propose, lire_date, lire_texte,
                                                 montant)
@@ -182,3 +183,56 @@ TOTAL: $176.48"""
     biscuit = f.lignes[2]
     assert biscuit.montant == D("40.00") and biscuit.taxable and biscuit.taxe == "GQ"
     assert f.lignes[3].taxe == "G" and not f.lignes[0].taxable
+
+
+def test_note_de_credit_fournisseur():
+    """Règle du propriétaire du 2026-11-11 : un document intitulé « CREDIT » ou « NOTE DE CRÉDIT » se traite en note
+    de crédit (quantités et montants négatifs, importée comme une facture d'achat négative). Textes inventés."""
+    from mvogmbi_sync.factures_fournisseurs import est_note_credit, lire_texte
+    from mvogmbi_sync.fournisseurs import Facture, Ligne, depuis_lecture
+    from mvogmbi_sync.import_achats import bloc_achat
+
+    amr = """CREDIT
+A.M.R. CASH AND CARRY INC.
+Facture #: A0000002
+Date: 21-Aug-2026
+1111 -1 Produit Test Boisson 12x1L $20.00 -$20.00FP
+2222 -2 Produit Test Farine 12x1kg $50.00 -$100.00
+Available Credit: -$10.00
+SOUS-TOTAL: -$120.00
+5.000%TPS (000000000RT0001) -$1.00
+9.975%TVQ (000000000TQ0001) -$2.00
+TOTAL: -$123.00"""
+    f = lire_texte(amr)
+    assert f.note_credit and f.numero == "A0000002" and f.fiable
+    assert [(l.quantite, l.prix, l.montant) for l in f.lignes] == [(D(-1), D("20.00"), D("-20.00")),
+                                                                     (D(-2), D("50.00"), D("-100.00"))]
+    assert f.total == D("-123.00") and f.lignes[0].taxe == "GQ"
+
+    basmex = """NOTE DE CRÉDIT
+N° note de crédit: NC-0001
+Date: 22-08-2026
+Basmex
+2 ESS001 Produit Test Chocolat (18 x 90 g) 25.00 50.00
+Sous-total: 50.00
+Montant total 50.00"""
+    b = lire_texte(basmex)
+    assert b.note_credit and b.numero == "NC-0001" and b.fiable
+    assert (b.lignes[0].quantite, b.lignes[0].montant, b.sous_total, b.total) == (D(-2), D("-50.00"), D("-50.00"),
+                                                                                    D("-50.00"))
+    assert not est_note_credit("FACTURE\nN° facture: 1\nAvailable Credit: -$10.00")
+
+    # case « Note de crédit » cochée sur une facture saisie en positif : tout passe en négatif ; décochée : en positif
+    s = Facture("s.pdf", "e", fournisseur_sage="Fournisseur essai", numero="NC-2", date_facture="2026-08-22",
+                lignes=[Ligne("Article", D(3), D("2.00"), D("6.00"), numero_sage="ESSAI0001", confirme=True)],
+                sous_total=D("6.00"), total=D("6.00"))
+    s.signer(credit=True)
+    assert (s.lignes[0].quantite, s.lignes[0].prix, s.lignes[0].montant, s.total) == (D(-3), D("2.00"), D("-6.00"),
+                                                                                      D("-6.00"))
+    assert s.controles() == []
+    assert '"ESSAI0001","-3.0000","2.0000","-6.00"' in "\n".join(bloc_achat(s))
+    s.signer()  # import : déjà négative, rien ne change
+    assert s.total == D("-6.00")
+    s.signer(credit=False)
+    assert (s.lignes[0].quantite, s.total, s.note_credit) == (D(3), D("6.00"), False)
+    assert depuis_lecture(b, Path(__file__)).note_credit

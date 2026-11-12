@@ -83,10 +83,32 @@ class Facture:
     # stock Clover mis à jour à l'import (demande du propriétaire du 2026-11-09 : « la case dans chaque facture, pas
     # sur l'ensemble : on traite deux factures ensemble, une met le stock dans Clover et l'autre pas »)
     maj_clover: bool = True
+    # note de crédit du fournisseur (titre « CREDIT » / « NOTE DE CRÉDIT », règle du propriétaire du 2026-11-11) :
+    # quantités et montants négatifs, importée comme une facture d'achat négative ; le stock Clover diminue
+    note_credit: bool = False
+    credit_verifie: bool = False     # titre du document déjà contrôlé (factures lues avant la règle des notes de crédit)
 
     @property
     def somme_lignes(self) -> Decimal:
         return sum((l.montant for l in self.lignes), ZERO)
+
+    def signer(self, credit: bool | None = None) -> None:
+        """Note de crédit : quantités, montants, taxes et total négatifs (prix unitaire positif), qu'ils aient été lus
+        ou saisis en positif. `credit` = nouvel état de la case « Note de crédit » : la décocher sur une note de crédit
+        remet tout en positif (jamais fait d'office : une vraie facture peut avoir une ligne négative)."""
+        avant = self.note_credit
+        if credit is not None:
+            self.note_credit = bool(credit)
+        if self.note_credit:
+            changer = lambda v: None if v is None else -abs(v)  # noqa: E731
+        elif avant:
+            changer = lambda v: None if v is None else abs(v)  # noqa: E731
+        else:
+            return
+        for l in self.lignes:
+            l.quantite, l.montant, l.prix = changer(l.quantite), changer(l.montant), abs(l.prix)
+        self.sous_total, self.total = changer(self.sous_total), changer(self.total)
+        self.tps, self.tvq = changer(self.tps), changer(self.tvq)
 
     def controles(self, fournisseurs_sage: set[str] | None = None, deja_dans_sage: bool = False) -> list[str]:
         """Points qui empêchent l'import (liste vide = facture prête)."""
@@ -146,7 +168,7 @@ def depuis_lecture(lue: FactureLue, chemin: Path) -> Facture:
     f = Facture(fichier=Path(chemin).name, empreinte=empreinte(chemin), fournisseur_lu=lue.fournisseur,
                 numero=lue.numero, date_facture=lue.date_facture.isoformat() if lue.date_facture else "",
                 sous_total=lue.sous_total, tps=lue.tps, tvq=lue.tvq, total=lue.total, modele=lue.modele,
-                remarques=list(lue.remarques))
+                remarques=list(lue.remarques), note_credit=getattr(lue, "note_credit", False), credit_verifie=True)
     f.lignes = [Ligne(l.description, l.quantite, l.prix, l.montant, l.code, l.taxable, l.nature,
                       taxe=getattr(l, "taxe", "")) for l in lue.lignes]
     if lue.modele == "photo":
@@ -203,11 +225,50 @@ class Registre:
         self.factures = self._lire_disque() if self.chemin.exists() else []
         self._lues = {f.fichier: json.dumps(f.en_dict(), sort_keys=True) for f in self.factures}
         self._date = self._date_disque()
-        if any(f.etat == IMPORTEE for f in self.factures):  # importées d'avant cette règle : rangées aux archives
+        credits = self._reconnaitre_credits()
+        if credits or any(f.etat == IMPORTEE for f in self.factures):  # importées d'avant : rangées aux archives
             try:
                 self.enregistrer()
             except OSError:
                 pass
+
+    def _reconnaitre_credits(self) -> int:
+        """Une seule fois par facture lue avant la règle des notes de crédit (2026-11-11) : document intitulé
+        « CREDIT » / « NOTE DE CRÉDIT » -> relu en note de crédit ; les articles Sage déjà reliés sont gardés."""
+        a_voir = [f for f in self.factures if not f.credit_verifie and f.etat in (A_VERIFIER, A_SAISIR, PRETE)]
+        if not a_voir:
+            return 0
+        from .factures_fournisseurs import est_note_credit, texte_pdf
+
+        nombre = 0
+        for f in a_voir:
+            f.credit_verifie = True
+            chemin = self.chemin_fichier(f)
+            try:
+                if chemin.suffix.lower() != ".pdf" or not chemin.is_file() or not est_note_credit(texte_pdf(chemin)):
+                    continue
+                neuve = lire_facture(chemin)
+            except Exception:  # noqa: BLE001 — fichier illisible : la facture reste telle quelle
+                continue
+            reliees = {l.cle: l for l in f.lignes if l.numero_sage}
+            for l in neuve.lignes:
+                ancienne = reliees.get(l.cle)
+                if ancienne:
+                    l.numero_sage, l.description_sage = ancienne.numero_sage, ancienne.description_sage
+                    l.facteur, l.confirme = ancienne.facteur, ancienne.confirme
+            if neuve.lignes:
+                f.lignes = neuve.lignes
+                f.sous_total, f.tps, f.tvq, f.total = neuve.sous_total, neuve.tps, neuve.tvq, neuve.total
+            f.numero = f.numero or neuve.numero
+            f.date_facture = f.date_facture or neuve.date_facture
+            f.remarques = list(dict.fromkeys(f.remarques + neuve.remarques))
+            f.signer(credit=True)
+            if f.etat == A_SAISIR and f.lignes:
+                f.etat = A_VERIFIER
+            if f.etat == PRETE:
+                f.etat = A_VERIFIER  # à revoir : montants passés en négatif
+            nombre += 1
+        return nombre
 
     def change_ailleurs(self) -> bool:
         """Le fichier a-t-il été écrit par une autre plateforme (web, Windows, nuit) depuis la lecture ?"""

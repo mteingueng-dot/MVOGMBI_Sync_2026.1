@@ -188,6 +188,8 @@ def importer_achats(racine: Path, config_toml: dict, factures: list[Facture], jo
         raise RuntimeError("Fichier d'entreprise Sage ou outil d'import introuvable (page Sage 50).")
     if sage_ouvert():
         raise RuntimeError("Sage est ouvert : fermez-le avant l'import.")
+    for f in factures:  # note de crédit : toujours en négatif dans Sage et dans Clover (stock qui diminue)
+        f.signer()
     etats = lire_sage(config_toml, lambda base: verifier_dans_sage(base, factures), str(fichier_sai))
     resultats = {f.fichier: "à importer" for f in factures}
     a_importer = []
