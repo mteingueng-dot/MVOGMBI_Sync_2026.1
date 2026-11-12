@@ -13,7 +13,7 @@ const fa = require("react-icons/fa");
 
 const SORTIE = path.join(__dirname, "Presentation_MVOGMBI_Sync.pptx");
 const LOGO = path.join(__dirname, "..", "mvogmbi_sync", "ressources", "logo.png");
-const LOGO_RATIO = 545 / 700; // largeur / hauteur du logo
+const LOGO_RATIO = 1; // largeur / hauteur du logo (carré)
 const P = { // couleurs du marché (logo et application : mvogmbi_sync/design.py)
   vert: "1A9B3C", vertFonce: "0F5C2A", vertNuit: "0B4420", vertPale: "EEF7F1", vertClair: "BFE3CA",
   jaune: "F6B81A", jaunePale: "FFF5DA", rouge: "D7263D", rougePale: "FCE9EB",

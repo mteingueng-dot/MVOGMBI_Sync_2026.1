@@ -344,8 +344,9 @@ def image_filigrane(taille: int, fond: str, opacite: float = 0.10):
     gris = logo.convert("L")
     # opacité proportionnelle à la densité du trait : le fond clair du logo disparaît sans laisser de cadre
     masque = gris.point(lambda v: 0 if v > 200 else int(255 * opacite * min(1.0, (205 - v) / 80)))
-    image = Image.new("RGB", logo.size, fond)
-    image.paste(logo, mask=masque)
+    # image transparente : seul le dessin pâli est posé, le fond de la page reste visible (aucun carré)
+    image = logo.convert("RGBA")
+    image.putalpha(masque)
     return ImageTk.PhotoImage(image)
 
 

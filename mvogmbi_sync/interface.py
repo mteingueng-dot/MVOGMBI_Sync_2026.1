@@ -325,8 +325,8 @@ class Application(tk.Tk):
             logo = Image.open(LOGO).convert("RGBA")
             entete = logo.copy()
             entete.thumbnail((84, 84), Image.LANCZOS)
-            largeur, hauteur = logo.size
-            icone = logo.crop((0, 0, largeur, int(hauteur * 0.76)))
+            emblem = LOGO.with_name("embleme.png")
+            icone = Image.open(emblem).convert("RGBA") if emblem.exists() else logo.copy()
             icone.thumbnail((64, 64), Image.LANCZOS)
             fond_page = fond_de(ttk.Frame(self))
             return {"entete": ImageTk.PhotoImage(entete), "icone": ImageTk.PhotoImage(icone),
@@ -1197,9 +1197,19 @@ class Application(tk.Tk):
             zone.insert("end", prefixe + texte + "\n", (type_bloc, "marge"))
         zone.configure(state="disabled")
         if self._images:
-            logo = tk.Label(zone, image=self._images["filigrane_texte"], background=CARTE, borderwidth=0,
+            logo = tk.Label(zone, image=self._images["filigrane_texte"], background=zone.cget("background"), borderwidth=0,
                             cursor="arrow")
             logo.place(relx=1.0, rely=0.0, x=-24, y=24, anchor="ne")
+
+            def meme_fond(_evenement=None) -> None:
+                # le thème peut recolorer la zone après sa création : le filigrane prend toujours son fond
+                try:
+                    logo.configure(background=zone.cget("background"))
+                except tk.TclError:
+                    pass
+            zone.bind("<Map>", meme_fond, add="+")
+            zone.bind("<Configure>", meme_fond, add="+")
+            zone.after(300, meme_fond)
         return zone
 
     def _onglet_texte(self, titre_onglet: str, page: str, icone: str) -> None:

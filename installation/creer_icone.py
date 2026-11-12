@@ -1,7 +1,8 @@
 """Prépare les images de l'application à partir du logo du Marché MVOG-MBI.
 
-Entrée  : mvogmbi_sync/ressources/logo.png (logo complet : chariot + « MVOG-MBI épicerie africaine & Caribéenne »)
-Sorties : installation/MVOGMBI_Sync.ico          icône du programme, du raccourci et de l'installateur (chariot)
+Entrées : mvogmbi_sync/ressources/logo.png (logo complet carré : emblème + « MARCHÉ MVOG-MBI SHERBROOKE »)
+          mvogmbi_sync/ressources/embleme.png (emblème seul : Afrique, feuille d'érable, M et panier)
+Sorties : installation/MVOGMBI_Sync.ico          icône du programme, du raccourci et de l'installateur (emblème)
           installation/assistant_grand.bmp       image latérale de l'assistant d'installation (164 x 314)
           installation/assistant_petit.bmp       petite image en haut de l'assistant (55 x 55)
 """
@@ -25,10 +26,10 @@ def carre(image: Image.Image, cote: int, marge: float = 0.06) -> Image.Image:
     return fond
 
 
-# Chariot seul (partie haute du logo, sans le texte) pour les petites icônes
-largeur, hauteur = logo_plein.size
-chariot = logo_plein.crop((0, 0, largeur, int(hauteur * 0.76)))
-icone = carre(chariot, 256)
+# Emblème seul (sans le texte, illisible en petit) pour les petites icônes
+embleme = Image.open(ici.parent / "mvogmbi_sync" / "ressources" / "embleme.png").convert("RGBA")
+chariot = Image.alpha_composite(Image.new("RGBA", embleme.size, "white"), embleme).convert("RGB")
+icone = carre(chariot, 256, 0.02)
 tailles = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
 icone.save(ici / "MVOGMBI_Sync.ico", sizes=tailles)
 # la même pour la fenêtre de l'application et la barre des tâches
