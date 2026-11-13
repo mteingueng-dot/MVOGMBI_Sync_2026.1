@@ -121,6 +121,15 @@ nav.menu a:hover, nav.menu summary:hover { background: var(--menu-survol); }
 nav.menu a.actif { background: var(--menu-actif); border-left-color: var(--vert-vif); font-weight: 500; }
 nav.menu a.ailleurs { color: var(--gris); }
 .cadre main { flex: 1; min-width: 0; margin: 0; max-width: none; padding: 20px 24px; background: var(--fond-page); }
+/* PC : la fenêtre ne défile jamais (demande du propriétaire du 2026-11-12) : bandeau fixe, menu et page défilent
+   chacun dans leur cadre ; la liste principale remplit la hauteur (/filtres.js remplirListe) */
+@media (min-width: 821px) {
+  body:has(> .cadre) { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  body:has(> .cadre) > :not(.cadre) { flex: none; }
+  body:has(> .cadre) > .cadre { flex: 1; min-height: 0; align-items: stretch; }
+  .cadre nav.menu.large { position: static; max-height: none; overflow-y: auto; }
+  .cadre main { overflow: auto; }
+}
 @media (max-width: 820px) {
   .cadre { display: block; }
   nav.menu { width: auto; position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--bord); }

@@ -163,12 +163,45 @@ SCRIPT = r"""
   }, true);
   // zones à la hauteur de la fenêtre (statistiques : menu des états et rapport défilent chacun, le tableau remplit
   // la place ; demande du propriétaire du 2026-11-09 : « il faut ajuster les tableaux à la taille de la fenêtre »)
+  // la fenêtre ne défile jamais sur PC (demande du propriétaire du 2026-11-12 : « doit pas scroller ») : menu et
+  // page défilent chacun dans leur cadre, et la liste principale prend toute la hauteur qui reste (elle défile seule)
+  function basDeLaPage() {
+    var main = document.querySelector('.cadre main');
+    if (!main) { return window.innerHeight - 12; }
+    return main.getBoundingClientRect().bottom - parseFloat(getComputedStyle(main).paddingBottom || '0');
+  }
   function ajuster() {
     document.querySelectorAll('[data-pleine-hauteur]').forEach(function (z) {
       if (window.innerWidth <= 820) { z.style.height = ''; return; }
-      var haut = z.getBoundingClientRect().top + window.scrollY;
-      z.style.height = Math.max(420, window.innerHeight - haut - 12) + 'px';
+      z.style.height = Math.max(420, basDeLaPage() - z.getBoundingClientRect().top - 2) + 'px';
     });
+    remplirListe();
+  }
+  function remplirListe() {
+    var main = document.querySelector('.cadre main');
+    if (!main) { return; }
+    var zones = Array.prototype.filter.call(main.querySelectorAll('.defile'), function (z) {
+      return !z.closest('[data-pleine-hauteur], .factures-deux, [data-sans-remplir]') && z.offsetParent !== null;
+    });
+    zones.forEach(function (z) { if (z.dataset.remplie) { z.style.height = ''; z.style.maxHeight = ''; delete z.dataset.remplie; } });
+    if (window.innerWidth <= 820 || !zones.length) { return; }
+    // la liste principale : celle qui cache le plus de lignes, sinon la plus haute
+    var cible = zones[0];
+    zones.forEach(function (z) {
+      var c = (z.scrollHeight - z.clientHeight) - (cible.scrollHeight - cible.clientHeight);
+      if (c > 0 || (c === 0 && z.offsetHeight > cible.offsetHeight)) { cible = z; }
+    });
+    var fin = 0;
+    Array.prototype.forEach.call(main.children, function (c) { fin = Math.max(fin, c.getBoundingClientRect().bottom); });
+    var reste = Math.floor(basDeLaPage() - fin - 2);
+    var cache = cible.scrollHeight - cible.clientHeight;
+    // une liste remplit la fenêtre (comme Windows) ; un autre tableau grandit seulement pour montrer ses lignes
+    var liste = cible.closest('.liste-windows, .zone-liste-factures, [data-remplir]') || zones.length === 1;
+    var ajout = reste > 0 ? (liste ? reste : Math.min(reste, cache)) : reste;
+    if (!ajout) { return; }
+    cible.style.maxHeight = 'none';
+    cible.style.height = Math.max(150, cible.offsetHeight + ajout) + 'px';
+    cible.dataset.remplie = '1';
   }
   window.addEventListener('resize', ajuster);
   // graphiques dynamiques (demande du propriétaire du 2026-11-09) : bulle immédiate qui suit la souris (texte du
