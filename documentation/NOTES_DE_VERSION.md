@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.12 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -13,6 +13,10 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
 
 ---
+
+## Version 1.0.12 (13 novembre 2026)
+
+- **Correctif web** : les pages web pouvaient afficher « Sage ne répond pas sur le serveur pour l'instant » toute la journée alors que « Tester l'accès à Sage » réussissait. Après un premier échec (Sage fermé), la surveillance du serveur web retombait sur son propre échec noté 20 secondes plus tôt et ne réessayait plus jamais de lire Sage. Elle réessaie maintenant vraiment toutes les 20 secondes ; le message ne répète plus « Sage ne répond pas » plusieurs fois.
 
 ## Version 1.0.11 (13 novembre 2026)
 

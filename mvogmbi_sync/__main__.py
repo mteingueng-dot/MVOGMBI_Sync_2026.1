@@ -1138,10 +1138,12 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True
             if getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE:
                 raise
             SURVEILLANCE_SAGE["pret"].pop(str(fichier), None)
-            _ECHECS_LECTURE[str(fichier)] = (_temps.time(), str(exc)[:160])
+            _ECHECS_LECTURE[str(fichier)] = (_temps.time(), raison_echec(exc))
             SURVEILLANCE_SAGE["reveil"].set()
             raise
-    if not ouvrir and echec and _temps.time() - echec[0] < DUREE_ECHEC:
+    if not ouvrir and echec and _temps.time() - echec[0] < DUREE_ECHEC and _fils.current_thread().name != "sage-pret":
+        # (la surveillance de fond du serveur web, elle, réessaie toujours : sinon elle retombait sur son propre
+        # échec noté 20 s plus tôt et ne rouvrait plus jamais la base, constat du 2026-11-13 sur SERVDCSAGE)
         # lecture automatique (pages web, préchargement) : Sage vient de ne pas répondre ; inutile de refaire
         # 3 à 10 s d'essais à chaque page (demande du propriétaire du 2026-11-05 : « le mode web est très lent »)
         raise RuntimeError(f"Sage ne répond pas pour l'instant ({echec[1]}).")
@@ -1154,9 +1156,20 @@ def lire_sage(config_toml: dict, fonction, fichier_sai=None, ouvrir: bool = True
         raise exc.origine from None
     except Exception as exc:
         if not (getattr(exc, "args", None) and exc.args[0] in ERREURS_DE_REQUETE):
-            _ECHECS_LECTURE[str(fichier)] = (_temps.time(), str(exc)[:160])
+            _ECHECS_LECTURE[str(fichier)] = (_temps.time(), raison_echec(exc))
             SURVEILLANCE_SAGE["pret"].pop(str(fichier), None)
         raise
+
+
+PREFIXE_ECHEC = "Sage ne répond pas pour l'instant ("
+
+
+def raison_echec(exc) -> str:
+    """Raison d'un échec de lecture, sans les « Sage ne répond pas pour l'instant (…) » emboîtés."""
+    texte = str(exc)
+    while texte.startswith(PREFIXE_ECHEC) and texte.endswith(")"):
+        texte = texte[len(PREFIXE_ECHEC):-1]
+    return texte[:160]
 
 
 def _attendre_sage_journee(fichier, delai: float = 300) -> bool:

@@ -41,3 +41,24 @@ def test_textes_longs_coupes_dans_les_tableaux():
     assert "<td class='n'>12,00 $</td>" in sortie                    # court : inchangé
     assert f"<td><input name='q' value='{long}'></td>" in sortie      # champ de saisie : jamais touché
     assert couper_textes_longs(sortie) == sortie                       # une seule fois
+
+
+def test_la_surveillance_reessaie_apres_son_propre_echec(monkeypatch):
+    """Constat du 2026-11-13 sur SERVDCSAGE : la surveillance retombait sur son propre échec noté 20 s plus tôt et ne
+    rouvrait plus jamais la base (« Sage ne répond pas (Sage ne répond pas (… ») alors que Sage se lisait bien."""
+    import threading
+
+    appels = []
+    monkeypatch.setattr(m, "_lire_sage", lambda *a, **k: appels.append(1) or "lu")
+    monkeypatch.setitem(m.SURVEILLANCE_SAGE, "active", True)
+    monkeypatch.setitem(m.SURVEILLANCE_SAGE, "pret", {})
+    monkeypatch.setitem(m._ECHECS_LECTURE, "X.SAI", (time.time(), "aucune base Sage ne le sert"))
+    resultat = []
+    fil = threading.Thread(name="sage-pret", target=lambda: resultat.append(
+        m.lire_sage({"sage_import": {"fichier_entreprise": "X.SAI"}}, lambda b: 1, ouvrir=False)))
+    fil.start()
+    fil.join(5)
+    assert resultat == ["lu"] and appels == [1]               # vrai nouvel essai malgré l'échec récent
+    assert "X.SAI" not in m._ECHECS_LECTURE and m.SURVEILLANCE_SAGE["pret"]["X.SAI"]
+    assert m.raison_echec(RuntimeError("Sage ne répond pas pour l'instant (Sage ne répond pas pour l'instant "
+                                       "(aucune base))")) == "aucune base"

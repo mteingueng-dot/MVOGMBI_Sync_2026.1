@@ -38,7 +38,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 386 tests
+## 3. Tests automatiques — 387 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -76,7 +76,8 @@ Règles :
 | Version 1.0.20 : montant reçu relu avant d'être validé | test_encaissements | 1 |
 | Nouvelle série 1.0.3 à 1.0.6 : article Sage tapé dans la ligne, retour fournisseur et stock Clover, note de crédit | test_web, test_creation_articles, test_factures_fournisseurs | 3 |
 | Nouvelle série 1.0.7 et 1.0.10 : toutes les banques du Canada (reconnaissance, montants et dates, OFX, CSV français / anglais / sans en-tête, PDF anglais, classement du relevé, Interac et espèces, avis Interac en anglais, modèles RBC, UNI, TD, colonne « Amount ») | test_banques_canada | 14 |
-| **Total** | 64 fichiers | **386** |
+| Version 1.0.12 : la surveillance de Sage du serveur web réessaie après son propre échec | test_rapidite_web | 1 |
+| **Total** | 64 fichiers | **387** |
 
 Résultat du 13 novembre 2026 (version 1.0.11) : **384 réussis, 2 sautés** (2 min ; les 2 tests sautés demandent un fichier réel absent du poste de fabrication). Résultat du 9 novembre 2026 (version 1.0.0) : 369 réussis. Les analyses sont aussi vérifiées sur les vraies ventes Clover (lecture seule) : chacune s'affiche sans erreur sur les 30 derniers jours et sur l'année.
 
@@ -248,6 +249,7 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | La liste des factures se réduisait à la facture ouverte | Les champs de la facture servaient aussi de filtres | Filtres envoyés à part (1.0.38) |
 | La touche Entrée supprimait le document en cours (web) | Le 1er bouton du formulaire était « Supprimer » | Bouton Entrée invisible qui valide la ligne (1.0.30) |
 | Factures importées encore « Prête à importer » | Registre non enregistré après l'import (web et nuit) | Enregistrement dans un `finally` (2.23.0) |
+| Pages web « Sage ne répond pas » toute la journée, test d'accès à Sage réussi | La surveillance du serveur web prenait son propre échec récent pour une raison de ne pas réessayer | La surveillance réessaie toujours ; raison sans messages emboîtés (1.0.12) |
 | Rapprochement et « Mes paies » (web) en erreur 500 | Fonction de lecture de Sage utilisée sans être importée | Import ajouté ; vérification automatique du code (pyflakes) (1.0.4) |
 | Retour fournisseur sans effet sur le stock Clover | Seules les quantités positives étaient gardées | Quantités négatives retirées, coût inchangé (1.0.5) |
 | Ligne de facture reliée à l'article de la ligne d'avant | La recherche restée dans le champ passait avant l'article choisi | Recherche prise seulement si elle vient d'être tapée (1.0.3) |

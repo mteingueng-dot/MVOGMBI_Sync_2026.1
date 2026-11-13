@@ -541,9 +541,9 @@ def _garder_sage_pret(app) -> None:
                 lire_sage(app.config, lambda b: b.requete("SELECT 1"), ouvrir=False)
         except Exception as exc:  # noqa: BLE001 — Sage absent : les pages le disent elles-mêmes
             try:
-                from ..__main__ import _ECHECS_LECTURE
+                from ..__main__ import _ECHECS_LECTURE, raison_echec
 
-                _ECHECS_LECTURE[str(fichier)] = (time.time(), str(exc)[:160])
+                _ECHECS_LECTURE[str(fichier)] = (time.time(), raison_echec(exc))
                 SURVEILLANCE_SAGE["pret"].pop(str(fichier), None)
             except Exception:  # noqa: BLE001
                 pass
