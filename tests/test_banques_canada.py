@@ -37,6 +37,12 @@ def test_banques_reconnues():
     # un virement vers une autre banque cité dans les mouvements ne l'emporte pas sur l'en-tête répété
     assert detecter("Banque Nationale … Banque Nationale … virement Desjardins … Banque Nationale") == "bnc"
     assert code_du_nom(nom("cibc")) == "cibc" and code_du_nom("??") == "autre"
+    assert detecter("CIBC Smart Account — Withdrawals ($) Deposits ($) Balance ($)") == "cibc"
+    assert detecter("Simplii Financial, a division of CIBC") == "simplii"
+    assert detecter("Neo Financial — Neo Everyday account statement") == "neo"
+    assert detecter("KOHO Financial Inc. — Statement") == "koho"
+    assert detecter("BMO Bank of Montreal — Amounts deducted from your account ($)") == "bmo"
+    assert detecter("Banque Scotia — Relevé") == "scotia"
 
 
 def test_montants_et_dates():
@@ -162,3 +168,109 @@ def test_avis_interac_en_anglais():
                     "Memo: Invoice 14402")
     assert avis and avis.montant == Decimal("180.00") and avis.beneficiaire == "LEOPOLD X"
     assert avis.etat == DEPOSE and avis.reference == "CA1x2y3z" and avis.message == "Invoice 14402"
+
+
+def _pdf(tmp_path, nom, lignes, entete_x):
+    """PDF inventé : `lignes` = [(y, [(x, texte, aligné_à_droite)])] (mise en page des modèles publiés par les
+    banques ; aucune donnée réelle)."""
+    fpdf = pytest.importorskip("fpdf")
+    pdf = fpdf.FPDF()
+    pdf.add_page()
+    arial = Path("C:/Windows/Fonts/arial.ttf")
+    if arial.exists():  # apostrophe typographique et accents
+        pdf.add_font("arial", "", str(arial))
+        pdf.set_font("arial", size=8)
+    else:
+        pytest.skip("police Unicode absente")
+    for y, cellules in lignes:
+        for x, texte, droite in cellules:
+            pdf.text(x - (pdf.get_string_width(texte) if droite else 0), y, texte)
+    chemin = tmp_path / nom
+    pdf.output(str(chemin))
+    return chemin
+
+
+def test_modele_rbc(tmp_path):
+    """Modèle RBC (« Votre relevé de compte ») : solde d'ouverture avec apostrophe typographique, « ,15 », une
+    ligne de solde pour plusieurs opérations, pied « 1 de 2 »."""
+    d = lambda y, jour, texte, retrait="", depot="", solde="": (y, [(10, jour, False), (30, texte, False)] + [
+        (x, v, True) for x, v in ((120, retrait), (150, depot), (185, solde)) if v])
+    chemin = _pdf(tmp_path, "rbc.pdf", [
+        (12, [(10, "Banque Royale du Canada  du 12 mars 2026 au 12 avril 2026", False)]),
+        (20, [(10, "Date", False), (30, "Description", False), (120, "Retraits ($)", True), (150, "Dépôts ($)", True),
+              (185, "Solde ($)", True)]),
+        (26, [(30, "Solde d\u2019ouverture", False), (185, "4 247,14", True)]),
+        d(32, "15 mars", "Virement", depot="85,00", solde="4 332,14"),
+        d(38, "", "Intérêts payés", depot=",15"),
+        d(44, "", "Retrait GAB", retrait="100,00"),
+        d(50, "", "Achat Interac - Épicerie", retrait="47,82", solde="4 184,47"),
+        d(56, "18 mars", "Chèque n° 30", retrait="40,00", solde="4 144,47"),
+        (62, [(30, "Solde de clôture", False), (185, "4 144,47", True)]),
+        (70, [(100, "1 de 2", False)])], None)
+    r = rp.lire_releve(chemin)
+    assert [m.montant for m in r.mouvements] == [Decimal("85.00"), Decimal("0.15"), Decimal("-100.00"),
+                                                Decimal("-47.82"), Decimal("-40.00")]
+    assert r.solde_ouverture == Decimal("4247.14") and not r.controles()
+    assert all(not m.remarque for m in r.mouvements) and "1 de 2" not in r.mouvements[-1].description
+
+
+def test_modele_uni_corrections_et_autres_comptes(tmp_path):
+    """Modèle UNI : colonnes Frais / Retrait / Dépôt / Solde, frais remboursés (« Correction ») dont le sens vient
+    du solde imprimé, notes dans la marge, compte d'épargne qui suit (ignoré)."""
+    d = lambda y, jour, texte, x, v, solde: (y, [(10, jour, False), (30, texte, False), (x, v, True),
+                                                 (175, solde, True), (182, "note", False)])
+    chemin = _pdf(tmp_path, "uni.pdf", [
+        (12, [(10, "Caisse populaire acadienne  Pour la période 03-01 à 03-31 2026", False)]),
+        (20, [(10, "Date", False), (30, "Description", False), (110, "Frais", True), (130, "Retrait", True),
+              (150, "Dépôt", True), (175, "Solde", True)]),
+        (26, [(10, "1 mars", False), (30, "Solde reporté", False), (175, "47.07", True)]),
+        d(32, "1 mars", "Virement Frais", 110, "1.25", "45.82"),
+        d(38, "2 mars", "Correction : Virement Frais", 110, "1.25", "47.07"),
+        d(44, "31 mars", "Virement Interac reçu ALICE", 150, "20.00", "67.07"),
+        (50, [(10, "31 mars", False), (30, "Solde courant", False), (175, "67.07", True)]),
+        (58, [(10, "000111001157 Épargne à terme", False)]),
+        (64, [(10, "Date", False), (30, "Description", False), (110, "Frais", True), (130, "Retrait", True),
+              (150, "Dépôt", True), (175, "Solde", True)]),
+        (70, [(10, "1 mars", False), (30, "Retrait", False), (130, "99.00", True), (175, "1.00", True)])], None)
+    r = rp.lire_releve(chemin)
+    assert [m.montant for m in r.mouvements] == [Decimal("-1.25"), Decimal("1.25"), Decimal("20.00")]
+    assert (r.debut, r.fin) == ("2026-03-01", "2026-03-31") and not r.controles()
+    assert "note" not in " ".join(m.description for m in r.mouvements) and rp.est_interac(r.mouvements[2])
+    assert detecter("Caisse populaire acadienne ltée (UNI)") == "caisseuni"
+
+
+def test_modele_td_date_apres_les_montants(tmp_path):
+    """Modèle TD : « Description Withdrawals Deposits Date Balance », date « MAR04 » après les montants,
+    « STARTING BALANCE », « BALANCE FORWARD » repris à la page suivante."""
+    d = lambda y, texte, x, v, jour, solde="": (y, [(10, texte, False), (x, v, True), (150, jour, False)]
+                                               + ([(190, solde, True)] if solde else []))
+    chemin = _pdf(tmp_path, "td.pdf", [
+        (12, [(10, "TD Canada Trust   MAR 31/26 - APR 30/26", False)]),
+        (20, [(10, "Description", False), (110, "Withdrawals", True), (140, "Deposits", True), (150, "Date", False),
+              (190, "Balance", True)]),
+        (26, [(10, "STARTING BALANCE", False), (150, "MAR31", False), (190, "1,000.00", True)]),
+        d(32, "MONTHLY ACCOUNT FEE", 110, "4.00", "APR01", "996.00"),
+        d(38, "E-TRANSFER RECEIVED", 140, "1,250.40", "APR04", "2,246.40"),
+        d(44, "CHQ#00012", 110, "46.40", "APR04", "2,200.00")], None)
+    r = rp.lire_releve(chemin)
+    assert [(m.date[5:], m.montant) for m in r.mouvements] == [("04-01", Decimal("-4.00")),
+                                                              ("04-04", Decimal("1250.40")),
+                                                              ("04-04", Decimal("-46.40"))]
+    assert r.solde_ouverture == Decimal("1000.00") and not r.controles() and rp.est_interac(r.mouvements[1])
+    assert r.mouvements[0].description == "MONTHLY ACCOUNT FEE"
+
+
+def test_modele_colonne_montant_unique_et_dollar(tmp_path):
+    """Colonne « Amount » signée (Tangerine) et montants précédés de « $ » (Scotia)."""
+    chemin = _pdf(tmp_path, "tangerine.pdf", [
+        (12, [(10, "Tangerine  Statement period: Sep 1, 2026 to Sep 30, 2026", False)]),
+        (20, [(10, "Date", False), (40, "Transaction Description", False), (150, "Amount", True),
+              (190, "Balance", True)]),
+        (26, [(10, "Sep 1", False), (40, "Opening Balance", False), (190, "$271.49", True)]),
+        (32, [(10, "Sep 3", False), (40, "INTERAC e-Transfer From: BOB", False), (150, "$50.00", True),
+              (190, "$321.49", True)]),
+        (38, [(10, "Sep 9", False), (40, "Bill Payment HYDRO", False), (150, "-$21.49", True),
+              (190, "$300.00", True)])], None)
+    r = rp.lire_releve(chemin)
+    assert [m.montant for m in r.mouvements] == [Decimal("50.00"), Decimal("-21.49")]
+    assert r.solde_ouverture == Decimal("271.49") and r.solde_fermeture == Decimal("300.00") and not r.controles()

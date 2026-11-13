@@ -24,16 +24,16 @@ class Banque:
 
 # ordre : les noms les plus précis d'abord (Simplii avant CIBC, Tangerine avant Scotia, Desjardins Ontario…)
 BANQUES: tuple[Banque, ...] = (
-    Banque("desjardins", "Desjardins", ("815", "829"), ("desjardins", "caisse populaire", "accèsd", "accesd")),
+    Banque("desjardins", "Desjardins", ("815", "829"), ("desjardins", "accèsd", "accesd")),
     Banque("bnc", "Banque Nationale (BNC)", ("006",), ("banque nationale", "national bank", "bnc.ca", "nbc.ca")),
     Banque("simplii", "Simplii Financial", ("010",), ("simplii",)),
     Banque("tangerine", "Tangerine", ("614",), ("tangerine",)),
     Banque("pcfinancial", "PC Financial", ("320",), ("pc financial", "services financiers le choix du président")),
     Banque("rbc", "RBC Banque Royale", ("003",), ("banque royale", "royal bank", "rbc")),
     Banque("td", "Banque TD (TD Canada Trust)", ("004",), ("td canada trust", "banque td", "td bank")),
-    Banque("scotia", "Banque Scotia", ("002",), ("scotiabank", "banque scotia", "bank of nova scotia")),
-    Banque("bmo", "BMO Banque de Montréal", ("001",), ("bmo", "banque de montréal", "bank of montreal")),
-    Banque("cibc", "CIBC", ("010",), ("cibc", "banque canadienne impériale", "canadian imperial bank")),
+    Banque("scotia", "Banque Scotia", ("002",), ("scotiabank", "banque scotia", "scotia", "bank of nova scotia", "banque de nouvelle-écosse")),
+    Banque("bmo", "BMO Banque de Montréal", ("001",), ("bmo", "bmo.com", "banque de montréal", "bank of montreal")),
+    Banque("cibc", "CIBC", ("010",), ("cibc", "cibc.com", "banque cibc", "banque canadienne impériale", "canadian imperial bank")),
     Banque("laurentienne", "Banque Laurentienne", ("039",), ("banque laurentienne", "laurentian bank")),
     Banque("hsbc", "HSBC Canada", ("016",), ("hsbc",)),
     Banque("eq", "EQ Bank (Banque Équitable)", ("623",), ("eq bank", "equitable bank", "banque équitable")),
@@ -46,6 +46,9 @@ BANQUES: tuple[Banque, ...] = (
     Banque("coastcapital", "Coast Capital", ("809",), ("coast capital",)),
     Banque("servus", "Servus Credit Union", ("899",), ("servus",)),
     Banque("caisseuni", "UNI Coopération financière", ("865",), ("uni coopération", "uni financial", "caisse populaire acadienne")),
+    Banque("neo", "Neo Financial", (), ("neo financial", "neofinancial", "neo money", "neo everyday",
+                                        "neo chequing", "neo savings")),
+    Banque("koho", "KOHO", (), ("koho financial", "koho")),  # comptes tenus par Peoples Trust : reconnu par son nom
     Banque("autre", "Autre banque ou caisse", (), ()),
 )
 

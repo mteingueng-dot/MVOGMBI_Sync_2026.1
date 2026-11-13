@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.7 (12 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.10 (12 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -13,6 +13,11 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
 
 ---
+
+## Version 1.0.10 (12 novembre 2026)
+
+- **Relevés PDF des autres banques d'après leurs modèles** : modèle publié par RBC (« Votre relevé de compte » : apostrophe typographique, montants « ,15 », solde de clôture, pied « 1 de 2 ») et par UNI (colonnes Frais / Retrait / Dépôt / Solde, frais remboursés, comptes d'épargne et prêts qui suivent ignorés, notes dans la marge, période « 03-01 à 03-31 2023 ») lus et revérifiés ligne par ligne ; mises en page de TD (date après les montants, « STARTING BALANCE »), Scotia (« $271.49 »), BMO (« Amounts deducted / added ») et Tangerine (colonne « Amount » signée) prises en charge. Le sens de chaque montant est confirmé par le solde imprimé.
+- **Neo Financial** et **KOHO** ajoutées à la liste des banques (CIBC, Simplii, Scotia et BMO y étaient déjà).
 
 ## Version 1.0.7 (12 novembre 2026)
 

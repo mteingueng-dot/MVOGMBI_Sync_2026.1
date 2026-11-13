@@ -125,6 +125,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-RAP-12 | Un relevé chargé deux fois n'est gardé qu'une fois ; « Supprimer le relevé » le range à part (jamais effacé), ses décisions avec lui. |
 | RG-RAP-13 | Mouvements à rapprocher dans l'ordre : même montant à la date la plus proche d'abord ; une écriture Sage ne sert qu'à un seul mouvement. |
 | RG-RAP-14 | **Toutes les banques du Canada** (2026-11-12) : un relevé se lit en OFX / QFX / QBO, en CSV ou en PDF par colonnes, quelle que soit la banque ou la caisse ; il va dans le compte bancaire dont le n° y figure, sinon dans le premier compte de la banque reconnue (mots du relevé ou n° d'institution), sinon dans le seul compte « Autre banque » ; aucun compte ne convient = relevé refusé avec la marche à suivre. Le compte de dépôt des ventes peut être dans n'importe quelle banque : ses relevés servent aux encaissements. Virements Interac reçus, dépôts au guichet et dépôts de paie sont reconnus en français et en anglais. |
+| RG-RAP-15 | Relevé PDF par colonnes (toutes les banques) : le solde imprimé confirme le sens de chaque montant (un frais remboursé est une entrée) ; seul le premier compte du relevé est lu (il s'arrête au solde courant / de clôture quand un autre compte commence) ; les notes imprimées à droite de la colonne du solde et les pieds de page « 1 de 2 » sont ignorés ; la date peut être en début de ligne ou dans sa propre colonne (TD). |
 
 ---
 

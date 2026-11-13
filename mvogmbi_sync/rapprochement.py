@@ -52,7 +52,7 @@ SALAIRE = re.compile(r"salaire|payroll|salary|d[ée]p[ôo]t\s+de\s+paie", re.I) 
 REFERENCE_PAIE = re.compile(r"PAYE?(\d{8})", re.I)
 DELAI_PAIE = 120  # jours : un salaire peut être versé longtemps après la paie de Sage
 
-MONTANT = re.compile(r"^-?\d{1,3}(?:[,   ]?\d{3})*[.,]\d{2}-?$")  # « 1,000.00 » : milliers à la virgule (banques anglophones)
+MONTANT = re.compile(r"^-?\$?(?:\d{1,3}(?:[,   ]?\d{3})*)?[.,]\d{2}-?$")  # « 1,000.00 », « ,15 » (RBC) : milliers à la virgule (banques anglophones)
 
 
 # --------------------------------------------------------------------------------------------- modèles
@@ -182,6 +182,14 @@ def _periode(texte: str) -> tuple[date | None, date | None]:
         if debut and fin and debut > fin:  # « du 1er décembre au 31 janvier 2027 »
             debut = debut.replace(year=debut.year - 1)
         return debut, fin
+    m = re.search(r"p[ée]riode\s+(\d{2})-(\d{2})\s+(?:à|au|-)\s+(\d{2})-(\d{2})\s+(\d{4})", texte, re.IGNORECASE)
+    if m:  # « Pour la période 03-01 à 03-31 2023 » (UNI : mois-jour)
+        try:
+            fin = date(int(m[5]), int(m[3]), int(m[4]))
+            debut = date(int(m[5]), int(m[1]), int(m[2]))
+            return (debut.replace(year=debut.year - 1) if debut > fin else debut), fin
+        except ValueError:
+            pass
     m = re.search(r"([a-z]{3,9})\.?\s+(\d{1,2}),?\s*(\d{4})?\s*(?:to|-|–)\s*([a-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})",
                   texte, re.IGNORECASE)  # « From Sep 1, 2026 to Sep 30, 2026 » (banques anglophones)
     if m and _MOIS3.get(m[1][:3].lower()) and _MOIS3.get(m[4][:3].lower()):
@@ -203,11 +211,11 @@ COLONNES = {"frais": "frais", "retrait": "retrait", "retraits": "retrait", "déb
             "debits": "retrait", "deducted": "retrait", "retirés": "retrait", "déduits": "retrait",
             "chèques": "retrait", "cheques": "retrait", "deposit": "depot", "deposits": "depot",
             "deposited": "depot", "credits": "depot", "added": "depot", "déposés": "depot", "ajoutés": "depot",
-            "balance": "solde"}
+            "balance": "solde", "amount": "montant", "date": "date"}
 OUVERTURE = re.compile(r"solde (reporté|précédent|d'ouverture|au début|initial|antérieur)|ancien solde|"
                        r"opening balance|balance forward|previous balance|starting balance|beginning balance|"
                        r"balance brought forward", re.I)
-FERMETURE = re.compile(r"nouveau solde|solde de fermeture|solde à la fin|solde final|closing balance|ending balance|"
+FERMETURE = re.compile(r"nouveau solde|solde de fermeture|solde de cl[ôo]ture|^\S*\s*\S*\s*solde courant\b|solde à la fin|solde final|closing balance|ending balance|"
                        r"new balance|balance at end|balance carried forward", re.I)
 
 
@@ -221,9 +229,10 @@ def _est_entete(mots: list[dict], bas: str) -> bool:
     if "solde" in bas and "description" in bas:
         return True
     genres = {_genre_colonne(m) for m in mots}
-    return ("solde" in genres and len({"retrait", "depot", "frais"} & genres) >= 2
+    return ("solde" in genres and (len({"retrait", "depot", "frais"} & genres) >= 2 or "montant" in genres)
             and not any(MONTANT.match(m["text"]) for m in mots))
 # Fin du compte principal : les sections suivantes du relevé (parts sociales, sommaire des frais) sont ignorées
+PIED_DE_PAGE = re.compile(r"^(page\s+)?\d+\s*(de|of|/|sur)\s*\d+$", re.I)
 FIN_DU_COMPTE = re.compile(r"^(compte d'[ée]pargne et de placement|sommaire des frais|part de qualification)")
 
 
@@ -392,19 +401,27 @@ def lire_releve_desjardins(chemin: Path) -> Releve:
         colonnes: dict[str, float] = {}
         solde_courant: Decimal | None = None
         en_attente: tuple[date, str] | None = None  # ligne datée dont les montants sont sur la ligne suivante
-        termine = False
+        termine = compte_ferme = False
         for page in pdf.pages:
             if termine:
                 break
             for mots in _lignes(page.dedupe_chars()):
                 mots = _fusionner_nombres(mots)
-                bas = " ".join(m["text"] for m in mots).lower()
+                bas = " ".join(m["text"] for m in mots).lower().replace("’", "'").replace("‘", "'")
+                if PIED_DE_PAGE.match(bas):  # « 1 de 2 », « Page 1 of 2 »
+                    continue
                 if colonnes and FIN_DU_COMPTE.match(bas):
                     termine = True
                     break
                 if _est_entete(mots, bas):  # en-tête des colonnes (répété sur chaque page)
+                    if compte_ferme:  # un autre compte du même relevé commence (épargne, prêt…) : il est ignoré
+                        termine = True
+                        break
                     colonnes = {_genre_colonne(m): m["x1"] for m in mots if _genre_colonne(m)}
                     continue
+                if colonnes.get("solde"):  # notes imprimées dans la marge, à droite de la colonne du solde
+                    mots = [m for m in mots if m["x0"] <= colonnes["solde"] + 4]
+                    bas = " ".join(m["text"] for m in mots).lower().replace("’", "'").replace("‘", "'")
                 montants = [m for m in mots if MONTANT.match(m["text"])]
                 autres = [m for m in mots if m not in montants]
                 if OUVERTURE.search(bas) and montants:
@@ -413,6 +430,7 @@ def lire_releve_desjardins(chemin: Path) -> Releve:
                     continue
                 if FERMETURE.search(bas) and montants:
                     releve.solde_fermeture = _montant(montants[-1]["text"])
+                    compte_ferme = bool(colonnes and releve.mouvements)
                     continue
                 if not colonnes:
                     continue
@@ -423,6 +441,17 @@ def lire_releve_desjardins(chemin: Path) -> Releve:
                         if jour:
                             autres = autres[n:]
                             break
+                if not jour and colonnes.get("date"):  # TD : colonne Date après les montants (« MAR04 », « APR 11 »)
+                    proches = [m for m in autres if abs(m["x1"] - colonnes["date"]) < 40
+                               or abs(m["x0"] - colonnes["date"]) < 40]
+                    for n in (2, 1):
+                        if len(proches) >= n:
+                            texte_date = " ".join(m["text"] for m in proches[-n:])
+                            texte_date = re.sub(r"^([A-Za-zÉéû]{3})(\d{1,2})$", r"\1 \2", texte_date)
+                            jour = _date_ligne(texte_date, fin)
+                            if jour:
+                                autres = [m for m in autres if m not in proches[-n:]]
+                                break
                 description = " ".join(m["text"] for m in autres).strip()
                 if not montants:
                     if jour and description:
@@ -435,14 +464,19 @@ def lire_releve_desjardins(chemin: Path) -> Releve:
                 if not jour and en_attente:  # suite de la ligne précédente, avec les montants
                     jour, description = en_attente[0], f"{en_attente[1]} {description}".strip()
                 en_attente = None
-                valeurs = {"frais": None, "retrait": None, "depot": None, "solde": None}
+                valeurs = {"frais": None, "retrait": None, "depot": None, "solde": None, "montant": None}
+                montantes = {c: x for c, x in colonnes.items() if c != "date"}
                 for m in montants:
-                    colonne = min(colonnes, key=lambda c: abs(colonnes[c] - m["x1"]))
+                    colonne = min(montantes, key=lambda c: abs(montantes[c] - m["x1"]))
                     valeurs[colonne] = _montant(m["text"])
-                if all(valeurs[c] is None for c in ("frais", "retrait", "depot")):
+                if all(valeurs[c] is None for c in ("frais", "retrait", "depot", "montant")):
                     continue
                 montant = (valeurs["depot"] or Decimal(0)) - (valeurs["retrait"] or Decimal(0)) - (
-                    valeurs["frais"] or Decimal(0))
+                    valeurs["frais"] or Decimal(0)) + (valeurs["montant"] or Decimal(0))  # colonne unique signée (Tangerine)
+                if (valeurs["solde"] is not None and solde_courant is not None and montant
+                        and valeurs["solde"] - solde_courant == -montant):
+                    # le solde imprimé tranche le sens (« Correction : … Frais 1.25 » rend les frais, UNI)
+                    montant = -montant
                 jour = jour or (date.fromisoformat(releve.mouvements[-1].date) if releve.mouvements else None)
                 if not jour:
                     releve.remarques.append(f"ligne sans date ignorée : {bas}")
