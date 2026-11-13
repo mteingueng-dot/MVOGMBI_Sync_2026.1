@@ -218,7 +218,9 @@ def factures(ctx: Contexte) -> Reponse:
                 message = _message(erreur="Choisissez une facture (PDF ou photo).")
             else:
                 nom, contenu = ctx.req.fichiers["facture"]
-                if Path(nom).suffix.lower() not in TYPES_FICHIERS:
+                from ..securite import document_permis
+
+                if Path(nom).suffix.lower() not in TYPES_FICHIERS or not document_permis(nom, contenu):
                     message = _message(erreur=f"Fichiers ignorés (format non accepté) : {nom}")
                 else:
                     dossier = fo.Registre(ctx.racine).dossier

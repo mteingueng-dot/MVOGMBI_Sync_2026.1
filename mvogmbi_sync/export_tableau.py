@@ -68,7 +68,9 @@ def ecrire_csv(chemin: Path, entetes: list[str], lignes: list[list[str]]) -> Non
     with open(chemin, "w", newline="", encoding="utf-8-sig") as f:
         sortie = csv.writer(f, delimiter=";")
         sortie.writerow(entetes)
-        sortie.writerows([v.strip() for v in l] for l in lignes)
+        from .securite import texte_csv
+
+        sortie.writerows([texte_csv(v.strip()) for v in l] for l in lignes)
 
 
 def ecrire_excel(chemin: Path, titre: str, entetes: list[str], lignes: list[list[str]]) -> None:

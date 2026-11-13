@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -38,7 +38,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 387 tests
+## 3. Tests automatiques — 393 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -77,7 +77,8 @@ Règles :
 | Nouvelle série 1.0.3 à 1.0.6 : article Sage tapé dans la ligne, retour fournisseur et stock Clover, note de crédit | test_web, test_creation_articles, test_factures_fournisseurs | 3 |
 | Nouvelle série 1.0.7 et 1.0.10 : toutes les banques du Canada (reconnaissance, montants et dates, OFX, CSV français / anglais / sans en-tête, PDF anglais, classement du relevé, Interac et espèces, avis Interac en anglais, modèles RBC, UNI, TD, colonne « Amount ») | test_banques_canada | 14 |
 | Version 1.0.12 : la surveillance de Sage du serveur web réessaie après son propre échec | test_rapidite_web | 1 |
-| **Total** | 64 fichiers | **387** |
+| Version 1.0.13 : sécurité (fichiers reçus, formules Excel / CSV, empreintes et longueur des mots de passe, NIP, requête web invalide) | test_securite | 6 |
+| **Total** | 65 fichiers | **393** |
 
 Résultat du 13 novembre 2026 (version 1.0.11) : **384 réussis, 2 sautés** (2 min ; les 2 tests sautés demandent un fichier réel absent du poste de fabrication). Résultat du 9 novembre 2026 (version 1.0.0) : 369 réussis. Les analyses sont aussi vérifiées sur les vraies ventes Clover (lecture seule) : chacune s'affiche sans erreur sur les 30 derniers jours et sur l'année.
 

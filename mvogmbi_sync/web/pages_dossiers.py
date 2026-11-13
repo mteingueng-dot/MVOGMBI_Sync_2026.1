@@ -101,6 +101,8 @@ def parcourir(ctx: Contexte, cible: str) -> Reponse:
     de réglage, qui le met dans son champ (à enregistrer ensuite, comme dans Windows)."""
     retour, champ, extension = CHOIX[cible]
     chemin = ctx.req.query.get("chemin", "")
+    if chemin.replace("/", "\\").startswith("\\\\"):  # partage réseau : Windows s'y connecterait avec l'identité
+        chemin = ""  # du serveur (analyse de sécurité du 2026-11-13) ; seuls les lecteurs du serveur sont parcourus
     titre = "Choisir un dossier" if extension is None else "Fichier d'entreprise Sage (*.SAI)"
     lignes = []
     if not chemin:  # lecteurs du serveur

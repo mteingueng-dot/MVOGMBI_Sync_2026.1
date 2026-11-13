@@ -112,6 +112,9 @@ class Registre:
         if d.moyen == APPRO:
             d.etat = A_SAISIR
         if recu:
+            from .securite import verifier_fichier
+
+            verifier_fichier(Path(recu))  # PDF ou image seulement (un « reçu.exe » se serait lancé à l'ouverture)
             dossier = self.racine / "donnees" / "recus"
             dossier.mkdir(parents=True, exist_ok=True)
             cible = dossier / f"{d.numero}{Path(recu).suffix.lower()}"

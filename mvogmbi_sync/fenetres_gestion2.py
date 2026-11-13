@@ -142,7 +142,12 @@ class FenetreDepenses(FenetreOutil):
     def voir_recu(self) -> None:
         choix = self.tableau.selection()
         if choix and self.liste[int(choix[0])].recu:
-            os.startfile(self.racine / "donnees" / "recus" / self.liste[int(choix[0])].recu)
+            from .securite import FichierRefuse, ouvrir_document
+
+            try:
+                ouvrir_document(self.racine / "donnees" / "recus" / self.liste[int(choix[0])].recu)
+            except (FichierRefuse, OSError) as exc:
+                messagebox.showerror(self.title(), str(exc), parent=self)
 
     def comptes(self) -> None:
         """Comptes Sage de l'écriture : proposés d'après les noms des comptes de Sage, modifiables."""

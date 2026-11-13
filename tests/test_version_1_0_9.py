@@ -168,7 +168,7 @@ def test_ancienne_entree_ria_donne_les_nouvelles(tmp_path):
     assert not {"États de compte RIA", "Comptes RIA"} & set(titres["Comptabilité"])
     assert not any("RIA (transferts" in t for t in titres["Comptabilité"])
     r = Registre(tmp_path)
-    r.ajouter("Patron", "Administrateur", "secret123")
+    r.ajouter("Patron", "Administrateur", "secret123456")
     r.definir_acces("Comptable", ["RIA (transferts d'argent)"], [])
     r.enregistrer()
     relu = Registre(tmp_path)

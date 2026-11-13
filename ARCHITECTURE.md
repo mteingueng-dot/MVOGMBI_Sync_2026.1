@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -782,7 +782,7 @@ Si la fenêtre ne peut pas être rouverte, les dépôts restants sont rendus « 
 | Sujet | Mesure |
 |---|---|
 | Secrets | Coffre-fort Windows (keyring `MVOGMBI_Sync`) : `clover_jeton`, `sage_lecture`, `sage_import`, `courriel`, boîte des paiements. Jamais dans `config.toml` ni dans le dépôt. |
-| Comptes | `utilisateurs.json` : empreintes de mots de passe (PBKDF2), profils ; journal des connexions ; 3 mots de passe faux = compte verrouillé (le dernier administrateur n'est bloqué que 15 min). |
+| Comptes | `utilisateurs.json` : empreintes de mots de passe (PBKDF2), profils ; journal des connexions ; 3 mots de passe faux = compte verrouillé (le dernier administrateur n'est bloqué que 15 min) ; 12 caractères au moins, PBKDF2-SHA256 de 600 000 tours (préfixe « pbkdf2$tours$ », anciennes empreintes refaites à la connexion). |
 | Audit | `audit.jsonl` : chaque action (bouton, menu, connexion), poste et utilisateur ; chaque ligne porte l'empreinte de la précédente, une modification est repérée. |
 | Droits | Par profil : fonctions du menu permises une à une (`fonctions_permises` : « Liste des articles » sans le reste de la rubrique), actions refusées dans les fenêtres (`fonctions_refusees` : traiter la paie, restaurer une sauvegarde…), « Supprimer des éléments » (tous les boutons Supprimer / 🗑 et la touche Suppr), « Exporter les données », points de vente permis. L'administrateur a tout. |
 | Verrouillage | Après `[general] verrouillage_minutes` (5 par défaut ; 0 = jamais) sans activité. La fenêtre est cachée et le mot de passe est redemandé. Web : déconnexion après `[web] inactivite_minutes` (5). |
@@ -790,6 +790,9 @@ Si la fenêtre ne peut pas être rouverte, les dépôts restants sont rendus « 
 | Sage | Utilisateur MySQL en consultation seule ; imports et saisies uniquement après contrôle des doublons. |
 | Banque | Relevés chargés à la main (PDF, OFX, CSV téléchargés du site de la banque) : aucune connexion aux services en ligne des banques. |
 | Courriel | IMAP en lecture seule ; SMTP pour le compte rendu ; documents personnels à un seul destinataire visible, copie cachée au propriétaire. |
+| Fichiers reçus | Reçus, factures fournisseurs, états RIA : PDF et images seulement, reconnus par leur contenu (`securite.document_permis`) ; ouverts sous Windows seulement après ce contrôle (`securite.ouvrir_document`). |
+| Exports | Aucun texte « =… » écrit comme formule dans un fichier Excel (`securite.installer_protections` : crochet posé au chargement d'openpyxl) ; CSV : apostrophe devant = + - @ (`texte_csv`). |
+| Pointage | NIP : attente de 1, 5, 30 puis 120 min par série de 5 NIP faux, alerte à l'audit. |
 | Dépôt public | `.gitignore` : `config.toml`, `donnees/`, `sortie/`, `*.xlsx`, `*.IMP`, `*.SAI`, captures et manuels contenant des données réelles. |
 
 ---

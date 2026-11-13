@@ -8,21 +8,21 @@ from mvogmbi_sync.utilisateurs import ADMIN, UTILISATEURS, ErreurUtilisateur, Re
 def test_premier_admin_connexion_et_mot_de_passe_jamais_garde(tmp_path):
     r = Registre(tmp_path)
     assert not r.existe()
-    r.ajouter("  Médard  ", ADMIN, "secret123")
+    r.ajouter("  Médard  ", ADMIN, "secret123456")
     r.enregistrer()
     texte = (tmp_path / "donnees" / "utilisateurs.json").read_text(encoding="utf-8")
-    assert "secret123" not in texte and "Médard" in texte
+    assert "secret123456" not in texte and "Médard" in texte
     r = Registre(tmp_path)
-    assert r.verifier("médard", "secret123").est_admin  # nom sans tenir compte des majuscules
+    assert r.verifier("médard", "secret123456").est_admin  # nom sans tenir compte des majuscules
     assert r.verifier("Médard", "mauvais") is None
     assert "échec : Médard" in (tmp_path / "donnees" / "journal_connexions.log").read_text(encoding="utf-8")
 
 
 def test_pages_par_profil(tmp_path):
     r = Registre(tmp_path)
-    admin = r.ajouter("Admin", ADMIN, "secret123")
-    caisse = r.ajouter("Awa", "Employé", "caisse1")
-    compta = r.ajouter("Paul", "Comptable", "compta1")
+    admin = r.ajouter("Admin", ADMIN, "secret123456")
+    caisse = r.ajouter("Awa", "Employé", "caisse1-2026")
+    compta = r.ajouter("Paul", "Comptable", "compta1-2026")
     assert UTILISATEURS in r.pages(admin) and "clover" in r.pages(admin)
     assert r.pages(caisse) == {"accueil", "tableau", "guide", "faq"}
     assert "rapprochement" in r.pages(compta) and "sage" not in r.pages(compta)
@@ -32,24 +32,24 @@ def test_pages_par_profil(tmp_path):
 
 def test_toujours_un_administrateur_actif(tmp_path):
     r = Registre(tmp_path)
-    r.ajouter("Admin", ADMIN, "secret123")
-    r.ajouter("Awa", "Employé", "caisse1")
+    r.ajouter("Admin", ADMIN, "secret123456")
+    r.ajouter("Awa", "Employé", "caisse1-2026")
     for action in (lambda: r.supprimer("Admin"), lambda: r.activer("Admin", False),
                    lambda: r.changer_profil("Admin", "Employé"), lambda: r.definir_profil(ADMIN, []),
                    lambda: r.supprimer_profil(ADMIN), lambda: r.supprimer_profil("Employé"),
-                   lambda: r.ajouter("awa", "Employé", "autre12"), lambda: r.ajouter("Zoé", "Employé", "court")):
+                   lambda: r.ajouter("awa", "Employé", "autre1234567"), lambda: r.ajouter("Zoé", "Employé", "court")):
         with pytest.raises(ErreurUtilisateur):
             action()
     r.activer("Awa", False)
-    assert r.verifier("Awa", "caisse1") is None  # compte désactivé
-    r.ajouter("Chef", ADMIN, "chef1234")
+    assert r.verifier("Awa", "caisse1-2026") is None  # compte désactivé
+    r.ajouter("Chef", ADMIN, "chef12345678")
     r.supprimer("Admin")
     assert [u.nom for u in r.admins_actifs()] == ["Chef"]
 
 
 def test_profil_libre_enregistre(tmp_path):
     r = Registre(tmp_path)
-    r.ajouter("Admin", ADMIN, "secret123")
+    r.ajouter("Admin", ADMIN, "secret123456")
     r.definir_profil("Livreur", ["fournisseurs", "inconnue"])
     r.enregistrer()
     donnees = json.loads((tmp_path / "donnees" / "utilisateurs.json").read_text(encoding="utf-8"))

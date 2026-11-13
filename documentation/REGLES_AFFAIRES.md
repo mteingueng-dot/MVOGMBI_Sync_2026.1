@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -412,6 +412,11 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-SEC-04b | **Application web : déconnexion après 5 minutes sans activité** ; la page passe d'elle-même à la connexion. |
 | RG-SEC-08 | **Audit** : chaque bouton cliqué, entrée du menu, connexion et refus est noté (moment, poste, utilisateur, fenêtre, action) ; chaque ligne porte l'empreinte de la précédente : une ligne changée est repérée ; jamais de mot de passe ni de NAS. |
 | RG-SEC-09 | Une entrée du menu renommée garde le droit donné sous son ancien nom (exemple : l'ancienne entrée RIA de Comptabilité donne accès aux trois entrées RIA). |
+| RG-SEC-10 | **Fichiers reçus** (reçus de dépense, factures fournisseurs, états RIA) : seuls les PDF et les images sont acceptés, reconnus par leur contenu et non par leur seul nom ; l'application n'ouvre jamais sous Windows un fichier reçu qui n'en est pas un (version 1.0.13). |
+| RG-SEC-11 | **Exports Excel et CSV** : un texte qui commence par « = » n'est jamais écrit comme une formule dans un fichier Excel ; dans un CSV, un texte qui commence par = + - @ reçoit une apostrophe devant (sauf un vrai nombre) (version 1.0.13). |
+| RG-SEC-12 | **Mots de passe** : 12 caractères au moins pour l'application Windows comme pour le web ; empreinte PBKDF2-SHA256 de 600 000 tours ; une ancienne empreinte (200 000 tours) est refaite à la connexion réussie suivante (version 1.0.13). |
+| RG-SEC-13 | **NIP du pointage** : 5 NIP faux de suite bloquent l'employé 1 minute, puis 5, 30 et 120 minutes à chaque nouvelle série ; chaque série est notée à l'audit ; un NIP juste remet tout à zéro (version 1.0.13). |
+| RG-SEC-14 | **Serveur web** : une requête de taille invalide est refusée ; une connexion inactive est fermée après 30 secondes ; « Parcourir… » et « Reprendre une configuration » refusent les partages réseau (\\machine\partage) (version 1.0.13). |
 
 ---
 

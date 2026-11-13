@@ -61,13 +61,13 @@ def test_montant_saisi():
 
 def test_verrouillage_apres_trois_mots_de_passe_faux(tmp_path):
     r = Registre(tmp_path)
-    r.ajouter("Patron", ADMIN, "secret123")
-    r.ajouter("Jean", "Employé", "secret123")
+    r.ajouter("Patron", ADMIN, "secret123456")
+    r.ajouter("Jean", "Employé", "secret123456")
     for _ in range(3):
         assert r.verifier("Jean", "faux") is None
-    assert r.trouver("Jean").verrouille and r.verifier("Jean", "secret123") is None
-    r.changer_mot_de_passe("Jean", "nouveau123")  # l'administrateur rouvre le compte
-    assert r.verifier("Jean", "nouveau123") is not None and r.trouver("Jean").echecs == 0
+    assert r.trouver("Jean").verrouille and r.verifier("Jean", "secret123456") is None
+    r.changer_mot_de_passe("Jean", "nouveau12345")  # l'administrateur rouvre le compte
+    assert r.verifier("Jean", "nouveau12345") is not None and r.trouver("Jean").echecs == 0
     for _ in range(3):  # le dernier administrateur n'est jamais verrouillé : seulement bloqué un moment
         r.verifier("Patron", "faux")
     assert not r.trouver("Patron").verrouille and r.bloque(r.trouver("Patron"))

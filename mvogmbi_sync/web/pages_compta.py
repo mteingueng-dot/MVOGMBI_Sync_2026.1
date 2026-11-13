@@ -228,6 +228,9 @@ def depenses(ctx: Contexte) -> Reponse:
                     import tempfile
 
                     nom, contenu = ctx.req.fichiers["recu"]
+                    from ..securite import verifier_document
+
+                    verifier_document(nom, contenu)  # PDF ou image seulement
                     dossier = Path(tempfile.mkdtemp())
                     recu = dossier / ("recu" + Path(nom).suffix.lower())
                     recu.write_bytes(contenu)

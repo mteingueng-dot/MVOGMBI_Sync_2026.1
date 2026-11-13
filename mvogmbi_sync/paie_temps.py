@@ -18,6 +18,7 @@ pas être approuvée tant que le gérant ne les a pas corrigées.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 import uuid
@@ -34,6 +35,9 @@ DEBUT_REFERENCE = date(2026, 10, 18)  # un dimanche ; réglable : [paie] debut_r
 ITERATIONS = 200_000
 A_APPROUVER, APPROUVEE, ENVOYEE = "À approuver", "Approuvée", "Envoyée à Sage"
 ESSAIS_NIP, ATTENTE_NIP = 5, 60  # 5 NIP faux de suite : pointage bloqué 60 s pour cet employé
+# puis l'attente s'allonge à chaque nouvelle série de 5 NIP faux (analyse de sécurité du 2026-11-13 : 5 essais par
+# minute sans fin devinaient un NIP de 4 chiffres en ~33 h) ; un NIP juste remet tout à zéro
+ATTENTES_NIP = (60, 5 * 60, 30 * 60, 2 * 3600)
 
 
 class ErreurPointage(ValueError):
@@ -172,14 +176,36 @@ class Registre:
 
     def verifier_nip(self, ident: str, nip: str, maintenant: datetime | None = None) -> bool:
         maintenant = maintenant or datetime.now()
-        echecs, depuis = self._echecs.get(ident, (0, maintenant))
-        if echecs >= ESSAIS_NIP and (maintenant - depuis).total_seconds() < ATTENTE_NIP:
-            raise ErreurPointage("Trop d'essais : attendez une minute.")
+        etat = self._echecs.get(ident, (0, maintenant))
+        echecs, depuis = etat[0], etat[1]
+        series = etat[2] if len(etat) > 2 else 0  # séries de ESSAIS_NIP NIP faux déjà bloquées
+        if echecs >= ESSAIS_NIP:
+            attente = ATTENTES_NIP[min(series - 1, len(ATTENTES_NIP) - 1)] if series else ATTENTE_NIP
+            reste = attente - (maintenant - depuis).total_seconds()
+            if reste > 0:
+                minutes = max(1, -(-int(reste) // 60))  # arrondi au-dessus
+                raise ErreurPointage(f"Trop d'essais : attendez {minutes} minute(s).")
         e = self.employe(ident)
-        bon = bool(e.nip) and _empreinte(nip, e.sel) == e.nip
-        self._echecs[ident] = (0, maintenant) if bon else (
-            (1 if echecs >= ESSAIS_NIP else echecs + 1), maintenant)
+        bon = bool(e.nip) and hmac.compare_digest(_empreinte(nip, e.sel), e.nip)
+        if bon:
+            self._echecs[ident] = (0, maintenant, 0)
+            return bon
+        echecs = 1 if echecs >= ESSAIS_NIP else echecs + 1
+        if echecs >= ESSAIS_NIP:
+            series += 1
+            self._alerter_nip(e, series)
+        self._echecs[ident] = (echecs, maintenant, series)
         return bon
+
+    def _alerter_nip(self, e, series: int) -> None:
+        """Série de NIP faux : notée au journal d'audit (visible dans Administration > Audit des actions)."""
+        try:
+            from . import audit
+
+            audit.noter(self.donnees.parent, f"pointage : {ESSAIS_NIP * series} NIP faux de suite pour {e.nom}",
+                        "Pointage", utilisateur="")
+        except Exception:  # noqa: BLE001 — l'alerte ne bloque jamais le pointage
+            pass
 
     # ----------------------------------------------------------------------------------------- pointages
     def valides(self, ident: str | None = None) -> list[Pointage]:

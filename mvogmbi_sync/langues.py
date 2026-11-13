@@ -638,7 +638,7 @@ EN: dict[str, str] = {
     "Le nom est obligatoire.": "The name is required.",
     "Ce nom est déjà utilisé.": "This name is already used.",
     "Profil inconnu.": "Unknown profile.",
-    "Le mot de passe doit avoir au moins 6 caractères.": "The password must have at least 6 characters.",
+    "Le mot de passe doit avoir au moins 12 caractères.": "The password must have at least 12 characters.",
     "Il doit rester au moins un administrateur actif.": "At least one active administrator must remain.",
     "Utilisateur introuvable.": "User not found.",
     "Le nom du profil est obligatoire.": "The profile name is required.",

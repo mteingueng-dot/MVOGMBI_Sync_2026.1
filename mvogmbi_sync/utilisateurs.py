@@ -72,13 +72,15 @@ SANS_EXPORT_DEFAUT = ["Employé"]  # profils sans le droit d'exporter (règle du
 # profils qui ne voient que l'employé relié à leur compte (règle du propriétaire du 2026-10-30) : pointage, horaire,
 # heures, paies, congés, T4 / RL-1, statistiques ; l'administrateur et le gérant voient tous les employés
 LIMITES_DEFAUT = ["Employé"]
-LONGUEUR_MIN = 6
+LONGUEUR_MIN = 12  # analyse de sécurité du 2026-11-13 : comme le mot de passe web (6 avant ; les mots de passe
+# déjà enregistrés restent valables, la règle vaut au prochain changement)
 # mot de passe de l'application web (demande du propriétaire du 2026-11-05) : 12 caractères au moins, minuscule,
 # majuscule, chiffre et caractère spécial ; distinct du mot de passe de l'application Windows
 LONGUEUR_MIN_WEB = 12
 ESSAIS_AVANT_VERROU = 3  # règle du propriétaire du 2026-11-01 : 3 mots de passe faux de suite = compte verrouillé
 BLOCAGE_DERNIER_ADMIN = 15 * 60  # s : le dernier administrateur n'est jamais verrouillé, seulement bloqué un moment
-ITERATIONS = 200_000
+ITERATIONS = 600_000  # recommandation actuelle pour PBKDF2-SHA256 (200 000 avant la 1.0.13)
+ITERATIONS_ANCIENNES = 200_000  # empreintes sans préfixe : refaites à la prochaine connexion réussie
 
 
 class ErreurUtilisateur(ValueError):
@@ -120,8 +122,27 @@ class Utilisateur:
         return self.profil == ADMIN
 
 
-def empreinte(mot_de_passe: str, sel: str) -> str:
-    return hashlib.pbkdf2_hmac("sha256", mot_de_passe.encode("utf-8"), bytes.fromhex(sel), ITERATIONS).hex()
+def empreinte(mot_de_passe: str, sel: str, iterations: int | None = None) -> str:
+    """Empreinte PBKDF2-SHA256 ; le nombre de tours est écrit devant (« pbkdf2$600000$… »)."""
+    iterations = iterations or ITERATIONS
+    calcul = hashlib.pbkdf2_hmac("sha256", mot_de_passe.encode("utf-8"), bytes.fromhex(sel), iterations).hex()
+    return calcul if iterations == ITERATIONS_ANCIENNES else f"pbkdf2${iterations}${calcul}"
+
+
+def tours(attendu: str) -> int:
+    """Nombre de tours d'une empreinte enregistrée (sans préfixe : ancienne empreinte de 200 000 tours)."""
+    if attendu.startswith("pbkdf2$"):
+        try:
+            return int(attendu.split("$")[1])
+        except (IndexError, ValueError):
+            return ITERATIONS
+    return ITERATIONS_ANCIENNES
+
+
+def mot_de_passe_juste(mot_de_passe: str, sel: str, attendu: str) -> bool:
+    if not sel or not attendu:
+        return False
+    return hmac.compare_digest(empreinte(mot_de_passe, sel, tours(attendu)), attendu)
 
 
 def _cle(nom: str) -> str:
@@ -242,7 +263,7 @@ class Registre:
         u = self._exige(nom)
         if probleme := probleme_mot_de_passe_web(mot_de_passe):
             raise ErreurUtilisateur(probleme)
-        if u.sel and hmac.compare_digest(empreinte(mot_de_passe, u.sel), u.empreinte):
+        if mot_de_passe_juste(mot_de_passe, u.sel, u.empreinte):
             raise ErreurUtilisateur("Le mot de passe web doit être différent du mot de passe de l'application Windows.")
         u.sel_web = secrets.token_hex(16)
         u.empreinte_web = empreinte(mot_de_passe, u.sel_web)
@@ -268,11 +289,17 @@ class Registre:
             return None
         sel, attendu = (u.sel_web, u.empreinte_web) if (u is not None and web) else (
             (u.sel, u.empreinte) if u is not None else ("", ""))
-        ok = bool(u and u.actif and sel and hmac.compare_digest(empreinte(mot_de_passe, sel), attendu))
+        ok = bool(u and u.actif and mot_de_passe_juste(mot_de_passe, sel, attendu))
         self._noter(f"{'connexion' if ok else 'échec'} : {nom.strip()}")
         if ok:
             u.derniere_connexion = datetime.now().isoformat(timespec="seconds")
             u.echecs = 0
+            if tours(attendu) != ITERATIONS:  # ancienne empreinte : refaite avec le nombre de tours actuel
+                nouvelle = empreinte(mot_de_passe, sel)
+                if web:
+                    u.empreinte_web = nouvelle
+                else:
+                    u.empreinte = nouvelle
             self.enregistrer()
             return u
         if u is not None:

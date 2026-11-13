@@ -887,8 +887,12 @@ class PageFournisseurs(ttk.Frame):
             messagebox.showwarning(self.titre, t("Le fichier de la facture est introuvable :\n{c}\n\nRemettez-le dans "
                                                  "le dossier des factures (« Dossier des factures »).", c=chemin))
             return
+        from .securite import FichierRefuse, ouvrir_document
+
         try:
-            os.startfile(chemin)
+            ouvrir_document(chemin)  # PDF ou image seulement : jamais un programme reçu par courriel
+        except FichierRefuse as exc:
+            messagebox.showerror(self.titre, str(exc))
         except OSError as exc:
             messagebox.showerror(self.titre, t("Aucun programme n'ouvre ce fichier sur ce poste ({e}) :\n{c}",
                                                e=exc, c=chemin))

@@ -463,7 +463,12 @@ class FenetreEtatsRia(FenetreOutil):
         if e:
             chemin = self.racine / "donnees" / "etats_ria" / e.fichier
             if chemin.exists():
-                os.startfile(chemin)
+                from .securite import FichierRefuse, ouvrir_document
+
+                try:
+                    ouvrir_document(chemin)
+                except FichierRefuse as exc:
+                    messagebox.showerror(self.title(), str(exc), parent=self)
 
     def supprimer(self) -> None:
         from .ria_etats import Registre

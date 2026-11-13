@@ -76,8 +76,8 @@ def test_profil_limite_a_certains_points_de_vente(tmp_path):
     from mvogmbi_sync.utilisateurs import ADMIN, ErreurUtilisateur, Registre
 
     r = Registre(tmp_path)
-    admin = r.ajouter("Patron", ADMIN, "secret123")
-    caissier = r.ajouter("Caissier", "Employé", "secret123")
+    admin = r.ajouter("Patron", ADMIN, "secret123456")
+    caissier = r.ajouter("Caissier", "Employé", "secret123456")
     assert r.points_vente_permis(caissier) is None  # sans réglage : tous
     r.definir_points_vente("Employé", ["2"])
     with pytest.raises(ErreurUtilisateur):

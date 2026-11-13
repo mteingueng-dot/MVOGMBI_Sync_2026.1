@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.12 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -13,6 +13,15 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
 
 ---
+
+## Version 1.0.13 (13 novembre 2026)
+
+- **Sécurité** (analyse complète de l'application) :
+  - reçus de dépense, factures fournisseurs et états RIA : seuls les PDF et les images sont acceptés, reconnus par leur contenu, et un fichier reçu n'est jamais ouvert sous Windows s'il n'en est pas un ;
+  - exports Excel et CSV : un texte venu de l'extérieur (message Interac, nom Clover, ligne de facture) n'est plus jamais pris pour une formule ;
+  - mots de passe de l'application Windows : 12 caractères au moins ; empreintes renforcées (600 000 tours), les anciennes refaites à la connexion suivante ;
+  - pointage : l'attente après des NIP faux s'allonge (1, 5, 30 puis 120 minutes) et chaque série est notée à l'audit ;
+  - serveur web : requêtes invalides refusées, connexions inactives fermées après 30 s, partages réseau refusés dans « Parcourir… » et « Reprendre une configuration ».
 
 ## Version 1.0.12 (13 novembre 2026)
 

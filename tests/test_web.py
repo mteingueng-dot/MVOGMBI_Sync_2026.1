@@ -27,8 +27,8 @@ def site(tmp_path):
     Registre._blocages.clear()  # un autre test bloque « Patron » (dernier administrateur) pour 15 min
     (tmp_path / "config.toml").write_text("[web]\npostes_pointage = ['127.0.0.1']\n", encoding="utf-8")
     reg = Registre(tmp_path)
-    reg.ajouter("Patron", "Administrateur", "secret123")
-    reg.ajouter("Awa", "Employé", "secret456")
+    reg.ajouter("Patron", "Administrateur", "secret123456")
+    reg.ajouter("Awa", "Employé", "secret456789")
     reg.enregistrer()
     registre = pt.Registre(tmp_path)
     awa = registre.ajouter("Awa Mballa")
@@ -100,7 +100,7 @@ def test_connexion_et_securite(site):
     politique = entetes["Content-Security-Policy"]
     assert "script-src 'self';" in politique and "unsafe-inline" not in politique.split("script-src")[1].split(";")[0]
     assert "frame-ancestors 'none'" in politique and "<script>" not in page
-    nav = connecter(base, "Patron", "secret123")
+    nav = connecter(base, "Patron", "secret123456")
     statut, page, _ = ouvrir(nav, base + "/")
     assert statut == 200 and "Feuilles de temps" in page and "Reporting" in page
     # formulaire sans jeton anti-falsification, puis venu d'un autre site
@@ -117,7 +117,7 @@ def test_connexion_et_securite(site):
 
 def test_profil_employe_limite(site):
     base, _, awa = site
-    nav = connecter(base, "Awa", "secret456")
+    nav = connecter(base, "Awa", "secret456789")
     statut, page, _ = ouvrir(nav, base + "/")
     assert "Mon horaire" in page and "Feuilles de temps" not in page
     assert ouvrir(nav, base + "/feuilles")[0] == 403
@@ -130,7 +130,7 @@ def test_profil_employe_limite(site):
 
 def test_pointage_et_approbation(site, tmp_path):
     base, srv, awa = site
-    nav = connecter(base, "Awa", "secret456")
+    nav = connecter(base, "Awa", "secret456789")
     _, page, _ = ouvrir(nav, base + "/pointage")
     assert "Touchez votre nom" in page and "Awa Mballa" in page
     _, page, _ = ouvrir(nav, base + f"/pointage?employe={awa.id}")
@@ -151,7 +151,7 @@ def test_pointage_et_approbation(site, tmp_path):
     _, page, _ = ouvrir(nav, base + "/pointage")
     assert "poste du magasin" in page
     # règle du 2026-11-08 : la restriction ne vaut pas pour un administrateur, et son appareil n'est jamais suivi
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/pointage")
     assert "Touchez votre nom" in page
     _, page, _ = ouvrir(patron, base + f"/pointage?employe={awa.id}")
@@ -170,7 +170,7 @@ def test_pointage_et_approbation(site, tmp_path):
     jour = datetime.combine(debut + timedelta(days=1), datetime.min.time())
     registre.corriger(awa.id, pt.ARRIVEE, jour.replace(hour=8), "Patron", "essai")
     registre.corriger(awa.id, pt.DEPART, jour.replace(hour=16), "Patron", "essai")
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + f"/feuilles?debut={debut}")
     assert "Awa Mballa" in page and "8,00" in page
     _, page, _ = ouvrir(patron, base + "/feuilles", {"csrf": jeton_csrf(page), "debut": str(debut),
@@ -184,7 +184,7 @@ def test_trop_d_essais_depuis_une_adresse(site):
     nav, _ = navigateur()
     for _ in range(serveur.ECHECS_ADRESSE):
         ouvrir(nav, base + "/connexion", {"nom": "Inconnu", "mot_de_passe": "x"})
-    _, page, _ = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": "secret123"})
+    _, page, _ = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": "secret123456"})
     assert "Trop d&#x27;essais" in page
 
 
@@ -215,7 +215,7 @@ def test_pages_paie_du_gerant(site, tmp_path):
     from mvogmbi_sync import conges as co
 
     base, _, awa = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/")
     assert "Planning mensuel" in page and "Employés et NIP" in page and "Jours fériés et congés" in page
     mois = f"{date.today():%Y-%m}"
@@ -277,7 +277,7 @@ def test_paies_web_et_droits(site, monkeypatch):
     paie = pa.PaieSage(7, date(date.today().year, 1, 15), "PAY15012026", "Awa Mballa",
                        gains={"Salaires": Decimal("100")}, net=Decimal("80"))
     monkeypatch.setattr(pages_paie, "_paies_annee", lambda ctx, annee: [paie])
-    nav = connecter(base, "Awa", "secret456")
+    nav = connecter(base, "Awa", "secret456789")
     assert ouvrir(nav, base + "/planning")[0] == 403 and ouvrir(nav, base + "/conges")[0] == 403
     statut, page, _ = ouvrir(nav, base + "/paies")
     assert statut == 200 and "80,00 $" in page and "bulletin?employe=" in page
@@ -298,7 +298,7 @@ def test_menu_comme_l_application_windows(site):
     from urllib.parse import quote
 
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/planning")
     for rubrique in ("Administration", "Articles", "Stock", "Vente", "Fournisseur", "Comptabilité", "RIA", "Paie",
                      "État"):
@@ -309,7 +309,7 @@ def test_menu_comme_l_application_windows(site):
     assert "Mise en route" in page and "Bienvenue dans MVOGMBI_Sync" in page and "Se déconnecter" in page
     _, page, _ = ouvrir(patron, base + "/complete?f=" + quote("Plan comptable"))  # renvoi : toujours possible
     assert "Application complète (Bureau à distance)" in page
-    awa = connecter(base, "Awa", "secret456")
+    awa = connecter(base, "Awa", "secret456789")
     _, page, _ = ouvrir(awa, base + "/")
     assert "Comptabilité</summary>" not in page and "Mon horaire" in page
     assert ouvrir(awa, base + "/complete?f=" + quote("Plan comptable"))[0] == 403
@@ -322,7 +322,7 @@ def test_consultations(site):
     import time as temps
 
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     statut, page, _ = ouvrir(patron, base + "/audit")
     assert statut == 200 and "Chaîne d&#x27;empreintes intacte" in page and "Patron" in page
     debut = temps.time()
@@ -339,7 +339,7 @@ def test_vague_etat(site, tmp_path):
     cal = Calendrier(tmp_path)
     cal.definir(date.today().year, date(date.today().year, 1, 12))
     cal.enregistrer()
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/calendrier-paie")
     assert "Calendrier de paie" in page and f"{date.today().year}-01-12" in page
     statut, page, _ = ouvrir(patron, base + "/main-oeuvre")  # pas de jeton Clover ici : message, pas de coupure
@@ -362,7 +362,7 @@ def test_caisse_et_depenses(site, tmp_path, monkeypatch):
     from mvogmbi_sync import plan_comptable
 
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     hier = date.today() - timedelta(days=1)
     statut, page, _ = ouvrir(patron, base + f"/caisse?jour={hier}")
     assert statut == 200 and "Clover ne répond pas" in page   # pas de jeton ici : comptage possible quand même
@@ -398,7 +398,7 @@ def test_vague_comptabilite(site, tmp_path):
     from mvogmbi_sync import ria
 
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     for chemin in ("/encaissements", "/paiements-fournisseurs", "/rapprochement", "/etats-ria"):
         statut, page, _ = ouvrir(patron, base + chemin)
         assert statut == 200, chemin
@@ -431,7 +431,7 @@ def test_documents_saisis(site, tmp_path):
     from mvogmbi_sync import documents as dc
 
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/document/saisie?genre=commande")
     jeton = jeton_csrf(page)
     statut, _, entetes = ouvrir(patron, base + "/document/saisie", {
@@ -464,7 +464,7 @@ def test_documents_saisis(site, tmp_path):
     assert entetes["Location"] == "/pertes"
     _, page, _ = ouvrir(patron, base + "/document/choisir?cote=vente")
     assert "Quel type de document voulez-vous ajouter ?" in page
-    awa = connecter(base, "Awa", "secret456")
+    awa = connecter(base, "Awa", "secret456789")
     assert ouvrir(awa, base + "/document?n=CC-0001")[0] == 403
 
 
@@ -472,7 +472,7 @@ def test_factures_fournisseurs_web(site, tmp_path):
     from mvogmbi_sync import fournisseurs as fo
 
     base, srv, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/factures-fournisseurs")
     jeton = jeton_csrf(page)
     limite = "----F"
@@ -558,7 +558,7 @@ def test_factures_fournisseurs_relier_fluide(site, tmp_path):
     reg.factures.append(fo.Facture(fichier="autre-essai.pdf", empreinte="y", fournisseur_lu="Autre Essai",
                                    numero="A-9", date_facture="2026-10-01"))
     reg.enregistrer()
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/factures-fournisseurs?i=0")
     f = fo.Registre(tmp_path).factures[0]
     assert [l.numero_sage for l in f.lignes] == ["ESS-01", "ESS-02", "ESS-03"]  # proposés à l'ouverture
@@ -611,7 +611,7 @@ def test_factures_fournisseurs_article_sage_tape(site, tmp_path):
     f.etat = fo.A_VERIFIER
     reg.factures.append(f)
     reg.enregistrer()
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/factures-fournisseurs?i=0&l=0")
     assert "list='sage-numeros'" in page and "list='sage-designations'" in page
     assert "<option value='TAP-02' label='Jus Essai Pomme 330ml'>" in page
@@ -661,7 +661,7 @@ def test_achats_web(site, tmp_path):
     from mvogmbi_sync import retours as rt
 
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/saisir-facture-achat")
     jeton = jeton_csrf(page)
     statut, _, entetes = ouvrir(patron, base + "/saisir-facture-achat", {
@@ -702,7 +702,7 @@ def test_articles_web(site, tmp_path, monkeypatch):
     monkeypatch.setattr(cache_lectures, "inventaire_clover", lambda racine, pv=None: catalogue)
     monkeypatch.setattr(pe, "appliquer", lambda racine, config, numero, client=None: pe.Registre(racine).perte(numero))
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/pertes")
     assert "Déclarer une perte" in page and "Rapport des pertes" in page and "Plantain jaune — ABC123" in page
     commun = {"csrf": jeton_csrf(page), "pv": "1", "jour": "2026-11-03", "motif": pe.MOTIFS[0], "remarque": ""}
@@ -756,7 +756,7 @@ def test_catalogue_web(site, tmp_path, monkeypatch):
                                                 "Attiéké 500g", "4016", "Ressemblance", 80, "", "", "DEF456")],
                              tmp_path / "donnees" / "correspondance_articles.xlsx")
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/articles-clover?ugs=1")
     assert "Plantain jaune" in page and "Attiéké" not in page        # UGS « LOT-7 » n'est pas une date
     _, page, _ = ouvrir(patron, base + "/correspondance")
@@ -804,7 +804,7 @@ def test_administration_web(site, tmp_path, monkeypatch):
     monkeypatch.setattr(coffre, "ecrire", lambda cle, valeur: gardes.__setitem__(cle, valeur))
     monkeypatch.setattr(coffre, "present", lambda cle: cle in gardes)
     base, srv, _ = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/admin/clover")
     jeton = jeton_csrf(page)
     _, page, _ = ouvrir(patron, base + "/admin/clover", {"csrf": jeton, "merchant_id": "ABCDEFGHJK123",
@@ -815,13 +815,13 @@ def test_administration_web(site, tmp_path, monkeypatch):
     assert config["clover"]["merchant_id"] == "ABCDEFGHJK123" and config["web"]["postes_pointage"] == ["127.0.0.1"]
     # utilisateurs : nouveau compte, puis accès du profil Employé limité à « Mon horaire »
     _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "nom": "Comptable 1", "profil": "Comptable",
-                                                         "mot_de_passe": "secret789", "action": "Ajouter"})
+                                                         "mot_de_passe": "secret789012", "action": "Ajouter"})
     assert RegistreU(tmp_path).trouver("Comptable 1").profil == "Comptable"
     _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "profil": "Employé", "fonction": ["Mon horaire"],
                                                          "pdv_tous": "1", "action": "Accès"})
     reg = RegistreU(tmp_path)
     assert reg.fonctions_permises["Employé"] == ["Mon horaire"] and "accueil" in reg.profils["Employé"]
-    awa = connecter(base, "Awa", "secret456")
+    awa = connecter(base, "Awa", "secret456789")
     assert ouvrir(awa, base + "/horaire")[0] == 200 and ouvrir(awa, base + "/pointage")[0] == 403
     assert ouvrir(awa, base + "/utilisateurs")[0] == 403 and ouvrir(awa, base + "/admin/clover")[0] == 403
 
@@ -836,7 +836,7 @@ def test_traitement_paie_web(site, tmp_path, monkeypatch):
     monkeypatch.setattr(pages_paie, "_paies_annee", lambda ctx, annee: [paie])
     from mvogmbi_sync.web import pages_traitement_paie
     monkeypatch.setattr(pages_traitement_paie, "_paies_annee", lambda ctx, annee: [paie])
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     for chemin in ("/traitement-paie", "/traitement-paie?onglet=validees", "/fin-emploi"):
         assert ouvrir(patron, base + chemin)[0] == 200, chemin
     _, page, _ = ouvrir(patron, base + f"/paies-sage?du={date.today().year}-01-01&au={date.today()}")
@@ -850,7 +850,7 @@ def test_traitement_paie_web(site, tmp_path, monkeypatch):
     _, page, _ = ouvrir(patron, base + "/traitement-paie", {"csrf": jeton_csrf(page), "periode": str(debut),
                                                             "jour": str(date.today()), "onglet": "validees"})
     assert "pas terminée" in page
-    awa_nav = connecter(base, "Awa", "secret456")
+    awa_nav = connecter(base, "Awa", "secret456789")
     assert ouvrir(awa_nav, base + "/paies-sage")[0] == 403
 
 
@@ -873,7 +873,7 @@ def test_graphiques_svg_comme_windows():
 
 def test_exporter_les_tableaux_comme_windows(site):
     base, _, awa = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     _, page, _ = ouvrir(patron, base + "/employes")
     assert "⬇ Exporter ▾" in page and "exporter=0&amp;format=xlsx" in page
     with patron.open(base + "/employes?exporter=0&format=xlsx") as r:
@@ -973,8 +973,8 @@ def test_activer_desactiver_un_compte(site, tmp_path):
     from mvogmbi_sync.utilisateurs import Registre as RegistreU
 
     base, _, _ = site
-    patron = connecter(base, "Patron", "secret123")
-    awa = connecter(base, "Awa", "secret456")
+    patron = connecter(base, "Patron", "secret123456")
+    awa = connecter(base, "Awa", "secret456789")
     assert ouvrir(awa, base + "/horaire")[0] == 200
     _, page, _ = ouvrir(patron, base + "/utilisateurs")
     jeton = jeton_csrf(page)
@@ -982,7 +982,7 @@ def test_activer_desactiver_un_compte(site, tmp_path):
                                                          "action": "Activer / désactiver"})
     assert "Compte « Awa » désactivé." in page and not RegistreU(tmp_path).trouver("Awa").actif
     assert ouvrir(awa, base + "/horaire")[0] == 303  # session fermée
-    statut, _, _ = ouvrir(navigateur()[0], base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456"})
+    statut, _, _ = ouvrir(navigateur()[0], base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456789"})
     assert statut == 200  # connexion refusée (la page de connexion revient)
     _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "compte": "Patron",
                                                          "action": "Activer / désactiver"})
@@ -990,7 +990,7 @@ def test_activer_desactiver_un_compte(site, tmp_path):
     _, page, _ = ouvrir(patron, base + "/utilisateurs", {"csrf": jeton, "compte": "Awa",
                                                          "action": "Activer / désactiver"})
     assert "Compte « Awa » activé." in page
-    assert ouvrir(connecter(base, "Awa", "secret456"), base + "/horaire")[0] == 200
+    assert ouvrir(connecter(base, "Awa", "secret456789"), base + "/horaire")[0] == 200
 
 
 def test_prix_de_vente_sage_depuis_clover():
@@ -1024,7 +1024,7 @@ def test_mot_de_passe_web(site, tmp_path):
     assert not probleme_mot_de_passe_web("Marche-Mvog2026!")
     base, _, _ = site
     nav, _ = navigateur()
-    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456"})
+    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456789"})
     assert statut == 303 and entetes["Location"] == "/mot-de-passe"
     statut, _, entetes = ouvrir(nav, base + "/horaire")
     assert statut == 303 and entetes["Location"] == "/mot-de-passe"  # rien d'autre avant le mot de passe web
@@ -1037,14 +1037,14 @@ def test_mot_de_passe_web(site, tmp_path):
                                                        "confirmation": "Marche-Mvog2026!"})
     assert statut == 303 and RegistreU(tmp_path).trouver("Awa").empreinte_web
     nav2, _ = navigateur()
-    statut, _, _ = ouvrir(nav2, base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456"})
+    statut, _, _ = ouvrir(nav2, base + "/connexion", {"nom": "Awa", "mot_de_passe": "secret456789"})
     assert statut == 200  # le mot de passe Windows n'ouvre plus l'application web
     statut, _, entetes = ouvrir(nav2, base + "/connexion", {"nom": "Awa", "mot_de_passe": "Marche-Mvog2026!"})
     assert statut == 303 and entetes["Location"] == "/"
     reg = RegistreU(tmp_path)
-    assert reg.verifier("Awa", "secret456") is not None  # l'application Windows garde son mot de passe
+    assert reg.verifier("Awa", "secret456789") is not None  # l'application Windows garde son mot de passe
     try:
-        reg.definir_mot_de_passe_web("Awa", "secret456")
+        reg.definir_mot_de_passe_web("Awa", "secret456789")
         assert False
     except ErreurUtilisateur:
         pass
@@ -1081,7 +1081,7 @@ def test_photographier_une_facture(site):
     from mvogmbi_sync.web.pages_fournisseurs import pdf_des_photos
 
     base, _, _ = site
-    nav = connecter(base, "Patron", "secret123")
+    nav = connecter(base, "Patron", "secret123456")
     statut, page, _ = ouvrir(nav, base + "/photo-facture")
     assert statut == 200 and "capture='environment'" in page and "Terminer la facture" in page
     photos = []
@@ -1095,7 +1095,7 @@ def test_photographier_une_facture(site):
 def test_aide_sans_parametre_et_page_d_erreur(site):
     """Tour du 2026-11-06 : /aide sans « ?page= » plantait, et la page d'erreur aussi (aucune réponse)."""
     base, _srv, _awa = site
-    patron = connecter(base, "Patron", "secret123")
+    patron = connecter(base, "Patron", "secret123456")
     statut, page, _ = ouvrir(patron, base + "/aide")
     assert statut == 200 and "Aide" in page
 
@@ -1104,16 +1104,16 @@ def test_reconnexion_revient_a_la_page(site):
     """Demande du propriétaire du 2026-11-06 : après la fermeture de la session pour inactivité, la reconnexion
     reprend à la page où la personne était (les travaux en cours continuent sur le serveur)."""
     base, _srv, _awa = site
-    connecter(base, "Patron", "secret123")                 # mot de passe web créé
+    connecter(base, "Patron", "secret123456")                 # mot de passe web créé
     nav, _ = navigateur()
     statut, _, entetes = ouvrir(nav, base + "/encaissements?du=2026-01-01&au=2026-01-11")
     assert statut == 303 and entetes["Location"] == "/connexion?retour=%2Fencaissements%3Fdu%3D2026-01-01%26au%3D2026-01-11"
     _, page, _ = ouvrir(nav, base + entetes["Location"])
     assert "name='retour' value='/encaissements?du=2026-01-01&amp;au=2026-01-11'" in page
-    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": mdp_web("secret123"),
+    statut, _, entetes = ouvrir(nav, base + "/connexion", {"nom": "Patron", "mot_de_passe": mdp_web("secret123456"),
                                                            "retour": "/encaissements?du=2026-01-01&au=2026-01-11"})
     assert statut == 303 and entetes["Location"] == "/encaissements?du=2026-01-01&au=2026-01-11"
     nav2, _ = navigateur()
-    statut, _, entetes = ouvrir(nav2, base + "/connexion", {"nom": "Patron", "mot_de_passe": mdp_web("secret123"),
+    statut, _, entetes = ouvrir(nav2, base + "/connexion", {"nom": "Patron", "mot_de_passe": mdp_web("secret123456"),
                                                             "retour": "//autre-site.example/"})
     assert statut == 303 and entetes["Location"] == "/"   # jamais vers un autre site

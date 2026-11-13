@@ -826,6 +826,8 @@ def _reprendre(ctx: Contexte, dossier: str) -> str:
     from .. import coffre
     from ..interface import ecrire_config, lire_config
 
+    if dossier.replace("/", "\\").startswith("\\\\"):  # partage réseau refusé (analyse de sécurité du 2026-11-13)
+        return _message(erreur="Choisissez un dossier de ce serveur (pas un partage réseau).")
     source = Path(dossier)
     if not dossier or not source.is_dir():
         return _message(erreur="Choisissez le dossier qui contient config.toml (et le sous-dossier donnees).")

@@ -65,7 +65,7 @@ Le **client des postes** (`MVOGMBI_Sync_Client.exe`) ouvre directement l'applica
 
 | Règle | Application Windows | Application web |
 |---|---|---|
-| Mot de passe | 6 caractères au moins ; empreinte PBKDF2-SHA256 salée, jamais le mot de passe | Mot de passe **à part**, 12 caractères au moins avec minuscule, majuscule, chiffre et caractère spécial, différent du mot de passe Windows |
+| Mot de passe | 12 caractères au moins (depuis la 1.0.13 ; les mots de passe plus courts déjà enregistrés restent valables jusqu’à leur changement) ; empreinte PBKDF2-SHA256 salée de 600 000 tours, jamais le mot de passe | Mot de passe **à part**, 12 caractères au moins avec minuscule, majuscule, chiffre et caractère spécial, différent du mot de passe Windows |
 | Première connexion | Premier lancement = création du compte administrateur | Connexion avec le mot de passe Windows, puis création obligatoire du mot de passe web (toute page renvoie à « Créer mon mot de passe web ») |
 | Erreurs | 3 mots de passe faux de suite = compte verrouillé ; l'administrateur le rouvre en donnant un nouveau mot de passe ; le dernier administrateur actif n'est que bloqué 15 minutes | 10 échecs en 10 minutes par adresse = refus temporaire |
 | Inactivité | Après 5 minutes sans souris ni clavier, fenêtres cachées et écran de verrouillage ; les traitements en cours **continuent** ; au déverrouillage on revient exactement où l'on était, fenêtres à part comprises | Après 5 minutes sans activité, la page passe d'elle-même à la connexion ; après la reconnexion, retour à **la même page** ; un travail en cours se retrouve |

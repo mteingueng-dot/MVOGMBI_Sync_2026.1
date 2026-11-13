@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -102,7 +102,7 @@ Une mise à jour s'installe **par-dessus** : `config.toml` et `donnees/` ne sont
 
 ### 3.2 Premier lancement
 
-- Le premier lancement demande de **créer le compte administrateur** (nom, mot de passe d'au moins 6 caractères). Il en reste toujours au moins un actif.
+- Le premier lancement demande de **créer le compte administrateur** (nom, mot de passe d'au moins 12 caractères). Il en reste toujours au moins un actif.
 - L'accueil affiche la **« Mise en route » en 10 étapes** ; chaque étape se coche quand elle est faite.
 
 ### 3.3 Reprendre une installation existante (changement de serveur)
@@ -496,6 +496,10 @@ Avant de signaler un problème : noter l'heure, le message exact, la page, et jo
 - ☐ Session Windows du serveur verrouillée, jamais fermée (le traitement de nuit et le serveur web en ont besoin).
 - ☐ Mises à jour de Windows, de Sage et de Tailscale suivies ; Sage jamais arrêté de force.
 - ☐ Dossier `donnees/` et `config.toml` jamais envoyés ni publiés ; le NAS des employés n'est jamais saisi dans l'application.
+- ☐ **Compte Windows dédié** (recommandé) : l'application, le serveur web et le traitement de nuit tournent dans une session Windows sans droits d'administrateur ; une faille éventuelle ne donnerait alors pas le contrôle du serveur.
+- ☐ **Règles d'accès de Tailscale** (console Tailscale, « Access controls ») : les téléphones et postes des employés n'atteignent que le port 443 du serveur ; le Bureau à distance (3389) et les autres ports seulement pour les administrateurs.
+- ☐ Installateurs contrôlés par leur empreinte SHA-256 avant l'installation (les programmes ne sont pas signés : l'avertissement de Windows est attendu).
+- ☐ Mots de passe de 12 caractères au moins (version 1.0.13) : faire changer les anciens mots de passe plus courts ; l'audit signale les séries de NIP faux au pointage.
 
 ---
 

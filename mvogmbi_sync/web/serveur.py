@@ -313,6 +313,7 @@ POLITIQUE = ("default-src 'none'; script-src 'self'; connect-src 'self'; style-s
 class Gestionnaire(BaseHTTPRequestHandler):
     server_version = "MVOGMBI_Sync"
     sys_version = ""
+    timeout = 30  # s : une connexion qui n'envoie rien (ou très lentement) est fermée, jamais gardée sans fin
 
     @property
     def app(self) -> Application:
@@ -343,7 +344,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
         form: dict[str, list[str]] = {}
         fichiers: dict = {}
         if methode == "POST":
-            longueur = int(self.headers.get("Content-Length") or 0)
+            try:
+                longueur = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                longueur = -1
+            if longueur < 0:  # taille absente de sens : la lecture attendrait sans fin (analyse du 2026-11-13)
+                return self._envoyer(Reponse(400, "Requête invalide."))
             type_contenu = self.headers.get("Content-Type", "")
             multipart = type_contenu.startswith("multipart/form-data")
             if longueur > (TAILLE_MAX_FICHIERS if multipart else TAILLE_MAX):
