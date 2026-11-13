@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Workflows d'utilisation
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Chaque workflow suit l'ordre réel des écrans. Les noms entre guillemets sont ceux du menu (« Rubrique > Fonction »).
 
@@ -82,7 +82,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A([Relevé Desjardins PDF]) --> B["Comptabilité > Rapprochement<br/>Charger le relevé"]
+    A([Relevé du mois<br/>PDF, OFX ou CSV de la banque]) --> B["Comptabilité > Rapprochement<br/>Charger le relevé"]
     B --> C{"Écart non expliqué ?"}
     C -- "mouvement absent de Sage" --> D["Saisir dans Sage<br/>(écriture de journal)"]
     C -- "encaissement manuel" --> E["Encaissement manuel"]
@@ -258,18 +258,24 @@ flowchart TD
     K --> L([🖨 Bon de réception / Facture avec prix])
 ```
 
-## 8 sexies. Rapprocher un compte BNC
+## 8 sexies. Rapprocher un compte d'une autre banque (BNC, RBC, TD, caisse…)
 
 ```mermaid
 flowchart TD
-    A([Relevé PDF BNC]) --> B["Comptabilité > Rapprochement bancaire<br/>Charger"]
-    B --> C["Banque reconnue : rangé dans le compte BNC"]
-    C --> D["Liste « Banque » : BNC"]
-    D --> E["Comparé au compte Sage 1060"]
+    H([Nouveau compte bancaire]) --> I["Administration > Sage 50<br/>4. Comptes bancaires : Ajouter<br/>banque, compte Sage, n° du compte"]
+    A([Relevé téléchargé du site de la banque<br/>PDF, OFX / QFX / QBO ou CSV]) --> B["Comptabilité > Rapprochement bancaire<br/>Charger"]
+    I -.-> B
+    B --> C{"Banque reconnue<br/>et compte trouvé ?"}
+    C -- non --> J["Message : ajouter le compte<br/>de cette banque"] --> H
+    C -- oui --> D["Rangé dans le compte de son n°<br/>liste « Banque »"]
+    D --> K{"Le relevé balance ?<br/>chaque solde revérifié"}
+    K -- non --> L["Relevé refusé : prendre<br/>l'OFX ou le CSV de la banque"] --> A
+    K -- oui --> E["Comparé au compte Sage de la banque<br/>(1060 pour BNC…)"]
     E --> F["Confirmer les comptes des mouvements absents"]
     F --> G([Saisir dans Sage])
-    H([Nouveau compte bancaire]) --> I["Administration > Sage 50<br/>4. Comptes bancaires : Ajouter"]
 ```
+
+Un PDF dont la mise en page n'est pas reconnue se remplace par le fichier **OFX** (« Microsoft Money », « Quicken ») ou **CSV** offert au téléchargement par toutes les banques canadiennes : il se lit sans dépendre de la mise en page.
 
 ## 8 ter. Pointer au magasin
 
@@ -342,16 +348,31 @@ flowchart TD
 
 ## 8 decies. Relier les lignes d'une facture fournisseur
 
-1. Fournisseur > Factures fournisseurs : ouvrir la facture. Les articles Sage sont proposés tout de suite.
+1. Fournisseur > Factures fournisseurs, onglet « 📋 Liste des factures » : ouvrir la facture (clic, ou double-clic sous Windows) ; elle s'affiche dans l'onglet « ✏ Saisie de la facture » (liste « Facture à traiter », ◀ ▶ pour passer à la suivante). Les articles Sage sont proposés tout de suite.
 2. Si les propositions sont justes, cliquer « Confirmer toutes les propositions ». Sinon :
    - choisir la ligne ;
    - chercher l'article Sage (l'assistant de saisie propose les articles pendant la frappe) ;
-   - cliquer « Relier et confirmer ».
+   - cliquer « Relier et confirmer » ;
+   - ou taper directement le **n° Sage** ou la **désignation Sage** dans la ligne (propositions pendant la frappe, l'autre champ se remplit seul) puis Entrée.
 
    La ligne suivante à relier s'ouvre d'elle-même.
 3. Vérifier le facteur (une caisse en unités, un poids dans l'unité de Sage) et les taxes de chaque ligne (« F P » et « TX » sont lus).
 4. Cocher ou décocher « Mettre à jour le stock Clover » pour cette facture seulement.
 5. Cliquer « Importer cette facture », ou cocher plusieurs factures prêtes puis cliquer « Importer les factures cochées ». La facture importée passe aux archives.
+
+## 8 undecies. Note de crédit ou retour d'un fournisseur
+
+```mermaid
+flowchart TD
+    A([Document du fournisseur<br/>titre « CREDIT » / « NOTE DE CRÉDIT »]) --> B["Fournisseur > Factures fournisseurs<br/>Ajouter ou reçu par courriel"]
+    B --> C["Lu en note de crédit :<br/>case « Note de crédit » cochée,<br/>quantités et montants négatifs"]
+    C --> D{"Bien une note de crédit ?"}
+    D -- non --> E["Décocher : remis en positif"]
+    D -- oui --> F["Relier les lignes aux articles Sage"]
+    F --> G["Importer cette facture<br/>(facture d'achat négative)"]
+    G --> H["Stock Clover diminué<br/>coût Clover inchangé"]
+    R([Marchandise renvoyée]) --> S["Fournisseur > Retours fournisseurs<br/>lignes de la facture d'origine"] --> G
+```
 
 ## 9. Droits d'un profil
 

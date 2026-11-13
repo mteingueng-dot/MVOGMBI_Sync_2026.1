@@ -1,6 +1,6 @@
 # Présentation de nos services — Clover et Sage 50 enfin reliés
 
-Concept Informatique inc. — Solution MVOGMBI_Sync, version 1.0.2 (novembre 2026)
+Concept Informatique inc. — Solution MVOGMBI_Sync, version 1.0.11 (novembre 2026)
 
 **Votre caisse Clover et votre comptabilité Sage 50 travaillent ensemble, chaque nuit, sans ressaisie.** Vous gardez vos outils ; nous faisons le lien, nous l'installons chez vous, nous formons votre équipe et nous restons à vos côtés.
 
@@ -59,7 +59,7 @@ flowchart LR
 - Les **factures PDF ou photographiées** (même au téléphone) sont lues, contrôlées, puis importées dans Sage. Le stock Clover se met à jour en même temps, au choix pour chaque facture.
 - La lecture utilise l'**OCR intégré à Windows**, sans intelligence artificielle ni service externe : vos documents ne quittent pas votre serveur.
 - Les articles du fournisseur sont **reliés à vos articles** une fois pour toutes, avec la conversion des unités (caisse, kg, lb).
-- **Bons de commande** proposés selon les ventes, **retours fournisseurs**, **paiements** rapprochés des virements Interac.
+- **Bons de commande** proposés selon les ventes, **retours fournisseurs** et **notes de crédit** (stock retiré de Clover), **paiements** rapprochés des virements Interac.
 
 ### 3.3 Articles et stocks
 
@@ -71,7 +71,7 @@ flowchart LR
 
 ### 3.4 Comptabilité et banque
 
-- **Rapprochement bancaire** Desjardins et Banque Nationale, à partir des relevés PDF.
+- **Rapprochement bancaire** avec **toutes les banques et caisses du Canada** (Desjardins, Banque Nationale, RBC, TD, Scotia, BMO, CIBC, Tangerine, caisses, banques en ligne…), à partir des relevés PDF, OFX / QFX ou CSV téléchargés de votre banque.
 - **Contrôle de la caisse** du soir, petite caisse et dépenses, plan comptable.
 - Déclaration **TPS / TVQ**, âge des comptes, prévision de trésorerie, budget et écarts, clôture du mois.
 - Agence **RIA** : états de compte, envois, versements et commissions.
@@ -166,7 +166,7 @@ Avant toute saisie dans Sage, l'application vous montre ce qu'elle va faire. Une
 | Serveur | Un ordinateur Windows 10 ou 11 (ou Windows Server) allumé la nuit, où Sage 50 est installé |
 | Internet | Accès à Internet pour Clover et le courriel ; accès à distance sécurisé (Tailscale) pour les postes et téléphones |
 | Courriel | Une boîte pour les comptes rendus ; au besoin, la boîte qui reçoit les factures des fournisseurs et les avis Interac |
-| Banque | Relevés PDF Desjardins ou Banque Nationale (autres banques : sur demande) |
+| Banque | Relevés de votre banque ou caisse, quelle qu'elle soit : PDF, ou fichier OFX / QFX / CSV téléchargé de son site |
 
 ---
 

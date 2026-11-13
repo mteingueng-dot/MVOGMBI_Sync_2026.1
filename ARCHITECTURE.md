@@ -1,13 +1,13 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
 - facturation des ventes ;
 - encaissement des dépôts ;
 - factures et paiements fournisseurs ;
-- rapprochement bancaire Desjardins et Banque Nationale ;
+- rapprochement bancaire de toutes les banques et caisses du Canada (relevés PDF, OFX / QFX / QBO, CSV) ;
 - rapports, statistiques et aide à la décision (Reporting : 18 états enrichis, 44 analyses, synthèse des décisions) ;
 - gestion des articles, des stocks, des ventes et des achats comme dans Sage, avec la chaîne des documents (devis, commande, livraison, facture, retours) ;
 - comptabilité (caisse, dépenses, plan comptable, taxes, remises, budget) ;
@@ -29,7 +29,7 @@ flowchart LR
     subgraph Externes["Sources externes"]
         CL["Clover<br/>API REST v3"]
         BX["Boîte courriel<br/>IMAP : avis Interac,<br/>factures, états RIA"]
-        DJ["Relevés Desjardins et BNC<br/>PDF"]
+        DJ["Relevés bancaires<br/>PDF, OFX, CSV<br/>toutes les banques"]
         FF["Factures fournisseurs<br/>PDF et photos"]
     end
     subgraph Poste["Poste Windows du marché"]
@@ -148,7 +148,8 @@ flowchart TB
 | | `transferts.py`, `robot_transferts.py`, `fenetre_transferts.py` | Transferts de marchandises entre points de vente : transfert entre les deux dépôts Sage, puis stock Clover des deux marchands. |
 | | `couts_clover.py`, `fenetre_couts.py`, `fenetre_cocher.py` | Coûts Clover remplacés par le coût moyen Sage (lignes cochées, sans valeur aberrante) ; comptes des articles Sage corrigés d'après la table catégorie -> comptes. |
 | | `paiements_fournisseurs.py` | Avis Interac → factures fournisseurs → paiements. |
-| | `rapprochement.py` | Relevés Desjardins (`lire_releve_desjardins`) et BNC (`lire_releve_bnc`, banque reconnue par `banque_du_texte`) ↔ écritures du compte Sage de la banque ; comptes bancaires (`CompteBancaire`, `comptes_bancaires` : Desjardins 1055, BNC 1060, puis `[[comptes_bancaires]]`), un registre de relevés par compte (`releves_<code>/`, `ranger_releve`). |
+| | `rapprochement.py` | Relevés ↔ écritures du compte Sage de la banque. `lire_releve` choisit le lecteur par l'extension : OFX / QFX / QBO et CSV (`releves_bancaires.py`), PDF BNC (`lire_releve_bnc`), tout autre PDF par colonnes (`lire_releve_desjardins` généralisé : en-têtes français ou anglais, colonnes Frais / Retrait / Dépôt / Solde, « Amount », date après les montants, sens confirmé par le solde imprimé, arrêt au compte suivant). Comptes bancaires (`CompteBancaire`, `comptes_bancaires` : compte de dépôt 1055 dans la banque `[rapprochement] banque_depot`, BNC 1060, puis `[[comptes_bancaires]]` de toute banque), un registre de relevés par compte (`releves_<code>/`, `ranger_releve` : n° du compte, puis banque, puis seul compte). |
+| | `banques_canada.py`, `releves_bancaires.py` | Liste des banques et caisses du Canada (code, nom, n° d'institution, mots qui la reconnaissent ; `detecter`) ; lecture des relevés OFX 1.x / 2.x et CSV (en-tête français, anglais ou absent ; dates jma / mja ; sens des montants contrôlé par le solde). |
 | | `depots.py` | Dépôts : points de vente + « Emplacement par défaut » + `[sage] depots_sans_clover` ; filtres (`choisis`, `garde`) ; après l'import d'une facture, transfert « DP <n° de facture> » vers ou depuis son dépôt (`apres_import`). |
 | | `impression_fournisseur.py` | Bon de réception (sans prix, quantité ajoutée dans Clover) et facture complète d'une facture fournisseur. |
 | | `rapports.py` | Suivi des ventes et recherches dans l'historique Sage. |
@@ -160,7 +161,7 @@ flowchart TB
 | | `paie_temps.py`, `fenetre_pointage.py`, `fenetre_feuilles_temps.py` | Paie : poste de pointage par NIP (commande `pointage`, raccourci « Pointage des employés »), feuilles de temps de 14 jours, heures supplémentaires, corrections avec motif, approbation, employés et NIP (empreintes seulement). |
 | | `retenues.py` | Paie > Retenues à la source : retenues et cotisations du mois par compte de passif de Sage, versements, total à remettre par organisme (Revenu Québec, ARC, CNESST), échéance du 15. |
 | | `sauvegarde.py`, `fenetre_sauvegarde.py` | Administration > Sauvegarde des données : archive vérifiée de donnees/ chaque nuit (OneDrive par défaut), conservation 14 j / 8 sem. / 12 mois, restauration. |
-| | `caisse.py`, `fenetre_caisse.py` | Comptabilité > Contrôle de la caisse : espèces attendues d'après Clover, comptage du soir par coupures, écarts, dépôts d'espèces contre relevés Desjardins. |
+| | `caisse.py`, `fenetre_caisse.py` | Comptabilité > Contrôle de la caisse : espèces attendues d'après Clover, comptage du soir par coupures, écarts, dépôts d'espèces contre relevés du compte de dépôt. |
 | | `pertes.py`, `fenetre_pertes.py` | Articles > Pertes et démarque : déclaration valorisée au coût, sortie du stock Clover et document de stock Sage, rapport par motif / catégorie / article / mois en % des ventes. |
 | | `conges.py`, `fenetre_conges.py` | Paie > Jours fériés et congés : jours fériés du Québec, indemnité (1/20 des 4 semaines), congés et soldes (vacances 4 % / 6 %, 2 jours de maladie payés), heures ajoutées à la paie. |
 | | `retenues.py` (suivi) | Comptabilité > Suivi des remises : remises des retenues par mois et par organisme (à temps, en retard, à remettre), alertes au résumé du matin. |
@@ -212,7 +213,7 @@ flowchart LR
             CORR["correspondance_articles.xlsx<br/>points_vente/&lt;code&gt;/ (autres points de vente)"]
             REGF["factures_fournisseurs.json<br/>+ dossier des PDF"]
             REGP["paiements_fournisseurs.json"]
-            REL["releves_desjardins/, releves_bnc/…<br/>un dossier par compte bancaire"]
+            REL["releves_desjardins/ (compte de dépôt),<br/>releves_&lt;code&gt;/…<br/>un dossier par compte bancaire"]
             CACHE["cache_clover/AAAA-MM-JJ.json<br/>couts_sage.json"]
             USR["utilisateurs.json<br/>audit.jsonl"]
             RIA["ria.json<br/>etats_ria/etats.json"]
@@ -314,7 +315,7 @@ Règle : montant de ligne = ventes nettes Clover de l'article ; prix = montant �
 ```mermaid
 flowchart TD
     L["Lots Clover<br/>fermés à 21 h 32"] --> D["Dépôt attendu<br/>= encaissé − espèces"]
-    R["Relevé Desjardins<br/>page 10"] --> E["Espèces des ventes<br/>Interac reçus, dépôts au guichet"]
+    R["Relevé du compte de dépôt<br/>page 10"] --> E["Espèces des ventes<br/>Interac reçus, dépôts au guichet"]
     D --> A["Affectation<br/>lun.–jeu. : facture du jour<br/>ven.–dim. : facture de fin de semaine"]
     E --> A2["Interac : facture du jour<br/>Guichet : factures avec espèces dues,<br/>la plus ancienne d'abord"]
     A & A2 --> V{"Déjà dans Sage ?<br/>tcustrdt, compte 1055"}
@@ -350,6 +351,13 @@ flowchart TD
     N4 -.-> P6
 ```
 
+Particularités des factures fournisseurs (versions 1.0.1 à 1.0.6) :
+
+- **Deux onglets**, Windows et web : « Liste des factures » (filtres, cases à cocher, imports) et « Saisie de la facture » (liste déroulante « Facture à traiter », enregistrement automatique).
+- **Article Sage tapé** : n° ou désignation Sage saisi dans la ligne, avec propositions pendant la frappe (`fournisseurs.article_saisi` ; web : listes `sage-numeros` / `sage-designations`) ; l'autre champ se remplit seul.
+- **Notes de crédit** : un document dont le titre est « CREDIT » ou « NOTE DE CRÉDIT » (`factures_fournisseurs.est_note_credit`) est lu en négatif (`signer_credit`), case « Note de crédit » ; importé comme une `<PurInvoice>` négative.
+- **Retours et notes de crédit dans Clover** : la quantité négative retire le stock Clover des articles reliés ; le coût Clover n'est jamais changé par un retour (`stock_clover.mettre_a_jour`).
+
 Inventaire, transferts, coûts et comptes :
 
 ```mermaid
@@ -380,8 +388,11 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    R1["Relevé PDF Desjardins"] --> R2["Lecture par colonnes<br/>Frais, Retrait, Dépôt, Solde<br/>chaque solde revérifié"]
-    R1b["Relevé PDF BNC"] --> R2b["Lignes MM JJ description montant solde<br/>sens d'après la variation du solde<br/>contrôle des totaux débit / crédit"]
+    R0["Relevé chargé<br/>PDF, OFX / QFX / QBO, CSV"] --> RB["Banque reconnue<br/>mots du relevé, sinon n° d'institution<br/>rangé dans le compte de son n°"]
+    RB --> R1["PDF de toute banque"] --> R2["Lecture par colonnes<br/>en-têtes français ou anglais<br/>sens confirmé par le solde imprimé"]
+    RB --> R1c["OFX / CSV"] --> R2c["Mouvements signés<br/>solde d'ouverture recalculé"]
+    R2c --> R3
+    RB --> R1b["Relevé PDF BNC"] --> R2b["Lignes MM JJ description montant solde<br/>sens d'après la variation du solde<br/>contrôle des totaux débit / crédit"]
     R2b --> R3
     S1["Sage : tjentact + tjourent<br/>compte de la banque (1055, 1060…)"] --> R3
     R2 --> R3{"Même montant,<br/>date de −7 à +3 jours,<br/>ou somme de 2–3 écritures"}
@@ -556,6 +567,10 @@ Version 1.0.3 (« je veux que le processus soit instantané ») : seule la surve
 #### Tableaux : textes longs coupés (version 1.0.6)
 
 Les cellules restent sur une ligne, comme dans Windows. Une seule description très longue élargissait sa colonne au point de pousser les montants hors de la zone (page Rapprochement). Le serveur passe sur chaque page affichée (`export_web.couper_textes_longs`) : une cellule de plus de 45 caractères est coupée à 34 caractères de large environ (« … ») et son texte complet vient au survol (`title`) ; les cellules avec un champ, un bouton ou un formulaire ne sont jamais touchées. Tour des 66 pages : seuls quatre tableaux à beaucoup de colonnes défilent encore à l'horizontale (Articles Clover, Feuilles de temps, Produits inactifs, Articles 20/80).
+
+#### Fenêtre web fixe sur PC (version 1.0.9)
+
+Sur un écran de plus de 820 px, la page web ne défile jamais dans son ensemble, comme une fenêtre Windows : le menu et la zone de travail défilent chacun dans leur cadre (`menu.STYLE_MENU`). Le script `/filtres.js` (`remplirListe`) donne à la liste principale de la page (le tableau qui cache le plus de lignes) toute la hauteur qui reste, au chargement et à chaque changement de taille ; `data-sans-remplir` l'écarte. La position de la page et des zones défilantes est gardée après un envoi de formulaire (version 1.0.2). Pendant une saisie, `/filtres.js` signale l'activité au serveur (`/actif`) : la session n'expire qu'après 5 minutes SANS activité, même sans envoi de formulaire (version 1.0.3).
 
 #### Même état dans Windows et sur le web (version 2.23.1)
 
@@ -773,7 +788,7 @@ Si la fenêtre ne peut pas être rouverte, les dépôts restants sont rendus « 
 | Verrouillage | Après `[general] verrouillage_minutes` (5 par défaut ; 0 = jamais) sans activité. La fenêtre est cachée et le mot de passe est redemandé. Web : déconnexion après `[web] inactivite_minutes` (5). |
 | Application web | Mot de passe web à part (12 caractères, minuscule, majuscule, chiffre, caractère spécial) ; HTTPS (certificat Let's Encrypt) ; serveur sur la carte Tailscale seulement ; un compte désactivé perd ses sessions. |
 | Sage | Utilisateur MySQL en consultation seule ; imports et saisies uniquement après contrôle des doublons. |
-| Banque | Relevés chargés à la main : aucune connexion à AccèsD. |
+| Banque | Relevés chargés à la main (PDF, OFX, CSV téléchargés du site de la banque) : aucune connexion aux services en ligne des banques. |
 | Courriel | IMAP en lecture seule ; SMTP pour le compte rendu ; documents personnels à un seul destinataire visible, copie cachée au propriétaire. |
 | Dépôt public | `.gitignore` : `config.toml`, `donnees/`, `sortie/`, `*.xlsx`, `*.IMP`, `*.SAI`, captures et manuels contenant des données réelles. |
 
@@ -792,11 +807,12 @@ flowchart TD
     POSTE -->|serveur.json| CLIENT["Postes : Installer_MVOGMBI_Sync_Client_x.y.z.exe<br/>(sans droits d'administrateur)"]
 ```
 
-- `installation/fabriquer.cmd` enchaîne tout et produit deux installateurs : `Installer_MVOGMBI_Sync_x.y.z.exe` (serveur) et `Installer_MVOGMBI_Sync_Client_x.y.z.exe` (postes, avec `serveur.json` écrit d'après `config.toml`). Chaque livraison a son propre numéro de version : `aide.VERSION`, `version_info.txt`, `MVOGMBI_Sync.iss` et `MVOGMBI_Sync_Client.iss`. Numérotation remise à 1.0.0 le 5 novembre 2026 (après la 2.24.2) ; les anciens installateurs sont dans `dist/Archives`.
+- `installation/fabriquer.cmd` enchaîne tout et produit deux installateurs : `Installer_MVOGMBI_Sync_x.y.z.exe` (serveur) et `Installer_MVOGMBI_Sync_Client_x.y.z.exe` (postes, avec `serveur.json` écrit d'après `config.toml`). Chaque livraison a son propre numéro de version : `aide.VERSION`, `version_info.txt`, `MVOGMBI_Sync.iss` et `MVOGMBI_Sync_Client.iss`. Numérotation remise à 1.0.0 le 5 novembre 2026 (après la 2.24.2) et le 9 novembre 2026 (après la 1.0.44) ; les anciens installateurs sont dans `dist/Archives`.
 - Le serveur web (`MVOGMBI_Sync_Serveur.exe`) tourne sans fenêtre, une seule copie à la fois (verrou nommé), démarré par le dossier Démarrage ; ses erreurs vont dans `donnees/journal_web.log`.
+- Image du marché (version 1.0.8) : logo carré `ressources/logo.png` (en-têtes, filigrane pâli transparent de l'accueil) et emblème `ressources/embleme.png` (icône du menu) ; `installation/creer_icone.py` en tire les icônes .ico et les images de l'assistant d'installation.
 - RACINE est le dossier de l'exe ; la variable `MVOGMBI_RACINE` en force un autre.
 - Mise en service sur un serveur : installer, reprendre `config.toml` et `donnees/` (« Reprendre une configuration existante… »), retaper les mots de passe (coffre-fort propre à chaque machine), régler « Serveur de l'application », lancer `installer_web.ps1` (il remet `[web] adresse` à l'adresse Tailscale de la machine) et la tâche planifiée ; sur l'ancien serveur, retirer la tâche et le serveur web.
-- Tests : `tests/`, 305 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
+- Tests : `tests/`, 384 tests automatiques sans accès à Clover ni à Sage. Les essais réels se font sur la copie `MVOGMBI_ESSAI.SAI` (voir `documentation/PLAN_DE_TEST.md`).
 - Documents : `documentation/creer_documents.py` produit les PDF de l'architecture, du guide de l'administrateur, de la documentation fonctionnelle, des règles d'affaires, du plan de test, du projet, des workflows et des processus métier ; `creer_presentation.js` (Node.js, pptxgenjs) la présentation PowerPoint ; `creer_manuel.py` les manuels.
 
 ---

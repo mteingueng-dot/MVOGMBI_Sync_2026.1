@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 200 versions livrées en 17 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 30 octobre, le 5 novembre et le 9 novembre 2026.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 210 versions livrées en 21 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 30 octobre, le 5 novembre et le 9 novembre 2026.
 
 ---
 
@@ -67,6 +67,13 @@ gantt
     Factures fournisseurs plus simples          :done, y5, 2026-11-09, 1d
     Reporting, filtres automatiques, ruban      :done, y6, 2026-11-09, 1d
     Version 1.0.0, documentation, présentation  :done, y7, 2026-11-09, 1d
+    section Nouvelle série 1.0.x
+    Factures fournisseurs en onglets, article tapé :done, z1, 2026-11-09, 2d
+    Retours et notes de crédit dans Clover      :done, z2, 2026-11-10, 2d
+    Toutes les banques du Canada                :done, z3, 2026-11-12, 1d
+    Nouveau logo, fenêtre web fixe              :done, z4, 2026-11-12, 1d
+    Modèles des banques, Neo, KOHO              :done, z5, 2026-11-12, 1d
+    Documentation 1.0.11                        :done, z6, 2026-11-13, 1d
     section Suite
     Mise en service sur SERVDCSAGE              :g4, 2026-11-06, 2d
     Comptes RIA dans Sage, premières écritures  :g0, 2026-11-06, 2d
@@ -103,7 +110,7 @@ mindmap
       Retours
       Chaîne des documents
     Comptabilité
-      Rapprochement Desjardins
+      Rapprochement toutes banques
       Caisse et dépenses
       TPS TVQ, budget, clôture
       Plan comptable
@@ -175,6 +182,12 @@ mindmap
 | 9 nov. 2026 | 44 analyses en tout, 18 états enrichis, graphiques interactifs, factures fournisseurs plus simples à relier | 1.0.30 à 1.0.38 |
 | 9 nov. 2026 | « Reporting », filtres automatiques sur tout le web, ruban des états, filtres du Détail | 1.0.39 à 1.0.44 |
 | 9 nov. 2026 | **Version 1.0.0** : numérotation remise à zéro ; catalogue des rapports, notes de version, présentation des services, présentation détaillée | 1.0.0 |
+| 9-10 nov. 2026 | Factures fournisseurs en deux onglets ; position de la page gardée ; documentation en Word ; n° et désignation Sage tapés dans la ligne ; correctif web | 1.0.1 à 1.0.4 |
+| 10-11 nov. 2026 | Retours fournisseurs et notes de crédit retirés du stock Clover (coût inchangé) | 1.0.5 à 1.0.6 |
+| 12 nov. 2026 | **Toutes les banques du Canada** : relevés OFX / QFX / QBO, CSV et PDF ; banque du compte de dépôt au choix ; avis Interac en anglais | 1.0.7 |
+| 12 nov. 2026 | Nouveau logo carré « le carrefour des cultures » ; fenêtre web fixe sur PC | 1.0.8 à 1.0.9 |
+| 12 nov. 2026 | Relevés PDF d'après les modèles des banques (RBC, UNI, TD, Scotia, BMO, Tangerine) ; Neo Financial et KOHO | 1.0.10 |
+| 13 nov. 2026 | Documentation complète refaite à la version 1.0.11 | 1.0.11 |
 
 ---
 
@@ -208,4 +221,5 @@ Méthode : une demande → une version livrée avec son installateur, ses tests 
 | Saisie plus lente que prévu (2e essai à chaque dépôt) | Cellule relue avant validation (1.0.20) ; durées de référence dans le guide de l'administrateur |
 | Sage resté ouvert sans l'application (mise à jour, arrêt brutal) | Gardien qui referme Sage, réponses aux questions connues, marque de pause de l'installateur |
 | Décision prise sur un chiffre faux (coût aberrant dans Sage, rabais de la direction) | Coûts aberrants écartés ; rabais Direction et administrateurs mis à part ; chaque analyse dit ce qu'elle mesure |
+| Relevé d'une banque à la mise en page inconnue | Lecture OFX / CSV sans mise en page ; sens de chaque montant confirmé par le solde ; relevé refusé s'il ne balance pas |
 | Rapports trop techniques pour la direction | Mots simples, constats en clair, décisions priorisées avec les éléments concernés |

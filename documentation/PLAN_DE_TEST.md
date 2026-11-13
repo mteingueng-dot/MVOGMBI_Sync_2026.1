@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -38,7 +38,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 369 tests
+## 3. Tests automatiques — 386 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -74,9 +74,11 @@ Règles :
 | Version 1.0.18 : reconnexion web à la même page, adresse de retour sûre | test_web | 1 |
 | Version 1.0.19 : un encaissement en échec ne bloque pas les suivants | test_encaissements | 1 |
 | Version 1.0.20 : montant reçu relu avant d'être validé | test_encaissements | 1 |
-| **Total** | 63 fichiers | **369** |
+| Nouvelle série 1.0.3 à 1.0.6 : article Sage tapé dans la ligne, retour fournisseur et stock Clover, note de crédit | test_web, test_creation_articles, test_factures_fournisseurs | 3 |
+| Nouvelle série 1.0.7 et 1.0.10 : toutes les banques du Canada (reconnaissance, montants et dates, OFX, CSV français / anglais / sans en-tête, PDF anglais, classement du relevé, Interac et espèces, avis Interac en anglais, modèles RBC, UNI, TD, colonne « Amount ») | test_banques_canada | 14 |
+| **Total** | 64 fichiers | **386** |
 
-Résultat du 9 novembre 2026 (version 1.0.44, puis 1.0.0) : **369 réussis** (1 min 55). Les analyses sont aussi vérifiées sur les vraies ventes Clover (lecture seule) : chacune s'affiche sans erreur sur les 30 derniers jours et sur l'année.
+Résultat du 13 novembre 2026 (version 1.0.11) : **384 réussis, 2 sautés** (2 min ; les 2 tests sautés demandent un fichier réel absent du poste de fabrication). Résultat du 9 novembre 2026 (version 1.0.0) : 369 réussis. Les analyses sont aussi vérifiées sur les vraies ventes Clover (lecture seule) : chacune s'affiche sans erreur sur les 30 derniers jours et sur l'année.
 
 Résultat du 7 novembre 2026 (version 1.0.20) : **315 réussis** (1 min 50), compilation de tout le code sans aucun avertissement (`python -W error::SyntaxWarning -m compileall`).
 
@@ -177,6 +179,9 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | D4 | Relevé BNC réel (50 mouvements) | Chaque solde revérifié, totaux débit / crédit retrouvés | Réussi |
 | D5 | Les 17 types de documents et les 4 documents de stock imprimés | Modèle de chaque type, sans prix là où il le faut | Réussi (contrôle visuel) |
 | D6 | Photo de facture envoyée au serveur | PDF, OCR, facture « À saisir (photo) » | Réussi (copie) |
+| D7 | Relevés réels Desjardins de janvier et février 2026 relus après chaque changement du lecteur (1.0.7, 1.0.10) | 121 et 102 mouvements, 0 écart, même classement | Réussi |
+| D8 | Modèles publiés par les banques : relevé RBC (« Votre relevé de compte ») et relevé UNI d'août 2023 | Toutes les opérations lues, sens confirmé par le solde ; comptes d'épargne et prêts du relevé UNI ignorés | Réussi (RBC : 11 opérations, page 2 absente du modèle ; UNI : 9 mouvements, 0 écart) |
+| D9 | Notes de crédit réelles A.M.R. et Basmex (1.0.6) | Reconnues par leur titre, montants négatifs | Réussi |
 
 ---
 
@@ -243,6 +248,11 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | La liste des factures se réduisait à la facture ouverte | Les champs de la facture servaient aussi de filtres | Filtres envoyés à part (1.0.38) |
 | La touche Entrée supprimait le document en cours (web) | Le 1er bouton du formulaire était « Supprimer » | Bouton Entrée invisible qui valide la ligne (1.0.30) |
 | Factures importées encore « Prête à importer » | Registre non enregistré après l'import (web et nuit) | Enregistrement dans un `finally` (2.23.0) |
+| Rapprochement et « Mes paies » (web) en erreur 500 | Fonction de lecture de Sage utilisée sans être importée | Import ajouté ; vérification automatique du code (pyflakes) (1.0.4) |
+| Retour fournisseur sans effet sur le stock Clover | Seules les quantités positives étaient gardées | Quantités négatives retirées, coût inchangé (1.0.5) |
+| Ligne de facture reliée à l'article de la ligne d'avant | La recherche restée dans le champ passait avant l'article choisi | Recherche prise seulement si elle vient d'être tapée (1.0.3) |
+| Déconnexion web pendant la saisie d'une facture | Seul un envoi de formulaire comptait comme activité | Activité (frappe, clics) signalée au serveur (1.0.3) |
+| Relevé UNI pris pour un relevé Desjardins, corrections de signe inversé | « caisse populaire » dans les mots de Desjardins ; sens tiré de la colonne seulement | Mot retiré ; sens confirmé par le solde imprimé (1.0.10) |
 | « Par heure » sans graphique sous Windows | Un commentaire avalait les lignes du dictionnaire des graphiques | Corrigé (1.0.35) |
 
 ## 6. Recette avant livraison
@@ -266,6 +276,7 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 - Traitement de nuit complet sur SERVDCSAGE avec la 1.0.20 (factures, encaissements des ventes importées, compte rendu).
 - Transferts vers un dépôt sur le vrai fichier (dès qu'un deuxième dépôt sera créé dans Sage).
 - Relevés BNC de plusieurs mois et écritures saisies au compte 1060.
+- Relevés réels d'autres banques (OFX, CSV ou PDF) dès qu'un compte y sera ouvert ; TD, Scotia, BMO, CIBC, Tangerine, Neo et KOHO ne publient pas de modèle : leurs mises en page connues sont prises en charge, à confirmer sur un vrai relevé.
 - Pointage depuis le Wi-Fi du magasin (adresse publique du magasin à relever sur place) et pause automatique d'un téléphone qui sort du Wi-Fi.
 - Plusieurs points de vente réels (dès qu'un deuxième sera configuré).
 - Remises de retenues réelles.
@@ -283,6 +294,8 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | Factures fournisseurs (assistant d'importation) | ✔ | ✔ | ✔ (Sage 2027) |
 | Stock et coût Clover après achat | ✔ | ✔ (article d'essai) | ✔ |
 | Rapprochement Desjardins / BNC | ✔ | ✔ | lecture ✔ ; écritures à faire |
+| Rapprochement des autres banques (OFX, CSV, PDF) | ✔ | — | modèles publiés RBC et UNI ✔ ; vrais relevés à faire |
+| Notes de crédit et retours fournisseurs dans Clover | ✔ | ✔ | ✔ (notes de crédit réelles relues) |
 | Journal général, dépenses | ✔ | ✔ | à faire |
 | Documents de stock, inventaire, transferts | ✔ | ✔ | à faire (un seul dépôt réel) |
 | Création d'articles, clients, fournisseurs, comptes | ✔ | ✔ | à faire |

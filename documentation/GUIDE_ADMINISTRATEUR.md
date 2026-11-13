@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -119,7 +119,7 @@ Une mise à jour s'installe **par-dessus** : `config.toml` et `donnees/` ne sont
 | Page | Cartes et champs | Secrets (coffre-fort) |
 |---|---|---|
 | **Clover** | identifiant marchand ; **Points de vente** (➕ Ajouter / Modifier / Supprimer / 🔌 Tester) : code, nom, identifiant marchand, client Sage, dépôt Sage, préfixe des factures (5 car.), actif | jeton du n° 1 et de chaque point de vente |
-| **Sage 50** | fichier d'entreprise lu ; fichier d'import (« Parcourir… ») ; port ; client des ventes ; **dépôts sans Clover** (« Entrepôt; Réserve ») ; « 📒 Tester l'accès à Sage » ; carte **Paie** (première paie de l'année, délai) ; carte **4. Comptes bancaires (rapprochement)** (Desjardins, BNC, autres : banque, format du relevé, compte Sage, n° de compte) ; encaissements (compte de dépôt, premier jour, automatique) | utilisateur `mvogmbi_sync`, utilisateur d'import |
+| **Sage 50** | fichier d'entreprise lu ; fichier d'import (« Parcourir… ») ; port ; client des ventes ; **dépôts sans Clover** (« Entrepôt; Réserve ») ; « 📒 Tester l'accès à Sage » ; carte **Paie** (première paie de l'année, délai) ; carte **4. Comptes bancaires (rapprochement)** (compte de dépôt, BNC, puis comptes de toute banque ou caisse du Canada : banque, compte Sage, n° de compte) ; encaissements (compte de dépôt, **banque du compte de dépôt**, premier jour, automatique) | utilisateur `mvogmbi_sync`, utilisateur d'import |
 | **Courriel** | 1. envoi (serveur, port, sécurité, expéditeur, destinataires, copie, Cci) et test ; 2. résumé du matin ; 3. boîte des avis de paiement (IMAP, depuis) ; 4. factures reçues par courriel (expéditeurs, textes, depuis, import la nuit) ; 5. boîte des états RIA | mots de passe SMTP et IMAP |
 | **Automatisation** | 1. traitement de nuit (heure, date de départ, factures par import) et tâche planifiée (État / Installer / Retirer, « Lancer maintenant ») ; 2. raccourci et configuration existante ; 3. **Serveur de l'application** (ordinateur, adresse Tailscale, adresse locale, nom tapé dans le client, port, certificat, clé, « Fichier du client (serveur.json) ») ; 4. **Wi-Fi du magasin (pointage)** | — |
 | **Utilisateurs** | comptes, profils, fonctions permises, actions, droits, points de vente (voir § 6) | — |
@@ -135,7 +135,7 @@ Il se règle par les pages ci-dessus ; à la main seulement en cas de besoin, ap
 | `[clover]`, `[[points_vente]]` | `merchant_id`, `base_url` ; par point de vente : `code`, `nom`, `merchant_id`, `client_sage`, `depot_sage`, `prefixe`, `actif` |
 | `[general]` | `fuseau_horaire` (America/Toronto), `langue`, `verrouillage_minutes` (5 ; 0 = jamais) |
 | `[sage]`, `[sage_base]`, `[sage_import]` | `depots_sans_clover` ; `port` (13540), `fichier_entreprise` (lecture) ; `fichier_entreprise` (import), `version` (12001), `pays`, `position_numero` |
-| `[encaissements]`, `[rapprochement]`, `[[comptes_bancaires]]` | `compte_depot` (1055), `mode`, `date_depart`, `automatique` ; `compte_bnc` (1060) ; `code`, `nom`, `format` (desjardins / bnc), `compte_sage`, `numero`, `actif` |
+| `[encaissements]`, `[rapprochement]`, `[[comptes_bancaires]]` | `compte_depot` (1055), `mode`, `date_depart`, `automatique` ; `compte_bnc` (1060), `banque_depot` (code de la banque du compte de dépôt, « desjardins » par défaut) ; `code`, `nom`, `format` (code de la banque : desjardins, bnc, rbc, td, scotia, bmo, cibc, tangerine, simplii, laurentienne, uni, neo, koho… ou autre), `compte_sage`, `numero`, `actif` |
 | `[automatique]` | `date_depart`, `heure`, `factures_par_import` (25) |
 | `[courriel]`, `[boite_paiements]`, `[factures_courriel]`, `[ria]` | serveur, port, sécurité, expéditeur, destinataires, `cci`, `resume_matin` ; boîte IMAP et `depuis` ; `expediteurs`, `textes`, `import_nuit` ; boîte des états RIA |
 | `[paie]`, `[caisse]`, `[inventaire]`, `[feuillets]` | `debut_reference`, `taux_moyen`, `charges_sociales` ; `fond` (200) ; `semaines_cycle` (8) ; `url_t4`, `url_rl1` |
@@ -351,7 +351,7 @@ Un jour bloqué (article non relié, compte manquant) est signalé et repris la 
 | Chaque matin | courriel de compte rendu : jours bloqués, alertes (caisse, retenues, feuilles de temps non approuvées, factures à payer, ruptures, péremption) |
 | Chaque semaine | « Articles > Correspondance » : articles à relier ou à confirmer ; « Factures fournisseurs » : factures à saisir |
 | Aux 2 semaines | feuilles de temps approuvées (« Suivi des périodes »), puis traitement de la paie |
-| Chaque mois | rapprochement bancaire de chaque compte (Desjardins, BNC…) ; suivi des remises de retenues ; clôture du mois ; restauration d'essai d'une sauvegarde sur un autre ordinateur |
+| Chaque mois | rapprochement bancaire de chaque compte (relevé du mois téléchargé en PDF, OFX ou CSV du site de chaque banque) ; suivi des remises de retenues ; clôture du mois ; restauration d'essai d'une sauvegarde sur un autre ordinateur |
 | Tous les 60 jours environ | renouvellement du certificat HTTPS (TXT chez WHC) |
 | Chaque année | première paie de l'année (Administration > Sage 50 > Paie) ; T4 / RL-1 ; vérification des formulaires officiels |
 
@@ -383,7 +383,7 @@ Un jour bloqué (article non relié, compte manquant) est signalé et repris la 
 
 L'installateur arrête le serveur web, demande au Sage de la journée de se fermer (et suspend toute ouverture de Sage 15 minutes), copie les fichiers, puis relance le serveur web. Installation silencieuse possible : `Installer_MVOGMBI_Sync_x.y.z.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=<fichier>`, lancée dans la session ouverte (jamais en session 0).
 
-Chaque livraison a son numéro et son installateur ; les anciens installateurs restent disponibles pour revenir en arrière. La numérotation a été remise à **1.0.0** le 5 novembre 2026 : une 1.0.x est **plus récente** que les anciennes 2.x.
+Chaque livraison a son numéro et son installateur ; les anciens installateurs restent disponibles pour revenir en arrière. La numérotation a été remise à **1.0.0** le 5 novembre 2026 puis le 9 novembre 2026 : une 1.0.x de la série en cours est **plus récente** que les anciennes 2.x et que l'ancienne série 1.0.0 à 1.0.44 (rangée dans `dist/Archives`).
 
 ---
 
@@ -475,6 +475,10 @@ Journaux ajoutés depuis la version 1.0.22 :
 | Pointage refusé « connectez-vous au Wi-Fi du magasin » | appareil sur un autre réseau, ou adresse du magasin changée | relever la nouvelle adresse (§ 5.5) |
 | Factures, états RIA ou documents absents après un déménagement | dossier `donnees` copié dans `donnees\donnees` | remonter le contenu d'un niveau, application fermée |
 | « Voir la facture » : fichier introuvable | PDF absent du dossier des factures | recopier le PDF dans `donnees/factures_fournisseurs/` |
+| Relevé refusé : « Aucun compte bancaire réglé pour … » | aucun compte de cette banque, ni compte « Autre banque ou caisse » | Administration > Sage 50 > Comptes bancaires : « Ajouter un compte bancaire… » (banque, compte Sage, n° du compte tel qu'imprimé sur le relevé), puis recharger le relevé |
+| Relevé PDF lu avec un écart ou sans mouvement | mise en page de banque inconnue, ou PDF numérisé (image) | télécharger plutôt le relevé en **OFX / QFX** (« Microsoft Money », « Quicken ») ou en **CSV** depuis le site de la banque : lus sans dépendre de la mise en page |
+| Note de crédit d'un fournisseur lue en positif | titre du document autre que « CREDIT » / « NOTE DE CRÉDIT » | cocher « Note de crédit » dans l'en-tête de la facture : quantités et montants passent en négatif |
+| Page web déconnectée pendant une saisie | (corrigé en 1.0.3) | mettre à jour : la session reste ouverte tant que la personne tape ou clique |
 | « Can't find a usable tk.tcl » (tests) | antivirus qui bloque Tcl un instant | relancer |
 
 Avant de signaler un problème : noter l'heure, le message exact, la page, et joindre le journal concerné (§ 8).

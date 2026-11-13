@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application, **écran par écran**, et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Il entre dans le détail : champs, états, contrôles, cas particuliers, messages. Le détail de chaque règle, avec son code (RG-…), est dans le document des **règles d'affaires** ; le fonctionnement interne est dans le document d'**architecture** ; le mode d'emploi pas à pas, avec captures, est dans le **manuel d'utilisation** ; l'installation, la configuration et le dépannage sont dans le **guide de l'administrateur**.
 
@@ -16,7 +16,7 @@ Le marché encaisse ses ventes avec **Clover** (caisse et terminal de paiement) 
 | Encaisser les dépôts bancaires | Lots de cartes Clover, virements Interac et dépôts d'espèces appliqués sur les factures, dans la fenêtre Encaissements de Sage |
 | Traiter les factures des fournisseurs | Lecture des PDF (courriel, dossier, ou photos prises au téléphone), correspondance des articles, import dans Sage (aussi la nuit), mise à jour du stock et du coût dans Clover |
 | Payer les fournisseurs | Avis de virement Interac lus dans la boîte de courriel, rapprochés des factures, confirmés par le propriétaire, saisis dans Sage |
-| Contrôler la banque | Relevés Desjardins et Banque Nationale (BNC) rapprochés du compte Sage de chaque banque, écart expliqué ligne par ligne |
+| Contrôler la banque | Relevés de **toutes les banques et caisses du Canada** (PDF, OFX / QFX / QBO, CSV) rapprochés du compte Sage de chaque banque, écart expliqué ligne par ligne |
 | Travailler sur plusieurs sites | Dépôts (emplacements d'inventaire de Sage), avec ou sans Clover : factures, stock, employés, planning et états par dépôt |
 | Tenir l'agence RIA | États de compte RIA lus, envois et versements passés dans Sage, commissions reconnues |
 | Piloter le commerce | Statistiques comme Clover, bénéfices au coût moyen Sage, prévisions, articles 20/80, produits inactifs, péremption, rapports de gestion |
@@ -25,14 +25,14 @@ Le marché encaisse ses ventes avec **Clover** (caisse et terminal de paiement) 
 | Contrôler l'accès | Comptes, profils, droits fonction par fonction, verrouillage, audit des actions |
 | Travailler à distance | Application web identique à l'application Windows (76 entrées du menu), sur PC, tablette et téléphone, par Tailscale ; client des postes ; Bureau à distance pour l'application complète |
 
-**Hors périmètre** : la comptabilité générale elle-même (Sage reste la référence et le seul livre officiel), la banque en ligne (les relevés sont chargés à la main en PDF), le calcul des retenues de paie (fait par Sage Paie), la caisse elle-même (Clover). L'application ne modifie **jamais les paramètres** de Sage ni de Clover ; elle n'écrit que des transactions et des fiches, comme une personne le ferait.
+**Hors périmètre** : la comptabilité générale elle-même (Sage reste la référence et le seul livre officiel), la banque en ligne (les relevés sont téléchargés du site de la banque puis chargés à la main), le calcul des retenues de paie (fait par Sage Paie), la caisse elle-même (Clover). L'application ne modifie **jamais les paramètres** de Sage ni de Clover ; elle n'écrit que des transactions et des fiches, comme une personne le ferait.
 
 ### 1.1 Les trois façons d'utiliser l'application
 
 | Forme | Pour qui | Particularités |
 |---|---|---|
 | Application Windows | Propriétaire et comptable, sur le serveur (session ouverte ou Bureau à distance) | Toutes les fonctions ; ouvre Sage pour la journée ; seule à pouvoir lancer les saisies quand le traitement de nuit est absent |
-| Application web | Tout le monde, depuis un PC, une tablette ou un téléphone relié par Tailscale | Mêmes menus, mêmes écrans, mêmes droits ; aucun script dans la page (sécurité) ; travaux longs suivis sur une page qui se rafraîchit |
+| Application web | Tout le monde, depuis un PC, une tablette ou un téléphone relié par Tailscale | Mêmes menus, mêmes écrans, mêmes droits ; un seul script, servi par le serveur (`/filtres.js` : filtres automatiques, liste à la hauteur de la fenêtre, position gardée), jamais de script dans la page (sécurité) ; sur PC, la fenêtre ne défile pas : le menu et la liste principale défilent chacun ; session gardée tant que la personne travaille ; travaux longs suivis sur une page qui se rafraîchit |
 | Traitement de nuit | Tâche planifiée Windows du serveur | Sans connexion ni fenêtre ; enchaîne factures, encaissements, paiements, sauvegarde, compte rendu |
 
 Le **client des postes** (`MVOGMBI_Sync_Client.exe`) ouvre directement l'application web dans une fenêtre Edge sans barre d'adresse ; il propose aussi l'application complète par Bureau à distance (deux personnes à la fois au plus sur le serveur, sans licences RDS).
@@ -84,7 +84,7 @@ Le menu de gauche est rangé en rubriques ; une seule rubrique est ouverte à la
 ### 3.1 Accueil
 
 - **Mise en route** en 10 étapes, une par page de configuration ; chaque étape est cochée ✔ (vert) quand elle est faite, ● (jaune) sinon, avec un bouton « Ouvrir ». Compteur « n étape(s) sur 10 ». Exemples de contrôle : étape 7 = un dépôt encaissé au journal, 8 = une facture « Importée dans Sage », 9 = boîte des avis et mot de passe, 10 = un relevé chargé.
-- **Bienvenue** : présentation de l'application, logo du marché en filigrane qui ne défile pas.
+- **Bienvenue** : présentation de l'application, logo du marché (« le carrefour des cultures », version 1.0.8) en filigrane transparent qui ne défile pas.
 
 ### 3.2 Administration
 
@@ -103,7 +103,8 @@ Droits du jeton Clover nécessaires : lecture partout ; écriture « Inventaire 
 - Fichier de l'entreprise (`.SAI`, bouton « Parcourir… »), utilisateur de lecture `mvogmbi_sync` (mot de passe dans le coffre-fort), client des ventes (« Vente Hebdomadaire »), « 📒 Tester l'accès à Sage ».
 - **Dépôts sans Clover** (« Entrepôt; Réserve ») : emplacements Sage qui reçoivent des factures sans point de vente.
 - Carte **Paie** : première paie de l'année et délai de paiement (15 jours) ; donnent toutes les périodes de 14 jours.
-- Carte **Comptes bancaires (rapprochement)** : Desjardins (compte de dépôt 1055) et BNC (1060) d'office, puis autres comptes (code, nom, format du relevé « desjardins » ou « bnc », compte Sage, n° de compte, actif) ; « Ajouter un compte bancaire… », « Retirer le compte choisi ».
+- **Banque du compte de dépôt** : banque ou caisse où Clover dépose les ventes (Desjardins par défaut ; liste de toutes les banques du Canada).
+- Carte **Comptes bancaires (rapprochement)** : compte de dépôt (1055) et BNC (1060) d'office, puis autres comptes de **n'importe quelle banque ou caisse** (code, nom, banque, compte Sage, n° de compte, actif) ; « Ajouter un compte bancaire… », « Retirer le compte choisi ».
 
 #### Courriel
 
@@ -227,11 +228,12 @@ Une page en **deux onglets** (version 1.0.1, Windows et web) :
 | Arrivée | PDF déposé, reçu par courriel (pièces jointes des expéditeurs ou des courriels qui contiennent les textes réglés, jamais Interac ; chaque fichier une seule fois, reconnu par son empreinte), ou **photographié au téléphone** (une photo par page, 15 au plus, un PDF à la fin) |
 | Lecture | PDF numérique : un modèle par fournisseur ; PDF numérisé ou photo : OCR intégré à Windows (aucune IA, aucun service externe) ; contrôle des totaux |
 | Contrôles | N° de facture obligatoire ; doublon refusé même avec un préfixe (« FA-104202 » = « 104202 ») ; facture déjà dans Sage = archivée « Déjà dans Sage » sans 2e import |
-| Lignes | Code, désignation, taxes (GQ / G / Q / aucune), Qté, Prix fournisseur ; **Qté Sage = Qté × Facteur** ; **Montant = Qté × Prix fournisseur** ; **Prix Sage = Montant / Qté Sage** (Montant et Qté Sage calculés, non saisissables) ; article Sage cherché par ressemblance, « (autre format) » signalé ; « Relier et confirmer » mémorisé par fournisseur (article + facteur) |
+| Lignes | Code, désignation, taxes (GQ / G / Q / aucune ; « F P », « TX » lus sur la facture), Qté, Prix fournisseur ; **Qté Sage = Qté × Facteur** ; **Montant = Qté × Prix fournisseur** ; **Prix Sage = Montant / Qté Sage** (Montant et Qté Sage calculés, non saisissables) ; article Sage cherché par ressemblance, « (autre format) » signalé ; « Relier et confirmer » mémorisé par fournisseur (article + facteur) ; **n° Sage** ou **désignation Sage** tapés directement dans la ligne, avec propositions pendant la frappe (l'autre champ se remplit seul ; Entrée relie et confirme) |
 | Dépôt | Liste « Dépôt » de l'en-tête : la facture s'importe dans l'emplacement par défaut puis un transfert la place dans son dépôt |
 | Import | « Importer cette facture » (si « Prête à importer »), « ☑ Importer les factures cochées », « Importer toutes les factures prêtes » ; aussi la nuit ; vérifiée dans Sage ; puis stock Clover = stock + Qté Sage, coût Clover = montant / Qté Sage (articles reliés ; plusieurs articles Clover = coût seulement) ; compte rendu par courriel ; facture archivée |
 | Impressions | « 🖨 Bon de réception » (sans prix, Qté Sage et Qté Clover ajoutée, observation, signature) et « 🖨 Facture (avec prix) » |
 | Reprise | « 🔁 Refaire la mise à jour Clover » d'une facture « Importée » (lignes déjà ajoutées écartées) |
+| Note de crédit | Document dont le titre est « CREDIT » ou « NOTE DE CRÉDIT » : reconnu à la lecture, case « Note de crédit » cochée, quantités, montants et taxes en **négatif** (prix positif) ; importé dans Sage en crédit ; stock Clover diminué, coût Clover inchangé ; décocher la case remet la facture en positif |
 
 Les saisies s'**enregistrent d'elles-mêmes** 0,7 s après la dernière frappe, au changement de ligne, de facture ou de page. Le même registre sert à Windows et au web : une facture importée d'un côté est archivée de l'autre, **en temps réel** (liste relue toutes les 3 s).
 
@@ -243,7 +245,7 @@ Les saisies s'**enregistrent d'elles-mêmes** 0,7 s après la dernière frappe, 
 |---|---|
 | Documents d'achat | Demande de prix (PC) → bon de commande (BC) → bon de réception (BR, **sans prix**) → facture (FA, n° du fournisseur obligatoire) ; retour (RT) → facture de retour (FRT) ; avoir (AVF), facture d'avoir (FAF) |
 | Bons de commande (« BC-0001 ») | Proposés d'après les ventes et le stock : quantité = vendu sur N jours (« Couvrir » 7 à 28, 14 par défaut) − stock positif, arrondie à l'unité au-dessus, regroupée par n° Sage ; fournisseur et prix = dernier achat ; un bon par fournisseur **en unités du fournisseur** (quantité Sage / facteur, prix Sage × facteur) ; PDF ; comparés à la facture reçue (unités Sage, 2 % de tolérance) ; « Marquer reçu » |
-| Retours fournisseurs (« R-<n° de facture> ») | Lignes reprises de la facture d'origine ; facture d'achat **négative** importée dans Sage, vérifiée ; stock Clover diminué ; jamais deux fois |
+| Retours fournisseurs (« R-<n° de facture> ») | Lignes reprises de la facture d'origine ; facture d'achat **négative** importée dans Sage, vérifiée ; stock Clover diminué (le coût Clover ne change jamais pour un retour) ; jamais deux fois |
 | Factures archivées | PDF, détail JSON et Excel classés par année ; « Voir la facture », « Détail (Excel) » |
 
 Prérequis Sage : fiche fournisseur avec « utilise mes numéros d'articles » cochée.
@@ -401,11 +403,11 @@ Les règles complètes, codées par module, sont dans le document **Règles d'af
 
 ### 4.4 Rapprochement bancaire
 
-1. Relevé PDF chargé : la **banque est reconnue** à la lecture (Desjardins ou BNC) et le relevé rangé dans le compte de sa banque (et de son n° de compte).
-2. Lecture : Desjardins par colonnes Frais / Retrait / Dépôt / Solde ; BNC par lignes « MM JJ description montant solde », débit ou crédit d'après la variation du solde. **Chaque solde imprimé est revérifié** ; le relevé est refusé s'il ne balance pas.
+1. Relevé chargé, de **n'importe quelle banque ou caisse du Canada** : PDF, OFX / QFX / QBO (« Microsoft Money », « Quicken », « Logiciel de comptabilité » du site de la banque) ou CSV. La **banque est reconnue** à la lecture (nom de la banque sur le relevé, sinon n° d'institution) et le relevé rangé dans le compte dont le n° y figure, sinon dans celui de sa banque, sinon dans le seul compte « autre banque » ; sinon un message dit quel compte ajouter.
+2. Lecture : PDF par colonnes (en-têtes français ou anglais : Frais / Retrait / Dépôt / Solde, « Withdrawals / Deposits / Balance », « Amount », date avant ou après les montants), d'après les modèles publiés par les banques (RBC, UNI) et les mises en page connues (TD, Scotia, BMO, Tangerine) ; BNC par lignes « MM JJ description montant solde » ; OFX et CSV : montants signés (CSV en français, en anglais ou sans en-tête). Le sens de chaque montant est confirmé par le solde imprimé ; **chaque solde imprimé est revérifié** ; le relevé est refusé s'il ne balance pas. Les comptes qui suivent sur le même relevé (épargne, prêt) et les notes de la marge sont ignorés.
 3. Comparé aux écritures du compte Sage de la banque (écritures corrigées exclues) ; même montant, date Sage de 7 jours avant à 3 jours après, sinon somme de 2 ou 3 écritures.
 4. Écart = écart d'ouverture + absents de Sage − en circulation ; période du / au, soldes d'ouverture et de fermeture suivis ligne par ligne.
-5. Mouvements reconnus : dépôts Clover, virements Interac et dépôts d'espèces (= espèces des ventes, jamais d'écriture de journal), dépôts de salaire (« PAYjjmmaaaa », reliés aux paies de Sage du même montant, 120 jours au plus), commissions RIA.
+5. Mouvements reconnus (libellés français et anglais : « Virement Interac de », « Interac e-Transfer from », « Autodeposit », « ATM deposit », « Payroll »…) : dépôts Clover, virements Interac et dépôts d'espèces (= espèces des ventes, jamais d'écriture de journal), dépôts de salaire (« PAYjjmmaaaa », reliés aux paies de Sage du même montant, 120 jours au plus), commissions RIA.
 6. Mouvement absent de Sage : compte de contrepartie choisi puis « Confirmer » ; « Saisir dans Sage » écrit une écriture de journal général par mouvement (source « Relevé AAAA-MM-JJ »), vérifiée. Un virement entre deux comptes de banque est permis ; seul le compte du mouvement est refusé comme contrepartie.
 7. « Encaissement manuel » et « Paiement fournisseur manuel » : notés pour que les pages Encaissements et Paiements en tiennent compte.
 
@@ -414,7 +416,7 @@ Les règles complètes, codées par module, sont dans le document **Règles d'af
 1. Envoi reçu en espèces (« MT Send ») : débit espèces, crédit compte RIA.
 2. Versement ou remboursement payé en espèces (« MT Payout », « Refund ») : débit compte RIA, crédit espèces ; payé par virement Interac (même montant au relevé, 3 jours près) : rien à écrire, la banque l'a déjà.
 3. Règlements de RIA (« ACH ») et dépôts : mouvements de banque.
-4. Commission : le dépôt Desjardins égal à la commission payée (12 jours près) est reconnu d'office.
+4. Commission : le dépôt au compte de dépôt égal à la commission payée (12 jours près) est reconnu d'office.
 5. Chaque ligne d'état ne devient une opération qu'**une fois** ; rien n'est écrit dans Sage tant que les comptes RIA ne sont pas renseignés.
 
 ### 4.6 Sage
@@ -511,6 +513,7 @@ Chaque nuit, sans intervention, dans la session Windows du serveur (verrouillée
 | « … n'est pas dans la liste des factures en souffrance » | Facture payée ou mal datée dans Sage | Corriger la facture, relancer |
 | « Déjà au compte de dépôt ? » | Le montant est déjà au 1055 par une autre écriture | Vérifier dans Sage ; si c'est ce dépôt, rien à faire |
 | « Espèces à répartir à la main » | Mouvement d'espèces sans facture qui en attend | Encaissement manuel au rapprochement |
+| « Aucun compte bancaire réglé pour … » (relevé chargé) | Aucun compte de cette banque, ni compte « autre banque » | Ajouter le compte dans « Administration > Sage 50 », carte Comptes bancaires, puis recharger |
 | « Article Clover introuvable (supprimé ou recréé) » | Article relié renommé dans Clover | Relier le nouvel article, puis « Refaire la mise à jour Clover » |
 
 ---
@@ -520,12 +523,14 @@ Chaque nuit, sans intervention, dans la session Windows du serveur (verrouillée
 | Terme | Sens |
 |---|---|
 | Assistant d'importation | Fonction de Sage « Fichier > Importer/Exporter > Importer des transactions », utilisée quand l'entreprise est partagée |
-| BNC | Banque Nationale du Canada ; relevés lus comme ceux de Desjardins |
+| BNC | Banque Nationale du Canada ; relevés PDF lus par lignes, sens d'après le solde |
+| Note de crédit | Document du fournisseur qui réduit ce qu'on lui doit (marchandise retournée, erreur) ; traitée comme une facture négative |
+| OFX / QFX / QBO | Fichiers de relevé téléchargés du site de la banque (formats de Microsoft Money, Quicken, QuickBooks), lus sans PDF |
 | Bon de réception / bon de livraison | Document sans prix : réception d'un achat / livraison d'une vente |
 | Correspondance | Lien entre un article Clover et un numéro d'article Sage |
 | CUMP | Coût unitaire moyen pondéré du stock dans Sage |
 | Dépôt (stock) | Emplacement d'inventaire Sage : d'un point de vente, par défaut, ou sans Clover |
-| Dépôt (banque) | Versement Clover sur le compte Desjardins |
+| Dépôt (banque) | Versement Clover sur le compte de dépôt (banque choisie, Desjardins par défaut) |
 | Entreprise partagée | Fichier Sage ouvert par plusieurs postes ; l'outil d'import le refuse |
 | Facteur | Nombre d'unités Sage dans une unité du fournisseur |
 | FRC / FRT | Facture de retour client / fournisseur (quantités et montants négatifs) |

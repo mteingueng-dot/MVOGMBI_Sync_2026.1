@@ -1,4 +1,4 @@
-// Présentation PowerPoint de MVOGMBI_Sync 1.0.2 du 10 novembre 2026, aux couleurs et au logo du Marché MVOG-MBI
+// Présentation PowerPoint de MVOGMBI_Sync 1.0.11 du 13 novembre 2026, aux couleurs et au logo du Marché MVOG-MBI
 // (aucune donnée de vente : document publié).
 //   node documentation/creer_presentation.js
 //   (pptxgenjs, react, react-dom, react-icons et sharp requis : NODE_PATH vers leur dossier node_modules)
@@ -179,7 +179,7 @@ async function construire() {
     { text: "Marché MVOG-MBI Sherbrooke · épicerie africaine & caribéenne · novembre 2026",
       options: { color: P.jaune, bold: true, fontSize: 15 } }], { placeholder: "body" });
   s.addNotes("MVOGMBI_Sync relie la caisse Clover et la comptabilité Sage 50, et ajoute l'aide à la décision. " +
-    "Version 1.0.2 du 10 novembre 2026 : tout ce qui suit est en service.");
+    "Version 1.0.11 du 13 novembre 2026 : tout ce qui suit est en service.");
 
   // ---------------------------------------------------------------- 2. sommaire
   s = contenu("Introduction", "Au programme",
@@ -221,9 +221,9 @@ async function construire() {
 
   // ---------------------------------------------------------------- 4. chiffres clés
   s = contenu("Introduction", "MVOGMBI_Sync en chiffres",
-    "Dix-sept jours de réalisation, plus de 200 versions livrées chacune avec son installateur, 369 tests automatiques, " +
+    "Vingt et un jours de réalisation, plus de 210 versions livrées chacune avec son installateur, 386 tests automatiques, " +
     "44 analyses décisionnelles. Numérotation remise à 1.0.0 le 9 novembre 2026.");
-  const stats = [["200+", "versions livrées\nen 17 jours", "FaRocket"], ["369", "tests automatiques\nréussis", "FaVial"],
+  const stats = [["210+", "versions livrées\nen 21 jours", "FaRocket"], ["386", "tests automatiques\nréussis", "FaVial"],
     ["76", "fonctions au menu,\nWindows et web", "FaListAlt"], ["44", "analyses\ndécisionnelles", "FaChartLine"]];
   for (const [i, [n, l, ic]] of stats.entries()) {
     const x = M + i * 3.1, plein = i === 3;
@@ -326,12 +326,12 @@ async function construire() {
 
   s = contenu("Fonctions", "Encaissements et banque",
     "Le dépôt Clover de chaque jour est appliqué sur la facture de son lot ; les virements Interac et dépôts d'espèces sont répartis ; " +
-    "les relevés Desjardins et Banque Nationale sont rapprochés de Sage.");
+    "les relevés de toutes les banques et caisses du Canada sont rapprochés de Sage.");
   await grille(s, [["Dépôts Clover", "lot de cartes du soir = dépôt du lendemain ; vendredi-dimanche déposés le lundi ; appliqué sur la facture du lot", "FaCashRegister"],
     ["Interac et espèces", "virements et dépôts au guichet des relevés répartis sur les factures, la plus ancienne d'abord", "FaMoneyBillWave"],
     ["« Déjà au compte de dépôt ? »", "un lot déjà inscrit autrement dans Sage n'est jamais encaissé deux fois : à vérifier", "FaSearch"],
     ["Un échec ne bloque rien", "chaque dépôt dans son propre essai ; montant relu dans la cellule avant validation", "FaRedo"],
-    ["Rapprochement", "relevés PDF Desjardins et BNC lus, chaque solde revérifié ; écart expliqué ligne par ligne", "FaUniversity"],
+    ["Rapprochement", "toutes les banques du Canada : PDF, OFX, CSV ; chaque solde revérifié ; écart expliqué", "FaUniversity"],
     ["Plusieurs comptes", "un compte Sage par banque ; encaissements et paiements manuels notés au rapprochement", "FaPiggyBank"]],
   3, 1.45, 2.3, { corps: 13.5 });
 
@@ -503,9 +503,9 @@ async function construire() {
   { x: M + 1.0, y: 5.45, w: W - 2 * M - 1.2, h: 0.9, fontSize: 13.5, color: P.blanc, valign: "middle" });
 
   s = contenu("Confiance", "Testé avant chaque livraison",
-    "369 tests automatiques, tour de toutes les pages web, puis essais réels sur une copie du fichier d'entreprise, " +
+    "386 tests automatiques, tour de toutes les pages web, puis essais réels sur une copie du fichier d'entreprise, " +
     "et enfin validation sur le vrai fichier.");
-  const qual = [["369", "tests automatiques\n(63 fichiers)", "FaVial"], ["0", "écriture d'essai dans\nle vrai fichier Sage", "FaShieldAlt"],
+  const qual = [["386", "tests automatiques\n(64 fichiers)", "FaVial"], ["0", "écriture d'essai dans\nle vrai fichier Sage", "FaShieldAlt"],
     ["30+", "scénarios d'écriture\nvalidés sur la copie", "FaProjectDiagram"]];
   for (const [i, [n, l, ic]] of qual.entries()) {
     const x = M + i * 4.1;
@@ -553,7 +553,7 @@ async function construire() {
     ["Règles d'affaires", "codes RG-…, règles fixées par le propriétaire", "FaBalanceScale"],
     ["Architecture", "composants, données, flux, pilotage de Sage", "FaProjectDiagram"],
     ["Workflows et processus", "pas à pas d'utilisation, processus métier en couloirs", "FaMapSigns"],
-    ["Plan de test, projet, notes de version", "369 tests, planning, jalons, risques, nouveautés", "FaVial"],
+    ["Plan de test, projet, notes de version", "386 tests, planning, jalons, risques, nouveautés", "FaVial"],
     ["Présentation des services", "document remis au client : services, démarche, engagements", "FaHandshake"]],
   3, 1.45, 1.55, { titre: 14.5, corps: 12, rond: 0.5 });
 

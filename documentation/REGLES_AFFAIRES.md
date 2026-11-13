@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -117,11 +117,11 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-RAP-04 | Écart = écart d'ouverture + mouvements absents de Sage − écritures en circulation ; le but est « 0,00 non expliqué ». |
 | RG-RAP-05 | Un mouvement relié à une écriture d'avant le début de la période compte comme absent (il est déjà dans l'écart d'ouverture). |
 | RG-RAP-06 | **Dépôt salaire** (« PAYjjmmaaaa ») : relié aux paies de Sage du même montant jusqu'à 120 jours plus tôt, la même référence-date d'abord ; sinon « Paie absente de Sage » (à corriger dans la paie, jamais par une écriture de journal). |
-| RG-RAP-08 | **Banque reconnue à la lecture** : un relevé Desjardins ou Banque Nationale (BNC) est lu selon sa banque et rangé dans le compte bancaire de cette banque (et de son n° de compte quand la banque en a plusieurs) ; il est rapproché du compte Sage de ce compte (Desjardins 1055, BNC 1060 par défaut). |
+| RG-RAP-08 | **Banque reconnue à la lecture** : la banque d'un relevé est celle dont le nom revient le plus souvent sur le relevé (mots entiers : un virement vers une autre banque cité dans une description ne l'emporte pas), sinon son n° d'institution ; le relevé est rangé dans le compte bancaire de cette banque (et de son n° de compte quand la banque en a plusieurs) et rapproché du compte Sage de ce compte (compte de dépôt 1055, BNC 1060 par défaut). |
 | RG-RAP-09 | **Relevé BNC** : le sens de chaque mouvement (débit / crédit) se déduit de la variation du solde imprimé ; les totaux « TRANSACTIONS DÉBIT / CRÉDIT » du relevé doivent être retrouvés ; la facturation détaillée est ignorée. |
-| RG-RAP-10 | **Comptes bancaires** : d'autres comptes s'ajoutent dans « Administration > Sage 50 » (banque, format du relevé, compte Sage, n° de compte) ; dans une écriture de journal, seul le compte de banque du mouvement est refusé comme contrepartie (un virement d'une banque à l'autre est permis). Encaissements, caisse et RIA restent sur Desjardins. |
+| RG-RAP-10 | **Comptes bancaires** : d'autres comptes s'ajoutent dans « Administration > Sage 50 » (banque ou caisse de la liste du Canada, compte Sage, n° de compte) ; dans une écriture de journal, seul le compte de banque du mouvement est refusé comme contrepartie (un virement d'une banque à l'autre est permis). Encaissements, caisse et RIA restent sur le compte de dépôt (banque choisie, Desjardins par défaut). |
 | RG-RAP-07 | Un mouvement absent de Sage devient une écriture de journal général seulement après **décision** de la personne (compte choisi) ; source « Relevé AAAA-MM-JJ », vérifiée par source + date + montant. |
-| RG-RAP-11 | **Espèces des ventes** : un virement Interac reçu (« VRW Virement Interac de ») ou un dépôt d'espèces au guichet (« DGA Dépôt au GA ») est marqué « À encaisser sur les ventes » : il n'est jamais une écriture de journal (il passe par les encaissements). |
+| RG-RAP-11 | **Espèces des ventes** : un virement Interac reçu (« VRW Virement Interac de », « Interac e-Transfer from », « Autodeposit ») ou un dépôt d'espèces au guichet (« DGA Dépôt au GA », « ATM / branch deposit ») est marqué « À encaisser sur les ventes » : il n'est jamais une écriture de journal (il passe par les encaissements). |
 | RG-RAP-12 | Un relevé chargé deux fois n'est gardé qu'une fois ; « Supprimer le relevé » le range à part (jamais effacé), ses décisions avec lui. |
 | RG-RAP-13 | Mouvements à rapprocher dans l'ordre : même montant à la date la plus proche d'abord ; une écriture Sage ne sert qu'à un seul mouvement. |
 | RG-RAP-14 | **Toutes les banques du Canada** (2026-11-12) : un relevé se lit en OFX / QFX / QBO, en CSV ou en PDF par colonnes, quelle que soit la banque ou la caisse ; il va dans le compte bancaire dont le n° y figure, sinon dans le premier compte de la banque reconnue (mots du relevé ou n° d'institution), sinon dans le seul compte « Autre banque » ; aucun compte ne convient = relevé refusé avec la marche à suivre. Le compte de dépôt des ventes peut être dans n'importe quelle banque : ses relevés servent aux encaissements. Virements Interac reçus, dépôts au guichet et dépôts de paie sont reconnus en français et en anglais. |
@@ -158,6 +158,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-FRN-21 | **Produits des Champs : taxes** : « TX » après le total de la ligne (collé ou séparé par une espace) = TPS et TVQ sur la ligne. |
 | RG-FRN-22 | **Stock Clover facture par facture** : chaque facture fournisseur a sa case « Mettre à jour le stock Clover » (cochée d'office) ; à l'import (à l'unité, des factures cochées, de toutes les prêtes ou la nuit), seules les factures cochées mettent à jour le stock et le coût Clover ; les autres vont dans Sage seulement ; colonne « Clover » (✔ / —) dans la liste. |
 | RG-FRN-23 | **Note de crédit du fournisseur** : un document dont le titre est « CREDIT » ou « NOTE DE CRÉDIT » (case « Note de crédit » de la facture, cochée à la lecture, modifiable) se traite en note de crédit : quantités, montants, taxes et total en négatif (le prix unitaire reste positif), qu'ils soient imprimés en négatif ou non ; importée dans Sage comme une facture d'achat négative ; le stock Clover des articles reliés diminue, leur coût ne change pas. Les documents déjà dans la liste sont contrôlés une fois et relus en note de crédit (articles Sage déjà reliés gardés). |
+| RG-FRN-24 | **Article Sage tapé dans la ligne** (version 1.0.3) : le n° Sage (exact, sans tenir compte des majuscules) ou la désignation Sage (identique, d'un seul article) tapé dans la ligne relie l'article et le confirme ; deux formats différents demandent « Relier quand même » ; les deux champs vidés retirent le lien. Une ligne n'est jamais reliée à l'article cherché pour une autre ligne. |
 
 ### 7.2 Paiements fournisseurs
 
@@ -181,6 +182,7 @@ Chaque règle porte un code `RG-<module>-<n°>`. Sauf mention contraire, une rè
 | RG-BC-04 | **Un bon par fournisseur** ; il se compare à la facture du même fournisseur datée du bon ou après, en unités Sage, à 2 % près. |
 | RG-BC-05 | Un bon ne se modifie ou ne se supprime que dans l'état « Créé ». |
 | RG-RET-01 | **Retour fournisseur = facture d'achat aux quantités et montants négatifs**, n° « R-<n° de la facture d'origine> » ; lignes reprises de la facture d'origine ; le stock Clover baisse après l'import vérifié ; jamais deux fois. |
+| RG-RET-02 | **Un retour ne change jamais le coût Clover** (version 1.0.5) : seules les quantités sont retirées du stock Clover ; la même règle vaut pour une note de crédit (RG-FRN-23). |
 
 ---
 
@@ -485,6 +487,8 @@ Ordre des étapes :
 | RG-WEB-08 | **Le client des postes ouvre directement l'application web** (Edge en mode application), même si le serveur ne répond pas encore ; la fenêtre de réglage seulement par le raccourci « adresse du serveur ». Installateur du client sans droits d'administrateur. |
 | RG-WEB-09 | Le **serveur web** tourne sans fenêtre, une seule copie à la fois, démarré à l'ouverture de session. |
 | RG-WEB-10 | Dans un tableau web, un texte de plus de 45 caractères est **coupé** (« … ») et se lit en entier au survol : les montants et les états d'une ligne restent toujours visibles ; une cellule avec un champ ou un bouton n'est jamais coupée. |
+| RG-WEB-11 | **Session gardée pendant la saisie** (version 1.0.3) : la frappe, les clics et le défilement comptent comme de l'activité ; la page n'expire qu'après 5 minutes sans activité, même sans envoi de formulaire. |
+| RG-WEB-12 | **Fenêtre fixe sur PC** (version 1.0.9) : au-delà de 820 px de large, la page ne défile pas ; le menu et la liste principale défilent chacun dans leur cadre, la liste prend toute la hauteur qui reste ; après une recherche, la page revient à la position où elle était. |
 | RG-WEB-07 | Changer de serveur : reprendre `config.toml` et `donnees/`, retaper les mots de passe (coffre-fort propre à chaque machine), régler le serveur, relancer `installer_web.ps1` et la tâche planifiée ; retirer tâche et serveur web de l'ancien serveur (jamais deux traitements de nuit). |
 
 ---

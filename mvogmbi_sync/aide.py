@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.10"
+VERSION = "1.0.11"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -679,6 +679,30 @@ FAQ = {
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi. Un administrateur "
                     "peut ouvrir le pointage de partout ; son appareil n'est alors jamais suivi pour la pause "
                     "automatique."),
+        ("sous_titre", "Nouveautés des versions 1.0.1 à 1.0.10 (9 au 12 novembre 2026)"),
+        ("question", "Comment le marché traite-t-il une note de crédit d'un fournisseur ?"),
+        ("reponse", "Ajoutez-la comme une facture (Fournisseur > Factures fournisseurs). Un document intitulé « CREDIT » "
+                    "ou « NOTE DE CRÉDIT » est reconnu à la lecture : la case « Note de crédit » est cochée et les "
+                    "quantités, montants et taxes passent en négatif. Si le titre est différent, cochez la case vous-même "
+                    "(la décocher remet la facture en positif). À l'import, Sage reçoit une facture d'achat négative et le "
+                    "stock Clover des articles reliés diminue ; le coût Clover ne change jamais pour un crédit ni pour un "
+                    "retour fournisseur."),
+        ("question", "Puis-je taper directement le numéro de l'article Sage dans une ligne de facture fournisseur ?"),
+        ("reponse", "Oui. Dans la carte de la ligne, tapez le n° Sage ou la désignation Sage : les articles sont proposés "
+                    "pendant la frappe et l'autre champ se remplit seul ; Entrée relie l'article et le confirme. La liste "
+                    "des factures et la saisie sont dans deux onglets : « 📋 Liste des factures » et « ✏ Saisie de la "
+                    "facture » (liste « Facture à traiter », ◀ ▶ pour passer à la suivante)."),
+        ("question", "Le relevé PDF de ma banque est refusé ou mal lu : que faire ?"),
+        ("reponse", "Téléchargez plutôt le relevé en OFX / QFX (« Microsoft Money », « Quicken ») ou en CSV sur le site de "
+                    "votre banque : ces fichiers se lisent sans dépendre de la mise en page. Les PDF sont lus d'après les "
+                    "modèles publiés par les banques (RBC, UNI) et les mises en page connues (TD, Scotia, BMO, Tangerine) ; "
+                    "le sens de chaque montant est confirmé par le solde imprimé, et un relevé qui ne balance pas est "
+                    "refusé plutôt que mal saisi. Si le message dit « Aucun compte bancaire réglé », ajoutez le compte de "
+                    "cette banque dans « Administration > Sage 50 », carte « Comptes bancaires »."),
+        ("question", "Pourquoi la page web ne défile-t-elle plus sur mon ordinateur ?"),
+        ("reponse", "Comme une fenêtre Windows : sur un écran large, le menu et la liste principale défilent chacun dans "
+                    "leur cadre et la liste prend toute la hauteur de la fenêtre. La page garde sa position après une "
+                    "recherche, et la session ne se ferme pas tant que vous tapez ou cliquez."),
         ("sous_titre", "Nouveautés de la version 1.0.7 (12 novembre 2026) : toutes les banques du Canada"),
         ("question", "Puis-je rapprocher et encaisser avec une autre banque que Desjardins ou la Banque Nationale ?"),
         ("reponse", "Oui. Toutes les banques et caisses du Canada sont reconnues (RBC, TD, Scotia, BMO, CIBC, "
@@ -1492,6 +1516,30 @@ FAQ = {
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi. An administrator can open clock-in from anywhere; their "
                     "device is then never followed for the automatic break."),
+        ("sous_titre", "What's new in versions 1.0.1 to 1.0.10 (November 9 to 12, 2026)"),
+        ("question", "How is a supplier credit note handled?"),
+        ("reponse", "Add it like an invoice (Supplier > Supplier invoices). A document titled “CREDIT” or "
+                    "“NOTE DE CRÉDIT” is recognized when read: the “Credit note” box is checked and "
+                    "quantities, amounts and taxes become negative. If the title is different, check the box yourself "
+                    "(unchecking it makes the invoice positive again). On import, Sage receives a negative purchase "
+                    "invoice and the Clover stock of linked items goes down; the Clover cost never changes for a credit "
+                    "note or a supplier return."),
+        ("question", "Can I type the Sage item number directly in a supplier invoice line?"),
+        ("reponse", "Yes. In the line card, type the Sage number or the Sage description: items are suggested while you "
+                    "type and the other field fills itself; Enter links and confirms the item. The invoice list and the "
+                    "entry are in two tabs: “📋 Invoice list” and “✏ Invoice entry” (“Invoice to "
+                    "process” list, ◀ ▶ to move to the next one)."),
+        ("question", "My bank's PDF statement is refused or misread: what should I do?"),
+        ("reponse", "Download the statement as OFX / QFX (“Microsoft Money”, “Quicken”) or CSV from "
+                    "your bank's website instead: these files are read regardless of layout. PDFs are read from the "
+                    "samples published by the banks (RBC, UNI) and known layouts (TD, Scotia, BMO, Tangerine); the "
+                    "direction of each amount is confirmed by the printed balance, and a statement that does not balance "
+                    "is refused rather than entered wrongly. If the message says “No bank account set”, add that "
+                    "bank's account in “Administration > Sage 50”, “Bank accounts” card."),
+        ("question", "Why doesn't the web page scroll any more on my computer?"),
+        ("reponse", "Like a Windows window: on a wide screen, the menu and the main list each scroll in their own frame "
+                    "and the list takes the full height of the window. The page keeps its position after a search, and "
+                    "the session stays open as long as you type or click."),
         ("sous_titre", "What's new in version 1.0.7 (November 12, 2026): every Canadian bank"),
         ("question", "Can I reconcile and record receipts with a bank other than Desjardins or National Bank?"),
         ("reponse", "Yes. Every Canadian bank and credit union is recognized (RBC, TD, Scotia, BMO, CIBC, Laurentian, "

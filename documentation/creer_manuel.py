@@ -243,12 +243,12 @@ rendu par courriel le matin. Elle couvre cinq domaines :</p>
 Hebdomadaire »), une ligne par article : une facture par jour du lundi au jeudi, une seule du vendredi au
 dimanche.</td><td>5, 6</td></tr>
 <tr><td><b>Encaissements</b></td><td>Les dépôts Clover, virements Interac reçus et dépôts d'espèces arrivés au compte
-Desjardins (1055) sont appliqués sur ces factures.</td><td>7</td></tr>
+de dépôt (1055, Desjardins par défaut) sont appliqués sur ces factures.</td><td>7</td></tr>
 <tr><td><b>Factures fournisseurs</b></td><td>Les factures reçues (PDF, scans, photos) sont lues, reliées aux articles
 Sage et importées comme factures d'achat.</td><td>8</td></tr>
 <tr><td><b>Paiements fournisseurs</b></td><td>Les avis de virement Interac reçus par courriel sont reliés aux factures
 et saisis comme paiements dans Sage.</td><td>9</td></tr>
-<tr><td><b>Rapprochement bancaire</b></td><td>Les relevés Desjardins sont rapprochés du compte 1055 ; ce qui manque
+<tr><td><b>Rapprochement bancaire</b></td><td>Les relevés de chaque banque ou caisse (PDF, OFX, CSV) sont rapprochés de son compte Sage ; ce qui manque
 est saisi dans Sage après votre confirmation.</td><td>10</td></tr>
 </table>
 <h2>Le traitement de chaque nuit</h2>
@@ -279,12 +279,12 @@ report in the morning. It covers five areas:</p>
 <tr><td><b>Sales</b></td><td>Clover sales become a sales invoice in Sage (customer “Vente Hebdomadaire”), one line
 per item: one invoice per day from Monday to Thursday, a single one from Friday to Sunday.</td><td>5, 6</td></tr>
 <tr><td><b>Receipts</b></td><td>Clover deposits, Interac transfers received and cash deposits arriving in the
-Desjardins account (1055) are applied to these invoices.</td><td>7</td></tr>
+deposit account (1055, Desjardins by default) are applied to these invoices.</td><td>7</td></tr>
 <tr><td><b>Supplier invoices</b></td><td>Invoices received (PDF, scans, photos) are read, linked to the Sage items and
 imported as purchase invoices.</td><td>8</td></tr>
 <tr><td><b>Supplier payments</b></td><td>Interac transfer notices received by email are linked to the invoices and
 entered as payments in Sage.</td><td>9</td></tr>
-<tr><td><b>Bank reconciliation</b></td><td>Desjardins statements are reconciled with account 1055; what is missing is
+<tr><td><b>Bank reconciliation</b></td><td>Statements of every bank or credit union (PDF, OFX, CSV) are reconciled with its Sage account; what is missing is
 entered in Sage once you confirm it.</td><td>10</td></tr>
 </table>
 <h2>The nightly run</h2>
@@ -525,8 +525,8 @@ newest; only the last one can be partly paid. Example: a $910.00 transfer on two
 $905.00 on the first and $5.00 on the second.</p>"""))
 
     # ------------------------------------------------------------------ 10. Rapprochement bancaire
-    parties.append(titre("rapprochement") + figure("10_rapprochement", x("Comptabilité > Rapprochement — Relevés Desjardins rapprochés du compte 1055",
-                                                            "Accounting > Reconciliation — Desjardins statements reconciled with account 1055"))
+    parties.append(titre("rapprochement") + figure("10_rapprochement", x("Comptabilité > Rapprochement — Relevés bancaires rapprochés du compte Sage de la banque",
+                                                            "Accounting > Reconciliation — Bank statements reconciled with the bank's Sage account"))
                    + blocs("Rapprochement bancaire") + x("""
 <table class="simple"><tr><th>Chiffre</th><th>Signification</th></tr>
 <tr><td>Solde du relevé</td><td>Solde de fermeture du dernier relevé chargé.</td></tr>
@@ -651,7 +651,7 @@ other.</td></tr></table>"""))
 <li>Dépôt Clover = ventes encaissées moins les espèces ; ventes du lundi au jeudi déposées le lendemain, du vendredi
 au dimanche déposées ensemble le lundi.</li>
 <li>Virements Interac reçus et dépôts d'espèces au guichet : espèces des ventes, encaissés sur la facture du jour.</li>
-<li>Encaissement daté du dépôt, « Payé par : Comptant », compte 1055 (Desjardins).</li>
+<li>Encaissement daté du dépôt, « Payé par : Comptant », compte de dépôt 1055 (banque choisie, Desjardins par défaut).</li>
 <li>Paiement fournisseur daté du virement, « Comptant », compte 1055 ; paiement partiel accepté, jamais plus que le
 solde des factures choisies.</li>
 </ul>
@@ -675,7 +675,7 @@ du projet).</p>""", """
 <li>Clover deposit = sales received minus cash; Monday-to-Thursday sales are deposited the next day, Friday-to-Sunday
 sales together on Monday.</li>
 <li>Interac transfers received and ATM cash deposits: sales cash, recorded on the invoice of the day.</li>
-<li>Receipt dated on the deposit, “Paid by: Cash”, account 1055 (Desjardins).</li>
+<li>Receipt dated on the deposit, “Paid by: Cash”, deposit account 1055 (chosen bank, Desjardins by default).</li>
 <li>Supplier payment dated on the transfer, “Cash”, account 1055; partial payment accepted, never more than the balance
 of the chosen invoices.</li>
 </ul>

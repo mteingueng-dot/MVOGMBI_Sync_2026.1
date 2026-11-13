@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Processus métier (BPM)
 
-Version 1.0.2 (10 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Notation : chaque couloir est un acteur ou un système ; ( ) = début ou fin, [ ] = activité, { } = décision, flèches = enchaînement. Les processus sont ceux en service.
 
@@ -31,7 +31,7 @@ flowchart TB
         D1[Facture « Vente AAAA-MM-JJ »<br/>import mono-utilisateur]
         D2[Encaissement « Comptant »<br/>saisie multi-utilisateur]
     end
-    subgraph BQ["Desjardins"]
+    subgraph BQ["Banque du compte de dépôt"]
         E1[Dépôt Clover au 1055]
     end
     subgraph GER["Gérant"]
@@ -60,6 +60,7 @@ flowchart TB
         A2[Bon de commande proposé<br/>un par fournisseur]
         A5[Lire la facture PDF<br/>contrôle des totaux]
         A6{Lignes reliées<br/>et sans doublon ?}
+        A9[Note de crédit ou retour :<br/>facture négative, stock Clover<br/>diminué, coût inchangé]
         A7[Importer la facture d'achat]
         A8[Stock et coût Clover]
         A10[Rapprocher l'avis Interac]
@@ -72,6 +73,7 @@ flowchart TB
     end
     subgraph FOU["Fournisseur"]
         C1[Livrer et facturer<br/>PDF par courriel]
+        C3[Note de crédit<br/>« CREDIT »]
         C2[Recevoir le virement]
     end
     subgraph SAGEA["Sage 50"]
@@ -82,6 +84,8 @@ flowchart TB
     A1 --> A2 --> B1 --> C1 --> A5 --> A6
     A6 -- non --> B2 --> A6
     A6 -- oui --> A7 --> D1 --> A8
+    C3 --> A5
+    A7 -. négative .-> A9
     D1 --> B3 --> C2
     B3 --> A10 --> B4 --> D2 --> D3
 ```
@@ -126,8 +130,8 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph BQR["Desjardins"]
-        A1([Relevé PDF du mois])
+    subgraph BQR["Banque ou caisse (toutes les banques du Canada)"]
+        A1([Relevé du mois<br/>PDF, OFX / QFX / QBO ou CSV])
     end
     subgraph COM["Comptable"]
         B1[Charger le relevé]
@@ -135,8 +139,8 @@ flowchart TB
         B6([Mois rapproché])
     end
     subgraph APPR["MVOGMBI_Sync"]
-        C1[Lire les mouvements<br/>et vérifier chaque solde]
-        C2[Associer aux écritures du 1055<br/>même montant, −7 à +3 jours]
+        C1[Reconnaître la banque et le compte,<br/>lire les mouvements<br/>et vérifier chaque solde]
+        C2[Associer aux écritures du compte Sage<br/>de la banque, 1055, 1060…<br/>même montant, −7 à +3 jours]
         C3{Écart non expliqué ?}
         C4[Écriture de journal proposée]
     end

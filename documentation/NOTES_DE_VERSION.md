@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.10 (12 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -14,10 +14,22 @@ Chaque version a son installateur, et l'historique complet reste dans Git. Les i
 
 ---
 
+## Version 1.0.11 (13 novembre 2026)
+
+- **Documentation refaite** : tous les documents (architecture, documentation fonctionnelle, guide de l'administrateur, règles d'affaires, plan de test, projet, workflows, processus, catalogue des rapports, présentation des services) mis à la version 1.0.11 avec les nouveautés des versions 1.0.1 à 1.0.10 : toutes les banques du Canada, notes de crédit et retours dans Clover, article Sage tapé dans la ligne, nouveau logo, fenêtre web fixe ; PDF, versions Word, manuels d'utilisation (captures refaites avec le nouveau logo) et présentation PowerPoint régénérés. 386 tests automatiques.
+
 ## Version 1.0.10 (12 novembre 2026)
 
 - **Relevés PDF des autres banques d'après leurs modèles** : modèle publié par RBC (« Votre relevé de compte » : apostrophe typographique, montants « ,15 », solde de clôture, pied « 1 de 2 ») et par UNI (colonnes Frais / Retrait / Dépôt / Solde, frais remboursés, comptes d'épargne et prêts qui suivent ignorés, notes dans la marge, période « 03-01 à 03-31 2023 ») lus et revérifiés ligne par ligne ; mises en page de TD (date après les montants, « STARTING BALANCE »), Scotia (« $271.49 »), BMO (« Amounts deducted / added ») et Tangerine (colonne « Amount » signée) prises en charge. Le sens de chaque montant est confirmé par le solde imprimé.
 - **Neo Financial** et **KOHO** ajoutées à la liste des banques (CIBC, Simplii, Scotia et BMO y étaient déjà).
+
+## Version 1.0.9 (12 novembre 2026)
+
+- **Fenêtre web fixe sur PC** : au-delà de 820 px de large, la page ne défile plus dans son ensemble ; le menu et la liste principale défilent chacun dans leur cadre, et la liste prend toute la hauteur de la fenêtre (au chargement et quand la fenêtre change de taille).
+
+## Version 1.0.8 (12 novembre 2026)
+
+- **Nouveau logo carré** « Marché MVOG-MBI Sherbrooke, le carrefour des cultures » dans l'application, sur le site web et dans les documents ; l'emblème (Afrique, feuille d'érable, M, panier) sert d'icône ; filigrane de l'accueil sans fond blanc.
 
 ## Version 1.0.7 (12 novembre 2026)
 
