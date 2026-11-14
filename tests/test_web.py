@@ -1178,3 +1178,37 @@ def test_reseau_local_sans_tailscale(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["MVOGMBI_Sync_Client.exe"])
     client.principal()
     assert ouvertes == [("https://app.marchemvogmbi.com", "192.168.2.62")]
+
+
+def test_client_mac(tmp_path, monkeypatch):
+    """Demande du propriétaire du 2026-11-14 : le client s'installe aussi sur Mac (même application web ; Bureau à
+    distance par « Windows App »)."""
+    from mvogmbi_sync.web import client
+
+    monkeypatch.setattr(client, "MAC", True)
+    monkeypatch.setattr(client.Path, "home", classmethod(lambda cls: tmp_path))
+    assert client.dossier() == tmp_path / "Library" / "Application Support" / "MVOGMBI_Sync_Client"
+    # navigateur : Edge, sinon Chrome (dans Applications de la machine ou de la personne)
+    chrome = tmp_path / "Applications" / "Google Chrome.app" / "Contents" / "MacOS" / "Google Chrome"
+    chrome.parent.mkdir(parents=True)
+    chrome.write_text("")
+    monkeypatch.setattr(client, "NAVIGATEURS_MAC", ("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                                                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
+    assert client.trouver_edge() == chrome
+    arguments = client.arguments_edge(chrome, "https://app.marchemvogmbi.com", "192.168.2.62")
+    assert arguments[1] == "--app=https://app.marchemvogmbi.com/"
+    assert "--host-resolver-rules=MAP app.marchemvogmbi.com 192.168.2.62" in arguments
+    lances = []
+    monkeypatch.setattr(client.subprocess, "Popen", lambda args, **k: lances.append((args, k)))
+    client.ouvrir("https://app.marchemvogmbi.com")
+    assert lances[-1][1].get("start_new_session") and "creationflags" not in lances[-1][1]
+    client.ouvrir_bureau_distance("https://app.marchemvogmbi.com", "192.168.2.62")
+    args = lances[-1][0]
+    assert args[0] == "open" and args[1].endswith("Application_complete.rdp")
+    assert "full address:s:192.168.2.62" in (client.dossier() / "Application_complete.rdp").read_text(encoding="utf-8")
+    # sans navigateur compatible : navigateur par défaut
+    chrome.unlink()
+    ouverts = []
+    monkeypatch.setattr(client.webbrowser, "open", ouverts.append)
+    client.ouvrir("https://app.marchemvogmbi.com")
+    assert ouverts == ["https://app.marchemvogmbi.com/"]

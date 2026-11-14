@@ -42,3 +42,6 @@ documentation/*_nouveau.pdf
 
 # fichiers de verrouillage de Microsoft Office (nom d utilisateur)
 ~$*
+installation/mac/serveur.json
+installation/mac/VERSION
+installation/mac/*.icns

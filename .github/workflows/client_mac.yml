@@ -1,0 +1,29 @@
+# Fabrique le client Mac (MVOGMBI_Sync_Client_<version>.dmg) sur un Mac de GitHub : aucun Mac n'est nécessaire.
+# Lancer : onglet Actions > « Client Mac » > Run workflow ; le .dmg est dans les « Artifacts » de l'exécution.
+name: Client Mac
+on:
+  workflow_dispatch:
+    inputs:
+      adresse_locale:
+        description: "Adresse du serveur sur le réseau local (ex. 192.168.2.62), vide = Tailscale seulement"
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Fabriquer le client Mac
+        env:
+          ADRESSE_LOCALE: ${{ inputs.adresse_locale }}
+        run: bash installation/mac/fabriquer_mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MVOGMBI_Sync_Client_Mac
+          path: dist/MVOGMBI_Sync_Client_*.dmg
+          retention-days: 30

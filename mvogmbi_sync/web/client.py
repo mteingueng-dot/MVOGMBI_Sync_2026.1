@@ -17,6 +17,7 @@ navigateur.
 from __future__ import annotations
 
 import json
+import sys
 import os
 import subprocess
 import urllib.error
@@ -38,6 +39,10 @@ NOMS = {"marchemvogmbi.com": "https://app.marchemvogmbi.com",
         "app.marchemvogmbi.com": "https://app.marchemvogmbi.com",
         "www.app.marchemvogmbi.com": "https://app.marchemvogmbi.com"}
 ADRESSE_DEFAUT = "app.marchemvogmbi.com"
+# demande du propriétaire du 2026-11-14 : « notre application doit pouvoir s'installer sur PC et Mac » ; le client
+# Mac (installation/mac) ouvre la même application web ; l'application complète reste sur le serveur Windows (Sage 50
+# n'existe que pour Windows), par le Bureau à distance (application « Windows App » de Microsoft sur Mac)
+MAC = sys.platform == "darwin"
 
 
 def _nom(saisie: str) -> str:
@@ -48,11 +53,14 @@ def _nom(saisie: str) -> str:
 
 
 def fichiers_serveur() -> list[Path]:
-    """serveur.json : à côté du programme (déploiement), puis dans %APPDATA%/MVOGMBI_Sync_Client."""
+    """serveur.json : à côté du programme (déploiement), puis dans %APPDATA%/MVOGMBI_Sync_Client (Mac : ~/Library/Application Support)."""
     import sys
 
     ici = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-    return [ici / "serveur.json", dossier() / "serveur.json"]
+    chemins = [ici / "serveur.json"]
+    if getattr(sys, "frozen", False) and MAC:  # application Mac : Contents/Resources (fichier joint par la recette)
+        chemins += [ici.parent / "Resources" / "serveur.json", Path(getattr(sys, "_MEIPASS", ici)) / "serveur.json"]
+    return chemins + [dossier() / "serveur.json"]
 
 
 def noms() -> dict:
@@ -175,6 +183,8 @@ def choisir(saisie: str, delai: float = DELAI) -> tuple[str, str, str]:
 
 
 def dossier() -> Path:
+    if MAC:
+        return Path.home() / "Library" / "Application Support" / "MVOGMBI_Sync_Client"
     return Path(os.environ.get("APPDATA") or Path.home()) / "MVOGMBI_Sync_Client"
 
 
@@ -233,7 +243,19 @@ NE_REPOND_PAS = ("Le serveur ne répond pas. Au magasin ou au bureau (même rés
                  "serveur est allumé ; ailleurs, vérifiez aussi que Tailscale est connecté sur ce poste.")
 
 
+NAVIGATEURS_MAC = ("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+
+
 def trouver_edge() -> Path | None:
+    """Edge (Windows), sinon sur Mac Edge ou Chrome : tous deux ouvrent la fenêtre « application » (--app) et
+    acceptent la règle du réseau local (--host-resolver-rules)."""
+    if MAC:
+        for nom in NAVIGATEURS_MAC:
+            for chemin in (Path(nom), Path.home() / nom.lstrip("/")):
+                if chemin.exists():
+                    return chemin
+        return None
     for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
         if base:
             chemin = Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
@@ -260,8 +282,14 @@ def ouvrir(adresse: str, ip_locale: str = "") -> None:
     if edge is None:
         webbrowser.open(adresse + "/")
         return
-    subprocess.Popen(arguments_edge(edge, adresse, ip_locale),
-                     creationflags=getattr(subprocess, "DETACHED_PROCESS", 0), close_fds=True)
+    subprocess.Popen(arguments_edge(edge, adresse, ip_locale), close_fds=True, **_detache())
+
+
+def _detache() -> dict:
+    """Programme lancé détaché du client (le client se ferme aussitôt)."""
+    if MAC:
+        return {"start_new_session": True}
+    return {"creationflags": getattr(subprocess, "DETACHED_PROCESS", 0)}
 
 
 def fichier_rdp(adresse: str, ip_locale: str = "") -> Path:
@@ -278,9 +306,13 @@ def fichier_rdp(adresse: str, ip_locale: str = "") -> Path:
     return chemin
 
 
+def commande_bureau_distance(fichier: Path) -> list[str]:
+    """Windows : mstsc ; Mac : le fichier .rdp ouvert par « Windows App » (ex-Microsoft Remote Desktop, App Store)."""
+    return ["open", str(fichier)] if MAC else ["mstsc.exe", str(fichier)]
+
+
 def ouvrir_bureau_distance(adresse: str, ip_locale: str = "") -> None:
-    subprocess.Popen(["mstsc.exe", str(fichier_rdp(adresse, ip_locale))], creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
-                     close_fds=True)
+    subprocess.Popen(commande_bureau_distance(fichier_rdp(adresse, ip_locale)), close_fds=True, **_detache())
 
 
 def principal() -> None:
@@ -336,7 +368,7 @@ def fenetre_reglage(adresse: str, message: str) -> None:
     racine.resizable(False, False)
     cadre = ttk.Frame(racine, padding=18)
     cadre.pack(fill="both", expand=True)
-    ttk.Label(cadre, text="MVOGMBI_Sync", font=("Segoe UI", 16, "bold"), foreground="#13772d").pack(anchor="w")
+    ttk.Label(cadre, text="MVOGMBI_Sync", font=("Helvetica Neue" if MAC else "Segoe UI", 16, "bold"), foreground="#13772d").pack(anchor="w")
     ttk.Label(cadre, text="Serveur (ex. marchemvogmbi.com)").pack(anchor="w", pady=(12, 2))
     valeur = tk.StringVar(value=adresse)
     champ = ttk.Entry(cadre, textvariable=valeur, width=46)
