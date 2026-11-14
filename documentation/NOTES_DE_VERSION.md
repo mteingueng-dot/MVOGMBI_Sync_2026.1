@@ -14,6 +14,11 @@ Chaque version a son installateur, et l'historique complet reste dans Git. Les i
 
 ---
 
+## Version 1.0.16 (14 novembre 2026)
+
+- **Sauvegarde dans le cloud** (Administration > Sauvegarde des données, Windows et web) : chaque sauvegarde est chiffrée sur le serveur (AES-256-GCM) puis déposée sur OneDrive ou un stockage compatible S3 (Google Drive et Dropbox à venir) ; envoi chaque nuit et après « Sauvegarder maintenant » ; restauration depuis la liste du compte ; règle RG-SAV-05. Reprise de ConceptSolutionStock 1.0.49 / 1.0.50.
+- Correction : un échec de restauration depuis le cloud affiche bien son message dans la fenêtre Windows.
+
 ## Version 1.0.15 (13 novembre 2026)
 
 - **VPN seulement à distance** : au magasin et au bureau (même réseau local que le serveur), le client MVOGMBI_Sync se connecte par l'adresse locale du serveur, sans Tailscale ; le Bureau à distance aussi. L'adresse affichée reste `https://app.marchemvogmbi.com` (certificat valable). Hors du réseau local, rien ne change : Tailscale.

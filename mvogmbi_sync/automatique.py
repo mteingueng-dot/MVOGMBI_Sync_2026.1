@@ -786,8 +786,25 @@ def sauvegarder_donnees(racine: Path, config_toml: dict, cr: CompteRendu) -> Non
         cr.note(f"Sauvegarde des données : {Path(e.fichier).name} ({e.fichiers} fichiers)")
         if "même disque" in e.message:
             cr.problemes.append(f"Sauvegarde : {e.message.split(' Choisissez')[0]}")
+        envoyer_dans_le_cloud(racine, config_toml, Path(e.fichier), cr)
     else:
         cr.problemes.append(f"Sauvegarde des données non faite : {e.message}")
+
+
+def envoyer_dans_le_cloud(racine: Path, config_toml: dict, archive: Path, cr: CompteRendu) -> None:
+    """Sauvegarde chiffrée puis déposée sur le compte de stockage du client (sauvegarde_cloud.py), si un service
+    est choisi dans Administration > Sauvegarde."""
+    from . import sauvegarde_cloud as sc
+
+    if not sc.envoi_actif(config_toml):
+        return
+    etat = sc.envoyer(racine, config_toml, archive)
+    nom = sc.SERVICES.get(etat.service, etat.service)
+    if etat.ok:
+        cr.note(f"Sauvegarde chiffrée envoyée dans {nom} : {etat.fichier}"
+                + (f" ({etat.message})" if etat.message else ""))
+    else:
+        cr.problemes.append(f"Sauvegarde dans le cloud ({nom}) non faite : {etat.message}")
 
 
 def lancer(racine: Path, config_toml: dict, jusqua: date | None = None, simulation: bool = False,

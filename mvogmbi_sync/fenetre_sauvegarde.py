@@ -29,7 +29,7 @@ class FenetreSauvegarde(FenetreOutil):
         self.config_toml = lire_config(self.racine / "config.toml")
         self.title(t("Sauvegarde des données"))
         self.configure(background=CARTE, padx=14, pady=10)
-        self.geometry("980x600")
+        self.geometry("980x860")
         tk.Label(self, text=t("Chaque nuit, le traitement automatique copie les données de l'application (correspondance, "
                               "pointages, feuilles de temps, registres, journaux) et la configuration dans une archive "
                               "vérifiée. Gardées : 14 jours, 8 semaines, 12 mois."),
@@ -53,8 +53,18 @@ class FenetreSauvegarde(FenetreOutil):
                              petit=True))
         self.etat = tk.Label(self, text="", background=CARTE, anchor="w", justify="left", wraplength=940)
         self.etat.pack(fill="x", pady=(8, 0))
-        self.tableau = tableau_simple(self, hauteur=14)
+        from .fenetre_sauvegarde_cloud import CarteCloud
+
+        self.cloud = CarteCloud(self, self.racine, self.config_toml, self._relire_config)
+        self.cloud.pack(fill="x", pady=(10, 0))
+        self.tableau = tableau_simple(self, hauteur=10)
         self.afficher()
+
+    def _relire_config(self) -> dict:
+        from .interface import lire_config
+
+        self.config_toml = lire_config(self.racine / "config.toml")
+        return self.config_toml
 
     def afficher(self) -> None:
         from .page_rapports import remplir
@@ -115,6 +125,11 @@ class FenetreSauvegarde(FenetreOutil):
             self.afficher()
             if not e.ok:
                 messagebox.showerror(self.title(), t("Sauvegarde non faite : {m}", m=e.message), parent=self)
+            else:
+                from . import sauvegarde_cloud as sc
+
+                if sc.envoi_actif(self._relire_config()):
+                    self.cloud.envoyer(Path(e.fichier))
 
     def restaurer(self) -> None:
         from .design import action_permise

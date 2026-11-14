@@ -39,6 +39,13 @@ def lire(cle: str, secours: str | None = None) -> str:
     return valeur if valeur else (secours or "")
 
 
+def lire_frais(cle: str, secours: str | None = None) -> str:
+    """Relu dans le coffre (sans la mémoire du programme) : un autre programme a pu le changer
+    (jeton renouvelé par le serveur web pendant que la fenêtre Windows tourne)."""
+    _LUS.pop(cle, None)
+    return lire(cle, secours)
+
+
 def ecrire(cle: str, valeur: str) -> None:
     if valeur:
         keyring.set_password(SERVICE, cle, valeur)

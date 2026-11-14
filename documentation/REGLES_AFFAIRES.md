@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.15 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.16 (14 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -466,6 +466,7 @@ Ordre des étapes :
 | RG-SAV-02 | Conservation : la dernière de chacun des 14 derniers jours, 8 dernières semaines et 12 derniers mois ; jamais la plus récente. |
 | RG-SAV-03 | Une sauvegarde sur le même disque que l'application est signalée ; plus de 2 jours sans sauvegarde = alerte. |
 | RG-SAV-04 | **Restaurer** sauvegarde d'abord l'état actuel. |
+| RG-SAV-05 | **Sauvegarde dans le cloud** (version 1.0.16, demande du propriétaire du 14 novembre 2026, reprise de ConceptSolutionStock) : une sauvegarde ne quitte le serveur que **chiffrée** (AES-256-GCM, mot de passe de chiffrement de 12 caractères et 3 sortes au moins, gardé dans le coffre-fort de Windows seulement) ; même conservation que les archives locales ; un fichier coupé ou modifié est refusé à la restauration ; un envoi en échec est signalé au compte rendu de la nuit sans arrêter le traitement. |
 
 ---
 

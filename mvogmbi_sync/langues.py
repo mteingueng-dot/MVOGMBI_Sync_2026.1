@@ -4190,3 +4190,55 @@ for _fr, _en in {
 # 1.0.6 : notes de crédit des fournisseurs (2026-11-11)
 for _fr, _en in {"Note de crédit": "Credit note", "note de crédit": "credit note"}.items():
     EN.setdefault(_fr, _en)
+
+# 1.0.16 : sauvegarde dans le cloud (reprise de ConceptSolutionStock, 2026-11-14)
+for _fr, _en in {
+        "Chaque sauvegarde est CHIFFRÉE sur ce poste (mot de passe de chiffrement) puis déposée sur votre compte de "
+        "stockage. Sans ce mot de passe, une sauvegarde du cloud ne se restaure pas : notez-le en lieu sûr.":
+            "Each backup is ENCRYPTED on this computer (encryption password) then placed in your storage account. "
+            "Without this password, a cloud backup cannot be restored: keep it in a safe place.",
+        "Choisissez d'abord le service.": "Choose the service first.",
+        "Clé secrète": "Secret key",
+        "Compartiment : {c}": "Bucket: {c}",
+        "Compte : {c}": "Account: {c}",
+        "Compte connecté : {n}": "Account connected: {n}",
+        "Dernier envoi : {q} — {f} {m}": "Last upload: {q} — {f} {m}",
+        "Envoi chiffré en cours…": "Encrypted upload in progress…",
+        "Envoyer chaque nuit après la sauvegarde": "Upload every night after the backup",
+        "Envoyer la dernière sauvegarde": "Upload the latest backup",
+        "Faites d'abord une sauvegarde (« Sauvegarder maintenant »).": "Make a backup first (“Back up now”).",
+        "Identifiant de l'application": "Application ID",
+        "La page de connexion s'ouvre dans le navigateur : connectez-vous puis acceptez.":
+            "The sign-in page opens in the browser: sign in, then accept.",
+        "Lecture du compte…": "Reading the account…",
+        "Les deux mots de passe sont différents : rien n'est changé.": "The two passwords differ: nothing is changed.",
+        "Mot de passe de chiffrement des sauvegardes (12 caractères et 3 sortes au moins) :":
+            "Backup encryption password (at least 12 characters and 3 kinds):",
+        "Mot de passe de chiffrement défini.": "Encryption password set.",
+        "Mot de passe de chiffrement à définir.": "Encryption password to set.",
+        "Mot de passe de chiffrement…": "Encryption password…",
+        "Mot de passe enregistré dans le coffre-fort de Windows. Notez-le en lieu sûr.":
+            "Password saved in the Windows credential vault. Keep it in a safe place.",
+        "Retapez le mot de passe :": "Type the password again:",
+        "Réglages enregistrés.": "Settings saved.",
+        "Sauvegarde dans le cloud": "Cloud backup",
+        "Sauvegardes dans le cloud": "Cloud backups",
+        "Sauvegardes dans le cloud…": "Cloud backups…",
+        "Se connecter au compte…": "Connect the account…",
+        "Secret de l'application (Google)": "Application secret (Google)",
+        "Téléchargement et déchiffrement…": "Downloading and decrypting…",
+        "Télécharger « {a} », la déchiffrer et remettre les données telles qu'elles étaient ?\n\nL'état actuel est "
+        "d'abord sauvegardé (dossier « avant_restauration »). Fermez puis rouvrez l'application ensuite.":
+            "Download “{a}”, decrypt it and put the data back as it was?\n\nThe current state is backed up first "
+            "(“avant_restauration” folder). Close and reopen the application afterwards.",
+        "Un mot de passe de chiffrement est déjà défini. Le remplacer ? Les sauvegardes déjà envoyées gardent "
+        "l'ANCIEN mot de passe : gardez-le aussi.":
+            "An encryption password is already set. Replace it? Backups already uploaded keep the OLD password: "
+            "keep it too.",
+        "Vérification du compte…": "Checking the account…",
+        "pas encore connecté": "not connected yet",
+        "{n} sauvegarde(s) sur le compte.": "{n} backup(s) in the account.",
+        "Adresse du service": "Service address", "Région": "Region", "Compartiment": "Bucket",
+        "Dossier (préfixe)": "Folder (prefix)", "Clé d'accès": "Access key", "Service": "Service",
+        "Enregistrer": "Save", "Actualiser": "Refresh"}.items():
+    EN.setdefault(_fr, _en)

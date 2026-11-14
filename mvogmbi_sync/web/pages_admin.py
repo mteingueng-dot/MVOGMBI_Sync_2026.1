@@ -865,10 +865,22 @@ def sauvegarde(ctx: Contexte) -> Reponse:
     message = ""
     if ctx.req.methode == "POST":
         action = ctx.req.champ("action")
+        if action.startswith("cloud_"):
+            from .sauvegarde_cloud_web import traiter
+
+            message, reponse = traiter(ctx, action, _message, _refus_config, action_permise)
+            if reponse is not None:
+                return reponse
         if action == "Sauvegarder":
             def sauvegarder(journal):
+                from .. import sauvegarde_cloud as sc
+
                 etat = sv.sauvegarder(ctx.racine, ctx.config)
-                return f"{'✔' if etat.ok else '✘'} {etat.message or etat.fichier} ({etat.fichiers} fichiers)."
+                lignes = [f"{'✔' if etat.ok else '✘'} {etat.message or etat.fichier} ({etat.fichiers} fichiers)."]
+                if etat.ok and sc.envoi_actif(ctx.config):
+                    nuage = sc.envoyer(ctx.racine, ctx.config, Path(etat.fichier))
+                    lignes.append(f"{'✔' if nuage.ok else '✘'} Cloud : {nuage.fichier or ''} {nuage.message}".strip())
+                return lignes
 
             return taches.lancer(ctx, "Sauvegarde des données", sauvegarder, "/sauvegarde")
         if action == "Enregistrer le dossier":
@@ -898,6 +910,8 @@ def sauvegarde(ctx: Contexte) -> Reponse:
                             f"État actuel gardé : {etat.fichier}"]
 
                 return taches.lancer(ctx, f"Restauration de {archive.name}", restaurer, "/sauvegarde")
+    from .sauvegarde_cloud_web import carte as carte_cloud
+
     derniere = sv.derniere(ctx.racine)
     retard = sv.en_retard(ctx.racine)
     archives = sv.archives(cible) if cible.exists() else []
@@ -917,6 +931,7 @@ def sauvegarde(ctx: Contexte) -> Reponse:
                f"</label><input name='dossier' value='{e(ctx.req.query.get('dossier') or str(cible))}' size='62'>"
                "</div><a class='ouvrir' href='/parcourir-sauvegarde'>📁 Choisir…</a><button class='second' "
                "name='action' value='Enregistrer le dossier'>✔ Enregistrer le dossier</button></form>"
+             + carte_cloud(ctx, csrf)
              + f"<form method='post'>{csrf(ctx)}<div class='barre-onglet'><button name='action' value='Sauvegarder'>💾 "
                "Sauvegarder maintenant</button><button class='danger' name='action' value='Restaurer'>↩ Restaurer la "
                "sauvegarde choisie…</button><label class='case'><input type='checkbox' name='confirme' value='1'> Je "

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.15 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.16 (14 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -377,6 +377,9 @@ Un jour bloqué (article non relié, compte manquant) est signalé et repris la 
 - **Restaurer** (« Administration > Sauvegarde des données ») sauvegarde d'abord l'état actuel dans « avant_restauration ».
 - Le coffre-fort (mots de passe) **n'est pas** dans la sauvegarde : il faut retaper les mots de passe après une restauration sur une autre machine.
 - Sage se sauvegarde **à part**, avec les outils de Sage.
+- **Sauvegarde dans le cloud** (version 1.0.16, carte « Sauvegarde dans le cloud » de la même page, Windows et web) : après chaque sauvegarde (la nuit si « Envoyer chaque nuit après la sauvegarde » est coché, et après « Sauvegarder maintenant »), l'archive est **chiffrée sur le serveur** (AES-256-GCM, clé tirée du mot de passe de chiffrement par PBKDF2, 600 000 tours ; fichier `.cssbak`) puis déposée sur le compte de stockage choisi : OneDrive (dossier de l'application), stockage compatible S3 (compartiment, clé d'accès ; préfixe `MVOGMBI_Sync/`), Google Drive et Dropbox (pas encore utilisables : applications à inscrire). Même conservation que les archives locales. Connexion OneDrive : « Se connecter au compte… » ouvre la page de connexion Microsoft (application « ConceptSolutionStock Sauvegarde » de l'éditeur, retour sur `http://localhost:8767` du poste qui se connecte) ; seul le jeton de renouvellement est gardé, dans le coffre-fort de Windows.
+- **Mot de passe de chiffrement** : gardé dans le coffre-fort de Windows du serveur et **nulle part ailleurs** ; le noter en lieu sûr. Sans lui, une sauvegarde du cloud ne se restaure pas. Le changer ne change pas les sauvegardes déjà envoyées (elles gardent l'ancien mot de passe).
+- Restaurer depuis le cloud : choisir la sauvegarde dans la liste de la carte, « Restaurer » : téléchargée, déchiffrée, vérifiée, puis restaurée comme une archive locale (état actuel gardé d'abord).
 
 ### 7.5 Mettre à jour l'application
 
