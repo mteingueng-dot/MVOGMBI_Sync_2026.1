@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fabrique le client Mac : dist/MVOGMBI_Sync_Client_<version>.dmg (application MVOGMBI_Sync_Client.app à glisser
+# Fabrique le client Mac : dist/MVOGMBI_Sync_Client_<version>_Mac_<Apple|Intel>.dmg (application MVOGMBI_Sync_Client.app à glisser
 # dans Applications). À lancer SUR UN MAC (macOS 11 ou plus, Python 3.11+ de python.org avec Tk), depuis la racine
 # du projet :   bash installation/mac/fabriquer_mac.sh
 # Ou par GitHub : onglet Actions > « Client Mac » > Run workflow (.github/workflows/client_mac.yml).
@@ -37,11 +37,17 @@ fi
 $PYTHON -m pip install --quiet --upgrade pyinstaller
 $PYTHON -m PyInstaller --noconfirm --clean --distpath dist/mac --workpath build/mac "$ICI/MVOGMBI_Sync_Client_mac.spec"
 
+# contrôle : fichier du serveur dans l'application, programme lancé sans erreur d'import
+test -f dist/mac/MVOGMBI_Sync_Client.app/Contents/Resources/serveur.json
+$PYTHON -c "import sys; sys.argv=['x']; from mvogmbi_sync.web import client; assert client.MAC; print(client.dossier())"
+ARCH=$(uname -m)   # arm64 = Mac Apple (M1 à M4), x86_64 = Mac Intel
+[ "$ARCH" = "x86_64" ] && NOM_ARCH=Intel || NOM_ARCH=Apple
+
 # image disque : l'application + un raccourci vers Applications
 DMG_DOSSIER=$(mktemp -d)
 cp -R dist/mac/MVOGMBI_Sync_Client.app "$DMG_DOSSIER/"
 ln -s /Applications "$DMG_DOSSIER/Applications"
-rm -f "dist/MVOGMBI_Sync_Client_$VERSION.dmg"
+rm -f "dist/MVOGMBI_Sync_Client_${VERSION}_Mac_${NOM_ARCH}.dmg"
 hdiutil create -volname "MVOGMBI_Sync $VERSION" -srcfolder "$DMG_DOSSIER" -ov -format UDZO \
-  "dist/MVOGMBI_Sync_Client_$VERSION.dmg"
-echo "Fait : dist/MVOGMBI_Sync_Client_$VERSION.dmg"
+  "dist/MVOGMBI_Sync_Client_${VERSION}_Mac_${NOM_ARCH}.dmg"
+echo "Fait : dist/MVOGMBI_Sync_Client_${VERSION}_Mac_${NOM_ARCH}.dmg"

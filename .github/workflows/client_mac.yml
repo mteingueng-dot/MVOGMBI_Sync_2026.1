@@ -12,7 +12,11 @@ permissions:
   contents: read
 jobs:
   mac:
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        # Mac Apple (M1 à M4) et Mac Intel : un .dmg chacun
+        runner: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,6 +28,6 @@ jobs:
         run: bash installation/mac/fabriquer_mac.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: MVOGMBI_Sync_Client_Mac
+          name: MVOGMBI_Sync_Client_Mac_${{ matrix.runner }}
           path: dist/MVOGMBI_Sync_Client_*.dmg
           retention-days: 30
