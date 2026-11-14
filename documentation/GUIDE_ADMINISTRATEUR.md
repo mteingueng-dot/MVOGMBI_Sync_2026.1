@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.16 (14 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.17 (14 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -280,6 +280,8 @@ flowchart LR
 - **Bureau à distance** : 2 personnes à la fois sans licences RDS ; le compte Windows du serveur est demandé.
 - **Réseau local** : sur le réseau du serveur, le client passe par l'adresse locale sans Tailscale (Edge lancé avec la règle `--host-resolver-rules` qui envoie le nom du serveur à cette adresse) ; le Bureau à distance aussi. Ailleurs : Tailscale.
 - Téléphones et tablettes : navigateur sur `https://app.marchemvogmbi.com/` avec Tailscale connecté (ou DNS local, voir 5.1).
+- **Mac** (version 1.0.17) : `MVOGMBI_Sync_Client_x.y.z_Mac_Apple.dmg` (Mac M1 à M4) ou `…_Mac_Intel.dmg` ; ouvrir l'image, glisser **MVOGMBI_Sync_Client** dans Applications. L'application n'étant pas signée par Apple, la 1re fois : clic droit (ou Ctrl+clic) sur l'application > **Ouvrir** > Ouvrir (ou Réglages Système > Confidentialité et sécurité > « Ouvrir quand même »). Elle ouvre l'application web dans Microsoft Edge ou Google Chrome (fenêtre d'application, réseau local sans Tailscale comme sur PC), sinon dans le navigateur par défaut (Safari : réseau local seulement par le DNS local, voir 5.1). Application complète : installer **Windows App** de Microsoft (App Store) pour le Bureau à distance. Réglages gardés dans `~/Library/Application Support/MVOGMBI_Sync_Client`. Fabrication : GitHub > Actions > « Client Mac » > Run workflow (adresse locale facultative) -> les deux .dmg dans les « Artifacts », ou `bash installation/mac/fabriquer_mac.sh` sur un Mac.
+- L'application complète (Windows, avec Sage 50) **ne s'installe que sur Windows** : Sage 50 Édition canadienne n'existe que pour Windows. Sur Mac, elle s'utilise par l'application web ou par le Bureau à distance.
 
 ### 5.5 Wi-Fi du magasin (pointage)
 

@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.16"
+VERSION = "1.0.17"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -679,6 +679,16 @@ FAQ = {
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi. Un administrateur "
                     "peut ouvrir le pointage de partout ; son appareil n'est alors jamais suivi pour la pause "
                     "automatique."),
+        ("sous_titre", "Nouveautés des versions 1.0.15 à 1.0.17 (13 et 14 novembre 2026)"),
+        ("question", "L'application s'installe-t-elle sur Mac ?"),
+        ("reponse", "Oui pour le client (version 1.0.17) : MVOGMBI_Sync_Client pour Mac Apple (M1 à M4) ou Mac Intel, "
+                    "à glisser dans Applications ; la première fois, clic droit sur l'application puis « Ouvrir ». Il "
+                    "ouvre la même application web que sur PC. L'application complète avec Sage 50 reste sur le "
+                    "serveur Windows (Sage 50 n'existe que pour Windows) : depuis un Mac, utilisez le Bureau à "
+                    "distance avec l'application « Windows App » de Microsoft."),
+        ("question", "Faut-il Tailscale au magasin ?"),
+        ("reponse", "Non (version 1.0.15) : sur le réseau du magasin et du bureau, le client passe directement par le "
+                    "serveur. Tailscale ne sert qu'à distance."),
         ("sous_titre", "Nouveautés des versions 1.0.11 à 1.0.14 (13 novembre 2026)"),
         ("question", "La sécurité de l'application a-t-elle été vérifiée ?"),
         ("reponse", "Oui. Le 13 novembre 2026, le code a été revu à la main (version 1.0.13 : fichiers reçus contrôlés, "
@@ -1527,6 +1537,16 @@ FAQ = {
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi. An administrator can open clock-in from anywhere; their "
                     "device is then never followed for the automatic break."),
+        ("sous_titre", "What's new in versions 1.0.15 to 1.0.17 (November 13 and 14, 2026)"),
+        ("question", "Can the application be installed on a Mac?"),
+        ("reponse", "Yes for the client (version 1.0.17): MVOGMBI_Sync_Client for Apple Macs (M1 to M4) or Intel "
+                    "Macs, to drag into Applications; the first time, right-click the application then \u201cOpen\u201d. "
+                    "It opens the same web application as on a PC. The full application with Sage 50 stays on the "
+                    "Windows server (Sage 50 exists only for Windows): from a Mac, use Remote Desktop with "
+                    "Microsoft's \u201cWindows App\u201d."),
+        ("question", "Is Tailscale needed at the store?"),
+        ("reponse", "No (version 1.0.15): on the store and office network, the client goes straight to the server. "
+                    "Tailscale is only needed when away."),
         ("sous_titre", "What's new in versions 1.0.11 to 1.0.14 (November 13, 2026)"),
         ("question", "Has the application's security been checked?"),
         ("reponse", "Yes. On November 13, 2026, the code was reviewed by hand (version 1.0.13: received files checked, "

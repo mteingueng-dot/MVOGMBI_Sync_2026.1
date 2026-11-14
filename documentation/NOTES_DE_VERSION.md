@@ -14,6 +14,10 @@ Chaque version a son installateur, et l'historique complet reste dans Git. Les i
 
 ---
 
+## Version 1.0.17 (14 novembre 2026)
+
+- **Client pour Mac** : `MVOGMBI_Sync_Client_1.0.17_Mac_Apple.dmg` et `…_Mac_Intel.dmg` (application à glisser dans Applications) ; même application web que sur PC (Edge ou Chrome en fenêtre d'application, réseau local sans Tailscale), Bureau à distance par « Windows App » de Microsoft ; fabriqués par GitHub (Actions > « Client Mac ») ; règle RG-WEB-14. L'application complète avec Sage 50 reste Windows seulement.
+
 ## Version 1.0.16 (14 novembre 2026)
 
 - **Sauvegarde dans le cloud** (Administration > Sauvegarde des données, Windows et web) : chaque sauvegarde est chiffrée sur le serveur (AES-256-GCM) puis déposée sur OneDrive ou un stockage compatible S3 (Google Drive et Dropbox à venir) ; envoi chaque nuit et après « Sauvegarder maintenant » ; restauration depuis la liste du compte ; règle RG-SAV-05. Reprise de ConceptSolutionStock 1.0.49 / 1.0.50.
