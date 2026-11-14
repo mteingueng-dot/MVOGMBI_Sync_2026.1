@@ -3,6 +3,12 @@ les postes (magasin, bureau, ordinateurs personnels). Il garde l'adresse du serv
 serveur MVOGMBI_Sync (en-tête Server) et ouvre l'application web dans sa propre fenêtre (Microsoft Edge en mode
 application, profil à part : ni onglets ni barre d'adresse ; sinon le navigateur par défaut).
 
+Réseau local (règle du propriétaire du 2026-11-13 : « si les utilisateurs sont sur le même réseau local, pas
+besoin que le client se connecte via le VPN ; le VPN est nécessaire uniquement sur un réseau distant ») : le client
+essaie aussi l'adresse locale du serveur (« adresse_locale » de serveur.json) ; si le serveur y répond, Edge est
+ouvert avec la règle « --host-resolver-rules » qui envoie le nom du serveur (app.marchemvogmbi.com) à cette adresse :
+même adresse affichée, certificat HTTPS valable, Tailscale inutile. Ailleurs, le nom mène à l'adresse Tailscale.
+
 Rien n'est gardé sur le poste que l'adresse du serveur (%APPDATA%\\MVOGMBI_Sync_Client\\client.json) ; la connexion
 (nom et mot de passe) se fait dans la fenêtre, sur le serveur. Les téléphones ouvrent la même adresse dans leur
 navigateur.
@@ -21,6 +27,7 @@ from urllib.parse import urlsplit
 
 PORT_DEFAUT = 8765
 DELAI = 5  # s
+DELAI_LOCAL = 2  # s : sur le réseau local, le serveur répond tout de suite
 # noms que l'on tape dans le client (demande du propriétaire du 2026-11-03 : « marchemvogmbi.com » au lieu de
 # l'adresse et du port) -> serveur ; le domaine reste celui du site web du marché (DNS chez WHC) : il n'est pas
 # changé, c'est le client qui fait le lien
@@ -102,6 +109,71 @@ def premiere_qui_repond(saisie: str, delai: float = DELAI) -> tuple[str, str]:
     return liste[0], certificat or raisons[0]
 
 
+def adresse_locale() -> str:
+    """Adresse du serveur sur le réseau local (serveur.json : « Administration > Automatisation > Serveur de
+    l'application > Adresse locale »), sinon « »."""
+    for chemin in fichiers_serveur():
+        try:
+            valeur = str(json.loads(chemin.read_text(encoding="utf-8")).get("adresse_locale") or "").strip()
+        except (OSError, ValueError):
+            continue
+        if valeur:
+            return valeur
+    return ""
+
+
+def verifier_local(adresse: str, ip: str, delai: float = DELAI_LOCAL) -> bool:
+    """Le serveur MVOGMBI_Sync répond-il à l'adresse locale `ip` sous le nom de `adresse` ? En HTTPS, le certificat
+    est vérifié pour le NOM (comme le fera Edge avec la règle de résolution)."""
+    import http.client
+    import socket
+    import ssl
+
+    parties = urlsplit(adresse)
+    nom, https = parties.hostname or "", parties.scheme == "https"
+    try:
+        port = parties.port or (443 if https else 80)
+    except ValueError:
+        return False
+    if not nom or not ip:
+        return False
+    try:
+        prise = socket.create_connection((ip, port), timeout=delai)
+        if https:
+            contexte = ssl.create_default_context()
+            prise = contexte.wrap_socket(prise, server_hostname=nom)
+            connexion = http.client.HTTPSConnection(nom, port, timeout=delai, context=contexte)
+        else:
+            connexion = http.client.HTTPConnection(nom, port, timeout=delai)
+        connexion.sock = prise  # déjà reliée à l'adresse locale : jamais de recherche du nom
+        try:
+            connexion.request("GET", "/connexion")
+            reponse = connexion.getresponse()
+            return reponse.headers.get("Server", "").startswith("MVOGMBI_Sync")
+        finally:
+            connexion.close()
+    except (OSError, ssl.SSLError, http.client.HTTPException):
+        return False
+
+
+def choisir(saisie: str, delai: float = DELAI) -> tuple[str, str, str]:
+    """(adresse, raison de l'échec ou « », adresse locale à utiliser ou « »). Le réseau local passe d'abord : un
+    poste du magasin ou du bureau n'a pas besoin de Tailscale ; à distance, les adresses habituelles (Tailscale)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    liste = candidats(saisie)
+    ip = adresse_locale()
+    hote = urlsplit(liste[0]).hostname or ""
+    local = bool(ip) and hote not in ("", ip)
+    with ThreadPoolExecutor(2) as groupe:
+        essai_local = groupe.submit(verifier_local, liste[0], ip) if local else None
+        habituel = groupe.submit(premiere_qui_repond, saisie, delai)
+        if essai_local is not None and essai_local.result():
+            return liste[0], "", ip
+        adresse, raison = habituel.result()
+    return adresse, raison, ""
+
+
 def dossier() -> Path:
     return Path(os.environ.get("APPDATA") or Path.home()) / "MVOGMBI_Sync_Client"
 
@@ -152,11 +224,13 @@ def verifier(adresse: str, delai: float = DELAI) -> str:
         if isinstance(getattr(erreur, "reason", None), ssl.SSLError):
             return ("Le certificat HTTPS du serveur est refusé (chaîne incomplète ?) : sur le serveur, réglez le "
                     "certificat sur le fichier « …-chain.pem » (Administration > Automatisation > Serveur).")
-        return ("Le serveur ne répond pas. Vérifiez que Tailscale est connecté sur ce poste et que le serveur est "
-                "allumé.")
+        return NE_REPOND_PAS
     except OSError:
-        return ("Le serveur ne répond pas. Vérifiez que Tailscale est connecté sur ce poste et que le serveur est "
-                "allumé.")
+        return NE_REPOND_PAS
+
+
+NE_REPOND_PAS = ("Le serveur ne répond pas. Au magasin ou au bureau (même réseau que le serveur), vérifiez que le "
+                 "serveur est allumé ; ailleurs, vérifiez aussi que Tailscale est connecté sur ce poste.")
 
 
 def trouver_edge() -> Path | None:
@@ -168,22 +242,33 @@ def trouver_edge() -> Path | None:
     return None
 
 
-def ouvrir(adresse: str) -> None:
+def arguments_edge(edge, adresse: str, ip_locale: str = "") -> list[str]:
+    """Ligne de commande d'Edge. Réseau local : profil à part (une fenêtre déjà ouverte par Tailscale garderait sa
+    façon de joindre le serveur) et nom du serveur résolu vers l'adresse locale."""
+    profil = dossier() / ("fenetre-local" if ip_locale else "fenetre")
+    arguments = [str(edge), f"--app={adresse}/", f"--user-data-dir={profil}", "--no-first-run",
+                 "--no-default-browser-check", "--window-size=1280,860"]
+    hote = urlsplit(adresse).hostname or ""
+    if ip_locale and hote and hote != ip_locale:
+        arguments.append(f"--host-resolver-rules=MAP {hote} {ip_locale}")
+    return arguments
+
+
+def ouvrir(adresse: str, ip_locale: str = "") -> None:
     """Fenêtre de l'application : Edge en mode application (profil à part, gardé d'une fois à l'autre)."""
     edge = trouver_edge()
     if edge is None:
         webbrowser.open(adresse + "/")
         return
-    profil = dossier() / "fenetre"
-    subprocess.Popen([str(edge), f"--app={adresse}/", f"--user-data-dir={profil}", "--no-first-run",
-                      "--no-default-browser-check", "--window-size=1280,860"],
+    subprocess.Popen(arguments_edge(edge, adresse, ip_locale),
                      creationflags=getattr(subprocess, "DETACHED_PROCESS", 0), close_fds=True)
 
 
-def fichier_rdp(adresse: str) -> Path:
+def fichier_rdp(adresse: str, ip_locale: str = "") -> Path:
     """Connexion Bureau à distance à l'application complète (application Windows sur le serveur) : même machine
-    que le serveur web ; compte Windows du serveur demandé à la connexion (rien n'est gardé ici)."""
-    hote = urlsplit(adresse).hostname or ""
+    que le serveur web ; compte Windows du serveur demandé à la connexion (rien n'est gardé ici). Réseau local :
+    l'adresse locale (sans Tailscale)."""
+    hote = ip_locale or urlsplit(adresse).hostname or ""
     chemin = dossier() / "Application_complete.rdp"
     dossier().mkdir(parents=True, exist_ok=True)
     lignes = [f"full address:s:{hote}", "screen mode id:i:2", "use multimon:i:0", "prompt for credentials:i:1",
@@ -193,8 +278,8 @@ def fichier_rdp(adresse: str) -> Path:
     return chemin
 
 
-def ouvrir_bureau_distance(adresse: str) -> None:
-    subprocess.Popen(["mstsc.exe", str(fichier_rdp(adresse))], creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
+def ouvrir_bureau_distance(adresse: str, ip_locale: str = "") -> None:
+    subprocess.Popen(["mstsc.exe", str(fichier_rdp(adresse, ip_locale))], creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
                      close_fds=True)
 
 
@@ -215,18 +300,21 @@ def principal() -> None:
     # l'application web, même si le serveur ne répond pas encore (la fenêtre d'Edge montre alors son message et se
     # recharge) ; « --bureau » : Bureau à distance
     try:
-        adresse, raison = premiere_qui_repond(saisie)
+        adresse, raison, ip = choisir(saisie)
     except ValueError:
-        adresse, raison = "", "Adresse invalide."
+        adresse, raison, ip = "", "Adresse invalide.", ""
     if not adresse:
         adresse = (noms().get(_nom(ADRESSE_DEFAUT)) or f"https://{ADRESSE_DEFAUT}").rstrip("/")
     if "--bureau" in sys.argv:
         if raison:
             fenetre_reglage(saisie, raison)
         else:
-            ouvrir_bureau_distance(adresse)
+            ouvrir_bureau_distance(adresse, ip)
         return
-    ouvrir(adresse)
+    if ip:
+        ouvrir(adresse, ip)
+    else:
+        ouvrir(adresse)
 
 
 def adresse_installee() -> str:
@@ -260,7 +348,7 @@ def fenetre_reglage(adresse: str, message: str) -> None:
         etat.configure(text="Connexion au serveur…", foreground="#6b7a70")
         racine.update_idletasks()
         try:
-            choisie, raison = premiere_qui_repond(valeur.get())
+            choisie, raison, ip = choisir(valeur.get())
         except ValueError as erreur:
             etat.configure(text=str(erreur), foreground="#c8102e")
             return
@@ -269,9 +357,9 @@ def fenetre_reglage(adresse: str, message: str) -> None:
             return
         ecrire_reglages({"adresse": valeur.get().strip(), "choisie": True})  # le nom tapé : gardé en priorité
         if bureau:
-            ouvrir_bureau_distance(choisie)
+            ouvrir_bureau_distance(choisie, ip)
         else:
-            ouvrir(choisie)
+            ouvrir(choisie, ip)
         racine.destroy()
 
     boutons = ttk.Frame(cadre)

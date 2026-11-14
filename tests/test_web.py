@@ -1117,3 +1117,64 @@ def test_reconnexion_revient_a_la_page(site):
     statut, _, entetes = ouvrir(nav2, base + "/connexion", {"nom": "Patron", "mot_de_passe": mdp_web("secret123456"),
                                                             "retour": "//autre-site.example/"})
     assert statut == 303 and entetes["Location"] == "/"   # jamais vers un autre site
+
+
+def test_reseau_local_sans_tailscale(tmp_path, monkeypatch):
+    """Règle du propriétaire du 2026-11-13 : sur le réseau local, le client joint le serveur par son adresse locale
+    (sans Tailscale) ; Tailscale seulement à distance. Le serveur écoute aussi sur l'adresse locale."""
+    import json
+    import sys
+    import types
+
+    from mvogmbi_sync.web import client
+
+    # serveur : adresses locales retenues (jamais l'adresse principale, rien pour 127.0.0.1 ou 0.0.0.0)
+    app = types.SimpleNamespace(config={"serveur": {"adresse_locale": "192.168.2.62"},
+                                        "web": {"adresse": "100.99.52.28", "adresses_locales": ["192.168.2.62",
+                                                                                                 "10.0.0.5"]}})
+    assert serveur.adresses_locales(app, "100.99.52.28") == ["192.168.2.62", "10.0.0.5"]
+    assert serveur.adresses_locales(app, "127.0.0.1") == [] and serveur.adresses_locales(app, "0.0.0.0") == []
+    # un 2e serveur sur l'adresse locale, même port, même application
+    (tmp_path / "config.toml").write_text('[serveur]\nadresse_locale = "127.0.0.3"\n', encoding="utf-8")
+    principal = serveur.creer_serveur(tmp_path, "127.0.0.2", 0)
+    locaux = serveur.serveurs_locaux(principal)
+    assert [s.server_address for s in locaux] == [("127.0.0.3", principal.server_address[1])]
+    for s in [principal] + locaux:
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        port = principal.server_address[1]
+        # le client vérifie le serveur à l'adresse locale sous son NOM (Host), sans résoudre le nom
+        assert client.verifier_local(f"http://serveur-magasin.exemple:{port}", "127.0.0.3")
+        assert not client.verifier_local(f"http://serveur-magasin.exemple:{port}", "127.0.0.9", delai=1)
+        # serveur.json avec l'adresse locale : le réseau local passe d'abord
+        monkeypatch.setenv("APPDATA", str(tmp_path))
+        (tmp_path / "MVOGMBI_Sync_Client").mkdir()
+        (tmp_path / "MVOGMBI_Sync_Client" / "serveur.json").write_text(json.dumps(
+            {"noms": {"serveur-magasin.exemple": f"http://serveur-magasin.exemple:{port}"},
+             "adresse": f"http://serveur-magasin.exemple:{port}", "adresse_locale": "127.0.0.3"}), encoding="utf-8")
+        monkeypatch.setattr(client, "fichiers_serveur", lambda: [tmp_path / "MVOGMBI_Sync_Client" / "serveur.json"])
+        assert client.adresse_locale() == "127.0.0.3"
+        assert client.choisir("serveur-magasin.exemple") == (f"http://serveur-magasin.exemple:{port}", "", "127.0.0.3")
+    finally:
+        for s in locaux + [principal]:
+            s.shutdown()
+            s.server_close()
+    # hors du réseau local (adresse locale muette) : l'adresse habituelle (Tailscale), sans règle locale
+    monkeypatch.setattr(client, "verifier_local", lambda adresse, ip, delai=2: False)
+    monkeypatch.setattr(client, "verifier", lambda adresse, delai=5: "")
+    adresse, raison, ip = client.choisir("serveur-magasin.exemple")
+    assert raison == "" and ip == ""
+    # Edge : nom du serveur envoyé à l'adresse locale, profil à part ; Bureau à distance par l'adresse locale
+    arguments = client.arguments_edge("msedge.exe", "https://app.marchemvogmbi.com", "192.168.2.62")
+    assert "--host-resolver-rules=MAP app.marchemvogmbi.com 192.168.2.62" in arguments
+    assert any(a.endswith("fenetre-local") for a in arguments)
+    assert not any("host-resolver" in a for a in client.arguments_edge("msedge.exe", "https://app.marchemvogmbi.com"))
+    rdp = client.fichier_rdp("https://app.marchemvogmbi.com", "192.168.2.62").read_text(encoding="utf-8")
+    assert "full address:s:192.168.2.62" in rdp
+    # principal : le client ouvre l'application par le réseau local quand il répond
+    ouvertes = []
+    monkeypatch.setattr(client, "choisir", lambda saisie, delai=5: ("https://app.marchemvogmbi.com", "", "192.168.2.62"))
+    monkeypatch.setattr(client, "ouvrir", lambda *a: ouvertes.append(a))
+    monkeypatch.setattr(sys, "argv", ["MVOGMBI_Sync_Client.exe"])
+    client.principal()
+    assert ouvertes == [("https://app.marchemvogmbi.com", "192.168.2.62")]

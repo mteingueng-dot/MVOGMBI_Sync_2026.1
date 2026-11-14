@@ -2471,7 +2471,7 @@ EN: dict[str, str] = {
     'Adresse Tailscale': 'Tailscale address',
     'Adresse 100.x.y.z du serveur dans Tailscale (accès depuis le magasin, le bureau et les téléphones).': 'Server 100.x.y.z address in Tailscale (access from the store, the office and phones).',
     'Adresse locale': 'Local address',
-    'Adresse sur le réseau du bureau (ex. 192.168.2.62) : Bureau à distance.': 'Address on the office network (e.g. 192.168.2.62): Remote Desktop.',
+    'Adresse sur le réseau du magasin et du bureau (ex. 192.168.2.62) : sur ce réseau, le client et le Bureau à distance passent par elle, sans Tailscale (Tailscale seulement à distance).': 'Address on the store and office network (e.g. 192.168.2.62): on this network, the client and Remote Desktop use it, without Tailscale (Tailscale only when away).',
     'Nom tapé dans le client': 'Name typed in the client',
     'Ce que les employés tapent dans MVOGMBI_Sync_Client (ex. marchemvogmbi.com).': 'What employees type in MVOGMBI_Sync_Client (e.g. marchemvogmbi.com).',
     'Port du serveur web': 'Web server port',

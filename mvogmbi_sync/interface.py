@@ -1639,7 +1639,7 @@ class Application(tk.Tk):
                     aide=t("Adresse 100.x.y.z du serveur dans Tailscale (accès depuis le magasin, le bureau et les "
                            "téléphones)."))
         self._champ(serveur, 4, t("Adresse locale"), "serveur.adresse_locale", r["adresse_locale"],
-                    aide=t("Adresse sur le réseau du bureau (ex. 192.168.2.62) : Bureau à distance."))
+                    aide=t("Adresse sur le réseau du magasin et du bureau (ex. 192.168.2.62) : sur ce réseau, le client et le Bureau à distance passent par elle, sans Tailscale (Tailscale seulement à distance)."))
         self._champ(serveur, 6, t("Nom tapé dans le client"), "serveur.nom_public", r["nom_public"],
                     aide=t("Ce que les employés tapent dans MVOGMBI_Sync_Client (ex. marchemvogmbi.com)."))
         self._champ(serveur, 8, t("Port du serveur web"), "serveur.port", str(r["port"]),

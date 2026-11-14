@@ -440,6 +440,45 @@ def creer_serveur(racine: Path, adresse: str | None = None, port: int | None = N
     return serveur
 
 
+def adresses_locales(app, principale: str) -> list[str]:
+    """Adresses du réseau local où le serveur écoute AUSSI (règle du propriétaire du 2026-11-13 : « si les
+    utilisateurs sont sur le même réseau local, pas besoin du VPN ; le VPN seulement sur un réseau distant ») :
+    [serveur] adresse_locale (« Administration > Automatisation > Serveur de l'application ») et [web]
+    adresses_locales ; jamais l'adresse principale. Serveur réglé sur 127.0.0.1 (essais) ou 0.0.0.0 (déjà
+    partout) : rien de plus."""
+    from .. import serveur_appli
+
+    if principale in ("", "0.0.0.0", "::", "127.0.0.1", "localhost"):
+        return []
+    web = app.config.get("web", {})
+    liste = [serveur_appli.lire(app.config).get("adresse_locale", "")]
+    supplement = web.get("adresses_locales") or []
+    liste += [supplement] if isinstance(supplement, str) else list(supplement)
+    return [a for a in dict.fromkeys(str(x).strip() for x in liste)
+            if a and a != principale and a not in ("127.0.0.1", "0.0.0.0", "localhost")]
+
+
+def serveurs_locaux(serveur) -> list:
+    """Un serveur de plus par adresse locale : même application, même certificat (relu avec le principal).
+    Adresse absente de ce poste (configuration reprise d'un autre serveur) : notée au journal, jamais bloquante."""
+    app = serveur.app
+    hote, port = serveur.server_address[:2]
+    autres = []
+    for adresse in adresses_locales(app, str(hote)):
+        try:
+            local = ThreadingHTTPServer((adresse, port), Gestionnaire)
+        except OSError as erreur:
+            app.noter(f"réseau local {adresse}:{port} non disponible : {erreur}")
+            continue
+        local.daemon_threads = True
+        local.app = app  # type: ignore[attr-defined]
+        if getattr(serveur, "contexte_tls", None) is not None:
+            local.socket = serveur.contexte_tls.wrap_socket(local.socket, server_side=True)
+            local.contexte_tls = serveur.contexte_tls  # type: ignore[attr-defined]
+        autres.append(local)
+    return autres
+
+
 def _relire_certificat(serveur) -> None:
     """Certificat Let's Encrypt renouvelé (tous les 60 jours) : relu sans redémarrer le serveur (contrôle horaire)."""
     import os
@@ -603,6 +642,10 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     schema = "https" if serveur.app.https else "http"  # type: ignore[attr-defined]
     print(f"Application web : {schema}://{hote}:{port_reel}/  (Ctrl+C pour arrêter)")
     serveur.app.noter(f"démarrage {schema}://{hote}:{port_reel}/")  # type: ignore[attr-defined]
+    locaux = serveurs_locaux(serveur)  # réseau du magasin et du bureau : sans Tailscale
+    for local in locaux:
+        threading.Thread(target=local.serve_forever, daemon=True, name="web-local").start()
+        serveur.app.noter(f"réseau local : {schema}://{local.server_address[0]}:{port_reel}/")  # type: ignore[attr-defined]
     threading.Thread(target=_suivre_telephones, args=(serveur.app,), daemon=True).start()
     threading.Thread(target=_garder_sage_pret, args=(serveur.app,), daemon=True, name="sage-pret").start()
     threading.Thread(target=_surveiller_mono, daemon=True, name="sage-mono").start()
@@ -620,6 +663,9 @@ def lancer(racine: Path, adresse: str | None = None, port: int | None = None) ->
     except KeyboardInterrupt:
         pass
     finally:
+        for local in locaux:
+            local.shutdown()
+            local.server_close()
         serveur.server_close()
         serveur.app.noter("arrêt")  # type: ignore[attr-defined]
 

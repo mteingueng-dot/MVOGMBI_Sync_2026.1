@@ -794,7 +794,7 @@ def _carte_serveur(ctx: Contexte) -> str:
         + _ligne("Adresse Tailscale", _entree("s_adresse", r["adresse"]),
                  "Adresse 100.x.y.z du serveur dans Tailscale (accès depuis le magasin, le bureau et les téléphones).")
         + _ligne("Adresse locale", _entree("s_adresse_locale", r["adresse_locale"]),
-                 "Adresse sur le réseau du bureau (ex. 192.168.2.62) : Bureau à distance.")
+                 "Adresse sur le réseau du magasin et du bureau (ex. 192.168.2.62) : sur ce réseau, le client et le Bureau à distance passent par elle, sans Tailscale (Tailscale seulement à distance).")
         + _ligne("Nom tapé dans le client", _entree("s_nom_public", r["nom_public"]),
                  "Ce que les employés tapent dans MVOGMBI_Sync_Client (ex. marchemvogmbi.com).")
         + _ligne("Port du serveur web", _entree("s_port", r["port"], taille=8),

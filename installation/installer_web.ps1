@@ -5,8 +5,11 @@
 # après l'installation de MVOGMBI_Sync sur le serveur :
 #     powershell -ExecutionPolicy Bypass -File "<dossier de MVOGMBI_Sync>\installer_web.ps1"
 # Ce que fait le script (rien d'autre) :
-#   1. [web] adresse = adresse Tailscale du serveur, port 8765 (config.toml de l'application) ;
-#   2. règle du pare-feu Windows : port 8765 ouvert SEULEMENT sur la carte Tailscale (jamais sur Internet ni le réseau local) ;
+#   1. [web] adresse = adresse Tailscale du serveur, port 8765 (config.toml de l'application) ; [serveur]
+#      adresse_locale = adresse du serveur sur le réseau local (le serveur web y écoute aussi) ;
+#   2. règles du pare-feu Windows : port ouvert sur la carte Tailscale (accès à distance) et, sur la carte du réseau
+#      local, pour les appareils de ce réseau seulement (sous-réseau local : magasin et bureau sans Tailscale,
+#      règle du propriétaire du 2026-11-13) ; jamais sur Internet ;
 #   3. tâche planifiée « MVOGMBI_Sync Web » : démarre le serveur web à l'ouverture de votre session, sous votre
 #      compte (le jeton Clover est dans VOTRE coffre-fort Windows), relancée en cas d'arrêt.
 # Retrait : powershell -File installer_web.ps1 -Retirer
@@ -18,11 +21,13 @@ param(
 $ErrorActionPreference = "Stop"
 $Tache = "MVOGMBI_Sync Web"
 $Regle = "MVOGMBI_Sync Web (Tailscale)"
+$RegleLocale = "MVOGMBI_Sync Web (réseau local)"
 
 if ($Retirer) {
     Unregister-ScheduledTask -TaskName $Tache -Confirm:$false -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -DisplayName $Regle -ErrorAction SilentlyContinue
-    Write-Host "Tâche et règle du pare-feu retirées."
+    Remove-NetFirewallRule -DisplayName $RegleLocale -ErrorAction SilentlyContinue
+    Write-Host "Tâche et règles du pare-feu retirées."
     exit 0
 }
 
@@ -52,6 +57,26 @@ if ($texte -notmatch "(?m)^\[web\]") {
     Write-Host "config.toml : [web] adresse = $ip (adresse Tailscale de ce serveur)."
 }
 
+# 1 bis. adresse sur le réseau local (carte avec une passerelle, hors Tailscale) : le serveur web y écoute aussi ;
+# les postes du magasin et du bureau s'y connectent sans Tailscale (le client la lit dans serveur.json)
+$locale = (Get-NetIPConfiguration -ErrorAction SilentlyContinue |
+           Where-Object { $_.IPv4DefaultGateway -and $_.InterfaceAlias -notlike "Tailscale*" } |
+           Select-Object -First 1).IPv4Address.IPAddress
+if ($locale) {
+    $texte = Get-Content $config -Raw -Encoding UTF8
+    if ($texte -match '(?ms)^\[serveur\][^\[]*?^adresse_locale\s*=') {
+        $texte = [regex]::Replace($texte, '(?ms)(^\[serveur\][^\[]*?^adresse_locale\s*=\s*)"[^"]*"', "`${1}`"$locale`"")
+    } elseif ($texte -match '(?m)^\[serveur\]\s*$') {
+        $texte = [regex]::Replace($texte, '(?m)^\[serveur\]\s*$', "[serveur]`r`nadresse_locale = `"$locale`"")
+    } else {
+        $texte = $texte.TrimEnd() + "`r`n`r`n[serveur]`r`nadresse_locale = `"$locale`"`r`n"
+    }
+    [IO.File]::WriteAllText($config, $texte, (New-Object Text.UTF8Encoding $false))
+    Write-Host "config.toml : [serveur] adresse_locale = $locale (réseau local, sans Tailscale)."
+} else {
+    Write-Host "Aucune adresse sur le réseau local : seul l'accès par Tailscale est ouvert."
+}
+
 # port réglé dans config.toml ([web] port : 443 avec HTTPS, voir certificat_https.ps1)
 $texte = Get-Content $config -Raw -Encoding UTF8
 $m = [regex]::Match($texte, '(?ms)^\[web\][^\[]*?^port\s*=\s*(\d+)')
@@ -63,7 +88,14 @@ $carte = (Get-NetIPAddress -IPAddress $ip).InterfaceAlias
 Remove-NetFirewallRule -DisplayName $Regle -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName $Regle -Direction Inbound -Protocol TCP -LocalPort $Port -InterfaceAlias $carte `
     -Action Allow -Profile Any | Out-Null
-Write-Host "Pare-feu : port $Port ouvert sur « $carte » seulement."
+Write-Host "Pare-feu : port $Port ouvert sur « $carte » (accès à distance par Tailscale)."
+Remove-NetFirewallRule -DisplayName $RegleLocale -ErrorAction SilentlyContinue
+if ($locale) {
+    $carteLocale = (Get-NetIPAddress -IPAddress $locale).InterfaceAlias
+    New-NetFirewallRule -DisplayName $RegleLocale -Direction Inbound -Protocol TCP -LocalPort $Port `
+        -InterfaceAlias $carteLocale -RemoteAddress LocalSubnet -Action Allow -Profile Any | Out-Null
+    Write-Host "Pare-feu : port $Port ouvert sur « $carteLocale » pour les appareils du réseau local seulement."
+}
 
 # 3. tâche planifiée, sous le compte de la personne (aucun mot de passe demandé)
 $utilisateur = [Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -81,4 +113,5 @@ Start-ScheduledTask -TaskName $Tache
 Write-Host ""
 if ($https -and $Port -eq 443) { Write-Host "Application web : https://app.marchemvogmbi.com/  (depuis un appareil connecté à Tailscale)" }
 else { Write-Host "Application web : http://${ip}:$Port/  (depuis un appareil connecté à Tailscale)" }
+if ($locale) { Write-Host "Réseau local : le client MVOGMBI_Sync passe par $locale, sans Tailscale (Tailscale seulement à distance)." }
 Write-Host "Postes : copier client\MVOGMBI_Sync_Client.exe et le lancer (adresse demandée la 1re fois : ${ip})."

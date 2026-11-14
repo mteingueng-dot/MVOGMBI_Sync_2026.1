@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.15 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -494,6 +494,7 @@ Ordre des étapes :
 | RG-WEB-09 | Le **serveur web** tourne sans fenêtre, une seule copie à la fois, démarré à l'ouverture de session. |
 | RG-WEB-10 | Dans un tableau web, un texte de plus de 45 caractères est **coupé** (« … ») et se lit en entier au survol : les montants et les états d'une ligne restent toujours visibles ; une cellule avec un champ ou un bouton n'est jamais coupée. |
 | RG-WEB-11 | **Session gardée pendant la saisie** (version 1.0.3) : la frappe, les clics et le défilement comptent comme de l'activité ; la page n'expire qu'après 5 minutes sans activité, même sans envoi de formulaire. |
+| RG-WEB-13 | **VPN seulement à distance** (version 1.0.15, règle du propriétaire du 13 novembre 2026) : sur le même réseau local que le serveur, le client se connecte par l'adresse locale du serveur, sans Tailscale ; Tailscale n'est nécessaire que sur un réseau distant. Le serveur écoute aussi sur son adresse locale, ouverte aux seuls appareils du sous-réseau local. |
 | RG-WEB-12 | **Fenêtre fixe sur PC** (version 1.0.9) : au-delà de 820 px de large, la page ne défile pas ; le menu et la liste principale défilent chacun dans leur cadre, la liste prend toute la hauteur qui reste ; après une recherche, la page revient à la position où elle était. |
 | RG-WEB-07 | Changer de serveur : reprendre `config.toml` et `donnees/`, retaper les mots de passe (coffre-fort propre à chaque machine), régler le serveur, relancer `installer_web.ps1` et la tâche planifiée ; retirer tâche et serveur web de l'ancien serveur (jamais deux traitements de nuit). |
 

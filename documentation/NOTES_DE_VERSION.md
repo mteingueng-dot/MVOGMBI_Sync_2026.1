@@ -14,6 +14,13 @@ Chaque version a son installateur, et l'historique complet reste dans Git. Les i
 
 ---
 
+## Version 1.0.15 (13 novembre 2026)
+
+- **VPN seulement à distance** : au magasin et au bureau (même réseau local que le serveur), le client MVOGMBI_Sync se connecte par l'adresse locale du serveur, sans Tailscale ; le Bureau à distance aussi. L'adresse affichée reste `https://app.marchemvogmbi.com` (certificat valable). Hors du réseau local, rien ne change : Tailscale.
+  - le serveur web écoute aussi sur l'adresse locale (`[serveur] adresse_locale`) ;
+  - `installer_web.ps1` note l'adresse locale et ouvre le pare-feu au sous-réseau local seulement ;
+  - téléphones sans Tailscale : DNS local du routeur (nom du serveur vers son adresse locale) ; règle RG-WEB-13.
+
 ## Version 1.0.14 (13 novembre 2026)
 
 - **Analyse SonarQube complète du code** (63 484 lignes, Python, JavaScript, PowerShell), complétée par Bandit et pip-audit : 7 bugs et 11 vulnérabilités relevés, tous corrigés ou examinés ; résultat final 0 bug, 0 vulnérabilité, notes A en sécurité, fiabilité et maintenabilité ; aucune bibliothèque vulnérable. Rapport : `ANALYSE_SECURITE.md`.

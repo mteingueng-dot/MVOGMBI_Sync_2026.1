@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.15 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -22,7 +22,8 @@ flowchart LR
     CL["Clover<br/>API"] <--> APP & WEB & NUIT
     APP & WEB & NUIT <--> DON
     APP & WEB & NUIT <--> SAGE
-    POSTE["Postes du bureau<br/>client MVOGMBI_Sync"] -->|"Tailscale<br/>https://app.…"| WEB
+    POSTE["Postes du magasin et du bureau<br/>client MVOGMBI_Sync"] -->|"réseau local, sans VPN<br/>https://app.…"| WEB
+    LOIN["Postes et téléphones<br/>à distance"] -->|"Tailscale<br/>https://app.…"| WEB
     TEL["Téléphones, tablettes<br/>navigateur"] -->|Tailscale| WEB
     POSTE -.->|Bureau à distance| APP
     NUIT --> SMTP["Courriel<br/>compte rendu"]
@@ -238,8 +239,10 @@ Cycle de vie :
 
 ### 5.1 Tailscale
 
-- Installer Tailscale sur le serveur, sur chaque poste et chaque téléphone qui utilise l'application web, tous dans le même réseau privé (« tailnet »).
-- Le serveur web n'écoute **que sur la carte Tailscale** : rien n'est ouvert sur Internet ni sur le réseau local.
+- **Tailscale (le VPN) sert seulement à distance** (règle du propriétaire du 13 novembre 2026). Un poste branché au même réseau local que le serveur (magasin, bureau) n'en a pas besoin : le client MVOGMBI_Sync essaie d'abord l'**adresse locale** du serveur (`[serveur] adresse_locale`, ex. 192.168.2.62, reprise dans `serveur.json`) et, si le serveur y répond, ouvre l'application par elle. Le nom affiché reste `https://app.marchemvogmbi.com` : le certificat HTTPS reste valable. Hors du réseau local, le client passe par Tailscale comme avant.
+- Installer Tailscale sur le serveur et sur les postes, téléphones et tablettes utilisés **hors du réseau local**, tous dans le même réseau privé (« tailnet »).
+- Le serveur web écoute sur la carte Tailscale et sur l'adresse locale ; le pare-feu n'ouvre la carte locale qu'aux appareils du **sous-réseau local**. Rien n'est ouvert sur Internet.
+- Téléphones sur le Wi-Fi du magasin **sans** Tailscale : le nom `app.marchemvogmbi.com` mène à l'adresse Tailscale, injoignable sans VPN. Pour s'en passer, faire résoudre ce nom vers l'adresse locale du serveur par le routeur ou le DNS du réseau local (« DNS local », « substitution d'hôte ») ; sinon garder Tailscale sur le téléphone.
 
 ### 5.2 Serveur web : `installer_web.ps1`
 
@@ -249,7 +252,7 @@ Cycle de vie :
 powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MVOGMBI_Sync\installer_web.ps1"
 ```
 
-Le script : (1) met `[web] adresse` à l'adresse Tailscale de **ce** serveur (même si `config.toml` vient d'un autre serveur) et lit le port ; (2) ouvre le port dans le pare-feu **sur la carte Tailscale seulement** ; (3) crée la tâche « MVOGMBI_Sync Web » à l'**ouverture de session** du compte (le jeton Clover est dans son coffre-fort). Retrait : `installer_web.ps1 -Retirer`.
+Le script : (1) met `[web] adresse` à l'adresse Tailscale de **ce** serveur (même si `config.toml` vient d'un autre serveur), `[serveur] adresse_locale` à son adresse sur le réseau local, et lit le port ; (2) ouvre le port dans le pare-feu sur la carte Tailscale et, sur la carte du réseau local, **pour le sous-réseau local seulement** (règle « MVOGMBI_Sync Web (réseau local) ») ; (3) crée la tâche « MVOGMBI_Sync Web » à l'**ouverture de session** du compte (le jeton Clover est dans son coffre-fort). Retrait : `installer_web.ps1 -Retirer`.
 
 ### 5.3 HTTPS sans port : `certificat_https.ps1`
 
@@ -275,7 +278,8 @@ flowchart LR
 - Le client **ouvre directement l'application web** ; la fenêtre de réglage seulement par le raccourci « adresse du serveur ».
 - Adresse prise dans cet ordre : celle choisie dans la fenêtre de réglage, sinon `serveur.json` de l'installateur, sinon l'adresse gardée, sinon `app.marchemvogmbi.com`.
 - **Bureau à distance** : 2 personnes à la fois sans licences RDS ; le compte Windows du serveur est demandé.
-- Téléphones et tablettes : navigateur sur `https://app.marchemvogmbi.com/` avec Tailscale connecté.
+- **Réseau local** : sur le réseau du serveur, le client passe par l'adresse locale sans Tailscale (Edge lancé avec la règle `--host-resolver-rules` qui envoie le nom du serveur à cette adresse) ; le Bureau à distance aussi. Ailleurs : Tailscale.
+- Téléphones et tablettes : navigateur sur `https://app.marchemvogmbi.com/` avec Tailscale connecté (ou DNS local, voir 5.1).
 
 ### 5.5 Wi-Fi du magasin (pointage)
 
@@ -470,7 +474,8 @@ Journaux ajoutés depuis la version 1.0.22 :
 | Encaissement « NON encaissé : … n'est pas dans la liste des factures en souffrance de Sage » | facture déjà payée, ou datée d'une autre année | corriger la facture (date) dans Sage, relancer « Encaisser dans Sage » |
 | Encaissement « Essai 1 : total affiché … au lieu de … » | (corrigé en 1.0.20) Sage proposait le montant dû pendant la saisie | mettre à jour ; le 2e essai était bon, rien de faux n'a été traité |
 | Dépôt « Déjà au compte de dépôt ? » (Encaissements) | le montant exact est déjà au 1055 par une autre écriture Sage | vérifier dans Sage : si c'est bien ce dépôt, rien à faire ; sinon l'encaisser à la main |
-| Le client ne s'ouvre pas sur le serveur | Tailscale déconnecté, serveur web arrêté, certificat expiré | Tailscale connecté ? `journal_web.log` ; relancer « Serveur de l'application web » ; renouveler le certificat |
+| Le client ne s'ouvre pas sur le serveur | hors du réseau local : Tailscale déconnecté ; partout : serveur web arrêté, certificat expiré | Tailscale connecté (à distance) ? `journal_web.log` (ligne « réseau local : https://… » au démarrage) ; relancer « Serveur de l'application web » ; renouveler le certificat |
+| Au magasin, le client demande Tailscale | adresse locale absente de `serveur.json`, serveur web sans la ligne « réseau local » au journal, pare-feu sans la règle « réseau local » | régler « Adresse locale » (Administration > Automatisation > Serveur), relancer `installer_web.ps1`, refaire le « Fichier du client » |
 | « Certificat refusé » dans le client | certificat expiré ou nom différent | renouveler (§ 5.3) ; l'adresse doit être `app.marchemvogmbi.com` |
 | Pointage refusé « connectez-vous au Wi-Fi du magasin » | appareil sur un autre réseau, ou adresse du magasin changée | relever la nouvelle adresse (§ 5.5) |
 | Factures, états RIA ou documents absents après un déménagement | dossier `donnees` copié dans `donnees\donnees` | remonter le contenu d'un niveau, application fermée |
@@ -488,7 +493,7 @@ Avant de signaler un problème : noter l'heure, le message exact, la page, et jo
 ## 10. Sécurité : liste de contrôle
 
 - ☐ Secrets uniquement dans le coffre-fort Windows ; `config.toml` sans mot de passe.
-- ☐ Serveur web sur la carte Tailscale seulement ; HTTPS actif.
+- ☐ Serveur web sur la carte Tailscale et sur l'adresse locale (sous-réseau local seulement) ; HTTPS actif.
 - ☐ Utilisateur Sage `mvogmbi_sync` en consultation seule.
 - ☐ Au moins deux administrateurs nommés ; comptes des personnes parties **désactivés**.
 - ☐ Employés sans droit d'export ; « Supprimer des éléments » réservé.
