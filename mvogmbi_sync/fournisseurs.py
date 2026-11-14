@@ -161,7 +161,7 @@ class Facture:
 
 
 def empreinte(chemin: Path) -> str:
-    return hashlib.sha1(Path(chemin).read_bytes()).hexdigest()[:16]
+    return hashlib.sha1(Path(chemin).read_bytes(), usedforsecurity=False).hexdigest()[:16]
 
 
 def depuis_lecture(lue: FactureLue, chemin: Path) -> Facture:

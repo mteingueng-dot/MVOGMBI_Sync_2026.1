@@ -69,13 +69,20 @@ def ouvrir_document(chemin: Path) -> None:
 
 
 # --------------------------------------------------------------------------------------------- Excel et CSV
-_NOMBRE = re.compile(r"^[-+]?[\d\s  .,]*\d[\d\s  .,]*\s*\$?%?$")
+# nombre sans ses espaces ; chaque caractère ne se lit que d'une façon : temps linéaire (SonarQube S8786)
+_NOMBRE = re.compile(r"[-+]?[\d.,]+\$?%?")
+_ESPACES = re.compile(r"[\s\u00a0\u202f]+")
+
+
+def _est_nombre(valeur: str) -> bool:
+    v = _ESPACES.sub("", valeur)
+    return bool(_NOMBRE.fullmatch(v)) and any(c.isdigit() for c in v)
 
 
 def texte_csv(valeur):
     """Valeur d'une cellule CSV : un texte qui commence par = + - @ (ou tabulation, retour) est précédé d'une
     apostrophe, sauf un vrai nombre (« -12,50 », « +3 »)."""
-    if isinstance(valeur, str) and valeur[:1] in ("=", "+", "-", "@", "\t", "\r") and not _NOMBRE.match(valeur):
+    if isinstance(valeur, str) and valeur[:1] in ("=", "+", "-", "@", "\t", "\r") and not _est_nombre(valeur):
         return "'" + valeur
     return valeur
 

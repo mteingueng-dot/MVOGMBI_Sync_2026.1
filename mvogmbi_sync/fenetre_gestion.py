@@ -616,7 +616,7 @@ class DialogueTiers(tk.Toplevel):
         if not valeurs["nom"]:
             self.etat.configure(text="✘ " + t("Le nom est obligatoire."), foreground=ROUGE)
             return
-        if valeurs.get("courriel") and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", valeurs["courriel"]):
+        if valeurs.get("courriel") and not re.fullmatch(r"[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+", valeurs["courriel"]):
             self.etat.configure(text="✘ " + t("Courriel invalide."), foreground=ROUGE)
             return
         if valeurs.get("no_taxe") and not re.fullmatch(r"\d{9}(RP|RT|RZ)\d{4}", valeurs["no_taxe"].replace(" ", "").upper()):
@@ -674,7 +674,7 @@ def saisir_facture_achat(parent, racine: Path) -> None:
         articles, fournisseurs = resultat
 
         def valider(entete, lignes):
-            import hashlib
+            import uuid
             from datetime import datetime
 
             from .fournisseurs import Facture, Ligne, Registre, etat_apres_controle
@@ -692,7 +692,7 @@ def saisir_facture_achat(parent, racine: Path) -> None:
             montants = [tx.montants(l.montant, tx.code(l)) for l in lignes_f]
             taxes = [sum((m[0] for m in montants), Decimal(0)), sum((m[1] for m in montants), Decimal(0))]
             nom = f"Saisie manuelle {entete['tiers']} {entete['remarque']}"
-            facture = Facture(nom, hashlib.sha1(f"{nom}{datetime.now()}".encode()).hexdigest(), entete["tiers"],
+            facture = Facture(nom, uuid.uuid4().hex, entete["tiers"],
                               entete["tiers"], entete["remarque"], entete["date"], lignes_f, sous_total, taxes[0],
                               taxes[1], sous_total + taxes[0] + taxes[1], "Saisie manuelle")
             facture.etat = etat_apres_controle(facture, facture.controles())

@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Documentation fonctionnelle
 
-Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce document décrit **ce que fait** l'application, **écran par écran**, et **selon quelles règles**, pour le propriétaire, le comptable et les personnes qui l'utilisent. Il entre dans le détail : champs, états, contrôles, cas particuliers, messages. Le détail de chaque règle, avec son code (RG-…), est dans le document des **règles d'affaires** ; le fonctionnement interne est dans le document d'**architecture** ; le mode d'emploi pas à pas, avec captures, est dans le **manuel d'utilisation** ; l'installation, la configuration et le dépannage sont dans le **guide de l'administrateur**.
 
@@ -62,6 +62,8 @@ Le **client des postes** (`MVOGMBI_Sync_Client.exe`) ouvre directement l'applica
 - Les mêmes comptes, profils et droits servent dans l'application Windows et dans l'application web ; une page non permise est **absente du menu** et refusée si on y va par son adresse.
 
 ### 2.3 Mots de passe, verrouillage et sessions
+
+Le code de l'application est analysé par SonarQube, Bandit et pip-audit (version 1.0.14 : aucun bug ni aucune vulnérabilité ouverts, notes A ; rapport « Analyse de sécurité du code »).
 
 | Règle | Application Windows | Application web |
 |---|---|---|

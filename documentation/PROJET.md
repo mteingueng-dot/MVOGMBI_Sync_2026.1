@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Diagramme de projet
 
-Version 1.0.11 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 210 versions livrées en 21 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 30 octobre, le 5 novembre et le 9 novembre 2026.
+Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Plus de 210 versions livrées en 21 jours, chacune avec son installateur ; numérotation remise à 1.0.0 le 30 octobre, le 5 novembre et le 9 novembre 2026.
 
 ---
 
@@ -74,6 +74,7 @@ gantt
     Nouveau logo, fenêtre web fixe              :done, z4, 2026-11-12, 1d
     Modèles des banques, Neo, KOHO              :done, z5, 2026-11-12, 1d
     Documentation 1.0.11                        :done, z6, 2026-11-13, 1d
+    Sécurité et analyse SonarQube               :done, z7, 2026-11-13, 1d
     section Suite
     Mise en service sur SERVDCSAGE              :g4, 2026-11-06, 2d
     Comptes RIA dans Sage, premières écritures  :g0, 2026-11-06, 2d
@@ -188,6 +189,8 @@ mindmap
 | 12 nov. 2026 | Nouveau logo carré « le carrefour des cultures » ; fenêtre web fixe sur PC | 1.0.8 à 1.0.9 |
 | 12 nov. 2026 | Relevés PDF d'après les modèles des banques (RBC, UNI, TD, Scotia, BMO, Tangerine) ; Neo Financial et KOHO | 1.0.10 |
 | 13 nov. 2026 | Documentation complète refaite à la version 1.0.11 | 1.0.11 |
+| 13 nov. 2026 | Surveillance de Sage du serveur web qui réessaie après son propre échec | 1.0.12 |
+| 13 nov. 2026 | **Sécurité** : revue complète (fichiers reçus, formules, mots de passe, NIP, serveur web), puis analyse SonarQube, Bandit et pip-audit : 0 bug, 0 vulnérabilité, notes A | 1.0.13 à 1.0.14 |
 
 ---
 

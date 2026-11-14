@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Plan et rapport de tests
 
-Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 ---
 
@@ -38,7 +38,7 @@ Règles :
 
 ---
 
-## 3. Tests automatiques — 393 tests
+## 3. Tests automatiques — 394 tests
 
 | Domaine | Fichiers | Tests |
 |---|---|---|
@@ -78,7 +78,8 @@ Règles :
 | Nouvelle série 1.0.7 et 1.0.10 : toutes les banques du Canada (reconnaissance, montants et dates, OFX, CSV français / anglais / sans en-tête, PDF anglais, classement du relevé, Interac et espèces, avis Interac en anglais, modèles RBC, UNI, TD, colonne « Amount ») | test_banques_canada | 14 |
 | Version 1.0.12 : la surveillance de Sage du serveur web réessaie après son propre échec | test_rapidite_web | 1 |
 | Version 1.0.13 : sécurité (fichiers reçus, formules Excel / CSV, empreintes et longueur des mots de passe, NIP, requête web invalide) | test_securite | 6 |
-| **Total** | 65 fichiers | **393** |
+| Version 1.0.14 : analyse SonarQube (expressions régulières en temps linéaire sur un texte piégé) | test_securite | 1 |
+| **Total** | 65 fichiers | **394** |
 
 Résultat du 13 novembre 2026 (version 1.0.11) : **384 réussis, 2 sautés** (2 min ; les 2 tests sautés demandent un fichier réel absent du poste de fabrication). Résultat du 9 novembre 2026 (version 1.0.0) : 369 réussis. Les analyses sont aussi vérifiées sur les vraies ventes Clover (lecture seule) : chacune s'affiche sans erreur sur les 30 derniers jours et sur l'année.
 
@@ -309,3 +310,15 @@ Note : par moments, un test qui ouvre une fenêtre Tk échoue avec « Can't find
 | Statistiques Clover | ✔ | — | ✔ (lecture seule) |
 | Reporting : 18 états, 44 analyses, synthèse, filtres du Détail | ✔ | — | ✔ (lecture seule, Windows et web) |
 | Factures fournisseurs : taxes F P / TX, propositions, case Clover par facture | ✔ | — | ✔ (11 vraies factures relues) |
+
+## Analyse statique du code (version 1.0.14)
+
+| Outil | Résultat |
+|---|---|
+| SonarQube Community (`installation\analyse_sonarqube.ps1`) | 63 484 lignes ; 0 bug, 0 vulnérabilité, 0 point sensible ; notes A (sécurité, fiabilité, maintenabilité) |
+| Bandit | 35 requêtes SQL examinées : aucune injection (tables fixes, valeurs en paramètres) ; SHA-1 retiré des identifiants |
+| pip-audit | Aucune vulnérabilité connue dans les bibliothèques |
+
+Détail : `ANALYSE_SECURITE.md`.
+
+Tests des fenêtres Windows (Tk) : la création d'une fenêtre est réessayée jusqu'à 6 fois (`tests/conftest.py`, `ESSAIS_TK`) ; Tcl ne trouvait parfois pas ses fichiers (`init.tcl`) tenus un instant par l'antivirus. Vérifié : 25 passages de suite des 13 tests Tk sans échec (version 1.0.14).

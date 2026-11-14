@@ -14,7 +14,7 @@ fournisseur = sortie (retours.py). Les documents de stock (DS) font de même au 
 
 from __future__ import annotations
 
-import hashlib
+import uuid
 from dataclasses import asdict
 from datetime import date, datetime
 from decimal import Decimal
@@ -101,7 +101,7 @@ def facture_achat(racine: Path, fournisseur: str, numero: str, jour: str, lignes
     montants = [tx.montants(l.montant, tx.code(l)) for l in lignes_f]
     tps, tvq = sum((m[0] for m in montants), Decimal(0)), sum((m[1] for m in montants), Decimal(0))
     nom = f"{' → '.join(origine)} {fournisseur} {numero}".strip()
-    facture = Facture(nom, hashlib.sha1(f"{nom}{datetime.now()}".encode()).hexdigest(), fournisseur, fournisseur,
+    facture = Facture(nom, uuid.uuid4().hex, fournisseur, fournisseur,
                       numero, jour, lignes_f, sous_total, tps, tvq, sous_total + tps + tvq,
                       "Bon de réception" if origine else "Saisie manuelle",
                       [f"Origine : {' → '.join(origine)}"] if origine else [])

@@ -6,7 +6,7 @@ fenetres_gestion3 : lignes reprises de la facture d'origine, import dans Sage pu
 
 from __future__ import annotations
 
-import hashlib
+import uuid
 import time
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -69,7 +69,7 @@ def saisir_facture(ctx: Contexte) -> Reponse:
                 tps = sum((m[0] for m in montants), Decimal(0))
                 tvq = sum((m[1] for m in montants), Decimal(0))
                 nom = f"Saisie manuelle {v['fournisseur']} {v['numero']}"
-                facture = fo.Facture(nom, hashlib.sha1(f"{nom}{datetime.now()}".encode()).hexdigest(), v["fournisseur"],
+                facture = fo.Facture(nom, uuid.uuid4().hex, v["fournisseur"],
                                      v["fournisseur"], v["numero"], v["date"], lignes_f, sous_total, tps, tvq,
                                      sous_total + tps + tvq, "Saisie manuelle")
                 facture.etat = fo.etat_apres_controle(facture, facture.controles())

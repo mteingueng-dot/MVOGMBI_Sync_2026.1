@@ -705,8 +705,9 @@ def automatisation(ctx: Contexte) -> Reponse:
             heure = ctx.req.champ("heure").strip()
             try:
                 h, m = heure.split(":")
-                assert 0 <= int(h) < 24 and 0 <= int(m) < 60
-            except (ValueError, AssertionError):
+                if not (0 <= int(h) < 24 and 0 <= int(m) < 60):
+                    raise ValueError(heure)
+            except ValueError:
                 message = _message(erreur="Vérifiez l'heure (HH:MM).")
             else:
                 from .. import serveur_appli

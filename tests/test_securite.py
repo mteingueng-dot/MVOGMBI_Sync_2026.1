@@ -113,3 +113,23 @@ def test_requete_web_de_taille_negative_refusee(tmp_path):
     g._servir("POST")
     assert g.envoye.statut == 400
     assert serveur.Gestionnaire.timeout == 30
+
+
+def test_analyse_sonarqube_expressions_en_temps_lineaire():
+    """Analyse SonarQube du 2026-11-13 (S8786) : les contrôles de nombre, de courriel et la lecture des avis Interac
+    restent rapides même sur un texte démesuré ou piégé."""
+    import re
+    import time
+
+    from mvogmbi_sync import paiements_courriel, pdf_documents
+
+    debut = time.perf_counter()
+    assert securite.texte_csv("-" + "1 " * 50_000 + "x").startswith("'")
+    assert securite.texte_csv("-1 234,50 $") == "-1 234,50 $"
+    assert securite.texte_csv("- ") == "'- "
+    assert not pdf_documents.NOMBRE.match("1" + " " * 50_000 + "x")
+    assert pdf_documents.NOMBRE.match("1 234,50 $") and pdf_documents.NOMBRE.match("-12%")
+    courriel = re.compile(r"[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+")
+    assert courriel.fullmatch("caisse@marche.example.com") and not courriel.fullmatch("a@" + "b." * 30_000 + "@")
+    assert paiements_courriel.analyser("Avis", "virement de " + "1 " * 100_000) is None
+    assert time.perf_counter() - debut < 5

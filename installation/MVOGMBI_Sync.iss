@@ -3,7 +3,7 @@
 ; peut écrire sa configuration et ses journaux. Fabrication : installation\fabriquer.cmd
 
 #define Nom "MVOGMBI_Sync"
-#define Version "1.0.13"
+#define Version "1.0.14"
 #define Editeur "Concept Informatique inc."
 
 [Setup]
@@ -89,6 +89,7 @@ Source: "..\documentation\Processus_BPM_MVOGMBI_Sync.pdf"; DestDir: "{app}\docum
 Source: "..\documentation\Regles_affaires_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Catalogue_reporting_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Notes_de_version_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\documentation\Analyse_securite_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Presentation_services_MVOGMBI_Sync.pdf"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\documentation\Presentation_MVOGMBI_Sync.pptx"; DestDir: "{app}\documentation"; Flags: ignoreversion skipifsourcedoesntexist
 ; chaque document aussi au format Word (demande du propriétaire du 2026-11-09)

@@ -1,4 +1,4 @@
-// Présentation PowerPoint de MVOGMBI_Sync 1.0.11 du 13 novembre 2026, aux couleurs et au logo du Marché MVOG-MBI
+// Présentation PowerPoint de MVOGMBI_Sync 1.0.14 du 13 novembre 2026, aux couleurs et au logo du Marché MVOG-MBI
 // (aucune donnée de vente : document publié).
 //   node documentation/creer_presentation.js
 //   (pptxgenjs, react, react-dom, react-icons et sharp requis : NODE_PATH vers leur dossier node_modules)
@@ -179,7 +179,7 @@ async function construire() {
     { text: "Marché MVOG-MBI Sherbrooke · épicerie africaine & caribéenne · novembre 2026",
       options: { color: P.jaune, bold: true, fontSize: 15 } }], { placeholder: "body" });
   s.addNotes("MVOGMBI_Sync relie la caisse Clover et la comptabilité Sage 50, et ajoute l'aide à la décision. " +
-    "Version 1.0.11 du 13 novembre 2026 : tout ce qui suit est en service.");
+    "Version 1.0.14 du 13 novembre 2026 : tout ce qui suit est en service.");
 
   // ---------------------------------------------------------------- 2. sommaire
   s = contenu("Introduction", "Au programme",
@@ -221,9 +221,9 @@ async function construire() {
 
   // ---------------------------------------------------------------- 4. chiffres clés
   s = contenu("Introduction", "MVOGMBI_Sync en chiffres",
-    "Vingt et un jours de réalisation, plus de 210 versions livrées chacune avec son installateur, 386 tests automatiques, " +
+    "Vingt et un jours de réalisation, plus de 210 versions livrées chacune avec son installateur, 394 tests automatiques, " +
     "44 analyses décisionnelles. Numérotation remise à 1.0.0 le 9 novembre 2026.");
-  const stats = [["210+", "versions livrées\nen 21 jours", "FaRocket"], ["386", "tests automatiques\nréussis", "FaVial"],
+  const stats = [["210+", "versions livrées\nen 21 jours", "FaRocket"], ["394", "tests automatiques\nréussis", "FaVial"],
     ["76", "fonctions au menu,\nWindows et web", "FaListAlt"], ["44", "analyses\ndécisionnelles", "FaChartLine"]];
   for (const [i, [n, l, ic]] of stats.entries()) {
     const x = M + i * 3.1, plein = i === 3;
@@ -503,9 +503,9 @@ async function construire() {
   { x: M + 1.0, y: 5.45, w: W - 2 * M - 1.2, h: 0.9, fontSize: 13.5, color: P.blanc, valign: "middle" });
 
   s = contenu("Confiance", "Testé avant chaque livraison",
-    "386 tests automatiques, tour de toutes les pages web, puis essais réels sur une copie du fichier d'entreprise, " +
+    "394 tests automatiques, tour de toutes les pages web, puis essais réels sur une copie du fichier d'entreprise, " +
     "et enfin validation sur le vrai fichier.");
-  const qual = [["386", "tests automatiques\n(64 fichiers)", "FaVial"], ["0", "écriture d'essai dans\nle vrai fichier Sage", "FaShieldAlt"],
+  const qual = [["394", "tests automatiques\n(65 fichiers)", "FaVial"], ["0", "écriture d'essai dans\nle vrai fichier Sage", "FaShieldAlt"],
     ["30+", "scénarios d'écriture\nvalidés sur la copie", "FaProjectDiagram"]];
   for (const [i, [n, l, ic]] of qual.entries()) {
     const x = M + i * 4.1;
@@ -553,7 +553,7 @@ async function construire() {
     ["Règles d'affaires", "codes RG-…, règles fixées par le propriétaire", "FaBalanceScale"],
     ["Architecture", "composants, données, flux, pilotage de Sage", "FaProjectDiagram"],
     ["Workflows et processus", "pas à pas d'utilisation, processus métier en couloirs", "FaMapSigns"],
-    ["Plan de test, projet, notes de version", "386 tests, planning, jalons, risques, nouveautés", "FaVial"],
+    ["Plan de test, projet, notes de version", "394 tests, analyse SonarQube, planning, jalons, nouveautés", "FaVial"],
     ["Présentation des services", "document remis au client : services, démarche, engagements", "FaHandshake"]],
   3, 1.45, 1.55, { titre: 14.5, corps: 12, rond: 0.5 });
 
@@ -577,4 +577,7 @@ construire().then(() => pres.writeFile({ fileName: SORTIE })).then(async (f) => 
       accent4: P.doux, accent5: P.vertClair, accent6: P.bleu, hlink: P.vert, folHlink: P.vertFonce } });
   }
   console.log(f);
+}).catch((erreur) => {
+  console.error(erreur);
+  process.exitCode = 1;
 });

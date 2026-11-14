@@ -2,7 +2,7 @@
 
 Application qui relie la caisse **Clover** à **Sage 50 Comptabilité, Édition canadienne** pour le Marché MVOG-MBI Sherbrooke : ventes facturées dans Sage chaque nuit, encaissements, factures et paiements fournisseurs, rapprochement bancaire, articles et stocks, comptabilité, agence RIA, paie, Reporting décisionnel. Application Windows (tkinter) et application web identique, sur un même serveur que Sage.
 
-Version en service : **1.0.11** (13 novembre 2026).
+Version en service : **1.0.14** (13 novembre 2026).
 
 ## Fonctions principales
 
@@ -14,7 +14,7 @@ Version en service : **1.0.11** (13 novembre 2026).
 - **Comptabilité** : caisse, dépenses, plan comptable, TPS / TVQ, budget, clôture, remises de retenues ; agence **RIA**.
 - **Paie** : pointage par NIP (Wi-Fi du magasin), planning, feuilles de temps, chèques de paie dans Sage, bulletins, T4 / RL-1.
 - **Reporting** : 18 états enrichis, 44 analyses décisionnelles, synthèse et décisions, courriel du matin.
-- **Sécurité** : comptes, profils, droits par fonction, verrouillage, audit chaîné ; secrets dans le coffre-fort de Windows.
+- **Sécurité** : comptes, profils, droits par fonction, verrouillage, audit chaîné ; secrets dans le coffre-fort de Windows ; code analysé par SonarQube (0 bug, 0 vulnérabilité, notes A).
 
 ## Documentation
 
@@ -28,6 +28,7 @@ Version en service : **1.0.11** (13 novembre 2026).
 | [documentation/CATALOGUE_REPORTING.md](documentation/CATALOGUE_REPORTING.md) | Tous les rapports du Reporting |
 | [documentation/PLAN_DE_TEST.md](documentation/PLAN_DE_TEST.md) | Stratégie, tests automatiques, essais, couverture |
 | [documentation/PROJET.md](documentation/PROJET.md), [documentation/NOTES_DE_VERSION.md](documentation/NOTES_DE_VERSION.md) | Planning, jalons, risques ; notes de chaque version |
+| [documentation/ANALYSE_SECURITE.md](documentation/ANALYSE_SECURITE.md) | Analyse de sécurité du code (SonarQube, Bandit, pip-audit) et corrections |
 | [documentation/PRESENTATION_SERVICES.md](documentation/PRESENTATION_SERVICES.md) | Présentation des services remise au client |
 
 Les PDF, les versions Word, les manuels d'utilisation (français et anglais) et la présentation PowerPoint sont produits par `installation\fabriquer.cmd` et installés avec l'application.
@@ -37,6 +38,7 @@ Les PDF, les versions Word, les manuels d'utilisation (français et anglais) et 
 ```bash
 python -m pip install -r requirements.txt
 python -m pytest
+powershell -ExecutionPolicy Bypass -File installation\analyse_sonarqube.ps1   # analyse SonarQube (Docker)
 ```
 
 Copier `config.example.toml` en `config.toml` (jamais publié). Les secrets (jeton Clover, mots de passe) vont dans le coffre-fort de Windows par les pages d'administration.

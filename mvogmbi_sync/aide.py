@@ -6,7 +6,7 @@ Les deux langues ont exactement la même suite de blocs (vérifié par les tests
 
 from __future__ import annotations
 
-VERSION = "1.0.13"
+VERSION = "1.0.14"
 EDITEUR = "Concept Informatique inc."
 COPYRIGHT = f"© 2026 {EDITEUR}"
 
@@ -679,6 +679,17 @@ FAQ = {
                     "l'heure où il est parti) ; la pause se termine quand il revient sur le Wi-Fi. Un administrateur "
                     "peut ouvrir le pointage de partout ; son appareil n'est alors jamais suivi pour la pause "
                     "automatique."),
+        ("sous_titre", "Nouveautés des versions 1.0.11 à 1.0.14 (13 novembre 2026)"),
+        ("question", "La sécurité de l'application a-t-elle été vérifiée ?"),
+        ("reponse", "Oui. Le 13 novembre 2026, le code a été revu à la main (version 1.0.13 : fichiers reçus contrôlés, "
+                    "aucune formule dans les exports, mots de passe de 12 caractères, NIP bloqués plus longtemps) puis "
+                    "analysé entièrement par SonarQube, Bandit et pip-audit (version 1.0.14) : 0 bug, 0 vulnérabilité, "
+                    "notes A en sécurité, fiabilité et maintenabilité, aucune bibliothèque vulnérable. Le rapport est "
+                    "dans les documents de l'application (« Analyse de sécurité du code »)."),
+        ("question", "Pourquoi mon mot de passe est-il refusé alors qu'il marchait avant ?"),
+        ("reponse", "Depuis la version 1.0.13, un nouveau mot de passe doit avoir 12 caractères au moins. Un ancien mot "
+                    "de passe plus court fonctionne encore pour se connecter, mais l'administrateur peut vous demander "
+                    "de le changer (« Changer mon mot de passe »)."),
         ("sous_titre", "Nouveautés des versions 1.0.1 à 1.0.10 (9 au 12 novembre 2026)"),
         ("question", "Comment le marché traite-t-il une note de crédit d'un fournisseur ?"),
         ("reponse", "Ajoutez-la comme une facture (Fournisseur > Factures fournisseurs). Un document intitulé « CREDIT » "
@@ -1516,6 +1527,17 @@ FAQ = {
                     "leaves the Wi-Fi for 5 minutes in a row, you are put on break (at the time it left); the break "
                     "ends when it is back on the Wi-Fi. An administrator can open clock-in from anywhere; their "
                     "device is then never followed for the automatic break."),
+        ("sous_titre", "What's new in versions 1.0.11 to 1.0.14 (November 13, 2026)"),
+        ("question", "Has the application's security been checked?"),
+        ("reponse", "Yes. On November 13, 2026, the code was reviewed by hand (version 1.0.13: received files checked, "
+                    "no formula in exports, 12-character passwords, PINs blocked longer) and then fully analyzed by "
+                    "SonarQube, Bandit and pip-audit (version 1.0.14): 0 bugs, 0 vulnerabilities, A ratings for "
+                    "security, reliability and maintainability, no vulnerable library. The report is among the "
+                    "application's documents (“Code security analysis”)."),
+        ("question", "Why is my password refused when it used to work?"),
+        ("reponse", "Since version 1.0.13, a new password needs at least 12 characters. An older, shorter password "
+                    "still lets you sign in, but your administrator may ask you to change it (“Change my "
+                    "password”)."),
         ("sous_titre", "What's new in versions 1.0.1 to 1.0.10 (November 9 to 12, 2026)"),
         ("question", "How is a supplier credit note handled?"),
         ("reponse", "Add it like an invoice (Supplier > Supplier invoices). A document titled “CREDIT” or "

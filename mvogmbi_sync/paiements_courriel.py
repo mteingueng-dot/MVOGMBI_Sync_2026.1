@@ -55,10 +55,13 @@ class AvisPaiement:
         return cls(**{**d, "montant": Decimal(d["montant"])})
 
 
+LIMITE_TEXTE = 20_000  # caractères lus d'un courriel (sujet, texte, message de virement)
+
+
 def numeros_cites(message: str) -> list[str]:
     """N° de facture cités : « Facture 14402 du 20/08/2026 » -> ["14402"] ; « FA-104202, #1264 » -> [...]."""
     mois = r"(?:janv?|f[ée]vr?|mars|avr|mai|juin|juil|ao[uû]t|sept?|oct|nov|d[ée]c|jan|feb|apr|may|jun|jul|aug|dec)\w*\.?"
-    sans_dates = re.sub(r"\b\d{1,4}[/-]\d{1,2}[/-]\d{2,4}\b", " ", message)
+    sans_dates = re.sub(r"\b\d{1,4}[/-]\d{1,2}[/-]\d{2,4}\b", " ", message[:LIMITE_TEXTE])
     sans_dates = re.sub(rf"\b\d{{1,2}}\s+{mois}\s+\d{{4}}\b|\b{mois}\s+\d{{1,2}},?\s+\d{{4}}\b", " ", sans_dates, flags=re.I)
     # « Facture#1264 », « Faccture#15 » (faute de frappe), « Inv-201010-01 », « FA-104202 », « n° 14944 »
     candidats = re.findall(r"(?:fac+t(?:ure)?|inv(?:oice)?|fa|n[°o]|#)\s*[-:#.]?\s*([A-Z]{0,3}-?\d{2,})", sans_dates, re.I)
@@ -85,7 +88,9 @@ def texte_du_message(message: email.message.Message) -> str:
 
 def analyser(sujet: str, texte: str, identifiant: str = "", date_courriel: date | None = None) -> AvisPaiement | None:
     """Avis Interac -> AvisPaiement ; None pour tout autre courriel."""
-    tout = re.sub(r"[ \t\xa0]+", " ", f"{sujet}\n{texte}")
+    # un avis Interac tient en quelques milliers de caractères : un courriel démesuré venu d'Internet ne fait jamais
+    # tourner les recherches ci-dessous longtemps (analyse SonarQube du 2026-11-13, S8786)
+    tout = re.sub(r"[ \t\xa0]+", " ", f"{sujet[:LIMITE_TEXTE]}\n{texte[:LIMITE_TEXTE]}")
     m = re.search(r"virement de ([\d\s.,]+)\s*\$\s*(?:\(CAD\)\s*)?(?:que vous avez envoyé )?à (.+?) (?:a été|a expiré|est)",
                   tout, re.I)
     if not m:  # avis en anglais (toutes les banques du Canada passent par Interac, demande du 2026-11-12) :

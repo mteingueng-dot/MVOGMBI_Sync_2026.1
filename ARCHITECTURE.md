@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Document d'architecture
 
-Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 MVOGMBI_Sync relie la caisse **Clover** à la comptabilité **Sage 50 Comptabilité Édition canadienne** :
 
@@ -790,6 +790,7 @@ Si la fenêtre ne peut pas être rouverte, les dépôts restants sont rendus « 
 | Sage | Utilisateur MySQL en consultation seule ; imports et saisies uniquement après contrôle des doublons. |
 | Banque | Relevés chargés à la main (PDF, OFX, CSV téléchargés du site de la banque) : aucune connexion aux services en ligne des banques. |
 | Courriel | IMAP en lecture seule ; SMTP pour le compte rendu ; documents personnels à un seul destinataire visible, copie cachée au propriétaire. |
+| Analyse du code | SonarQube (serveur local dans Docker, `installation/analyse_sonarqube.ps1`) : 0 bug, 0 vulnérabilité, notes A en sécurité, fiabilité et maintenabilité (version 1.0.14) ; Bandit et pip-audit en complément ; constats acceptés commentés un à un (`documentation/ANALYSE_SECURITE.md`). |
 | Fichiers reçus | Reçus, factures fournisseurs, états RIA : PDF et images seulement, reconnus par leur contenu (`securite.document_permis`) ; ouverts sous Windows seulement après ce contrôle (`securite.ouvrir_document`). |
 | Exports | Aucun texte « =… » écrit comme formule dans un fichier Excel (`securite.installer_protections` : crochet posé au chargement d'openpyxl) ; CSV : apostrophe devant = + - @ (`texte_csv`). |
 | Pointage | NIP : attente de 1, 5, 30 puis 120 min par série de 5 NIP faux, alerte à l'audit. |

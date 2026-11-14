@@ -28,9 +28,14 @@ NAVIGATEURS = EDGE + [Path(r"C:\Program Files\Google\Chrome\Application\chrome.e
 
 
 def _lancer(navigateur: Path, arguments: list[str]) -> bytes:
+    """Sortie du navigateur ; b"" s'il reste figé (constat du 2026-11-13 : Edge figé sur la photo d'un diagramme
+    du document BPM) : le navigateur suivant de NAVIGATEURS prend alors le relais."""
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profil:
-        r = subprocess.run([str(navigateur), "--headless", "--disable-gpu", f"--user-data-dir={profil}", *arguments],
-                           timeout=180, capture_output=True, stdin=subprocess.DEVNULL)
+        try:
+            r = subprocess.run([str(navigateur), "--headless", "--disable-gpu", f"--user-data-dir={profil}",
+                                *arguments], timeout=180, capture_output=True, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            return b""
     return r.stdout
 
 

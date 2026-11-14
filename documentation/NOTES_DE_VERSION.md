@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Notes de version
 
-Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ces notes résument ce que chaque version a apporté. Le numéro a été remis à **1.0.0** à trois reprises, à la demande du propriétaire, pour marquer une étape :
 
@@ -13,6 +13,15 @@ Ces notes résument ce que chaque version a apporté. Le numéro a été remis �
 Chaque version a son installateur, et l'historique complet reste dans Git. Les installateurs des séries terminées sont rangés dans `dist/Archives`, un sous-dossier par série. Ce document ne contient aucune donnée réelle.
 
 ---
+
+## Version 1.0.14 (13 novembre 2026)
+
+- **Analyse SonarQube complète du code** (63 484 lignes, Python, JavaScript, PowerShell), complétée par Bandit et pip-audit : 7 bugs et 11 vulnérabilités relevés, tous corrigés ou examinés ; résultat final 0 bug, 0 vulnérabilité, notes A en sécurité, fiabilité et maintenabilité ; aucune bibliothèque vulnérable. Rapport : `ANALYSE_SECURITE.md`.
+  - contrôles de dates et d'heures qui ne reposent plus sur `assert` (ils disparaissaient avec Python optimisé) ;
+  - identifiants des factures saisies tirés au hasard (uuid) au lieu d'un SHA-1 ;
+  - expressions régulières en temps linéaire (exports CSV, PDF, adresses courriel) et avis Interac lus sur 20 000 caractères au plus : un texte piégé ne peut plus bloquer l'application ;
+  - script `installation\analyse_sonarqube.ps1` pour refaire l'analyse ; règle RG-SEC-15.
+- **Tests stables** : les tests qui ouvrent une fenêtre Windows (Tk) échouaient parfois au hasard (fichiers de Tcl tenus un instant par l'antivirus) ; la création de la fenêtre est réessayée (`tests/conftest.py`) : 25 passages de suite réussis, machine chargée.
 
 ## Version 1.0.13 (13 novembre 2026)
 

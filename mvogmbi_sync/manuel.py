@@ -67,7 +67,7 @@ def manuel_du_profil(racine: Path, permises: set[int] | None, profil: str, langu
     page = source.read_text(encoding="utf-8")
     if tout_permis(page, permises):
         return complet
-    empreinte = hashlib.sha1(f"{VERSION}|{langue}|{sorted(permises)}|{profil}".encode("utf-8")).hexdigest()[:12]
+    empreinte = hashlib.sha1(f"{VERSION}|{langue}|{sorted(permises)}|{profil}".encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
     chemin = Path(racine) / "donnees" / "manuels" / f"{source.stem}_{empreinte}.pdf"
     if chemin.exists():
         return chemin

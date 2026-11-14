@@ -28,6 +28,7 @@ DOCUMENTS = [  # (source, PDF, titre)
     (ICI / "REGLES_AFFAIRES.md", "Regles_affaires_MVOGMBI_Sync.pdf", "Règles d'affaires MVOGMBI_Sync"),
     (ICI / "CATALOGUE_REPORTING.md", "Catalogue_reporting_MVOGMBI_Sync.pdf", "Catalogue des rapports MVOGMBI_Sync"),
     (ICI / "NOTES_DE_VERSION.md", "Notes_de_version_MVOGMBI_Sync.pdf", "Notes de version MVOGMBI_Sync"),
+    (ICI / "ANALYSE_SECURITE.md", "Analyse_securite_MVOGMBI_Sync.pdf", "Analyse de sécurité du code MVOGMBI_Sync"),
     (ICI / "PRESENTATION_SERVICES.md", "Presentation_services_MVOGMBI_Sync.pdf", "Présentation de nos services"),
 ]
 

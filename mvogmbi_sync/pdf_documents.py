@@ -22,7 +22,7 @@ from fpdf import FPDF
 VERT, VERT_FONCE, ROUGE, JAUNE = (31, 122, 58), (19, 119, 45), (215, 38, 61), (242, 183, 5)
 GRIS, GRIS_CLAIR, TEINTE = (107, 122, 112), (226, 232, 228), (244, 249, 245)
 POLICES = (Path(r"C:\Windows\Fonts\arial.ttf"), Path(r"C:\Windows\Fonts\arialbd.ttf"))
-NOMBRE = re.compile(r"^-?[\d\s\u00a0\u202f]+([.,]\d+)?\s*(\$|%)?$")
+NOMBRE = re.compile(r"^-?\d[\d\s\u00a0\u202f]*(?:[.,]\d+)?(?:[\s\u00a0\u202f]?[$%])?$")
 
 
 def argent(v) -> str:

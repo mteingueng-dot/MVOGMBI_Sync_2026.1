@@ -11,6 +11,7 @@ la table des articles est celle qui contient le numéro d'article (« sPartCode 
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,12 +69,9 @@ def port_du_fichier(fichier_sai: Path, config: "ConfigSageBase") -> int:
                 break
             continue
         absents = 0
-        try:
-            with connexion.cursor() as curseur:
-                curseur.execute("SHOW VARIABLES LIKE 'datadir'")
-                dossier = str(curseur.fetchone()[1]).rstrip("\\/").lower()
-        finally:
-            connexion.close()
+        with closing(connexion), connexion.cursor() as curseur:
+            curseur.execute("SHOW VARIABLES LIKE 'datadir'")
+            dossier = str(curseur.fetchone()[1]).rstrip("\\/").lower()
         if dossier == cible:
             return port
     if refus:

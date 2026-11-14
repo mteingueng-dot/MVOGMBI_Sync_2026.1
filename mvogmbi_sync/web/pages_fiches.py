@@ -56,7 +56,7 @@ def nouveau_tiers(ctx: Contexte, genre: str) -> Reponse:
             erreur = " ; ".join(erreurs)
         if not erreur and not v["nom"]:
             erreur = "Le nom est obligatoire."
-        if not erreur and v.get("courriel") and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v["courriel"]):
+        if not erreur and v.get("courriel") and not re.fullmatch(r"[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+", v["courriel"]):
             erreur = "Courriel invalide."
         if not erreur and v.get("no_taxe"):
             v["no_taxe"] = v["no_taxe"].replace(" ", "").upper()

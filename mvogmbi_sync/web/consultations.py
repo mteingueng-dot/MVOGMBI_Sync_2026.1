@@ -282,7 +282,7 @@ def _interrogation(genre):
 
         nom = (v.get(genre) or "").strip()
         if not nom:
-            return [Section(f"Choisissez {'un' if genre != 'article' else 'un'} {genre}", [], [])]
+            return [Section(f"Choisissez un {genre}", [], [])]
         fonction = {"client": rp.mouvements_client, "fournisseur": rp.mouvements_fournisseur,
                     "article": rp.mouvements_article}[genre]
         entetes, lignes = sage(ctx, lambda b: fonction(b, nom, v["du"], v["au"]), ("interro", genre, nom, v["du"],

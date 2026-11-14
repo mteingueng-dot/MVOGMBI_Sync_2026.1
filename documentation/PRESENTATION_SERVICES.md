@@ -151,7 +151,8 @@ Avant toute saisie dans Sage, l'application vous montre ce qu'elle va faire. Une
 - **Vos données restent chez vous.** L'application tourne sur votre serveur et n'utilise aucun service d'intelligence artificielle ni de service externe autre que Clover.
 - **Jamais d'essai sur vos vraies données.** Chaque nouvelle écriture est d'abord validée sur une copie de votre fichier d'entreprise.
 - **Chaque écriture est vérifiée** dans la base de Sage. Ce qui n'a pas pu être fait est signalé, jamais caché.
-- **Qualité contrôlée** : plus de 360 tests automatiques sont lancés avant chaque livraison.
+- **Qualité contrôlée** : près de 400 tests automatiques sont lancés avant chaque livraison.
+- **Sécurité vérifiée** : le code est analysé par SonarQube, Bandit et pip-audit (13 novembre 2026 : aucun bug ni aucune vulnérabilité, notes A en sécurité, fiabilité et maintenabilité).
 - **Transparence** : documentation complète (manuel, guide de l'administrateur, règles d'affaires, architecture), journal de chaque traitement et audit de chaque action.
 - **Votre façon de travailler d'abord** : les règles de facturation, d'encaissement et de droits sont fixées avec vous, puis appliquées à la lettre.
 

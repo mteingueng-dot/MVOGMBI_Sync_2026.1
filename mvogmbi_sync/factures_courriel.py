@@ -49,7 +49,7 @@ class PieceJointe:
 
     @property
     def empreinte(self) -> str:
-        return hashlib.sha1(self.contenu).hexdigest()[:16]  # même calcul que fournisseurs.empreinte
+        return hashlib.sha1(self.contenu, usedforsecurity=False).hexdigest()[:16]  # même calcul que fournisseurs.empreinte
 
 
 def _decoder(texte: str | None) -> str:

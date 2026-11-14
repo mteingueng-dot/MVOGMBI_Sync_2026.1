@@ -1797,9 +1797,10 @@ class Application(tk.Tk):
             date.fromisoformat(str(v["enc.depart"]).strip())
             date.fromisoformat(str(v["fc.depuis"]).strip())
             h, m = heure.split(":")
-            assert 0 <= int(h) < 24 and 0 <= int(m) < 60
+            if not (0 <= int(h) < 24 and 0 <= int(m) < 60):
+                raise ValueError(heure)
             int(str(v["courriel.port"]).strip() or 587)
-        except (ValueError, AssertionError):
+        except ValueError:
             messagebox.showerror(TITRE, t("Vérifiez la date (AAAA-MM-JJ), l'heure (HH:MM) et le port du courriel."))
             return False
         from .courriel import adresses, adresses_invalides
@@ -2050,8 +2051,9 @@ class Application(tk.Tk):
             return
         try:
             du, au = date.fromisoformat(self.periode_du.get().strip()), date.fromisoformat(self.periode_au.get().strip())
-            assert du <= au < date.today()
-        except (ValueError, AssertionError):
+            if not du <= au < date.today():
+                raise ValueError((du, au))
+        except ValueError:
             messagebox.showerror(TITRE, t("Vérifiez les dates (AAAA-MM-JJ) : du ≤ au, au plus tard hier."))
             return
         if not messagebox.askyesno(TITRE, t("Charger dans Sage les ventes du {du} au {au} ? Les jours déjà facturés "

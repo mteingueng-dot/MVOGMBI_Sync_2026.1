@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Guide de l'administrateur
 
-Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
+Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke. Éditeur : Concept Informatique inc.
 
 Ce guide s'adresse à la personne qui **installe, configure, met à jour et surveille** MVOGMBI_Sync : le propriétaire ou son technicien. Il couvre le serveur, Sage 50, Clover, le réseau (Tailscale, nom de domaine, HTTPS), les postes et les téléphones, les comptes et les droits, le traitement de nuit, la sauvegarde, les journaux et le dépannage.
 
@@ -499,6 +499,7 @@ Avant de signaler un problème : noter l'heure, le message exact, la page, et jo
 - ☐ **Compte Windows dédié** (recommandé) : l'application, le serveur web et le traitement de nuit tournent dans une session Windows sans droits d'administrateur ; une faille éventuelle ne donnerait alors pas le contrôle du serveur.
 - ☐ **Règles d'accès de Tailscale** (console Tailscale, « Access controls ») : les téléphones et postes des employés n'atteignent que le port 443 du serveur ; le Bureau à distance (3389) et les autres ports seulement pour les administrateurs.
 - ☐ Installateurs contrôlés par leur empreinte SHA-256 avant l'installation (les programmes ne sont pas signés : l'avertissement de Windows est attendu).
+- ☐ **Analyse du code** avant chaque version importante (poste de développement avec Docker Desktop) : `powershell -ExecutionPolicy Bypass -File installation\analyse_sonarqube.ps1` lance SonarQube en local (port 9100), analyse le code et écrit `sortie\analyse_sonarqube.txt` ; attendu : 0 bug, 0 vulnérabilité, aucun constat ouvert ; puis `pip-audit -r requirements.txt` (bibliothèques). Résultats détaillés : `ANALYSE_SECURITE.md`.
 - ☐ Mots de passe de 12 caractères au moins (version 1.0.13) : faire changer les anciens mots de passe plus courts ; l'audit signale les séries de NIP faux au pointage.
 
 ---

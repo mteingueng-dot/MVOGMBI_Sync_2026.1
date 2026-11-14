@@ -1,6 +1,6 @@
 # MVOGMBI_Sync — Règles d'affaires
 
-Version 1.0.13 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
+Version 1.0.14 (13 novembre 2026) — Marché MVOG-MBI Sherbrooke.
 
 Ce document réunit **toutes les règles d'affaires** appliquées par l'application, module par module : ce qui est calculé, ce qui est permis, ce qui est refusé et pourquoi. Il complète la documentation fonctionnelle (ce que fait l'application) et le document d'architecture (comment elle est construite).
 
@@ -417,6 +417,7 @@ Le marché est agent RIA : il reçoit des espèces pour des envois, verse des es
 | RG-SEC-12 | **Mots de passe** : 12 caractères au moins pour l'application Windows comme pour le web ; empreinte PBKDF2-SHA256 de 600 000 tours ; une ancienne empreinte (200 000 tours) est refaite à la connexion réussie suivante (version 1.0.13). |
 | RG-SEC-13 | **NIP du pointage** : 5 NIP faux de suite bloquent l'employé 1 minute, puis 5, 30 et 120 minutes à chaque nouvelle série ; chaque série est notée à l'audit ; un NIP juste remet tout à zéro (version 1.0.13). |
 | RG-SEC-14 | **Serveur web** : une requête de taille invalide est refusée ; une connexion inactive est fermée après 30 secondes ; « Parcourir… » et « Reprendre une configuration » refusent les partages réseau (\\machine\partage) (version 1.0.13). |
+| RG-SEC-15 | **Analyse du code** : chaque version importante passe l'analyse SonarQube (`installation\analyse_sonarqube.ps1`), complétée par Bandit et pip-audit ; une vulnérabilité ou un bug ouvert se corrige avant la livraison, ou est examiné et classé avec sa raison dans SonarQube (« faux positif » ou « accepté ») ; un texte venu de l'extérieur n'est jamais lu par une expression régulière à retour arrière coûteux sans limite de longueur (version 1.0.14). |
 
 ---
 

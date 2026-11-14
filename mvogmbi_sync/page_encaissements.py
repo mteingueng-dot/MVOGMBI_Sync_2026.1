@@ -108,8 +108,9 @@ class PageEncaissements(ttk.Frame):
     def calculer(self) -> None:
         try:
             debut, fin = date.fromisoformat(self.debut.get().strip()), date.fromisoformat(self.fin.get().strip())
-            assert debut <= fin
-        except (ValueError, AssertionError):
+            if debut > fin:
+                raise ValueError((debut, fin))
+        except ValueError:
             messagebox.showerror(self.titre, t("Vérifiez les dates (AAAA-MM-JJ)."))
             return
         self.resume.configure(text=t("Calcul en cours : lots de cartes Clover, relevés bancaires, puis lecture de Sage…"))
